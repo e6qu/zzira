@@ -22,6 +22,7 @@ type Product struct {
 	Key       string `json:"key"`
 	Name      string `json:"name"`
 	Enabled   bool   `json:"enabled"`
+	Plan      string `json:"plan"`
 	CreatedAt string `json:"createdAt"`
 }
 

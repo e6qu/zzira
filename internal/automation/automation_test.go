@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/store"
@@ -132,6 +133,10 @@ func TestRuleManagementGatewayLifecycle(t *testing.T) {
 	fx.call("", http.MethodPost, base, ruleBody("Nightly", fx.admin, "ENABLED", "", actions), http.StatusUnauthorized)
 	fx.call(fx.member, http.MethodPost, base, ruleBody("Nightly", fx.admin, "ENABLED", "", actions), http.StatusForbidden)
 	created := fx.call(fx.admin, http.MethodPost, base, ruleBody("Nightly", fx.admin, "ENABLED", "", actions), http.StatusCreated)
+	// Atlassian's primary entry point serves the same rules as the site gateway.
+	fx.call(fx.admin, http.MethodGet, "/automation/public/jira/"+fx.cloudID+"/rest/v1/rule/summary", nil, http.StatusOK)
+	// Page cursors expire after an hour.
+	fx.call(fx.admin, http.MethodGet, base+"/summary?cursor="+encodeCursorAt(0, time.Now().Add(-2*time.Hour)), nil, http.StatusBadRequest)
 	uuid, _ := created["ruleUuid"].(string)
 	if !isUUIDv7(uuid) {
 		t.Fatalf("generated uuid = %q, want UUIDv7", uuid)

@@ -28,11 +28,23 @@ type releasesData struct {
 	Issues   []*models.Issue
 	Progress models.VersionProgress
 	Delivery []models.DeliveryItem
-	Admin    bool
-	Editing  bool
-	Error    string
-	Query    string
-	Status   string
+	// Driver, Members and Approvers describe who is responsible for and who
+	// signs off a release; MyApproval is the signed-in person's own request.
+	Driver     *models.User
+	Members    []*models.User
+	Approvers  []releaseApproval
+	MyApproval *models.VersionApprover
+	Admin      bool
+	Editing    bool
+	Error      string
+	Query      string
+	Status     string
+}
+
+// releaseApproval is an approval request with the approver's name.
+type releaseApproval struct {
+	models.VersionApprover
+	Name string
 }
 
 func releaseWebError(err error) (int, string) {
@@ -63,7 +75,7 @@ func (h *Handler) Releases(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msg, status)
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), ws, user.ID)
+	admin, err := h.Store.CanAdministerProject(r.Context(), ws, user.ID, project.ID)
 	if err != nil {
 		http.Error(w, "Could not load releases.", 500)
 		return
@@ -120,7 +132,7 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), ws, user.ID)
+	admin, err := h.Store.CanAdministerProject(r.Context(), ws, user.ID, project.ID)
 	if err != nil {
 		http.Error(w, "Could not load release.", 500)
 		return
@@ -153,6 +165,15 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 		case "archive", "unarchive":
 			archived := action == "archive"
 			_, opErr = h.Store.SaveVersion(r.Context(), ws, user.ID, project.ID, version.ID, store.VersionUpdate{Archived: &archived})
+		case "driver":
+			driver := r.PostFormValue("driver")
+			_, opErr = h.Store.SaveVersion(r.Context(), ws, user.ID, project.ID, version.ID, store.VersionUpdate{Driver: &driver})
+		case "add-approver":
+			opErr = h.Store.AddVersionApprover(r.Context(), ws, user.ID, version.ID, r.PostFormValue("approver"), r.PostFormValue("approvalDescription"))
+		case "remove-approver":
+			opErr = h.Store.RemoveVersionApprover(r.Context(), ws, user.ID, version.ID, r.PostFormValue("approver"))
+		case "approve", "decline":
+			opErr = h.Store.DecideVersionApproval(r.Context(), ws, user.ID, version.ID, action == "approve", r.PostFormValue("declineReason"))
 		case "delete":
 			opErr = h.Store.DeleteVersion(r.Context(), ws, user.ID, version.ID, "", "")
 			if opErr == nil {
@@ -196,6 +217,31 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Could not load release delivery evidence.", 500)
 		return
+	}
+	if data.Members, err = h.Store.MembersByWorkspace(r.Context(), ws); err != nil {
+		http.Error(w, "Could not load release people.", 500)
+		return
+	}
+	names := make(map[string]*models.User, len(data.Members))
+	for _, member := range data.Members {
+		names[member.ID] = member
+	}
+	data.Driver = names[data.Version.DriverID]
+	approvers, err := h.Store.VersionApprovers(r.Context(), version.ID)
+	if err != nil {
+		http.Error(w, "Could not load release approvers.", 500)
+		return
+	}
+	for _, approver := range approvers {
+		name := approver.AccountID
+		if member := names[approver.AccountID]; member != nil {
+			name = member.DisplayName
+		}
+		data.Approvers = append(data.Approvers, releaseApproval{VersionApprover: approver, Name: name})
+		if approver.AccountID == user.ID {
+			mine := approver
+			data.MyApproval = &mine
+		}
 	}
 	h.writeWorkspacePageStatus(w, r, "page_release", user, ws, data, "releases", project.Key, status)
 }

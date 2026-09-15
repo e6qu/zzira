@@ -1,6 +1,7 @@
 package api3
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -48,7 +50,7 @@ type bulkTransitionCandidate struct {
 }
 
 func (h *Handler) bulkAvailableTransitions(w http.ResponseWriter, r *http.Request) {
-	workspaceID, userID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, userID, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -149,7 +151,7 @@ func (h *Handler) bulkAvailableTransitions(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *Handler) submitBulkTransition(w http.ResponseWriter, r *http.Request) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, actorID, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -222,26 +224,36 @@ func (h *Handler) submitBulkTransition(w http.ResponseWriter, r *http.Request) {
 }
 
 type bulkMoveTargetRequest struct {
-	InferClassificationDefaults bool              `json:"inferClassificationDefaults"`
-	InferFieldDefaults          bool              `json:"inferFieldDefaults"`
-	InferStatusDefaults         bool              `json:"inferStatusDefaults"`
-	InferSubtaskTypeDefault     bool              `json:"inferSubtaskTypeDefault"`
-	IssueIDsOrKeys              []string          `json:"issueIdsOrKeys"`
-	TargetClassification        []json.RawMessage `json:"targetClassification"`
-	TargetMandatoryFields       []json.RawMessage `json:"targetMandatoryFields"`
-	TargetStatus                []struct {
+	InferClassificationDefaults bool     `json:"inferClassificationDefaults"`
+	InferFieldDefaults          bool     `json:"inferFieldDefaults"`
+	InferStatusDefaults         bool     `json:"inferStatusDefaults"`
+	InferSubtaskTypeDefault     bool     `json:"inferSubtaskTypeDefault"`
+	IssueIDsOrKeys              []string `json:"issueIdsOrKeys"`
+	TargetClassification        []struct {
+		Classifications map[string][]string `json:"classifications"`
+		IssueType       string              `json:"issueType"`
+		ProjectKeyOrID  string              `json:"projectKeyOrId"`
+	} `json:"targetClassification"`
+	TargetMandatoryFields []struct {
+		Fields map[string]struct {
+			Retain *bool           `json:"retain"`
+			Type   string          `json:"type"`
+			Value  json.RawMessage `json:"value"`
+		} `json:"fields"`
+	} `json:"targetMandatoryFields"`
+	TargetStatus []struct {
 		Statuses map[string][]string `json:"statuses"`
 	} `json:"targetStatus"`
 }
 
 func (h *Handler) submitBulkMove(w http.ResponseWriter, r *http.Request) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, actorID, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
 	var request struct {
-		SendBulkNotification bool                             `json:"sendBulkNotification"`
+		SendBulkNotification *bool                            `json:"sendBulkNotification"`
 		TargetToSources      map[string]bulkMoveTargetRequest `json:"targetToSourcesMapping"`
 	}
 	if !decodeBulkOperationBody(w, r, &request) {
@@ -282,9 +294,49 @@ func (h *Handler) submitBulkMove(w http.ResponseWriter, r *http.Request) {
 			bulkOperationError(w, http.StatusBadRequest, "A destination parent is required only for sub-task issue types")
 			return
 		}
-		if len(mapping.TargetClassification) > 0 || len(mapping.TargetMandatoryFields) > 0 {
-			bulkOperationError(w, http.StatusBadRequest, "classification and mandatory-field move mappings are not supported yet")
+		// Classification mappings name a published target level for each
+		// source level, and are ignored when defaults are inferred.
+		classificationMappings := map[string]string{}
+		if mapping.InferClassificationDefaults && len(mapping.TargetClassification) > 0 {
+			bulkOperationError(w, http.StatusBadRequest, "Leave targetClassification empty when inferClassificationDefaults is true")
 			return
+		}
+		for _, group := range mapping.TargetClassification {
+			for destination, sources := range group.Classifications {
+				if err := h.Store.PublishedDataClassificationLevel(r.Context(), workspaceID, destination); err != nil {
+					bulkOperationError(w, http.StatusBadRequest, "A target classification is not a published classification level")
+					return
+				}
+				for _, source := range sources {
+					if strings.TrimSpace(source) == "" || classificationMappings[source] != "" {
+						bulkOperationError(w, http.StatusBadRequest, "Source classifications must have one target classification")
+						return
+					}
+					classificationMappings[source] = destination
+				}
+			}
+		}
+		// Mandatory field values are raw value lists or ADF documents.
+		mandatoryFields := map[string]store.MoveMandatoryField{}
+		if mapping.InferFieldDefaults && len(mapping.TargetMandatoryFields) > 0 {
+			bulkOperationError(w, http.StatusBadRequest, "Leave targetMandatoryFields empty when inferFieldDefaults is true")
+			return
+		}
+		for _, group := range mapping.TargetMandatoryFields {
+			for fieldID, value := range group.Fields {
+				adf := strings.EqualFold(value.Type, "adf")
+				if value.Type != "" && !adf && !strings.EqualFold(value.Type, "raw") {
+					bulkOperationError(w, http.StatusBadRequest, "A mandatory field value type must be raw or adf")
+					return
+				}
+				trimmed := bytes.TrimSpace(value.Value)
+				if len(trimmed) == 0 || (adf && trimmed[0] != '{') || (!adf && trimmed[0] != '[') {
+					bulkOperationError(w, http.StatusBadRequest, "Mandatory field "+fieldID+" needs a list of values, or an ADF document for adf fields")
+					return
+				}
+				retain := value.Retain == nil || *value.Retain
+				mandatoryFields[fieldID] = store.MoveMandatoryField{Retain: retain, ADF: adf, Value: append(json.RawMessage(nil), trimmed...)}
+			}
 		}
 		statusMappings := map[string]string{}
 		for _, statusGroup := range mapping.TargetStatus {
@@ -317,6 +369,9 @@ func (h *Handler) submitBulkMove(w http.ResponseWriter, r *http.Request) {
 				BulkIssueTaskItem: store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID},
 				ProjectID:         project.ID, IssueTypeID: issueType.ID, ParentID: parentID,
 				InferStatusDefaults: mapping.InferStatusDefaults, StatusMappings: statusMappings,
+				InferClassificationDefaults: mapping.InferClassificationDefaults, ClassificationMappings: classificationMappings,
+				InferFieldDefaults: mapping.InferFieldDefaults, MandatoryFields: mandatoryFields,
+				InferSubtaskTypeDefault: mapping.InferSubtaskTypeDefault,
 			})
 			if len(items) > 1000 {
 				bulkOperationError(w, http.StatusBadRequest, "No more than 1,000 issues can be moved")
@@ -324,7 +379,8 @@ func (h *Handler) submitBulkMove(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	task, err := h.Store.EnqueueBulkMoveTask(r.Context(), workspaceID, actorID, items, request.SendBulkNotification)
+	sendNotification := request.SendBulkNotification == nil || *request.SendBulkNotification
+	task, err := h.Store.EnqueueBulkMoveTask(r.Context(), workspaceID, actorID, items, sendNotification)
 	if errors.Is(err, store.ErrBulkTaskLimit) {
 		bulkOperationError(w, http.StatusBadRequest, err.Error())
 		return
@@ -337,14 +393,14 @@ func (h *Handler) submitBulkMove(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) submitBulkDelete(w http.ResponseWriter, r *http.Request) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, actorID, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
 	var request struct {
 		SelectedIssueIDsOrKeys []string `json:"selectedIssueIdsOrKeys"`
-		SendBulkNotification   bool     `json:"sendBulkNotification"`
+		SendBulkNotification   *bool    `json:"sendBulkNotification"`
 	}
 	if !decodeBulkOperationBody(w, r, &request) {
 		return
@@ -370,7 +426,7 @@ func (h *Handler) submitBulkDelete(w http.ResponseWriter, r *http.Request) {
 		}
 		issues = append(issues, store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID})
 	}
-	task, err := h.Store.EnqueueBulkDeleteTask(r.Context(), workspaceID, actorID, issues, request.SendBulkNotification)
+	task, err := h.Store.EnqueueBulkDeleteTask(r.Context(), workspaceID, actorID, issues, request.SendBulkNotification == nil || *request.SendBulkNotification)
 	if errors.Is(err, store.ErrBulkTaskLimit) {
 		bulkOperationError(w, http.StatusBadRequest, err.Error())
 		return
@@ -395,7 +451,7 @@ type bulkEditableField struct {
 }
 
 func (h *Handler) bulkEditableFields(w http.ResponseWriter, r *http.Request) {
-	workspaceID, userID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, userID, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -665,7 +721,7 @@ func decodeBulkOperationBody(w http.ResponseWriter, r *http.Request, value any) 
 }
 
 func (h *Handler) submitBulkWatch(w http.ResponseWriter, r *http.Request, watch bool) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, actorID, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -709,7 +765,7 @@ func (h *Handler) submitBulkWatch(w http.ResponseWriter, r *http.Request, watch 
 }
 
 func (h *Handler) bulkOperationProgress(w http.ResponseWriter, r *http.Request, taskID string) {
-	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, _, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -731,6 +787,11 @@ func (h *Handler) bulkOperationProgress(w http.ResponseWriter, r *http.Request, 
 		bulkOperationError(w, http.StatusBadRequest, "The task associated with this taskId is not a bulk operation task")
 		return
 	}
+	// Jira keeps a bulk operation's progress for 14 days after it is submitted.
+	if time.Since(task.SubmittedAt) > 14*24*time.Hour {
+		bulkOperationError(w, http.StatusNotFound, "The bulk operation task is no longer available.")
+		return
+	}
 	bean := map[string]any{
 		"taskId": task.WireID(), "status": task.Status, "progressPercent": task.Progress,
 		"submittedBy": map[string]string{"accountId": task.SubmittedBy},
@@ -748,4 +809,23 @@ func (h *Handler) bulkOperationProgress(w http.ResponseWriter, r *http.Request, 
 		}
 	}
 	writeJSON(w, http.StatusOK, bean)
+}
+
+// authBulkChange admits callers holding Jira's global Bulk change permission,
+// which every bulk operation and its progress require.
+func (h *Handler) authBulkChange(r *http.Request) (string, string, *jerr) {
+	workspaceID, userID, authErr := h.authWorkspace(r)
+	if authErr != nil {
+		return "", "", authErr
+	}
+	allowed, err := h.Store.HasGlobalPermission(r.Context(), workspaceID, userID, "BULK_CHANGE")
+	if err != nil {
+		return "", "", &jerr{http.StatusInternalServerError, "internal error", nil}
+	}
+	if !allowed {
+		if admin, adminErr := h.Store.IsAdmin(r.Context(), workspaceID, userID); adminErr != nil || !admin {
+			return "", "", &jerr{http.StatusForbidden, "You do not have the Bulk change global permission.", nil}
+		}
+	}
+	return workspaceID, userID, nil
 }

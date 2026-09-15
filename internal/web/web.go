@@ -217,7 +217,14 @@ func compileNavigatorSearch(ctx context.Context, st *store.Store, workspaceID, p
 			return jql.Compiled{}, err
 		}
 	}
-	compiled := jql.CompileAt(query, userID, jql.DefaultResolver(), 2)
+	resolver := jql.DefaultResolver()
+	if st != nil {
+		var err error
+		if resolver, err = st.JQLResolver(ctx, workspaceID); err != nil {
+			return jql.Compiled{}, err
+		}
+	}
+	compiled := jql.CompileAt(query, userID, resolver, 2)
 	if compiled.Err != nil {
 		return jql.Compiled{}, compiled.Err
 	}
@@ -446,6 +453,10 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	evaluation.Approvals, err = h.Store.IssueApprovalDecisions(r.Context(), issue.ID)
+	if err != nil {
+		return nil, err
+	}
 	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), wsID, issue.ID)
 	if err != nil {
 		return nil, err
@@ -455,7 +466,8 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		return nil, err
 	}
 	for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
-		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: t.ScreenFields()})
+		message, _, _ := t.ScreenReminder()
+		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: t.ScreenFields(), ScreenMessage: message})
 	}
 	editView, err := h.buildEditDialogView(r.Context(), wsID, issue)
 	if err != nil {
@@ -624,16 +636,22 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	editable, err := h.Commands.IssueEditable(r.Context(), issue)
+	if err != nil {
+		return nil, err
+	}
 	return &models.IssueView{
 		Issue:               *issue,
 		ProjectKey:          project.Key,
 		ProjectName:         project.Name,
 		BoardID:             boardID,
 		CanEdit:             true,
+		Editable:            editable,
 		CanTriage:           true,
 		AttachmentsEnabled:  configuration.AttachmentsEnabled,
 		IssueLinkingEnabled: configuration.IssueLinkingEnabled,
 		TimeTrackingEnabled: configuration.TimeTrackingEnabled,
+		TimeTracking:        models.NewTimeTrackingView(*issue, configuration.TimeTracking),
 		VotingEnabled:       configuration.VotingEnabled,
 		WatchingEnabled:     configuration.WatchingEnabled,
 		CurrentUserID:       user.ID,
@@ -1131,19 +1149,36 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		writeFragment(w, "create_dialog", data)
 		return
 	}
+	// The time tracking field holds the original estimate as a duration.
+	var originalEstimate *int64
+	if estimate := strings.TrimSpace(values["timetracking"]); estimate != "" {
+		configuration, configErr := h.Store.JiraSiteConfiguration(r.Context(), wsID)
+		if configErr != nil {
+			http.Error(w, "Could not load time tracking settings.", http.StatusInternalServerError)
+			return
+		}
+		seconds, parseErr := models.ParseJiraDuration(estimate, configuration.TimeTracking)
+		if parseErr != nil {
+			data.Error = "Time tracking: " + parseErr.Error()
+			writeFragment(w, "create_dialog", data)
+			return
+		}
+		originalEstimate = &seconds
+	}
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
-		ActorID:         user.ID,
-		WorkspaceID:     wsID,
-		ProjectIDOrKey:  values["project"],
-		Summary:         values["summary"],
-		Description:     values["description"],
-		IssueTypeID:     values["issuetype"],
-		ParentIDOrKey:   values["parent"],
-		PriorityID:      values["priority"],
-		AssigneeID:      values["assignee"],
-		SecurityLevelID: values["security"],
-		Labels:          strings.Split(values["labels"], ","),
-		Fields:          customFields,
+		OriginalEstimate: originalEstimate,
+		ActorID:          user.ID,
+		WorkspaceID:      wsID,
+		ProjectIDOrKey:   values["project"],
+		Summary:          values["summary"],
+		Description:      values["description"],
+		IssueTypeID:      values["issuetype"],
+		ParentIDOrKey:    values["parent"],
+		PriorityID:       values["priority"],
+		AssigneeID:       values["assignee"],
+		SecurityLevelID:  values["security"],
+		Labels:           strings.Split(values["labels"], ","),
+		Fields:           customFields,
 	})
 	if err != nil {
 		data.Error = err.Error()
@@ -1500,6 +1535,10 @@ func (h *Handler) commonBulkTransitions(ctx context.Context, workspaceID, userID
 		}
 		evaluation := workflow.ContextForIssue(userID, issue)
 		evaluation.StatusHistory, err = h.Store.IssueStatusHistory(ctx, workspaceID, issue.ID)
+		if err != nil {
+			return nil, err
+		}
+		evaluation.Approvals, err = h.Store.IssueApprovalDecisions(ctx, issue.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -1916,8 +1955,19 @@ func (h *Handler) UploadAttachment(w http.ResponseWriter, r *http.Request, key s
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)        // bounded: 32MB max upload
+	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	// Each of up to 60 files may reach the site's attachment limit.
+	r.Body = http.MaxBytesReader(w, r.Body, min(60*configuration.AttachmentUploadLimit+(1<<20), 2<<30))
 	if err := r.ParseMultipartForm(32 << 20); err != nil { // #nosec G120 -- body capped by MaxBytesReader above
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "the attachment exceeds the maximum attachment size", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "multipart form required", http.StatusBadRequest)
 		return
 	}
@@ -1932,6 +1982,14 @@ func (h *Handler) UploadAttachment(w http.ResponseWriter, r *http.Request, key s
 			_, _, err = h.Commands.AddAttachment(r.Context(), user.ID, wsID, key, fh.Filename, fh.Header.Get("Content-Type"), f)
 			if closeErr := f.Close(); closeErr != nil {
 				log.Printf("attachment file close: %v", closeErr)
+			}
+			if errors.Is(err, commands.ErrAttachmentTooLarge) {
+				http.Error(w, "the attachment exceeds the maximum attachment size", http.StatusRequestEntityTooLarge)
+				return
+			}
+			if errors.Is(err, commands.ErrAttachmentCreatePermission) {
+				http.Error(w, "you do not have permission to attach files to this work item", http.StatusForbidden)
+				return
 			}
 			if err != nil {
 				http.Error(w, "upload failed", http.StatusBadRequest)
@@ -1961,12 +2019,58 @@ func (h *Handler) AddWorklog(w http.ResponseWriter, r *http.Request, key string)
 	if !parseForm(w, r) {
 		return
 	}
-	seconds, err := strconv.Atoi(r.PostFormValue("seconds"))
-	if err != nil || seconds <= 0 {
-		http.Error(w, "seconds must be a positive number", http.StatusBadRequest)
+	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "Could not load time tracking settings.", http.StatusInternalServerError)
 		return
 	}
-	if _, _, err := h.Commands.AddWorklog(r.Context(), user.ID, wsID, key, adf.ParagraphDoc(r.PostFormValue("comment")), seconds); err != nil {
+	spent, err := models.ParseJiraDuration(r.PostFormValue("timeSpent"), configuration.TimeTracking)
+	if err != nil || spent <= 0 {
+		http.Error(w, "Enter the time spent, such as 1h 30m.", http.StatusBadRequest)
+		return
+	}
+	// The remaining estimate moves by the time logged unless the person sets
+	// it or leaves it as it is.
+	estimate := store.WorklogEstimate{Mode: r.PostFormValue("adjustEstimate"), Notify: true}
+	if estimate.Mode == "new" {
+		if estimate.NewSeconds, err = models.ParseJiraDuration(r.PostFormValue("newEstimate"), configuration.TimeTracking); err != nil {
+			http.Error(w, "Enter the new remaining estimate, such as 2h.", http.StatusBadRequest)
+			return
+		}
+	}
+	if _, _, err := h.Commands.AddWorklogWithEstimate(r.Context(), user.ID, wsID, key, adf.ParagraphDoc(r.PostFormValue("comment")), int(spent), estimate); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h.serveIssue(w, r, user, wsID, key)
+}
+
+// EditTimeTracking sets a work item's original and remaining estimates from
+// the issue page; an empty field removes that estimate.
+func (h *Handler) EditTimeTracking(w http.ResponseWriter, r *http.Request, key string) {
+	user, wsID, ok := h.issueMutationContext(w, r, key)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "Could not load time tracking settings.", http.StatusInternalServerError)
+		return
+	}
+	estimates := map[string]*int64{}
+	for _, name := range []string{"originalEstimate", "remainingEstimate"} {
+		value := strings.TrimSpace(r.PostFormValue(name))
+		seconds := store.ClearEstimate
+		if value != "" {
+			if seconds, err = models.ParseJiraDuration(value, configuration.TimeTracking); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+		estimates[name] = &seconds
+	}
+	if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{ActorID: user.ID, WorkspaceID: wsID, IssueIDOrKey: key,
+		OriginalEstimate: estimates["originalEstimate"], RemainingEstimate: estimates["remainingEstimate"]}); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

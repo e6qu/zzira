@@ -57,12 +57,13 @@ func (r *AttachmentBlobDeletionRunner) DrainOnce(ctx context.Context) error {
 			return err
 		}
 		if err := r.Service.Blobs.Delete(ctx, deletion.BlobRef); err != nil {
-			if deferErr := r.Service.Store.DeferAttachmentBlobDeletion(ctx, deletion.BlobRef, err.Error(), deletion.Attempts); deferErr != nil {
+			// Another worker may have finished the deletion once this lease lapsed.
+			if deferErr := r.Service.Store.DeferAttachmentBlobDeletion(ctx, deletion.BlobRef, err.Error(), deletion.Attempts); deferErr != nil && !errors.Is(deferErr, pgx.ErrNoRows) {
 				return errors.Join(err, deferErr)
 			}
 			return fmt.Errorf("delete attachment blob %q: %w", deletion.BlobRef, err)
 		}
-		if err := r.Service.Store.CompleteAttachmentBlobDeletion(ctx, deletion.BlobRef); err != nil {
+		if err := r.Service.Store.CompleteAttachmentBlobDeletion(ctx, deletion.BlobRef); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
 	}

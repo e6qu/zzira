@@ -88,8 +88,15 @@ type workflowTransitionView struct {
 	RuleSummary  []string
 }
 
+// workflowAnyStatus is the editor's source for a global transition.
+const workflowAnyStatus = "any"
+
 type workflowNodeView struct {
-	Status      models.Status
+	Status models.Status
+	// Editable is false when the status sets jira.issue.editable to false.
+	Editable bool
+	// Approval is the Jira Service Management approval the status configures.
+	Approval    *workflow.ApprovalConfiguration
 	X           int
 	Y           int
 	Transitions []workflowTransitionView
@@ -109,9 +116,15 @@ type workflowEditorData struct {
 	Statuses  []models.Status
 	Projects  []*models.Project
 	Assigned  []*models.Project
-	Webhooks  []*models.Webhook
-	CanEdit   bool
-	CanAssign bool
+	// Initial and Global are the transitions that start from no status.
+	Initial  *workflowTransitionView
+	Global   []workflowTransitionView
+	Webhooks []*models.Webhook
+	Events   []store.NotificationEventDefinition
+	// ApproverFields are the user picker fields a status approval can name.
+	ApproverFields []*models.CustomField
+	CanEdit        bool
+	CanAssign      bool
 }
 
 type statusDirectoryData struct {
@@ -566,13 +579,7 @@ func (h *Handler) WorkflowSchemePage(w http.ResponseWriter, r *http.Request, sch
 				return
 			}
 			for _, impact := range impacts {
-				allowed := make(map[string]bool)
-				for _, transition := range impact.TargetWorkflow.Transitions {
-					allowed[transition.To] = true
-					for _, from := range transition.From {
-						allowed[from] = true
-					}
-				}
+				allowed := workflowStatusIDs(impact.TargetWorkflow)
 				view := workflowSchemeImpactView{IssueTypeID: impact.IssueTypeID, Status: impact.Status, IssueCount: impact.IssueCount}
 				for _, status := range statuses {
 					if allowed[status.ID] {
@@ -621,11 +628,22 @@ func (h *Handler) SaveWorkflowSchemeDraft(w http.ResponseWriter, r *http.Request
 			scheme.IssueTypeMappings[issueType.ID] = workflowID
 		}
 	}
-	if err := h.Store.SaveWorkflowSchemeDraft(r.Context(), workspaceID, user.ID, scheme); err != nil {
+	// An inactive scheme changes directly; a scheme projects use keeps its
+	// published routing until its draft is published.
+	draft, err := h.Store.UpdateWorkflowScheme(r.Context(), workspaceID, user.ID, scheme, true)
+	if errors.Is(err, store.ErrAdminValidation) {
+		http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(schemeID)+"?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+	if err != nil {
 		statusAdminError(w, err)
 		return
 	}
-	http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(schemeID)+"?saved="+url.QueryEscape("Draft saved"), http.StatusSeeOther)
+	message := "Scheme saved"
+	if draft {
+		message = "Draft saved"
+	}
+	http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(schemeID)+"?saved="+url.QueryEscape(message), http.StatusSeeOther)
 }
 
 func (h *Handler) FinishWorkflowSchemeDraft(w http.ResponseWriter, r *http.Request, schemeID string) {
@@ -798,7 +816,28 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 			activeWebhooks = append(activeWebhooks, webhook)
 		}
 	}
+	events, err := h.Store.IssueEvents(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	nodes, edges, mapWidth, mapHeight := workflowDesignerMap(wf, statuses)
+	var initial *workflowTransitionView
+	global := []workflowTransitionView{}
+	for _, transition := range wf.Transitions {
+		view := workflowTransitionView{ID: transition.ID, Name: transition.Name, ScreenFields: transition.ScreenFields(), RuleSummary: workflowRuleSummary(transition)}
+		for _, status := range statuses {
+			if status.ID == transition.To {
+				view.To = status
+			}
+		}
+		switch transition.Kind() {
+		case workflow.TransitionInitial:
+			initial = &view
+		case workflow.TransitionGlobal:
+			global = append(global, view)
+		}
+	}
 	assigned := make([]*models.Project, 0)
 	for _, project := range projects {
 		if project.WorkflowID == wf.ID || (project.WorkflowID == "" && wf.ID == workflow.Default().ID) {
@@ -806,8 +845,19 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 		}
 	}
 	admin, _ := h.Store.IsAdmin(r.Context(), wsID, user.ID)
+	fields, err := h.Store.CustomFieldsForWorkspace(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "Could not load custom fields.", http.StatusInternalServerError)
+		return
+	}
+	approverFields := make([]*models.CustomField, 0)
+	for _, field := range fields {
+		if field.Type == models.CustomFieldUser || field.Type == models.CustomFieldMultiUser {
+			approverFields = append(approverFields, field)
+		}
+	}
 	h.writeWorkspacePage(w, r, "page_workflow", user, wsID, workflowEditorData{
-		Workflow: wf, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks,
+		Workflow: wf, Initial: initial, Global: global, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks, Events: events, ApproverFields: approverFields,
 		CanEdit: admin && wf.ID != workflow.Default().ID, CanAssign: admin,
 	}, "workflows", "")
 }
@@ -854,6 +904,96 @@ func (h *Handler) SaveWorkflowLayout(w http.ResponseWriter, r *http.Request, wor
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// SaveWorkflowStatusEditable sets whether work items in a workflow status can
+// be edited, through Jira's jira.issue.editable status property, on the draft.
+func (h *Handler) SaveWorkflowStatusEditable(w http.ResponseWriter, r *http.Request, workflowID, statusID string) {
+	_, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if workflowID == workflow.Default().ID {
+		http.Error(w, "the built-in workflow is read-only", http.StatusBadRequest)
+		return
+	}
+	wf, err := h.Store.WorkflowDraftByID(r.Context(), workspaceID, workflowID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if !workflowStatusIDs(wf)[statusID] {
+		http.Error(w, "status is not part of this workflow", http.StatusBadRequest)
+		return
+	}
+	editable := r.PostFormValue("editable") == "true"
+	index := slices.IndexFunc(wf.Statuses, func(status workflow.StatusLayout) bool { return status.StatusReference == statusID })
+	if index < 0 {
+		wf.Statuses = append(wf.Statuses, workflow.StatusLayout{StatusReference: statusID, Properties: map[string]string{}})
+		index = len(wf.Statuses) - 1
+	}
+	properties := map[string]string{}
+	for key, value := range wf.Statuses[index].Properties {
+		if key != workflow.PropertyIssueEditableLegacy {
+			properties[key] = value
+		}
+	}
+	if editable {
+		delete(properties, workflow.PropertyIssueEditable)
+	} else {
+		properties[workflow.PropertyIssueEditable] = "false"
+	}
+	wf.Statuses[index].Properties = properties
+	if err := h.Store.SaveWorkflowDraft(r.Context(), workspaceID, wf); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	http.Redirect(w, r, "/settings/workflows/"+workflowID, http.StatusSeeOther)
+}
+
+// SaveWorkflowStatusApproval sets or removes the Jira Service Management
+// approval a workflow status configures, on the draft.
+func (h *Handler) SaveWorkflowStatusApproval(w http.ResponseWriter, r *http.Request, workflowID, statusID string) {
+	_, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if workflowID == workflow.Default().ID {
+		http.Error(w, "the built-in workflow is read-only", http.StatusBadRequest)
+		return
+	}
+	wf, err := h.Store.WorkflowDraftByID(r.Context(), workspaceID, workflowID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if !workflowStatusIDs(wf)[statusID] {
+		http.Error(w, "status is not part of this workflow", http.StatusBadRequest)
+		return
+	}
+	var approval *workflow.ApprovalConfiguration
+	if r.PostFormValue("action") != "remove" {
+		approval = &workflow.ApprovalConfiguration{
+			Active: "true", ConditionType: r.PostFormValue("conditionType"), ConditionValue: strings.TrimSpace(r.PostFormValue("conditionValue")),
+			Exclude: r.PostForm["exclude"], FieldID: r.PostFormValue("fieldId"),
+			TransitionApproved: r.PostFormValue("transitionApproved"), TransitionRejected: r.PostFormValue("transitionRejected"),
+		}
+		if err := workflow.ValidateApprovalConfiguration(statusID, *approval, wf.Transitions); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	index := slices.IndexFunc(wf.Statuses, func(status workflow.StatusLayout) bool { return status.StatusReference == statusID })
+	if index < 0 {
+		wf.Statuses = append(wf.Statuses, workflow.StatusLayout{StatusReference: statusID, Properties: map[string]string{}})
+		index = len(wf.Statuses) - 1
+	}
+	wf.Statuses[index].ApprovalConfiguration = approval
+	if err := h.Store.SaveWorkflowDraft(r.Context(), workspaceID, wf); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	http.Redirect(w, r, "/settings/workflows/"+workflowID+"#status-approvals", http.StatusSeeOther)
 }
 
 func (h *Handler) CreateWorkflow(w http.ResponseWriter, r *http.Request) {
@@ -905,8 +1045,12 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	transition := workflow.Transition{
-		ID: store.NewID("transition"), Name: strings.TrimSpace(r.PostFormValue("name")),
+		ID: workflow.NextTransitionID(wf.Transitions), Name: strings.TrimSpace(r.PostFormValue("name")),
 		From: []string{r.PostFormValue("from")}, To: r.PostFormValue("to"),
+	}
+	// A global transition runs from every status of the workflow.
+	if r.PostFormValue("from") == workflowAnyStatus {
+		transition.Type, transition.From = workflow.TransitionGlobal, nil
 	}
 	changedField := strings.TrimSpace(r.PostFormValue("changed_field_validator"))
 	fields := append([]string(nil), r.PostForm["screen_field"]...)
@@ -1062,6 +1206,14 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 			},
 		})
 	}
+	if raw := strings.TrimSpace(r.PostFormValue("fire_event")); raw != "" {
+		eventID, parseErr := strconv.ParseInt(raw, 10, 64)
+		if _, known, eventErr := h.Store.IssueEvent(r.Context(), wsID, eventID); parseErr != nil || eventErr != nil || !known {
+			http.Error(w, "the transition event does not exist", http.StatusBadRequest)
+			return
+		}
+		transition.CustomIssueEventID = raw
+	}
 	if webhookID := strings.TrimSpace(r.PostFormValue("trigger_webhook")); webhookID != "" {
 		webhooks, err := h.Store.Webhooks(r.Context(), wsID)
 		if err != nil {
@@ -1110,6 +1262,10 @@ func (h *Handler) DeleteWorkflowTransition(w http.ResponseWriter, r *http.Reques
 	wf, err := h.Store.WorkflowDraftByID(r.Context(), wsID, workflowID)
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	if initial := wf.Initial(); initial != nil && initial.ID == transitionID {
+		http.Error(w, "the initial transition creates work items and cannot be deleted", http.StatusBadRequest)
 		return
 	}
 	transitions := wf.Transitions[:0]
@@ -1220,23 +1376,37 @@ func containsValue(values []string, target string) bool {
 
 func workflowStatusIDs(wf workflow.Workflow) map[string]bool {
 	ids := make(map[string]bool)
-	for _, status := range wf.Statuses {
-		ids[status.StatusReference] = true
-	}
-	for _, transition := range wf.Transitions {
-		ids[transition.To] = true
-		for _, from := range transition.From {
-			ids[from] = true
-		}
+	for _, id := range wf.StatusIDs() {
+		ids[id] = true
 	}
 	return ids
+}
+
+// workflowRuleSummary names the kinds of rule a transition carries.
+func workflowRuleSummary(transition workflow.Transition) []string {
+	rules := make([]string, 0, 4)
+	if transition.Conditions != nil {
+		rules = append(rules, "condition")
+	}
+	if len(transition.Validators) > 0 {
+		rules = append(rules, "validator")
+	}
+	if len(transition.Actions) > 0 {
+		rules = append(rules, "post-function")
+	}
+	if len(transition.Triggers) > 0 {
+		rules = append(rules, "trigger")
+	}
+	return rules
 }
 
 func workflowDesignerMap(wf workflow.Workflow, statuses []models.Status) ([]workflowNodeView, []workflowEdgeView, int, int) {
 	referenced := workflowStatusIDs(wf)
 	layouts := make(map[string]*workflow.Layout, len(wf.Statuses))
+	approvals := make(map[string]*workflow.ApprovalConfiguration, len(wf.Statuses))
 	for _, status := range wf.Statuses {
 		layouts[status.StatusReference] = status.Layout
+		approvals[status.StatusReference] = status.ApprovalConfiguration
 	}
 	categoryX := map[string]int{"new": 36, "indeterminate": 326, "done": 616}
 	categoryRows := map[string]int{}
@@ -1258,23 +1428,10 @@ func workflowDesignerMap(wf workflow.Workflow, statuses []models.Status) ([]work
 		transitions := make([]workflowTransitionView, 0)
 		for _, transition := range wf.Transitions {
 			if containsValue(transition.From, status.ID) {
-				rules := make([]string, 0, 3)
-				if transition.Conditions != nil {
-					rules = append(rules, "condition")
-				}
-				if len(transition.Validators) > 0 {
-					rules = append(rules, "validator")
-				}
-				if len(transition.Actions) > 0 {
-					rules = append(rules, "post-function")
-				}
-				if len(transition.Triggers) > 0 {
-					rules = append(rules, "trigger")
-				}
-				transitions = append(transitions, workflowTransitionView{ID: transition.ID, Name: transition.Name, To: statusByID[transition.To], ScreenFields: transition.ScreenFields(), RuleSummary: rules})
+				transitions = append(transitions, workflowTransitionView{ID: transition.ID, Name: transition.Name, To: statusByID[transition.To], ScreenFields: transition.ScreenFields(), RuleSummary: workflowRuleSummary(transition)})
 			}
 		}
-		nodes = append(nodes, workflowNodeView{Status: status, X: x, Y: y, Transitions: transitions})
+		nodes = append(nodes, workflowNodeView{Status: status, Editable: wf.StatusEditable(status.ID), Approval: approvals[status.ID], X: x, Y: y, Transitions: transitions})
 		maxX, maxY = max(maxX, x), max(maxY, y)
 	}
 	edges := make([]workflowEdgeView, 0, len(wf.Transitions))

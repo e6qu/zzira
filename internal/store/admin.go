@@ -130,7 +130,7 @@ func (s *Store) SitesByOrganization(ctx context.Context, organizationID string) 
 
 func (s *Store) ProductsBySite(ctx context.Context, siteID string) ([]*models.Product, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT id::text,site_id::text,product_key,name,enabled,created_at
+		SELECT id::text,site_id::text,product_key,name,enabled,plan,created_at
 		FROM products WHERE site_id::text=$1 ORDER BY product_key`, siteID)
 	if err != nil {
 		return nil, err
@@ -140,7 +140,7 @@ func (s *Store) ProductsBySite(ctx context.Context, siteID string) ([]*models.Pr
 	for rows.Next() {
 		product := &models.Product{}
 		var createdAt time.Time
-		if err := rows.Scan(&product.ID, &product.SiteID, &product.Key, &product.Name, &product.Enabled, &createdAt); err != nil {
+		if err := rows.Scan(&product.ID, &product.SiteID, &product.Key, &product.Name, &product.Enabled, &product.Plan, &createdAt); err != nil {
 			return nil, err
 		}
 		product.CreatedAt = formatAdminTime(createdAt)

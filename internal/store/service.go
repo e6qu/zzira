@@ -2,9 +2,11 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,11 +17,11 @@ import (
 
 func scanServiceDesk(row interface{ Scan(...any) error }) (*models.ServiceDesk, error) {
 	desk := &models.ServiceDesk{}
-	err := row.Scan(&desk.ID, &desk.WorkspaceID, &desk.ProjectID, &desk.ProjectKey, &desk.ProjectName, &desk.ProjectTypeKey, &desk.PortalName, &desk.CustomerAccessOpen)
+	err := row.Scan(&desk.ID, &desk.WorkspaceID, &desk.ProjectID, &desk.ProjectKey, &desk.ProjectName, &desk.ProjectTypeKey, &desk.PortalName, &desk.CustomerAccessOpen, &desk.AttachmentsEnabled, &desk.FeedbackEnabled)
 	return desk, err
 }
 
-const serviceDeskSelect = `SELECT sd.id,sd.workspace_id,p.id,p.key,p.name,p.project_type_key,sd.portal_name,sd.customer_access_open FROM service_desks sd JOIN projects p ON p.id=sd.project_id AND p.lifecycle_state='ACTIVE' `
+const serviceDeskSelect = `SELECT sd.id,sd.workspace_id,p.id,p.key,p.name,p.project_type_key,sd.portal_name,sd.customer_access_open,sd.attachments_enabled,sd.feedback_enabled FROM service_desks sd JOIN projects p ON p.id=sd.project_id AND p.lifecycle_state='ACTIVE' `
 
 func (s *Store) ServiceDesks(ctx context.Context, workspaceID string) ([]models.ServiceDesk, error) {
 	rows, err := s.Pool.Query(ctx, serviceDeskSelect+`WHERE sd.workspace_id=$1 ORDER BY sd.id::bigint`, workspaceID)
@@ -99,10 +101,43 @@ func (s *Store) CreateServiceRequestType(ctx context.Context, workspaceID, servi
 	return requestType, tx.Commit(ctx)
 }
 
-func (s *Store) DeleteServiceRequestType(ctx context.Context, workspaceID, serviceDeskID, id string) error {
-	_, err := s.Pool.Exec(ctx, `DELETE FROM service_request_types WHERE id=$3 AND service_desk_id=$2 AND service_desk_id IN (SELECT id FROM service_desks WHERE workspace_id=$1)`, workspaceID, serviceDeskID, id)
-	return err
+// DeleteServiceRequestType deletes a request type and removes it from the
+// customer requests that used it, which remain, recording the deletion.
+func (s *Store) DeleteServiceRequestType(ctx context.Context, workspaceID, actorID, serviceDeskID, id string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var name string
+	var requests int
+	err = tx.QueryRow(ctx, `
+		SELECT rt.name,(SELECT count(*) FROM service_requests sr WHERE sr.request_type_id=rt.id)
+		FROM service_request_types rt JOIN service_desks sd ON sd.id=rt.service_desk_id
+		WHERE sd.workspace_id=$1 AND sd.id=$2 AND rt.id=$3 FOR UPDATE OF rt`, workspaceID, serviceDeskID, id).Scan(&name, &requests)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrServiceRequestTypeNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM service_request_types WHERE id=$1`, id); err != nil {
+		return err
+	}
+	detail, err := json.Marshal(map[string]any{"serviceDeskId": serviceDeskID, "name": name, "requests": requests})
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT organization_id,$2,'service.request_type.deleted','service_request_type',$3,$4::jsonb FROM sites WHERE workspace_id=$1`, workspaceID, actorID, id, detail); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
+
+// ErrServiceRequestTypeNotFound reports a request type the desk does not have.
+var ErrServiceRequestTypeNotFound = errors.New("request type does not exist")
 
 // EnrollServiceCustomer marks an existing account as a portal customer for a
 // workspace. Product access remains governed independently by role bindings.
@@ -173,6 +208,17 @@ func (s *Store) ServiceCustomer(ctx context.Context, workspaceID, userIDOrEmail 
 	return s.UserByID(ctx, userID)
 }
 
+// serviceDeskCustomerAccess reports whether a customer may use a service
+// desk's portal: the portal is open, or they are its customer directly or
+// through a linked organization.
+const serviceDeskCustomerAccess = `SELECT EXISTS(
+	SELECT 1 FROM service_desks sd
+	WHERE sd.workspace_id=$1 AND sd.id=$2 AND (
+		sd.customer_access_open
+		OR EXISTS(SELECT 1 FROM service_desk_customers dc WHERE dc.service_desk_id=sd.id AND dc.user_id=$3 AND dc.active)
+		OR EXISTS(SELECT 1 FROM service_desk_organizations dso JOIN service_organization_users sou ON sou.organization_id=dso.organization_id WHERE dso.service_desk_id=sd.id AND sou.user_id=$3)
+	))`
+
 func (s *Store) CreateServiceRequest(ctx context.Context, workspaceID, issueID, serviceDeskID, requestTypeID, customerID, channel string) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -180,13 +226,7 @@ func (s *Store) CreateServiceRequest(ctx context.Context, workspaceID, issueID, 
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var allowed bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(
-		SELECT 1 FROM service_desks sd
-		WHERE sd.workspace_id=$1 AND sd.id=$2 AND (
-			sd.customer_access_open
-			OR EXISTS(SELECT 1 FROM service_desk_customers dc WHERE dc.service_desk_id=sd.id AND dc.user_id=$3 AND dc.active)
-			OR EXISTS(SELECT 1 FROM service_desk_organizations dso JOIN service_organization_users sou ON sou.organization_id=dso.organization_id WHERE dso.service_desk_id=sd.id AND sou.user_id=$3)
-		))`, workspaceID, serviceDeskID, customerID).Scan(&allowed); err != nil {
+	if err := tx.QueryRow(ctx, serviceDeskCustomerAccess, workspaceID, serviceDeskID, customerID).Scan(&allowed); err != nil {
 		return err
 	}
 	if !allowed {
@@ -224,7 +264,8 @@ func (s *Store) CreateServiceRequest(ctx context.Context, workspaceID, issueID, 
 }
 
 func (s *Store) serviceRequestFromRow(ctx context.Context, workspaceID string, row pgx.Row) (*models.ServiceRequest, error) {
-	var issueID, deskID, requestTypeID, customerID, channel string
+	var issueID, deskID, customerID, channel string
+	var requestTypeID *string
 	request := &models.ServiceRequest{}
 	if err := row.Scan(&issueID, &deskID, &requestTypeID, &customerID, &channel, &request.CreatedAt); err != nil {
 		return nil, err
@@ -239,11 +280,14 @@ func (s *Store) serviceRequestFromRow(ctx context.Context, workspaceID string, r
 		return nil, err
 	}
 	request.ServiceDesk = *desk
-	requestType, err := s.ServiceRequestType(ctx, workspaceID, deskID, requestTypeID)
-	if err != nil {
-		return nil, err
+	// A request whose request type was deleted keeps no request type.
+	if requestTypeID != nil {
+		requestType, err := s.ServiceRequestType(ctx, workspaceID, deskID, *requestTypeID)
+		if err != nil {
+			return nil, err
+		}
+		request.RequestType = *requestType
 	}
-	request.RequestType = *requestType
 	request.Customer, err = s.UserByID(ctx, customerID)
 	request.Channel = channel
 	return request, err
@@ -416,15 +460,25 @@ func (s *Store) ServiceRequestComment(ctx context.Context, requestIssueID, comme
 }
 
 func (s *Store) CreateServiceApproval(ctx context.Context, workspaceID, requestIssueID, actorID, name string, approverIDs []string, automationKey string) (*models.ServiceApproval, bool, error) {
+	return s.createServiceApproval(ctx, workspaceID, requestIssueID, actorID, name, approverIDs, automationKey, models.ServiceApproval{})
+}
+
+// CreateStatusServiceApproval opens the approval a workflow status configures,
+// keeping the rule's status, condition and transitions.
+func (s *Store) CreateStatusServiceApproval(ctx context.Context, workspaceID, requestIssueID, actorID, name string, approverIDs []string, automationKey string, rule models.ServiceApproval) (*models.ServiceApproval, bool, error) {
+	return s.createServiceApproval(ctx, workspaceID, requestIssueID, actorID, name, approverIDs, automationKey, rule)
+}
+
+func (s *Store) createServiceApproval(ctx context.Context, workspaceID, requestIssueID, actorID, name string, approverIDs []string, automationKey string, rule models.ServiceApproval) (*models.ServiceApproval, bool, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var id string
-	err = tx.QueryRow(ctx, `INSERT INTO service_request_approvals(request_issue_id,name,created_by,automation_key)
-		SELECT sr.issue_id,$3,$4,NULLIF($5,'') FROM service_requests sr WHERE sr.workspace_id=$1 AND sr.issue_id=$2
-		ON CONFLICT (request_issue_id,automation_key) WHERE automation_key IS NOT NULL DO NOTHING RETURNING id`, workspaceID, requestIssueID, name, actorID, automationKey).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO service_request_approvals(request_issue_id,name,created_by,automation_key,status_id,condition_type,condition_value,transition_approved,transition_rejected)
+		SELECT sr.issue_id,$3,$4,NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),NULLIF($8::int,0),NULLIF($9,''),NULLIF($10,'') FROM service_requests sr WHERE sr.workspace_id=$1 AND sr.issue_id=$2
+		ON CONFLICT (request_issue_id,automation_key) WHERE automation_key IS NOT NULL DO NOTHING RETURNING id`, workspaceID, requestIssueID, name, actorID, automationKey, rule.StatusID, rule.ConditionType, rule.ConditionValue, rule.TransitionApproved, rule.TransitionRejected).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) && automationKey != "" {
 		if err := tx.QueryRow(ctx, `SELECT id FROM service_request_approvals WHERE request_issue_id=$1 AND automation_key=$2`, requestIssueID, automationKey).Scan(&id); err != nil {
 			return nil, false, err
@@ -471,7 +525,7 @@ func (s *Store) CreateServiceApproval(ctx context.Context, workspaceID, requestI
 }
 
 func (s *Store) ServiceApprovals(ctx context.Context, requestIssueID string) ([]models.ServiceApproval, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id,name,final_decision,created_at,completed_at FROM service_request_approvals WHERE request_issue_id=$1 ORDER BY created_at,id::bigint`, requestIssueID)
+	rows, err := s.Pool.Query(ctx, `SELECT id,name,final_decision,created_at,completed_at,COALESCE(status_id,''),COALESCE(condition_type,''),COALESCE(condition_value,0),COALESCE(transition_approved,''),COALESCE(transition_rejected,'') FROM service_request_approvals WHERE request_issue_id=$1 ORDER BY created_at,id::bigint`, requestIssueID)
 	if err != nil {
 		return nil, err
 	}
@@ -480,7 +534,7 @@ func (s *Store) ServiceApprovals(ctx context.Context, requestIssueID string) ([]
 	for rows.Next() {
 		var v models.ServiceApproval
 		v.RequestIssueID = requestIssueID
-		if err := rows.Scan(&v.ID, &v.Name, &v.FinalDecision, &v.CreatedAt, &v.CompletedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.Name, &v.FinalDecision, &v.CreatedAt, &v.CompletedAt, &v.StatusID, &v.ConditionType, &v.ConditionValue, &v.TransitionApproved, &v.TransitionRejected); err != nil {
 			return nil, err
 		}
 		v.Approvers, err = s.ServiceApprovers(ctx, v.ID)
@@ -494,7 +548,7 @@ func (s *Store) ServiceApprovals(ctx context.Context, requestIssueID string) ([]
 
 func (s *Store) ServiceApproval(ctx context.Context, requestIssueID, approvalID string) (*models.ServiceApproval, error) {
 	v := &models.ServiceApproval{RequestIssueID: requestIssueID}
-	err := s.Pool.QueryRow(ctx, `SELECT id,name,final_decision,created_at,completed_at FROM service_request_approvals WHERE request_issue_id=$1 AND id=$2`, requestIssueID, approvalID).Scan(&v.ID, &v.Name, &v.FinalDecision, &v.CreatedAt, &v.CompletedAt)
+	err := s.Pool.QueryRow(ctx, `SELECT id,name,final_decision,created_at,completed_at,COALESCE(status_id,''),COALESCE(condition_type,''),COALESCE(condition_value,0),COALESCE(transition_approved,''),COALESCE(transition_rejected,'') FROM service_request_approvals WHERE request_issue_id=$1 AND id=$2`, requestIssueID, approvalID).Scan(&v.ID, &v.Name, &v.FinalDecision, &v.CreatedAt, &v.CompletedAt, &v.StatusID, &v.ConditionType, &v.ConditionValue, &v.TransitionApproved, &v.TransitionRejected)
 	if err != nil {
 		return nil, err
 	}
@@ -544,15 +598,14 @@ func (s *Store) AnswerServiceApproval(ctx context.Context, requestIssueID, appro
 	if result.RowsAffected() == 0 {
 		return nil, fmt.Errorf("approval is not assigned to this user or was already answered")
 	}
-	var declined, pending bool
-	if err := tx.QueryRow(ctx, `SELECT bool_or(decision='declined'),bool_or(decision='pending') FROM service_request_approvers WHERE approval_id=$1`, approvalID).Scan(&declined, &pending); err != nil {
+	var approved, declined, total, conditionValue int
+	var conditionType string
+	if err := tx.QueryRow(ctx, `SELECT count(*) FILTER (WHERE r.decision='approved'),count(*) FILTER (WHERE r.decision='declined'),count(*),COALESCE(a.condition_type,''),COALESCE(a.condition_value,0)
+		FROM service_request_approvers r JOIN service_request_approvals a ON a.id=r.approval_id
+		WHERE r.approval_id=$1 GROUP BY a.condition_type,a.condition_value`, approvalID).Scan(&approved, &declined, &total, &conditionType, &conditionValue); err != nil {
 		return nil, err
 	}
-	if declined {
-		final = "declined"
-	} else if !pending {
-		final = "approved"
-	}
+	final = serviceApprovalDecision(approved, declined, total, conditionType, conditionValue)
 	if final != "pending" {
 		if _, err := tx.Exec(ctx, `UPDATE service_request_approvals SET final_decision=$2,completed_at=now() WHERE id=$1`, approvalID, final); err != nil {
 			return nil, err
@@ -562,6 +615,27 @@ func (s *Store) AnswerServiceApproval(ctx context.Context, requestIssueID, appro
 		return nil, err
 	}
 	return s.ServiceApproval(ctx, requestIssueID, approvalID)
+}
+
+// serviceApprovalDecision is an approval's outcome: any decline declines it,
+// and it is approved once it has the approvals its condition requires: every
+// approver without a condition, a number of them (at most all) or a
+// percentage of them.
+func serviceApprovalDecision(approved, declined, total int, conditionType string, conditionValue int) string {
+	if declined > 0 {
+		return "declined"
+	}
+	required := total
+	switch conditionType {
+	case "number", "numberPerPrincipal":
+		required = min(conditionValue, total)
+	case "percent":
+		required = (total*conditionValue + 99) / 100
+	}
+	if approved >= max(required, 1) {
+		return "approved"
+	}
+	return "pending"
 }
 
 func scanServiceQueue(row interface{ Scan(...any) error }) (*models.ServiceQueue, error) {
@@ -615,10 +689,8 @@ func (s *Store) ServiceQueueRequests(ctx context.Context, workspaceID, viewerID,
 		if err := s.ExpandAppJQL(ctx, workspaceID, parsed); err != nil {
 			return nil, nil, err
 		}
-		resolver := jql.DefaultResolver()
-		if customFields, err := s.CustomFieldsForWorkspace(ctx, workspaceID); err == nil {
-			resolver = jql.WithCustomFields(resolver, customFields)
-		} else {
+		resolver, err := s.JQLResolver(ctx, workspaceID)
+		if err != nil {
 			return nil, nil, err
 		}
 		compiled := jql.CompileAt(parsed, viewerID, resolver, 2)
@@ -687,6 +759,21 @@ func (s *Store) ServiceQueueRequests(ctx context.Context, workspaceID, viewerID,
 	return queue, filtered, nil
 }
 
+// IsServiceDeskAdmin reports whether a person administers a service desk: a
+// site administrator, or someone holding Administer Projects on the desk's
+// project.
+func (s *Store) IsServiceDeskAdmin(ctx context.Context, workspaceID, serviceDeskID, userID string) (bool, error) {
+	admin, err := s.IsAdmin(ctx, workspaceID, userID)
+	if err != nil || admin {
+		return admin, err
+	}
+	desk, err := s.ServiceDesk(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		return false, nil
+	}
+	return s.HasProjectPermission(ctx, workspaceID, userID, desk.ProjectID, "", "ADMINISTER_PROJECTS")
+}
+
 func (s *Store) IsServiceAgent(ctx context.Context, workspaceID, serviceDeskID, userID string) (bool, error) {
 	admin, err := s.IsAdmin(ctx, workspaceID, userID)
 	if err != nil || admin {
@@ -701,6 +788,37 @@ func (s *Store) IsServiceAgent(ctx context.Context, workspaceID, serviceDeskID, 
 		SELECT 1 FROM service_desk_agents a JOIN service_desks sd ON sd.id=a.service_desk_id
 		WHERE sd.workspace_id=$1 AND sd.id=$2 AND a.user_id=$3)`, workspaceID, serviceDeskID, userID).Scan(&allowed)
 	return allowed, err
+}
+
+// ServiceDesksAdministered lists the service desks whose project the user
+// administers.
+func (s *Store) ServiceDesksAdministered(ctx context.Context, workspaceID, userID string) ([]models.ServiceDesk, error) {
+	desks, err := s.ServiceDesks(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	administered := make([]models.ServiceDesk, 0)
+	for _, desk := range desks {
+		admin, err := s.HasProjectPermission(ctx, workspaceID, userID, desk.ProjectID, "", "ADMINISTER_PROJECTS")
+		if err != nil {
+			return nil, err
+		}
+		if admin {
+			administered = append(administered, desk)
+		}
+	}
+	return administered, nil
+}
+
+// IsAnyServiceDeskStaff reports whether the user may open the agent workspace:
+// an agent of some service desk or an administrator of one.
+func (s *Store) IsAnyServiceDeskStaff(ctx context.Context, workspaceID, userID string) (bool, error) {
+	agent, err := s.IsAnyServiceAgent(ctx, workspaceID, userID)
+	if err != nil || agent {
+		return agent, err
+	}
+	administered, err := s.ServiceDesksAdministered(ctx, workspaceID, userID)
+	return len(administered) > 0, err
 }
 
 func (s *Store) IsAnyServiceAgent(ctx context.Context, workspaceID, userID string) (bool, error) {
@@ -766,7 +884,29 @@ func (s *Store) ServiceDesksForAgent(ctx context.Context, workspaceID, userID st
 		}
 		values = append(values, *desk)
 	}
-	return values, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	administered, err := s.ServiceDesksAdministered(ctx, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	listed := make(map[string]bool, len(values))
+	for _, desk := range values {
+		listed[desk.ID] = true
+	}
+	for _, desk := range administered {
+		if !listed[desk.ID] {
+			values = append(values, desk)
+		}
+	}
+	sort.Slice(values, func(i, j int) bool {
+		left, _ := strconv.ParseInt(values[i].ID, 10, 64)
+		right, _ := strconv.ParseInt(values[j].ID, 10, 64)
+		return left < right
+	})
+	return values, nil
 }
 
 func (s *Store) ServiceDeskAgents(ctx context.Context, workspaceID, serviceDeskID string) ([]*models.User, error) {
@@ -839,4 +979,18 @@ func (s *Store) SetServiceDeskAgent(ctx context.Context, workspaceID, actorID, s
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// IssueApprovalDecisions returns the final decision of each approval on a work
+// item, for workflow approval conditions.
+func (s *Store) IssueApprovalDecisions(ctx context.Context, issueID string) ([]string, error) {
+	approvals, err := s.ServiceApprovals(ctx, issueID)
+	if err != nil {
+		return nil, err
+	}
+	decisions := make([]string, 0, len(approvals))
+	for _, approval := range approvals {
+		decisions = append(decisions, approval.FinalDecision)
+	}
+	return decisions, nil
 }

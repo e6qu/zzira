@@ -1,5 +1,7 @@
 package models
 
+import "encoding/json"
+
 import "time"
 
 // ServiceDesk is the Jira Service Management portal attached to a service project.
@@ -12,11 +14,13 @@ type ServiceDesk struct {
 	ProjectTypeKey     string
 	PortalName         string
 	CustomerAccessOpen bool
+	AttachmentsEnabled bool
+	FeedbackEnabled    bool
 }
 
 type ServiceOrganization struct {
-	ID, WorkspaceID, Name string
-	CreatedAt             time.Time
+	ID, WorkspaceID, Name, UUID string
+	CreatedAt                   time.Time
 }
 
 type ServiceRequestTypeGroup struct {
@@ -28,6 +32,10 @@ type ServiceRequestTypeField struct {
 	ID, RequestTypeID, Name, Type, Description, HelpText string
 	Required, Custom                                     bool
 	Position                                             int
+	// Hidden is true for a field hidden from the portal; a hidden field is
+	// filled with PresetValue, a Jira field value, when a request is raised.
+	Hidden      bool
+	PresetValue json.RawMessage
 }
 
 type ServiceKnowledgeArticle struct {
@@ -76,6 +84,11 @@ type ServiceApproval struct {
 	CreatedAt                               time.Time
 	CompletedAt                             *time.Time
 	Approvers                               []ServiceApprover
+	// A workflow status's approval keeps its status, condition and the
+	// transitions that run once it is decided.
+	StatusID, ConditionType                string
+	ConditionValue                         int
+	TransitionApproved, TransitionRejected string
 }
 
 type ServiceTemporaryAttachment struct {

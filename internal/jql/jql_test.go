@@ -449,11 +449,11 @@ func TestCompileComponentsAsCanonicalMultiValueField(t *testing.T) {
 	}
 }
 
-func TestCompileProjectUpper(t *testing.T) {
+func TestCompileProjectKeyIgnoresCase(t *testing.T) {
 	q, _ := Parse("project = zz")
 	c := Compile(q, "u", DefaultResolver())
-	if c.Err != nil || c.Args[0] != "ZZ" {
-		t.Fatalf("project value = %#v err=%v", c.Args, c.Err)
+	if c.Err != nil || c.Args[0] != "zz" || !strings.Contains(c.Where, "pr.key = upper(") {
+		t.Fatalf("project value = %#v where=%s err=%v", c.Args, c.Where, c.Err)
 	}
 }
 
@@ -558,5 +558,110 @@ func TestResolutionUnresolved(t *testing.T) {
 	// resolutiondate reads when the issue was resolved.
 	if got := compile(`resolutiondate >= "2026-01-01"`).Where; !strings.Contains(got, "i.resolved_at >=") {
 		t.Fatalf("resolutiondate: %q", got)
+	}
+}
+
+func TestOperandsLocateValuesForRewriting(t *testing.T) {
+	query := `project = "Secret project" AND assignee in (mia, currentUser()) AND status CHANGED BY alana AND cf[10000] is EMPTY ORDER BY key`
+	operands, fields, err := Operands(query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := []string{}
+	for _, operand := range operands {
+		got = append(got, operand.Field+"|"+operand.Role+"|"+operand.Value+"|"+query[operand.Start:operand.End])
+	}
+	want := []string{
+		`project|value|Secret project|"Secret project"`,
+		`assignee|value|mia|mia`,
+		`assignee|value|currentUser()|currentUser()`,
+		`status|by|alana|alana`,
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("operands =\n%s", strings.Join(got, "\n"))
+	}
+	if !operands[1].InParenthesized || operands[0].InParenthesized || !operands[2].Function || query[operands[0].OperatorStart:operands[0].OperatorEnd] != "=" {
+		t.Fatalf("operand flags = %+v", operands)
+	}
+	if len(fields) != 4 || fields[3].Name != "customfield_10000" || query[fields[3].Start:fields[3].End] != "cf[10000]" {
+		t.Fatalf("fields = %+v", fields)
+	}
+	rewritten := ApplyEdits(query, []Edit{
+		{Start: operands[0].Start, End: operands[0].End, Text: "10001"},
+		{Start: operands[3].Start, End: operands[3].End, Text: Quote("Alana Smith")},
+	})
+	if rewritten != `project = 10001 AND assignee in (mia, currentUser()) AND status CHANGED BY "Alana Smith" AND cf[10000] is EMPTY ORDER BY key` {
+		t.Fatalf("rewritten = %s", rewritten)
+	}
+	if Quote("usr_ana") != "usr_ana" || Quote("in") != `"in"` || Quote(`say "hi"`) != `"say \"hi\""` {
+		t.Fatal("quoting")
+	}
+	if _, _, err = Operands("status ="); err == nil {
+		t.Fatal("an unparsable query had operands")
+	}
+}
+
+func TestProjectClauseMatchesKeyIDOrName(t *testing.T) {
+	q, err := Parse(`project in (TEAM, 10001, "Team project") AND project != OTHER`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(q, "", DefaultResolver())
+	if compiled.Err != nil {
+		t.Fatal(compiled.Err)
+	}
+	if !strings.Contains(compiled.Where, "pr.id = ") || !strings.Contains(compiled.Where, "lower(pr.name)") || !strings.Contains(compiled.Where, "NOT ((pr.key") {
+		t.Fatalf("where = %s", compiled.Where)
+	}
+}
+
+func TestLenientCompileTurnsFailingClausesIntoWarnings(t *testing.T) {
+	q, err := Parse(`nosuchfield = 1 AND summary ~ release OR updated > nosuchdate() ORDER BY nosuchorder DESC, key ASC`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strict := Compile(q, "u", DefaultResolver()); strict.Err == nil {
+		t.Fatal("the strict compile accepted an unknown field")
+	}
+	lenient := CompileLenientAt(q, "u", DefaultResolver(), 2)
+	if lenient.Err != nil {
+		t.Fatal(lenient.Err)
+	}
+	if len(lenient.Warnings) != 3 || !strings.Contains(lenient.Warnings[0], "nosuchfield") || !strings.Contains(lenient.Warnings[2], "nosuchorder") {
+		t.Fatalf("warnings = %q", lenient.Warnings)
+	}
+	// The summary clause keeps the first placeholder after the workspace one.
+	if !strings.Contains(lenient.Where, "(FALSE) AND") || !strings.Contains(lenient.Where, "$2") || strings.Contains(lenient.Where, "$3") || len(lenient.Args) != 1 {
+		t.Fatalf("where = %s args = %#v", lenient.Where, lenient.Args)
+	}
+	if strings.Contains(lenient.OrderSQL, "nosuchorder") || !strings.Contains(lenient.OrderSQL, "i.key ASC") {
+		t.Fatalf("order = %s", lenient.OrderSQL)
+	}
+}
+
+func TestCollapsedCustomFieldsSearchEveryMember(t *testing.T) {
+	fields := []*models.CustomField{
+		{ID: "customfield_10061", Name: "Component", Type: models.CustomFieldSelect},
+		{ID: "customfield_10062", Name: "Component", Type: models.CustomFieldSelect},
+		{ID: "customfield_10063", Name: "Component", Type: models.CustomFieldText},
+	}
+	resolver := WithCustomFields(DefaultResolver(), fields)
+	if len(resolver.CollapsedFields) != 1 || len(resolver.CollapsedFields["component[dropdown]"]) != 2 {
+		t.Fatalf("collapsed fields = %#v", resolver.CollapsedFields)
+	}
+	positive, err := Parse(`"Component[Dropdown]" = Backend`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(positive, "u", resolver)
+	if compiled.Err != nil || !strings.Contains(compiled.Where, "customfield_10061") || !strings.Contains(compiled.Where, "customfield_10062") || strings.Contains(compiled.Where, "customfield_10063") || !strings.Contains(compiled.Where, ") OR (") {
+		t.Fatalf("positive where = %s err=%v", compiled.Where, compiled.Err)
+	}
+	negative, _ := Parse(`"Component[Dropdown]" != Backend`)
+	if compiled = Compile(negative, "u", resolver); compiled.Err != nil || !strings.Contains(compiled.Where, ") AND (") {
+		t.Fatalf("negative where = %s err=%v", compiled.Where, compiled.Err)
+	}
+	if models.CollapsedFieldName("Component", models.CustomFieldSelect) != "Component[Dropdown]" {
+		t.Fatal("collapsed name")
 	}
 }

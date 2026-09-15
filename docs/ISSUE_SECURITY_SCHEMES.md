@@ -44,13 +44,10 @@ level is rejected with `409`. Associating a scheme requires a mapping for every
 level the project currently uses, which keeps work items from being left at a
 level the new scheme does not define.
 
-zzira's two pre-v3 extensions stay available for existing clients: `POST
-/rest/api/3/issuesecurityschemes` still accepts a caller-supplied `id` with
-account-ID level members, and `GET/PUT
-/rest/api/3/issuesecurityschemes/project/{projectKeyOrId}` still reads and sets
-a project's scheme by key. The legacy `PUT` assigns without level mappings, so
-Jira Cloud clients should use the paginated `/issuesecurityschemes/project`
-endpoint above.
+Schemes, levels and members follow Jira Cloud's contract only: ids are
+generated, level members are holder objects, and a project's scheme is read and
+set through `/rest/api/3/issuesecurityschemes/project`. zzira's earlier
+caller-supplied ids, account-ID member strings and project-key route are gone.
 
 ## Holders and enforcement
 
@@ -96,11 +93,13 @@ arises through the legacy assignment extension described above.
   pages are in the light and dark axe sweep.
 
 The assessment remains partial while issue-security JQL functions, level
-reordering, `expand` on the paged beans, the nested user/group/role/field
-expansion beans, per-holder `managed` administration, scheme copy, and exact
+reordering, per-holder `managed` administration, scheme copy, and exact
 Jira error wording and self links on every response remain. The browser
 assignment form carries no level-remapping step, so assigning a scheme to a
 project that already has restricted work is a REST operation; the form reports
 the store's mapping error rather than silently moving those restrictions. Application-role
 holders resolve against enabled site products rather than Atlassian
 license-tier membership.
+
+Member reads expand each holder's `user`, `group`, `projectRole` or `field`
+details, or `all` of them, as permission scheme grants do.

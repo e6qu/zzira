@@ -1181,23 +1181,7 @@ func (h *Handler) projectStatuses(w http.ResponseWriter, r *http.Request, worksp
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		references := []string{}
-		seen := map[string]bool{}
-		add := func(reference string) {
-			if reference != "" && !seen[reference] {
-				seen[reference] = true
-				references = append(references, reference)
-			}
-		}
-		for _, status := range flow.Statuses {
-			add(status.StatusReference)
-		}
-		for _, transition := range flow.Transitions {
-			for _, from := range transition.From {
-				add(from)
-			}
-			add(transition.To)
-		}
+		references := flow.StatusIDs()
 		statuses := []map[string]any{}
 		for _, reference := range references {
 			status, err := h.Store.StatusByIDForProject(r.Context(), reference, project.ID)

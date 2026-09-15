@@ -25,8 +25,8 @@ operations:
 
 | Method and path | Behavior |
 |---|---|
-| `GET /rest/api/3/permissions` | Returns the built-in global and project permission catalog. |
-| `GET /rest/api/3/mypermissions` | Evaluates selected permissions in global, project, issue, or comment context. |
+| `GET /rest/api/3/permissions` | Returns the built-in global and project permissions and those installed apps declare. |
+| `GET /rest/api/3/mypermissions` | Evaluates the requested permissions in global, project, issue, or comment context. `permissions` is required and each key must exist (400 otherwise). `projectId` wins over `projectKey` and `issueId` over `issueKey`; a project or issue the caller cannot see answers 404, and `commentId` allows only `BROWSE_PROJECTS`. |
 | `POST /rest/api/3/permissions/check` | Evaluates bounded global and project permission batches, including another user for administrators. |
 | `POST /rest/api/3/permissions/project` | Returns active projects where the caller has every requested permission. |
 | `GET /rest/api/3/user/permission/search` | Pages active users who satisfy the requested permissions and context. |
@@ -39,7 +39,12 @@ and assignment mutation writes an immutable action in the same transaction.
 ## Catalog, holders, and defaults
 
 The catalog contains Jira's 36 built-in project permissions and nine global
-permission keys. Project grants accept `anyone`, application-role, assignee,
+permission keys, followed by the permissions active apps declare through
+Connect's `jiraProjectPermissions` and `jiraGlobalPermissions` modules. An app
+permission's key joins the app key and module key with two underscores. Schemes
+grant built-in and app project permissions only. An app global permission whose
+`defaultGrants` include `ALL` is granted to everyone with Jira access on first
+installation, and administrators hold every app global permission. Project grants accept `anyone`, application-role, assignee,
 group, group-custom-field, project-lead, project-role, reporter, service-portal
 customer, user, and user-custom-field holders. User, group, and role holders are
 validated against the current workspace. Group names remain synchronized after
@@ -53,10 +58,13 @@ new projects receive that default assignment, preserving the access behavior
 that preceded configurable schemes.
 
 Global Jira administration follows organization and site administrator role
-bindings. Active workspace members receive the existing shared-object,
-user-picker, browse-user, bulk-change, and team-managed project capabilities;
-the remaining global permissions stay administrator-only until global
-permission administration is delivered.
+bindings. Every other global permission, including those apps declare, is
+granted to groups or to everyone with Jira or Jira Service Management access,
+in the Global permissions section of site administration (migration 193).
+Sites start with the shared-object, user-picker, browse-user, bulk-change and
+team-managed project permissions granted to everyone with Jira access. An app
+global permission whose `defaultGrants` include `ALL` is granted that way when
+the app is first installed. Administrators hold every global permission.
 
 ## Runtime authorization
 
@@ -84,9 +92,21 @@ which matches Jira's context-dependent permission-query behavior.
 - `migrations/130_permission_schemes.sql` is exercised from a clean PostgreSQL
   schema as part of the migration and integration gates.
 
-The compatibility assessment remains partial because Jira permits anonymous
-access to some discovery operations while ZZIRA currently requires a workspace
-identity at the HTTP boundary. App-defined permission registration, global
-permission administration, and action-specific enforcement for every remaining
-issue mutation are later PR 1 work. Holder expansion beans and every Jira
-pagination and error edge also remain under contract review.
+Grants to `anyone` open reads to anonymous callers on the operations Jira
+marks as anonymous; see `docs/ANONYMOUS_ACCESS.md`. Action-specific enforcement
+for every remaining issue mutation are later PR 1 work. Holder expansion beans
+and every Jira pagination and error edge also remain under contract review.
+
+## Project configuration and work item permissions
+
+Project configuration follows the permissions Jira documents for each
+operation. Administer Projects for the project, which Administer Jira implies,
+manages its components, versions and release approvers, properties, features,
+sender email, details and project-scoped statuses, in the API and on the
+project settings and release pages. Administer Jira remains required for global
+statuses, project creation, categories, archiving, trashing, restoring and
+deleting projects, and permission scheme assignment. Issue property writes need
+Edit issues, and deleting an attachment needs Delete all attachments, or Delete
+own attachments for the caller's own. `internal/api3/project_administration_test.go`
+covers each operation for a project administrator who is not a site
+administrator and for a member without the permission.

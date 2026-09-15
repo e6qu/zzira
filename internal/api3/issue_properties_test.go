@@ -105,7 +105,9 @@ func TestIssuePropertyLifecycle(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, base, nil)
 	response := httptest.NewRecorder()
 	h.ServeHTTP(response, request)
-	if response.Code != http.StatusUnauthorized {
+	// Anonymous callers may read issue properties, but only on issues a
+	// permission granted to anyone lets them browse.
+	if response.Code != http.StatusNotFound {
 		t.Fatalf("anonymous status = %d", response.Code)
 	}
 }

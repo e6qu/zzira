@@ -79,11 +79,11 @@ func (s *Store) workflowBatchDefinitions(ctx context.Context, workspaceID string
 		if err != nil {
 			return nil, nil, err
 		}
+		// A workflow sees the new global statuses and those of its own project.
 		for _, status := range validatedStatuses {
-			if status.ProjectID != wf.ProjectID {
-				return nil, nil, fmt.Errorf("%w: workflow-created statuses must share the workflow scope", ErrAdminValidation)
+			if status.ProjectID == "" || status.ProjectID == wf.ProjectID {
+				visible = append(visible, status)
 			}
-			visible = append(visible, status)
 		}
 		definition, err := validateWorkflowAgainstStatuses(wf, visible)
 		if err != nil {
@@ -170,18 +170,7 @@ func (s *Store) CreateWorkflowBatch(ctx context.Context, workspaceID, actorID st
 }
 
 func workflowDefinitionStatuses(wf workflow.Workflow) []string {
-	seen := make(map[string]bool)
-	for _, transition := range wf.Transitions {
-		seen[transition.To] = true
-		for _, from := range transition.From {
-			seen[from] = true
-		}
-	}
-	ids := make([]string, 0, len(seen))
-	for id := range seen {
-		ids = append(ids, id)
-	}
-	return ids
+	return wf.StatusIDs()
 }
 
 func migrateWorkflowDefinitionIssues(ctx context.Context, tx pgx.Tx, workspaceID, actorID string, update WorkflowUpdateDefinition) (int, error) {

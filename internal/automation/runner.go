@@ -128,7 +128,11 @@ func (r *Runner) execute(ctx context.Context, run *claimedRun) (int, int, error)
 	if err := r.Service.Store.ExpandAppJQL(ctx, run.WorkspaceID, query); err != nil {
 		return 0, 0, fmt.Errorf("expand app JQL: %w", err)
 	}
-	compiled := jql.CompileAt(query, run.ActorID, jql.DefaultResolver(), 2)
+	resolver, err := r.Service.Store.JQLResolver(ctx, run.WorkspaceID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("resolve JQL fields: %w", err)
+	}
+	compiled := jql.CompileAt(query, run.ActorID, resolver, 2)
 	if compiled.Err != nil {
 		return 0, 0, fmt.Errorf("compile JQL: %w", compiled.Err)
 	}
@@ -254,8 +258,8 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 		if err != nil {
 			return false, err
 		}
-		for _, transition := range workflow.Transitions {
-			if transition.To == value.StatusID && slices.Contains(transition.From, issue.Status.ID) {
+		for _, transition := range workflow.Available(issue.Status.ID) {
+			if transition.To == value.StatusID {
 				_, changed, err := r.Service.Commands.TransitionIssue(ctx, run.ActorID, run.WorkspaceID, issue.ID, transition.ID)
 				return changed != nil, err
 			}

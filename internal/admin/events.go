@@ -21,6 +21,7 @@ import (
 
 var organizationEventActions = map[string]string{
 	"domain.created":                      "Domain added",
+	"product.plan.updated":                "Product plan updated",
 	"domain.deleted":                      "Domain removed",
 	"domain.verified":                     "Domain verified",
 	"group.created":                       "Group created",
@@ -218,11 +219,15 @@ func (h *Handler) eventPageLink(r *http.Request, offset int) string {
 }
 
 func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
-	_, workspaceID, ok := h.requireAdmin(w, r)
+	userID, workspaceID, ok := h.requireAdmin(w, r)
 	if !ok {
 		return
 	}
 	stream := strings.HasSuffix(r.URL.Path, "/events-stream")
+	// Atlassian limits the filtered event query, not the polling stream.
+	if !stream && h.eventsRateLimited(w, r, workspaceID, userID) {
+		return
+	}
 	allowed := []string{"cursor", "from", "to", "limit"}
 	if stream {
 		allowed = append(allowed, "sortOrder")
@@ -320,8 +325,46 @@ func (h *Handler) EventActions(w http.ResponseWriter, r *http.Request) {
 	for _, id := range ids {
 		data = append(data, map[string]any{
 			"id": id, "type": "event-actions",
-			"attributes": map[string]string{"displayName": organizationEventActions[id], "groupDisplayName": "User management"},
+			"attributes": map[string]string{"displayName": organizationEventActions[id], "groupDisplayName": eventActionGroup(id)},
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data})
+}
+
+// eventActionGroup is the group Atlassian Administration lists an audit
+// action under, from the resource the action changes.
+func eventActionGroup(action string) string {
+	switch strings.SplitN(action, ".", 2)[0] {
+	case "domain":
+		return "Domains"
+	case "product":
+		return "Products"
+	case "policy":
+		return "Security policies"
+	case "service":
+		return "Jira Service Management"
+	default:
+		return "User management"
+	}
+}
+
+// defaultEventsRateLimit is how many filtered audit event queries Atlassian
+// allows each user in a minute.
+const defaultEventsRateLimit = 10
+
+// eventsRateLimited counts a filtered event query against the user's minute,
+// answering 429 with Retry-After once the minute's queries are spent.
+func (h *Handler) eventsRateLimited(w http.ResponseWriter, r *http.Request, workspaceID, userID string) bool {
+	limit := h.EventsRateLimit
+	if limit <= 0 {
+		limit = defaultEventsRateLimit
+	}
+	now := time.Now().UTC()
+	_, reset, allowed, err := h.Store.TakeProviderRequest(r.Context(), workspaceID, userID, "admin-events", limit, now)
+	if err != nil || allowed {
+		return false
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(int(reset.Sub(now).Seconds())+1))
+	failure(w, http.StatusTooManyRequests, "The audit event rate limit has been reached.")
+	return true
 }

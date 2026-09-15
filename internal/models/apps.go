@@ -14,6 +14,33 @@ type AppDescriptor struct {
 	ScheduledTriggers                   []AppScheduledTrigger
 	IssueFields                         []AppIssueField
 	JQLFunctions                        []AppJQLFunction
+	Permissions                         []AppPermission
+	TimeTrackingProviders               []AppTimeTrackingProvider
+	EntityPropertyIndexes               []AppEntityPropertyIndex
+}
+
+// AppEntityPropertyIndex is one extraction a Connect jiraEntityProperties
+// module declares: the value at ObjectName inside the entity property
+// PropertyKey, indexed as Type (number, string, text, date or user) and
+// searchable under Alias when one is given.
+type AppEntityPropertyIndex struct {
+	ModuleKey, Name, EntityType, PropertyKey, ObjectName, Type, Alias string
+}
+
+// AppTimeTrackingProvider is a time tracking provider an app declares. Its
+// provider key is the app key and module key joined by two underscores, and
+// AdminPageKey names the app's admin page that configures it.
+type AppTimeTrackingProvider struct {
+	Key, Name, AdminPageKey string
+}
+
+// AppPermission is a project or global permission an app declares. Type is
+// PROJECT or GLOBAL; Category groups project permissions and DefaultGrants
+// (NONE, ALL or JIRA-ADMINISTRATORS) grants global ones on installation.
+type AppPermission struct {
+	Key, Name, Description, Type, Category string
+	AnonymousAllowed                       bool
+	DefaultGrants                          []string
 }
 
 type AppIssueField struct {
@@ -32,6 +59,7 @@ type AppInstallation struct {
 	ScheduledTriggers                                                                      []AppScheduledTrigger
 	IssueFields                                                                            []AppIssueField
 	JQLFunctions                                                                           []AppJQLFunction
+	Permissions                                                                            []AppPermission
 	OutboundDeliveries                                                                     []AppOutboundDelivery
 	InstalledAt, UpdatedAt                                                                 time.Time
 }
@@ -95,6 +123,8 @@ type AppDynamicModule struct {
 	Module     AppModule
 	Webhook    AppWebhook
 	IssueField AppIssueField
+	// EntityProperties are a jiraEntityProperties module's extractions.
+	EntityProperties []AppEntityPropertyIndex
 }
 
 type AppStorageValue struct {

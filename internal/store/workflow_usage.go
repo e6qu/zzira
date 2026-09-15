@@ -37,7 +37,9 @@ func (s *Store) WorkflowSchemeUsages(ctx context.Context, workspaceID, workflowI
 	rows, err := s.Pool.Query(ctx, `
 		SELECT jira_id::text FROM workflow_schemes
 		WHERE workspace_id=$1 AND (default_workflow_id=$2 OR
-			EXISTS (SELECT 1 FROM jsonb_each_text(issue_type_mappings) mapping WHERE mapping.value=$2))
+			EXISTS (SELECT 1 FROM jsonb_each_text(issue_type_mappings) mapping WHERE mapping.value=$2) OR
+			draft_def->>'defaultWorkflowId'=$2 OR
+			EXISTS (SELECT 1 FROM jsonb_each_text(COALESCE(draft_def->'issueTypeMappings','{}'::jsonb)) mapping WHERE mapping.value=$2))
 		ORDER BY jira_id`, workspaceID, workflowID)
 	if err != nil {
 		return nil, err
@@ -81,4 +83,35 @@ func (s *Store) WorkflowProjectIssueTypeUsages(ctx context.Context, workspaceID,
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+// WorkflowSchemeReference names a workflow scheme by the id clients see.
+type WorkflowSchemeReference struct {
+	ID   string
+	Name string
+}
+
+// WorkflowSchemesUsing lists the published or draft workflow schemes that map
+// a workflow, ordered by id.
+func (s *Store) WorkflowSchemesUsing(ctx context.Context, workspaceID, workflowID string) ([]WorkflowSchemeReference, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT jira_id::text,name FROM workflow_schemes
+		WHERE workspace_id=$1 AND (default_workflow_id=$2 OR
+			EXISTS (SELECT 1 FROM jsonb_each_text(issue_type_mappings) mapping WHERE mapping.value=$2) OR
+			draft_def->>'defaultWorkflowId'=$2 OR
+			EXISTS (SELECT 1 FROM jsonb_each_text(COALESCE(draft_def->'issueTypeMappings','{}'::jsonb)) mapping WHERE mapping.value=$2))
+		ORDER BY jira_id`, workspaceID, workflowID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	schemes := []WorkflowSchemeReference{}
+	for rows.Next() {
+		var scheme WorkflowSchemeReference
+		if err := rows.Scan(&scheme.ID, &scheme.Name); err != nil {
+			return nil, err
+		}
+		schemes = append(schemes, scheme)
+	}
+	return schemes, rows.Err()
 }

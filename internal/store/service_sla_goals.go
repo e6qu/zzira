@@ -125,12 +125,11 @@ func (s *Store) serviceSLAGoalMatches(ctx context.Context, workspaceID, actorID,
 	if err := s.ExpandAppJQL(ctx, workspaceID, parsed); err != nil {
 		return false, err
 	}
-	resolver := jql.DefaultResolver()
-	fields, err := s.CustomFieldsForWorkspace(ctx, workspaceID)
+	resolver, err := s.JQLResolver(ctx, workspaceID)
 	if err != nil {
 		return false, err
 	}
-	compiled := jql.CompileAt(parsed, actorID, jql.WithCustomFields(resolver, fields), 3)
+	compiled := jql.CompileAt(parsed, actorID, resolver, 3)
 	if compiled.Err != nil {
 		return false, compiled.Err
 	}

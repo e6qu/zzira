@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -21,13 +22,16 @@ type workflowStatusUpdateRequest struct {
 }
 
 type workflowStatusLayoutRequest struct {
-	StatusReference string            `json:"statusReference"`
-	Layout          *workflow.Layout  `json:"layout"`
-	Properties      map[string]string `json:"properties"`
+	StatusReference       string                          `json:"statusReference"`
+	Layout                *workflow.Layout                `json:"layout"`
+	Properties            map[string]string               `json:"properties"`
+	ApprovalConfiguration *workflow.ApprovalConfiguration `json:"approvalConfiguration"`
 }
 
 type workflowTransitionLinkRequest struct {
 	FromStatusReference string `json:"fromStatusReference"`
+	FromPort            *int   `json:"fromPort"`
+	ToPort              *int   `json:"toPort"`
 }
 
 type workflowRuleUpdateRequest struct {
@@ -46,6 +50,8 @@ type workflowTransitionUpdateRequest struct {
 	ID                string                               `json:"id"`
 	Name              string                               `json:"name"`
 	Type              string                               `json:"type"`
+	Description       string                               `json:"description"`
+	Properties        map[string]string                    `json:"properties"`
 	ToStatusReference string                               `json:"toStatusReference"`
 	Links             []workflowTransitionLinkRequest      `json:"links"`
 	Actions           []workflowRuleUpdateRequest          `json:"actions"`
@@ -53,6 +59,8 @@ type workflowTransitionUpdateRequest struct {
 	Conditions        *workflowConditionGroupUpdateRequest `json:"conditions"`
 	TransitionScreen  *workflowRuleUpdateRequest           `json:"transitionScreen"`
 	Triggers          []workflowRuleUpdateRequest          `json:"triggers"`
+	// CustomIssueEventID is the event the transition fires.
+	CustomIssueEventID *string `json:"customIssueEventId"`
 }
 
 type workflowCreateItemRequest struct {
@@ -167,26 +175,39 @@ func workflowCategory(category string) string {
 	}
 }
 
-func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID, projectID string, updates []workflowStatusUpdateRequest, generateIDs bool) (map[string]string, []models.Status, []map[string]any, error) {
-	var statuses []models.Status
-	var err error
-	if projectID == "" {
-		statuses, err = h.Store.StatusesForWorkspace(r.Context(), workspaceID)
-	} else {
-		statuses, err = h.Store.StatusesForProject(r.Context(), workspaceID, projectID, true)
-	}
+// workflowStatusReferences resolves a workflow request's status references,
+// creating the new statuses each in the scope scopeOf gives its reference. It
+// knows the global statuses and those of the given projects; a name is taken
+// when a status of the same scope already uses it.
+func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID string, scopeOf func(string) string, projects []string, updates []workflowStatusUpdateRequest, generateIDs bool) (map[string]string, []models.Status, []map[string]any, error) {
+	statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	for _, project := range projects {
+		if project == "" {
+			continue
+		}
+		projectStatuses, err := h.Store.StatusesForProject(r.Context(), workspaceID, project, false)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		statuses = append(statuses, projectStatuses...)
+	}
 	known := make(map[string]bool, len(statuses))
-	names := make(map[string]bool, len(statuses)+len(updates))
+	names := map[string]map[string]bool{}
+	nameTaken := func(scope, name string) bool { return names[scope][strings.ToLower(name)] }
+	takeName := func(scope, name string) {
+		if names[scope] == nil {
+			names[scope] = map[string]bool{}
+		}
+		names[scope][strings.ToLower(name)] = true
+	}
 	references := make(map[string]string, len(statuses)*2+len(updates))
 	wireToStored := make(map[string]string, len(statuses))
 	for _, status := range statuses {
 		known[status.ID] = true
-		if projectID == "" || status.ProjectID == projectID {
-			names[strings.ToLower(status.Name)] = true
-		}
+		takeName(status.ProjectID, status.Name)
 		references[status.ID] = status.ID
 		references[statusWireID(status)] = status.ID
 		wireToStored[statusWireID(status)] = status.ID
@@ -220,8 +241,8 @@ func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID, project
 			continue
 		}
 		if status.ID == "" {
-			nameKey := strings.ToLower(name)
-			if names[nameKey] {
+			scope := scopeOf(status.StatusReference)
+			if nameTaken(scope, name) {
 				errors = append(errors, workflowValidationError("STATUS_NAME_CONFLICT", "A visible status already uses this name.", "STATUS", map[string]any{"statusReference": status.StatusReference}))
 				continue
 			}
@@ -229,8 +250,9 @@ func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID, project
 			if generateIDs {
 				id = store.NewID("status")
 			}
-			created = append(created, models.Status{ID: id, Name: name, Category: category, ProjectID: projectID})
-			names[nameKey], known[id], references[status.StatusReference] = true, true, id
+			created = append(created, models.Status{ID: id, Name: name, Category: category, ProjectID: scope})
+			takeName(scope, name)
+			known[id], references[status.StatusReference] = true, id
 			continue
 		}
 		if !known[status.ID] {
@@ -260,23 +282,55 @@ func (h *Handler) workflowCreateScope(r *http.Request, workspaceID string, paylo
 	}
 }
 
-func (h *Handler) workflowUpdateScope(r *http.Request, workspaceID string, workflows []workflowUpdateItemRequest) (string, error) {
-	projectID := ""
-	found := false
+// workflowStatusScopes decides the scope of each status a workflow update
+// creates, so one update may change workflows of different scopes: a status
+// the workflows of one project use belongs to that project, and one a global
+// workflow or several projects use is global. A status no workflow uses takes
+// the scope every workflow shares, or is global. It also returns the projects
+// the workflows belong to.
+func (h *Handler) workflowStatusScopes(r *http.Request, workspaceID string, workflows []workflowUpdateItemRequest) (func(string) string, []string) {
 	stored := h.workflowIDsFor(r, workspaceID)
+	users := map[string]map[string]bool{}
+	projects := map[string]bool{}
+	common, shared, mixed := "", false, false
 	for _, item := range workflows {
 		published, err := h.Store.WorkflowByID(r.Context(), workspaceID, stored.toInternal(item.ID))
 		if err != nil {
 			continue
 		}
-		if !found {
-			projectID = published.ProjectID
-			found = true
-		} else if projectID != published.ProjectID {
-			return "", fmt.Errorf("workflow updates with new statuses must share one scope")
+		projects[published.ProjectID] = true
+		if !shared {
+			common, shared = published.ProjectID, true
+		} else if common != published.ProjectID {
+			mixed = true
+		}
+		for _, status := range item.Statuses {
+			if users[status.StatusReference] == nil {
+				users[status.StatusReference] = map[string]bool{}
+			}
+			users[status.StatusReference][published.ProjectID] = true
 		}
 	}
-	return projectID, nil
+	if mixed {
+		common = ""
+	}
+	scopeOf := func(reference string) string {
+		scopes := users[reference]
+		if len(scopes) == 0 {
+			return common
+		}
+		if len(scopes) == 1 {
+			for scope := range scopes {
+				return scope
+			}
+		}
+		return ""
+	}
+	list := make([]string, 0, len(projects))
+	for project := range projects {
+		list = append(list, project)
+	}
+	return scopeOf, list
 }
 
 func workflowDefinitionFromRequest(id, name, description string, startPointLayout, loopedTransitionContainerLayout *workflow.Layout, statuses []workflowStatusLayoutRequest, transitions []workflowTransitionUpdateRequest, references map[string]string) (workflow.Workflow, []map[string]any) {
@@ -304,6 +358,7 @@ func workflowDefinitionFromRequest(id, name, description string, startPointLayou
 		errors = append(errors, workflowValidationError("WORKFLOW_STATUSES_REQUIRED", "At least one workflow status is required.", "WORKFLOW", nil))
 	}
 	statusLayouts := make(map[string]bool, len(statuses))
+	requestReferences := make(map[string]string, len(statuses))
 	for _, status := range statuses {
 		resolved := references[status.StatusReference]
 		if resolved == "" {
@@ -322,16 +377,24 @@ func workflowDefinitionFromRequest(id, name, description string, startPointLayou
 		if properties == nil {
 			properties = map[string]string{}
 		}
-		wf.Statuses = append(wf.Statuses, workflow.StatusLayout{StatusReference: resolved, Layout: status.Layout, Properties: properties})
+		requestReferences[resolved] = status.StatusReference
+		wf.Statuses = append(wf.Statuses, workflow.StatusLayout{StatusReference: resolved, Layout: status.Layout, Properties: properties, ApprovalConfiguration: status.ApprovalConfiguration})
 	}
 	if len(transitions) == 0 {
 		errors = append(errors, workflowValidationError("WORKFLOW_TRANSITIONS_REQUIRED", "At least one workflow transition is required.", "WORKFLOW", nil))
 	}
 	transitionIDs := make(map[string]bool)
-	for index, item := range transitions {
+	initialTransitions := 0
+	// A transition without an id takes Jira's next numeric id.
+	numbered := make([]workflow.Transition, 0, len(transitions))
+	for _, item := range transitions {
+		numbered = append(numbered, workflow.Transition{ID: strings.TrimSpace(item.ID)})
+	}
+	for _, item := range transitions {
 		transitionID := strings.TrimSpace(item.ID)
 		if transitionID == "" {
-			transitionID = fmt.Sprintf("new-%d", index+1)
+			transitionID = workflow.NextTransitionID(numbered)
+			numbered = append(numbered, workflow.Transition{ID: transitionID})
 		}
 		if transitionIDs[transitionID] {
 			errors = append(errors, workflowValidationError("TRANSITION_ID_DUPLICATE", "Transition IDs must be unique.", "TRANSITION", map[string]any{"transitionId": transitionID}))
@@ -343,24 +406,74 @@ func workflowDefinitionFromRequest(id, name, description string, startPointLayou
 			errors = append(errors, workflowValidationError("TRANSITION_DESTINATION_INVALID", "The transition destination must reference a workflow status.", "TRANSITION", map[string]any{"transitionId": transitionID}))
 			continue
 		}
-		if item.Type != "" && item.Type != "DIRECTED" {
-			errors = append(errors, workflowValidationError("TRANSITION_TYPE_UNSUPPORTED", "Only directed transitions are currently supported.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+		kind := item.Type
+		if kind == "" {
+			kind = workflow.TransitionDirected
+		}
+		if kind != workflow.TransitionDirected && kind != workflow.TransitionGlobal && kind != workflow.TransitionInitial {
+			errors = append(errors, workflowValidationError("TRANSITION_TYPE_INVALID", "The transition type must be INITIAL, GLOBAL or DIRECTED.", "TRANSITION", map[string]any{"transitionId": transitionID}))
 			continue
 		}
-		from := make([]string, 0, len(item.Links))
-		for _, link := range item.Links {
-			statusID := references[link.FromStatusReference]
-			if statusID == "" || !allowed[statusID] {
-				errors = append(errors, workflowValidationError("TRANSITION_SOURCE_INVALID", "Every transition source must reference a workflow status.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+		if kind == workflow.TransitionInitial {
+			if initialTransitions++; initialTransitions > 1 {
+				errors = append(errors, workflowValidationError("TRANSITION_INITIAL_DUPLICATE", "A workflow can have only one initial transition.", "TRANSITION", map[string]any{"transitionId": transitionID}))
 				continue
 			}
-			from = append(from, statusID)
 		}
-		if strings.TrimSpace(item.Name) == "" || len(from) == 0 {
-			errors = append(errors, workflowValidationError("TRANSITION_INVALID", "A directed transition requires a name and at least one source.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+		// A directed transition starts from the statuses it links; a global or
+		// initial transition starts from no status, so its one link only
+		// carries designer ports.
+		from := make([]string, 0, len(item.Links))
+		ports := map[string]workflow.LinkPorts{}
+		linksValid := true
+		for _, link := range item.Links {
+			source := ""
+			if kind == workflow.TransitionDirected {
+				source = references[link.FromStatusReference]
+				if source == "" || !allowed[source] {
+					errors = append(errors, workflowValidationError("TRANSITION_SOURCE_INVALID", "Every transition source must reference a workflow status.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+					linksValid = false
+					break
+				}
+				from = append(from, source)
+			} else if link.FromStatusReference != "" || len(item.Links) > 1 {
+				errors = append(errors, workflowValidationError("TRANSITION_SOURCE_INVALID", "A global or initial transition cannot start from a status.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+				linksValid = false
+				break
+			}
+			if link.FromPort != nil || link.ToPort != nil {
+				ports[source] = workflow.LinkPorts{FromPort: link.FromPort, ToPort: link.ToPort}
+			}
+		}
+		if !linksValid {
 			continue
 		}
-		transition := workflow.Transition{ID: transitionID, Name: strings.TrimSpace(item.Name), From: from, To: to}
+		if strings.TrimSpace(item.Name) == "" || (kind == workflow.TransitionDirected && len(from) == 0) {
+			errors = append(errors, workflowValidationError("TRANSITION_INVALID", "A transition requires a name, and a directed transition at least one source.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+			continue
+		}
+		if len(item.Description) > 1000 {
+			errors = append(errors, workflowValidationError("TRANSITION_DESCRIPTION_INVALID", "The transition description must be at most 1000 characters.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+			continue
+		}
+		transition := workflow.Transition{ID: transitionID, Name: strings.TrimSpace(item.Name), Description: item.Description, From: from, To: to}
+		if kind != workflow.TransitionDirected {
+			transition.Type = kind
+		}
+		if len(item.Properties) > 0 {
+			transition.Properties = item.Properties
+		}
+		if len(ports) > 0 {
+			transition.Ports = ports
+		}
+		if item.CustomIssueEventID != nil && strings.TrimSpace(*item.CustomIssueEventID) != "" {
+			eventID := strings.TrimSpace(*item.CustomIssueEventID)
+			if parsed, parseErr := strconv.ParseInt(eventID, 10, 64); parseErr != nil || parsed < 1 {
+				errors = append(errors, workflowValidationError("TRANSITION_EVENT_INVALID", "The transition's custom issue event must be an event ID.", "TRANSITION", map[string]any{"transitionId": transitionID}))
+				continue
+			}
+			transition.CustomIssueEventID = eventID
+		}
 		if item.TransitionScreen != nil {
 			screen := workflowRuleFromRequest(*item.TransitionScreen, transitionID+"-screen")
 			transition.Screen = &screen
@@ -383,6 +496,14 @@ func workflowDefinitionFromRequest(id, name, description string, startPointLayou
 			continue
 		}
 		wf.Transitions = append(wf.Transitions, transition)
+	}
+	for _, status := range wf.Statuses {
+		if status.ApprovalConfiguration == nil {
+			continue
+		}
+		if err := workflow.ValidateApprovalConfiguration(status.StatusReference, *status.ApprovalConfiguration, wf.Transitions); err != nil {
+			errors = append(errors, workflowValidationError("STATUS_APPROVAL_CONFIGURATION_INVALID", err.Error(), "STATUS", map[string]any{"statusReference": requestReferences[status.StatusReference]}))
+		}
 	}
 	return wf, errors
 }
@@ -446,11 +567,12 @@ func workflowStatusMigrationsFromRequest(ids issueTypeIDs, item workflowUpdateIt
 }
 
 func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+	access, authErr := h.authWorkflowAccess(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	workspaceID := access.workspaceID
 	var request workflowCreateValidationRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Payload == nil {
 		jiraError(w, http.StatusBadRequest, "payload is required")
@@ -465,10 +587,14 @@ func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Reques
 	if scopeErr != nil {
 		errors = append(errors, workflowValidationError("SCOPE_INVALID", scopeErr.Error(), "SCOPE", nil))
 	}
+	if !access.canChange(projectID) {
+		writeJerr(w, errWorkflowPermission())
+		return
+	}
 	if len(request.Payload.Workflows) == 0 || len(request.Payload.Workflows) > 20 || len(request.Payload.Statuses) > 1000 {
 		errors = append(errors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
 	}
-	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, projectID, request.Payload.Statuses, false)
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, func(string) string { return projectID }, []string{projectID}, request.Payload.Statuses, false)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -487,6 +613,7 @@ func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Reques
 	}
 	for index, item := range request.Payload.Workflows {
 		wf, itemErrors := workflowDefinitionFromRequest(fmt.Sprintf("validation-%d", index+1), item.Name, item.Description, item.StartPointLayout, item.LoopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
+		itemErrors = append(itemErrors, h.transitionEventErrors(r, workspaceID, wf)...)
 		wf.ProjectID = projectID
 		errors = append(errors, itemErrors...)
 		if names[strings.ToLower(wf.Name)] {
@@ -506,11 +633,12 @@ func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+	access, authErr := h.authWorkflowAccess(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	workspaceID := access.workspaceID
 	var request workflowUpdateValidationRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Payload == nil {
 		jiraError(w, http.StatusBadRequest, "payload is required")
@@ -524,16 +652,23 @@ func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Reques
 	if len(request.Payload.Workflows) == 0 || len(request.Payload.Workflows) > 20 || len(request.Payload.Statuses) > 1000 {
 		errors = append(errors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
 	}
-	projectID, scopeErr := h.workflowUpdateScope(r, workspaceID, request.Payload.Workflows)
-	if scopeErr != nil {
-		errors = append(errors, workflowValidationError("SCOPE_INVALID", scopeErr.Error(), "SCOPE", nil))
+	if !access.canChangeWorkflows(workflowUpdateReferences(request.Payload.Workflows)) {
+		writeJerr(w, errWorkflowPermission())
+		return
 	}
-	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, projectID, request.Payload.Statuses, false)
+	scopeOf, projects := h.workflowStatusScopes(r, workspaceID, request.Payload.Workflows)
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, scopeOf, projects, request.Payload.Statuses, false)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	errors = append(errors, statusErrors...)
+	// Only site administrators create global statuses.
+	for _, status := range createdStatuses {
+		if status.ProjectID == "" && !access.admin {
+			errors = append(errors, workflowValidationError("SCOPE_INVALID", "Creating a global status needs the Administer Jira permission.", "STATUS", map[string]any{"statusReference": status.Name}))
+		}
+	}
 	storedWorkflows := h.workflowIDsFor(r, workspaceID)
 	for _, item := range request.Payload.Workflows {
 		storedID := storedWorkflows.toInternal(item.ID)
@@ -547,6 +682,7 @@ func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Reques
 		}
 		description, startPointLayout, loopedTransitionContainerLayout := workflowUpdateMetadata(item, published)
 		wf, itemErrors := workflowDefinitionFromRequest(storedID, published.Name, description, startPointLayout, loopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
+		itemErrors = append(itemErrors, h.transitionEventErrors(r, workspaceID, wf)...)
 		wf.ProjectID = published.ProjectID
 		errors = append(errors, itemErrors...)
 		_, mappingErrors := workflowStatusMigrationsFromRequest(h.issueTypeIDsFor(r, workspaceID), item, references, wf)
@@ -615,11 +751,12 @@ func (h *Handler) workflowResponseStatuses(r *http.Request, workspaceID string, 
 }
 
 func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	access, authErr := h.authWorkflowAccess(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	workspaceID, actorID := access.workspaceID, access.userID
 	var payload workflowCreatePayloadRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		jiraError(w, http.StatusBadRequest, "request body is invalid")
@@ -630,10 +767,14 @@ func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
 	if scopeErr != nil {
 		validationErrors = append(validationErrors, workflowValidationError("SCOPE_INVALID", scopeErr.Error(), "SCOPE", nil))
 	}
+	if !access.canChange(projectID) {
+		writeJerr(w, errWorkflowPermission())
+		return
+	}
 	if len(payload.Workflows) == 0 || len(payload.Workflows) > 20 || len(payload.Statuses) > 1000 {
 		validationErrors = append(validationErrors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
 	}
-	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, projectID, payload.Statuses, true)
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, func(string) string { return projectID }, []string{projectID}, payload.Statuses, true)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -643,6 +784,7 @@ func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
 	names := make(map[string]bool)
 	for _, item := range payload.Workflows {
 		definition, itemErrors := workflowDefinitionFromRequest(store.NewID("workflow"), item.Name, item.Description, item.StartPointLayout, item.LoopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
+		itemErrors = append(itemErrors, h.transitionEventErrors(r, workspaceID, definition)...)
 		definition.ProjectID = projectID
 		validationErrors = append(validationErrors, itemErrors...)
 		nameKey := strings.ToLower(definition.Name)
@@ -678,11 +820,12 @@ func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	access, authErr := h.authWorkflowAccess(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	workspaceID, actorID := access.workspaceID, access.userID
 	var payload workflowUpdatePayloadRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		jiraError(w, http.StatusBadRequest, "request body is invalid")
@@ -692,16 +835,23 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 	if len(payload.Workflows) == 0 || len(payload.Workflows) > 20 || len(payload.Statuses) > 1000 {
 		validationErrors = append(validationErrors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
 	}
-	projectID, scopeErr := h.workflowUpdateScope(r, workspaceID, payload.Workflows)
-	if scopeErr != nil {
-		validationErrors = append(validationErrors, workflowValidationError("SCOPE_INVALID", scopeErr.Error(), "SCOPE", nil))
+	if !access.canChangeWorkflows(workflowUpdateReferences(payload.Workflows)) {
+		writeJerr(w, errWorkflowPermission())
+		return
 	}
-	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, projectID, payload.Statuses, true)
+	scopeOf, projects := h.workflowStatusScopes(r, workspaceID, payload.Workflows)
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, scopeOf, projects, payload.Statuses, true)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	validationErrors = append(validationErrors, statusErrors...)
+	// Only site administrators create global statuses.
+	for _, status := range createdStatuses {
+		if status.ProjectID == "" && !access.admin {
+			validationErrors = append(validationErrors, workflowValidationError("SCOPE_INVALID", "Creating a global status needs the Administer Jira permission.", "STATUS", map[string]any{"statusReference": status.Name}))
+		}
+	}
 	updates := make([]store.WorkflowUpdateDefinition, 0, len(payload.Workflows))
 	storedWorkflows := h.workflowIDsFor(r, workspaceID)
 	for _, item := range payload.Workflows {
@@ -716,6 +866,7 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		description, startPointLayout, loopedTransitionContainerLayout := workflowUpdateMetadata(item, published)
 		definition, itemErrors := workflowDefinitionFromRequest(storedID, published.Name, description, startPointLayout, loopedTransitionContainerLayout, item.Statuses, item.Transitions, references)
+		itemErrors = append(itemErrors, h.transitionEventErrors(r, workspaceID, definition)...)
 		definition.ProjectID = published.ProjectID
 		validationErrors = append(validationErrors, itemErrors...)
 		migrations, mappingErrors := workflowStatusMigrationsFromRequest(h.issueTypeIDsFor(r, workspaceID), item, references, definition)
@@ -761,4 +912,29 @@ func workflowUpdateMetadata(item workflowUpdateItemRequest, published workflow.W
 		loopedTransitionContainerLayout = published.LoopedTransitionContainerLayout
 	}
 	return description, startPointLayout, loopedTransitionContainerLayout
+}
+
+// transitionEventErrors reports transitions firing an event the site does not
+// have.
+func (h *Handler) transitionEventErrors(r *http.Request, workspaceID string, wf workflow.Workflow) []map[string]any {
+	errors := []map[string]any{}
+	for _, transition := range wf.Transitions {
+		if transition.CustomIssueEventID == "" {
+			continue
+		}
+		eventID, _ := strconv.ParseInt(transition.CustomIssueEventID, 10, 64)
+		if _, ok, err := h.Store.IssueEvent(r.Context(), workspaceID, eventID); err != nil || !ok {
+			errors = append(errors, workflowValidationError("TRANSITION_EVENT_NOT_FOUND", "The transition's custom issue event does not exist.", "TRANSITION", map[string]any{"transitionId": transition.ID}))
+		}
+	}
+	return errors
+}
+
+// workflowUpdateReferences lists the workflows an update names.
+func workflowUpdateReferences(workflows []workflowUpdateItemRequest) []string {
+	references := make([]string, 0, len(workflows))
+	for _, item := range workflows {
+		references = append(references, item.ID)
+	}
+	return references
 }

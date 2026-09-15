@@ -226,6 +226,32 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(articles.Body.String(), `@@@hl@@@checkout@@@endhl@@@`) || !strings.Contains(articles.Body.String(), `"pageId":"`+page.ID+`"`) || !strings.Contains(articles.Body.String(), `"spaceKey":"HELPKB"`) {
 		t.Fatal(articles.Body.String())
 	}
+	// Knowledge base pages follow Jira's cursors.
+	if _, err := handler.Commands.SaveWikiPage(ctx, workspaceID, actorID, models.WikiPage{
+		SpaceID: space.ID, Title: "Checkout runbook", Status: "current",
+		Body: models.WikiBody{Representation: "storage", Value: "<p>Checkout escalation steps.</p>"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var cursorPage struct {
+		Size   int `json:"size"`
+		Values []struct {
+			Title string `json:"title"`
+		} `json:"values"`
+		Links map[string]string `json:"_links"`
+	}
+	firstPage := callAs(customerID, "GET", "/rest/servicedeskapi/knowledgebase/article?query=checkout&limit=1", "", 200)
+	if err := json.Unmarshal(firstPage.Body.Bytes(), &cursorPage); err != nil || cursorPage.Size != 1 || !strings.Contains(cursorPage.Links["next"], "cursor=") || cursorPage.Links["prev"] != "" {
+		t.Fatalf("first knowledge page = %s", firstPage.Body.String())
+	}
+	firstTitle := cursorPage.Values[0].Title
+	nextPath := strings.TrimPrefix(cursorPage.Links["next"], "https://zzira.test")
+	secondPage := callAs(customerID, "GET", nextPath, "", 200)
+	cursorPage.Links = nil
+	if err := json.Unmarshal(secondPage.Body.Bytes(), &cursorPage); err != nil || cursorPage.Size != 1 || cursorPage.Values[0].Title == firstTitle || !strings.Contains(cursorPage.Links["prev"], "prev=true") {
+		t.Fatalf("second knowledge page = %s", secondPage.Body.String())
+	}
+	callAs(customerID, "GET", "/rest/servicedeskapi/knowledgebase/article?query=checkout&cursor=not-a-cursor", "", 400)
 	deskArticles := callAs(customerID, "GET", "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/knowledgebase/article?query=worker", "", 200)
 	if !strings.Contains(deskArticles.Body.String(), "Restart checkout worker") {
 		t.Fatal(deskArticles.Body.String())
@@ -301,7 +327,7 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		t.Fatalf("on-behalf actor = %q, %v", onBehalfActor, err)
 	}
 	invalid := callAs(customerID, "POST", "/rest/servicedeskapi/request/validate", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+requestTypeID+`","requestFieldValues":{}}`, 200)
-	if !strings.Contains(invalid.Body.String(), `"valid":false`) || !strings.Contains(invalid.Body.String(), `"summary"`) {
+	if !strings.Contains(invalid.Body.String(), `"valid":false`) || !strings.Contains(invalid.Body.String(), `"fieldErrors":[{"field":"summary"`) || !strings.Contains(invalid.Body.String(), `"reasonKey":"FIELD_VALIDATION_FAILED"`) {
 		t.Fatal(invalid.Body.String())
 	}
 	var incidentTypeID string
@@ -520,11 +546,11 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		t.Fatal(dynamicFields.Body.String())
 	}
 	missingDynamic := callAs(customerID, "POST", "/rest/servicedeskapi/request/validate", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+incidentTypeID+`","requestFieldValues":{"summary":"Dynamic routing question"}}`, 200)
-	if !strings.Contains(missingDynamic.Body.String(), `"`+customFieldID+`":"Business impact is required."`) {
+	if !strings.Contains(missingDynamic.Body.String(), `{"field":"`+customFieldID+`","message":"Business impact is required."}`) {
 		t.Fatal(missingDynamic.Body.String())
 	}
 	invalidDynamic := callAs(customerID, "POST", "/rest/servicedeskapi/request/validate", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+incidentTypeID+`","requestFieldValues":{"summary":"Dynamic routing question","`+customFieldID+`":"many"}}`, 200)
-	if !strings.Contains(invalidDynamic.Body.String(), `"valid":false`) || !strings.Contains(invalidDynamic.Body.String(), `"`+customFieldID+`":"Business impact must be a number."`) {
+	if !strings.Contains(invalidDynamic.Body.String(), `"valid":false`) || !strings.Contains(invalidDynamic.Body.String(), `{"field":"`+customFieldID+`","message":"Business impact must be a number."}`) {
 		t.Fatal(invalidDynamic.Body.String())
 	}
 	dynamicRequest := callAs(customerID, "POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+incidentTypeID+`","requestFieldValues":{"summary":"Dynamic routing question","description":"Route by impact.","`+customFieldID+`":42.5}}`, 201)
@@ -1001,7 +1027,8 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 		t.Fatal(transitions.Body.String())
 	}
 	callAs(customerID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/transition", `{"id":"21","additionalComment":{"body":"Work can begin.","public":true}}`, 204)
-	detail := callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey, "", 200)
+	// Comments appear on a request only when expanded, as in Jira.
+	detail := callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"?expand=comment", "", 200)
 	if !strings.Contains(detail.Body.String(), `"status":"In Progress"`) || !strings.Contains(detail.Body.String(), "Work can begin") {
 		t.Fatal(detail.Body.String())
 	}
@@ -1077,8 +1104,9 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(agentRaised.Body.String(), "Agent-raised customer request") {
 		t.Fatal(agentRaised.Body.String())
 	}
-	agentDetail := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey, "", 200)
-	if !strings.Contains(agentDetail.Body.String(), `"sla":[{`) {
+	// SLAs appear on a request only when expanded, as a page, as in Jira.
+	agentDetail := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey+"?expand=sla", "", 200)
+	if !strings.Contains(agentDetail.Body.String(), `"sla":{`) || !strings.Contains(agentDetail.Body.String(), `"slaDisplayFormat":"NEW_SLA_FORMAT"`) {
 		t.Fatal(agentDetail.Body.String())
 	}
 	var customerCommentNotificationsBefore int

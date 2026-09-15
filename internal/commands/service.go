@@ -112,6 +112,14 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 			return nil, errors.Join(err, cleanupErr)
 		}
 	}
+	// A request created straight into an approval status opens its approval.
+	current, err := s.Store.IssueByIDOrKey(ctx, in.WorkspaceID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.startStatusApproval(ctx, in.ActorID, in.WorkspaceID, current); err != nil {
+		return nil, err
+	}
 	canManage, err := s.Store.CanManageServiceRequest(ctx, in.WorkspaceID, in.ActorID, issue.ID)
 	if err != nil {
 		return nil, err
@@ -136,6 +144,11 @@ func (s *Service) UpdateServiceRequestParticipants(ctx context.Context, actorID,
 	}
 	if err := s.Store.UpdateServiceRequestParticipants(ctx, workspaceID, request.Issue.ID, userIDs, remove); err != nil {
 		return nil, err
+	}
+	if !remove {
+		if err := s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, userIDs, "service_participant", "added you as a participant on "+request.Issue.Key, false); err != nil {
+			return nil, err
+		}
 	}
 	return s.Store.ServiceRequestParticipants(ctx, request.Issue.ID)
 }
@@ -251,12 +264,8 @@ func (s *Service) SetServiceDeskAgent(ctx context.Context, actorID, workspaceID,
 }
 
 func (s *Service) UpdateServiceSLAMetric(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, pauseJQL string, goalMillis int64) error {
-	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
-	if err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
-	}
-	if !admin {
-		return fmt.Errorf("only an administrator may configure service SLAs")
 	}
 	pauseJQL = strings.TrimSpace(pauseJQL)
 	if len(pauseJQL) > 2000 {
@@ -279,11 +288,11 @@ func (s *Service) UpdateServiceSLAMetric(ctx context.Context, actorID, workspace
 		if err := s.Store.ExpandAppJQL(ctx, workspaceID, parsed); err != nil {
 			return err
 		}
-		fields, err := s.Store.CustomFieldsForWorkspace(ctx, workspaceID)
+		resolver, err := s.Store.JQLResolver(ctx, workspaceID)
 		if err != nil {
 			return err
 		}
-		if compiled := jql.Compile(parsed, actorID, jql.WithCustomFields(jql.DefaultResolver(), fields)); compiled.Err != nil {
+		if compiled := jql.Compile(parsed, actorID, resolver); compiled.Err != nil {
 			return compiled.Err
 		}
 	}
@@ -324,19 +333,18 @@ func (s *Service) validateServiceSLAGoal(ctx context.Context, workspaceID, name,
 	if err := s.Store.ExpandAppJQL(ctx, workspaceID, parsed); err != nil {
 		return "", "", err
 	}
-	resolver := jql.DefaultResolver()
-	fields, err := s.Store.CustomFieldsForWorkspace(ctx, workspaceID)
+	resolver, err := s.Store.JQLResolver(ctx, workspaceID)
 	if err != nil {
 		return "", "", err
 	}
-	if compiled := jql.Compile(parsed, "validation", jql.WithCustomFields(resolver, fields)); compiled.Err != nil {
+	if compiled := jql.Compile(parsed, "validation", resolver); compiled.Err != nil {
 		return "", "", compiled.Err
 	}
 	return name, query, nil
 }
 
 func (s *Service) CreateServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, name, query string, goalMillis int64) (*models.ServiceSLAGoal, error) {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return nil, err
 	}
 	name, query, err := s.validateServiceSLAGoal(ctx, workspaceID, name, query, goalMillis)
@@ -347,7 +355,7 @@ func (s *Service) CreateServiceSLAGoal(ctx context.Context, actorID, workspaceID
 }
 
 func (s *Service) UpdateServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, goalID, name, query string, goalMillis int64) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	name, query, err := s.validateServiceSLAGoal(ctx, workspaceID, name, query, goalMillis)
@@ -358,25 +366,21 @@ func (s *Service) UpdateServiceSLAGoal(ctx context.Context, actorID, workspaceID
 }
 
 func (s *Service) DeleteServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, goalID string) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	return s.Store.DeleteServiceSLAGoal(ctx, workspaceID, actorID, serviceDeskID, metricID, goalID)
 }
 
 func (s *Service) UpdateServiceCalendar(ctx context.Context, actorID, workspaceID, serviceDeskID, name, timeZone string, weekdays []int16, startMinute, endMinute int16) error {
-	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
-	if err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
-	}
-	if !admin {
-		return fmt.Errorf("only an administrator may configure service calendars")
 	}
 	return s.Store.UpdateServiceCalendar(ctx, workspaceID, actorID, serviceDeskID, name, timeZone, weekdays, startMinute, endMinute)
 }
 
 func (s *Service) UpsertServiceCalendarHoliday(ctx context.Context, actorID, workspaceID, serviceDeskID, day, name string) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	holiday, err := time.Parse(time.DateOnly, strings.TrimSpace(day))
@@ -391,7 +395,7 @@ func (s *Service) UpsertServiceCalendarHoliday(ctx context.Context, actorID, wor
 }
 
 func (s *Service) DeleteServiceCalendarHoliday(ctx context.Context, actorID, workspaceID, serviceDeskID, day string) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	holiday, err := time.Parse(time.DateOnly, strings.TrimSpace(day))
@@ -416,19 +420,18 @@ func (s *Service) validateServiceQueue(ctx context.Context, workspaceID, name, q
 	if err := s.Store.ExpandAppJQL(ctx, workspaceID, parsed); err != nil {
 		return "", "", err
 	}
-	resolver := jql.DefaultResolver()
-	fields, err := s.Store.CustomFieldsForWorkspace(ctx, workspaceID)
+	resolver, err := s.Store.JQLResolver(ctx, workspaceID)
 	if err != nil {
 		return "", "", err
 	}
-	if compiled := jql.Compile(parsed, "validation", jql.WithCustomFields(resolver, fields)); compiled.Err != nil {
+	if compiled := jql.Compile(parsed, "validation", resolver); compiled.Err != nil {
 		return "", "", compiled.Err
 	}
 	return name, query, nil
 }
 
 func (s *Service) CreateServiceQueue(ctx context.Context, actorID, workspaceID, serviceDeskID, name, query string) (*models.ServiceQueue, error) {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return nil, err
 	}
 	name, query, err := s.validateServiceQueue(ctx, workspaceID, name, query)
@@ -439,7 +442,7 @@ func (s *Service) CreateServiceQueue(ctx context.Context, actorID, workspaceID, 
 }
 
 func (s *Service) UpdateServiceQueue(ctx context.Context, actorID, workspaceID, serviceDeskID, queueID, name, query string) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	name, query, err := s.validateServiceQueue(ctx, workspaceID, name, query)
@@ -450,14 +453,14 @@ func (s *Service) UpdateServiceQueue(ctx context.Context, actorID, workspaceID, 
 }
 
 func (s *Service) DeleteServiceQueue(ctx context.Context, actorID, workspaceID, serviceDeskID, queueID string) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	return s.Store.DeleteServiceQueue(ctx, workspaceID, actorID, serviceDeskID, queueID)
 }
 
 func (s *Service) SetServiceRequestTypeFields(ctx context.Context, actorID, workspaceID, serviceDeskID, requestTypeID string, fields []models.ServiceRequestTypeField) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	if len(fields) == 0 || len(fields) > 50 {
@@ -488,6 +491,18 @@ func (s *Service) SetServiceRequestTypeFields(ctx context.Context, actorID, work
 		seen[field.ID] = true
 		if field.ID == "summary" {
 			hasSummary, field.Required = true, true
+			if field.Hidden {
+				return fmt.Errorf("summary cannot be hidden from the portal")
+			}
+		}
+		// A hidden field is filled with its preset value, which it needs when
+		// it is required, because a customer cannot answer it.
+		preset := len(field.PresetValue) > 0 && string(field.PresetValue) != "null"
+		if preset && (!json.Valid(field.PresetValue) || len(field.PresetValue) > 64<<10) {
+			return fmt.Errorf("the preset value of %s must be JSON of at most 64 KiB", field.ID)
+		}
+		if field.Hidden && field.Required && !preset {
+			return fmt.Errorf("hidden required field %s needs a preset value", field.ID)
 		}
 	}
 	if !hasSummary {

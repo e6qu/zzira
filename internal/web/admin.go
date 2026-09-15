@@ -48,9 +48,12 @@ type adminPageData struct {
 	ProviderRegistrationConfigured    bool
 	AppRegistrationConfigured         bool
 	JiraConfiguration                 *models.JiraSiteConfiguration
+	TimeTrackingProviders             []store.InstalledTimeTrackingProvider
 	ApplicationProperties             []models.ApplicationProperty
 	NavigatorColumns                  []adminNavigatorColumn
 	ProjectCategories                 []*models.ProjectCategory
+	IssueEvents                       []adminIssueEvent
+	GlobalPermissions                 []adminGlobalPermission
 	ClassificationLevels              []models.DataClassificationLevel
 	ClassificationColors              []string
 	LastClassificationIndex           int
@@ -187,23 +190,20 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		return adminPageData{}, err
 	}
 	data.ApplicationProperties = commands.JiraApplicationProperties(data.JiraConfiguration.ApplicationProperties)
+	if data.TimeTrackingProviders, err = h.Store.TimeTrackingProviders(r.Context(), workspaceID); err != nil {
+		return adminPageData{}, err
+	}
 	selectedColumns := map[string]bool{}
 	for _, column := range data.JiraConfiguration.NavigatorColumns {
 		selectedColumns[column] = true
 	}
-	columnLabels := []adminNavigatorColumn{
-		{Value: "issuekey", Label: "Key"}, {Value: "summary", Label: "Summary"}, {Value: "description", Label: "Description"},
-		{Value: "issuetype", Label: "Work type"}, {Value: "priority", Label: "Priority"}, {Value: "status", Label: "Status"},
-		{Value: "assignee", Label: "Assignee"}, {Value: "reporter", Label: "Reporter"}, {Value: "created", Label: "Created"},
-		{Value: "updated", Label: "Updated"}, {Value: "fixVersions", Label: "Fix versions"}, {Value: "versions", Label: "Affects versions"},
-		{Value: "components", Label: "Components"}, {Value: "labels", Label: "Labels"},
+	navigable, columnErr := h.Store.NavigableColumns(r.Context(), workspaceID)
+	if columnErr != nil {
+		return adminPageData{}, columnErr
 	}
-	customFields, fieldErr := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
-	if fieldErr != nil {
-		return adminPageData{}, fieldErr
-	}
-	for _, field := range customFields {
-		columnLabels = append(columnLabels, adminNavigatorColumn{Value: field.ID, Label: field.Name})
+	columnLabels := make([]adminNavigatorColumn, 0, len(navigable))
+	for _, column := range navigable {
+		columnLabels = append(columnLabels, adminNavigatorColumn{Value: column.ID, Label: column.Label})
 	}
 	for i := range columnLabels {
 		columnLabels[i].Selected = selectedColumns[columnLabels[i].Value]
@@ -212,6 +212,16 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	data.ProjectCategories, err = h.Store.ProjectCategories(r.Context(), workspaceID)
 	if err != nil {
 		return adminPageData{}, err
+	}
+	events, err := h.Store.IssueEvents(r.Context(), workspaceID)
+	if err != nil {
+		return adminPageData{}, err
+	}
+	if data.GlobalPermissions, err = h.loadGlobalPermissions(r, workspaceID); err != nil {
+		return adminPageData{}, err
+	}
+	for _, event := range events {
+		data.IssueEvents = append(data.IssueEvents, adminIssueEvent{NotificationEventDefinition: event, Custom: store.IsCustomIssueEvent(event.ID)})
 	}
 	if len(directories) == 0 {
 		return data, nil
@@ -253,6 +263,147 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		return adminPageData{}, err
 	}
 	return data, nil
+}
+
+// adminGlobalPermission is one global permission and whom it is granted to.
+type adminGlobalPermission struct {
+	store.PermissionDefinition
+	Grants []store.GlobalPermissionGrant
+}
+
+func (h *Handler) loadGlobalPermissions(r *http.Request, workspaceID string) ([]adminGlobalPermission, error) {
+	catalog, err := h.Store.PermissionCatalog(r.Context(), workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	grants, err := h.Store.GlobalPermissionGrants(r.Context(), workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	byPermission := map[string][]store.GlobalPermissionGrant{}
+	for _, grant := range grants {
+		byPermission[grant.Permission] = append(byPermission[grant.Permission], grant)
+	}
+	rows := []adminGlobalPermission{}
+	for _, definition := range catalog {
+		if definition.Type == "GLOBAL" && definition.Key != "ADMINISTER" {
+			rows = append(rows, adminGlobalPermission{PermissionDefinition: definition, Grants: byPermission[definition.Key]})
+		}
+	}
+	return rows, nil
+}
+
+func globalPermissionStatus(err error) int {
+	switch {
+	case errors.Is(err, store.ErrGlobalPermissionValidation):
+		return http.StatusBadRequest
+	case errors.Is(err, store.ErrGlobalPermissionConflict):
+		return http.StatusConflict
+	case errors.Is(err, store.ErrGlobalPermissionNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, store.ErrProjectPermission):
+		return http.StatusForbidden
+	}
+	return http.StatusInternalServerError
+}
+
+// CreateAdminGlobalPermissionGrant grants a global permission to a group or to
+// everyone with a product. The holder is "group:<id>" or "product:<key>".
+func (h *Handler) CreateAdminGlobalPermissionGrant(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	kind, value, _ := strings.Cut(r.PostFormValue("holder"), ":")
+	groupID, productKey := "", ""
+	switch kind {
+	case "group":
+		groupID = value
+	case "product":
+		productKey = value
+	default:
+		http.Error(w, "choose a group or product to grant the permission to", http.StatusBadRequest)
+		return
+	}
+	if _, err := h.Store.AddGlobalPermissionGrant(r.Context(), workspaceID, user.ID, r.PostFormValue("permission"), groupID, productKey); err != nil {
+		http.Error(w, err.Error(), globalPermissionStatus(err))
+		return
+	}
+	redirectLocal(w, r, "/admin?saved="+url.QueryEscape("Global permission granted")+"#admin-global-permissions")
+}
+
+// DeleteAdminGlobalPermissionGrant removes one global permission grant.
+func (h *Handler) DeleteAdminGlobalPermissionGrant(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("grantId"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err = h.Store.RemoveGlobalPermissionGrant(r.Context(), workspaceID, user.ID, id); err != nil {
+		http.Error(w, err.Error(), globalPermissionStatus(err))
+		return
+	}
+	redirectLocal(w, r, "/admin?saved="+url.QueryEscape("Global permission grant removed")+"#admin-global-permissions")
+}
+
+// adminIssueEvent is one row of the events list; only custom events change.
+type adminIssueEvent struct {
+	store.NotificationEventDefinition
+	Custom bool
+}
+
+func issueEventStatus(err error) int {
+	switch {
+	case errors.Is(err, store.ErrIssueEventValidation):
+		return http.StatusBadRequest
+	case errors.Is(err, store.ErrIssueEventConflict):
+		return http.StatusConflict
+	case errors.Is(err, store.ErrIssueEventNotFound):
+		return http.StatusNotFound
+	}
+	return http.StatusInternalServerError
+}
+
+// CreateAdminIssueEvent adds a custom event for notification schemes and
+// workflow transitions.
+func (h *Handler) CreateAdminIssueEvent(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if _, err := h.Store.CreateIssueEvent(r.Context(), workspaceID, user.ID, r.PostFormValue("name"), r.PostFormValue("description")); err != nil {
+		http.Error(w, err.Error(), issueEventStatus(err))
+		return
+	}
+	redirectLocal(w, r, "/admin?saved="+url.QueryEscape("Event created")+"#admin-issue-events")
+}
+
+// UpdateAdminIssueEvent renames or deletes a custom event.
+func (h *Handler) UpdateAdminIssueEvent(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("eventId"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	saved := "Event saved"
+	if r.PostFormValue("action") == "delete" {
+		err, saved = h.Store.DeleteIssueEvent(r.Context(), workspaceID, user.ID, id), "Event deleted"
+	} else {
+		err = h.Store.UpdateIssueEvent(r.Context(), workspaceID, user.ID, id, r.PostFormValue("name"), r.PostFormValue("description"))
+	}
+	if err != nil {
+		http.Error(w, err.Error(), issueEventStatus(err))
+		return
+	}
+	redirectLocal(w, r, "/admin?saved="+url.QueryEscape(saved)+"#admin-issue-events")
 }
 
 func (h *Handler) CreateAdminProjectCategory(w http.ResponseWriter, r *http.Request) {
@@ -340,7 +491,16 @@ func (h *Handler) UpdateAdminJiraConfiguration(w http.ResponseWriter, r *http.Re
 		})
 		message = "Announcement banner saved"
 	case "features":
-		cfg := models.JiraSiteConfiguration{
+		limit := int64(0)
+		if raw := strings.TrimSpace(r.PostFormValue("attachmentUploadLimit")); raw != "" {
+			parsed, parseErr := strconv.ParseInt(raw, 10, 64)
+			if parseErr != nil || parsed < 1 || parsed > 1<<30 {
+				http.Error(w, "the maximum attachment size must be between 1 byte and 1 GiB", http.StatusBadRequest)
+				return
+			}
+			limit = parsed
+		}
+		cfg := models.JiraSiteConfiguration{AttachmentUploadLimit: limit,
 			AttachmentsEnabled: r.PostForm.Has("attachmentsEnabled"), IssueLinkingEnabled: r.PostForm.Has("issueLinkingEnabled"),
 			SubTasksEnabled: r.PostForm.Has("subTasksEnabled"), TimeTrackingEnabled: r.PostForm.Has("timeTrackingEnabled"),
 			UnassignedIssuesAllowed: r.PostForm.Has("unassignedIssuesAllowed"), VotingEnabled: r.PostForm.Has("votingEnabled"),
@@ -359,6 +519,19 @@ func (h *Handler) UpdateAdminJiraConfiguration(w http.ResponseWriter, r *http.Re
 			WorkingHoursPerDay: workingHours, WorkingDaysPerWeek: workingDays,
 			TimeFormat: r.PostFormValue("timeFormat"), DefaultUnit: r.PostFormValue("defaultUnit"),
 		})
+		// Choosing another provider selects it, which enables time tracking;
+		// saving the options alone leaves the provider and the feature as
+		// they are.
+		if provider := r.PostFormValue("timeTrackingProvider"); err == nil && provider != "" {
+			current, currentErr := h.Store.JiraSiteConfiguration(r.Context(), workspaceID)
+			if currentErr != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			if provider != current.TimeTrackingProvider {
+				err = h.Commands.SelectTimeTrackingProvider(r.Context(), workspaceID, user.ID, provider)
+			}
+		}
 		message = "Time tracking settings saved"
 	case "columns":
 		err = h.Commands.UpdateNavigatorColumns(r.Context(), workspaceID, user.ID, r.PostForm["columns"])
@@ -627,6 +800,30 @@ func (h *Handler) CreateAdminDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Domain added"), http.StatusSeeOther)
+}
+
+// UpdateAdminProductPlan changes the plan a product runs on.
+func (h *Handler) UpdateAdminProductPlan(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	if err := h.Store.SetProductPlan(r.Context(), workspaceID, user.ID, r.PathValue("productId"), r.FormValue("plan")); err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, store.ErrAdminNotFound):
+			status = http.StatusNotFound
+		case errors.Is(err, store.ErrAdminValidation):
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Product plan updated"), http.StatusSeeOther)
 }
 
 func (h *Handler) UpdateAdminDomain(w http.ResponseWriter, r *http.Request) {

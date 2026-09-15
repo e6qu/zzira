@@ -177,7 +177,11 @@ func main() {
 		if err := st.ExpandAppJQL(ctx, wsID, q); err != nil {
 			return false, err
 		}
-		compiled := jql.CompileAt(q, adminID, jql.DefaultResolver(), 1)
+		resolver, err := st.JQLResolver(ctx, wsID)
+		if err != nil {
+			return false, err
+		}
+		compiled := jql.CompileAt(q, adminID, resolver, 1)
 		if compiled.Err != nil {
 			return false, compiled.Err
 		}
@@ -274,6 +278,7 @@ func main() {
 	mux.HandleFunc("POST /service/agent/{desk}/queues", webHandler.ServiceQueueSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/request-types/{requestType}/fields", webHandler.ServiceRequestTypeFieldSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/customers", webHandler.ServiceCustomerSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/deployment-gating", webHandler.ServiceDeploymentGateSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/organizations", webHandler.ServiceOrganizationSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/knowledge", webHandler.ServiceKnowledgeSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/calendar", webHandler.ServiceCalendarSettings)
@@ -295,12 +300,17 @@ func main() {
 	mux.HandleFunc("POST /admin/users/invite", webHandler.InviteAdminUser)
 	mux.HandleFunc("POST /admin/users/{accountId}", webHandler.UpdateAdminUserStatus)
 	mux.HandleFunc("POST /admin/users/{accountId}/profile", webHandler.UpdateAdminUserProfile)
+	mux.HandleFunc("POST /admin/products/{productId}/plan", webHandler.UpdateAdminProductPlan)
 	mux.HandleFunc("POST /admin/domains", webHandler.CreateAdminDomain)
 	mux.HandleFunc("POST /admin/domains/{domainId}", webHandler.UpdateAdminDomain)
 	mux.HandleFunc("POST /admin/policies", webHandler.CreateAdminPolicy)
 	mux.HandleFunc("POST /admin/policies/{policyId}", webHandler.UpdateAdminPolicy)
 	mux.HandleFunc("POST /admin/jira-configuration/{section}", webHandler.UpdateAdminJiraConfiguration)
 	mux.HandleFunc("POST /admin/jira-application-properties/{property}", webHandler.UpdateAdminJiraApplicationProperty)
+	mux.HandleFunc("POST /admin/global-permissions", webHandler.CreateAdminGlobalPermissionGrant)
+	mux.HandleFunc("POST /admin/global-permissions/{grantId}/delete", webHandler.DeleteAdminGlobalPermissionGrant)
+	mux.HandleFunc("POST /admin/issue-events", webHandler.CreateAdminIssueEvent)
+	mux.HandleFunc("POST /admin/issue-events/{eventId}", webHandler.UpdateAdminIssueEvent)
 	mux.HandleFunc("POST /admin/project-categories", webHandler.CreateAdminProjectCategory)
 	mux.HandleFunc("POST /admin/project-categories/{categoryId}", webHandler.UpdateAdminProjectCategory)
 	mux.HandleFunc("POST /admin/classification-levels", webHandler.CreateAdminClassificationLevel)
@@ -487,6 +497,12 @@ func main() {
 	mux.HandleFunc("POST /settings/workflows/{id}/transitions/{transition}/delete", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.DeleteWorkflowTransition(w, r, r.PathValue("id"), r.PathValue("transition"))
 	})
+	mux.HandleFunc("POST /settings/workflows/{id}/statuses/{status}/approval", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SaveWorkflowStatusApproval(w, r, r.PathValue("id"), r.PathValue("status"))
+	})
+	mux.HandleFunc("POST /settings/workflows/{id}/statuses/{status}/editable", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SaveWorkflowStatusEditable(w, r, r.PathValue("id"), r.PathValue("status"))
+	})
 	mux.HandleFunc("POST /settings/workflows/{id}/layout", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.SaveWorkflowLayout(w, r, r.PathValue("id"))
 	})
@@ -546,6 +562,9 @@ func main() {
 	})
 	mux.HandleFunc("POST /issues/{key}/forms/{form}/action/{action}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.UpdateIssueForm(w, r, r.PathValue("key"), r.PathValue("form"), r.PathValue("action"))
+	})
+	mux.HandleFunc("POST /issues/{key}/timetracking", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.EditTimeTracking(w, r, r.PathValue("key"))
 	})
 	mux.HandleFunc("POST /issues/{key}/worklogs", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.AddWorklog(w, r, r.PathValue("key"))
@@ -645,6 +664,10 @@ func main() {
 	mux.Handle("/rest/agile/1.0/", agileAPI)
 	mux.Handle("/rest/software/1.0/", agileAPI)
 	mux.Handle("/rest/api/3/", api)
+	// Attachment content and thumbnail downloads that the attachment
+	// operations redirect to.
+	mux.Handle("/secure/attachment/", api)
+	mux.Handle("/secure/thumbnail/", api)
 	for _, prefix := range []string{"/rest/webhooks/1.0/", "/rest/atlassian-connect/1/addons/", "/rest/atlassian-connect/1/migration/", "/rest/atlassian-connect/1/service-registry", "/rest/forge/1/app/properties", "/rest/forge/1/app/properties/", "/rest/internal/api/latest/worklog/bulk"} {
 		mux.Handle(prefix, api)
 	}
@@ -661,6 +684,7 @@ func main() {
 	mux.Handle("/jira/deployments/0.1/cloud/", api)
 	mux.HandleFunc("GET /_edge/tenant_info", automationAPI.TenantInfo)
 	mux.Handle("/gateway/api/automation/public/jira/", automationAPI)
+	mux.Handle("/automation/public/jira/", automationAPI)
 	mux.HandleFunc("GET /admin/v1/orgs", adminAPI.Organizations)
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}", adminAPI.Organization)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories", adminAPI.Directories)
@@ -772,7 +796,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              address,
-		Handler:           http.MaxBytesHandler(authn.SecurityHeadersDynamic(authn.ProtectCookieMutations(appAPI.APIPrincipal(mux)), identityProviders.FormActionOrigins), 34<<20),
+		Handler:           http.MaxBytesHandler(authn.SecurityHeadersDynamic(authn.ProtectCookieMutations(appAPI.APIPrincipal(store.RequestMetadataHandler(st.IPAllowlistHandler(workspaceSlug, mux)))), identityProviders.FormActionOrigins), 34<<20),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,

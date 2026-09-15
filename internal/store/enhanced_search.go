@@ -37,7 +37,7 @@ func (s *Store) CreateSearchSnapshot(ctx context.Context, workspaceID, userID, q
 	snapshotID := NewID("search")
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO jira_search_snapshots(id, workspace_id, user_id, query_hash, expires_at)
-		VALUES($1,$2,$3,$4,$5)`, snapshotID, workspaceID, userID, queryHash, expiresAt); err != nil {
+		VALUES($1,$2,NULLIF($3,''),$4,$5)`, snapshotID, workspaceID, userID, queryHash, expiresAt); err != nil {
 		return "", err
 	}
 	where := "i.workspace_id = $1"
@@ -81,7 +81,7 @@ func (s *Store) SearchSnapshotPage(ctx context.Context, snapshotID, workspaceID,
 	err = tx.QueryRow(ctx, `
 		SELECT EXISTS(
 		  SELECT 1 FROM jira_search_snapshots
-		  WHERE id=$1 AND workspace_id=$2 AND user_id=$3 AND query_hash=$4 AND expires_at > now()
+		  WHERE id=$1 AND workspace_id=$2 AND user_id IS NOT DISTINCT FROM NULLIF($3,'') AND query_hash=$4 AND expires_at > now()
 		)`, snapshotID, workspaceID, userID, queryHash).Scan(&valid)
 	if err != nil {
 		return nil, err

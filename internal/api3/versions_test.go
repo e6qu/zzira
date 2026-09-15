@@ -124,7 +124,8 @@ func TestVersionLifecycleMembershipAndVisibility(t *testing.T) {
 		t.Fatal(next)
 	}
 	call(member, "GET", "/rest/api/3/project/VR/version?status=unknown", nil, 400)
-	call(member, "GET", "/rest/api/3/project/VR/version?expand=operations", nil, 400)
+	call(member, "GET", "/rest/api/3/project/VR/version?expand=operations", nil, 200)
+	call(member, "GET", "/rest/api/3/project/VR/version?expand=bogus", nil, 400)
 	call(member, "GET", "/rest/api/3/project/VR/versions", nil, 200)
 	issue := call(member, "POST", "/rest/api/3/issue", map[string]any{"fields": map[string]any{"project": map[string]string{"key": "VR"}, "summary": "Ship it", "issuetype": map[string]string{"name": "Task"}, "fixVersions": []map[string]string{{"name": "1.0"}}, "versions": []map[string]string{{"id": first}}}}, 201)
 	issueURL := "/rest/api/3/issue/" + issue["key"].(string)

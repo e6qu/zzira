@@ -66,9 +66,8 @@ const filterAccess = `(
 				JOIN sites si ON si.organization_id=d.organization_id
 				WHERE gm.group_id=fp.group_id AND gm.user_id=$2
 				  AND si.workspace_id=f.workspace_id AND d.active))
-			OR (fp.permission_type='project' AND EXISTS (
-				SELECT 1 FROM projects p WHERE p.id=fp.project_id
-				  AND p.workspace_id=f.workspace_id))
+			OR (fp.permission_type='project' AND jira_has_project_permission(
+				f.workspace_id, fp.project_id, $2::text, NULL, 'BROWSE_PROJECTS'))
 			OR (fp.permission_type='projectRole' AND EXISTS (
 				SELECT 1 FROM projects p
 				WHERE p.id=fp.project_id AND p.workspace_id=f.workspace_id
@@ -89,6 +88,38 @@ const filterAccess = `(
 		)
 	)
 )`
+
+// FilterSharedUsers lists the active site members a filter is shared with,
+// other than its owner: named users, group and project-role members, and the
+// people who can browse a shared project.
+func (s *Store) FilterSharedUsers(ctx context.Context, workspaceID, filterID string) ([]*models.User, error) {
+	access := strings.ReplaceAll(filterAccess, "$2", "m.user_id")
+	access = strings.Replace(access, "f.owner_id=m.user_id OR ", "", 1)
+	rows, err := s.Pool.Query(ctx, `SELECT m.user_id FROM filters f JOIN memberships m ON m.workspace_id=f.workspace_id
+		WHERE f.workspace_id=$1 AND f.id=$2 AND m.user_id<>COALESCE(f.owner_id,'') AND `+access, workspaceID, filterID)
+	if err != nil {
+		return nil, err
+	}
+	shared, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	sharedWith := make(map[string]bool, len(shared))
+	for _, id := range shared {
+		sharedWith[id] = true
+	}
+	users, err := s.SiteUsers(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	out := []*models.User{}
+	for _, user := range users {
+		if user.Active && sharedWith[user.ID] {
+			out = append(out, user)
+		}
+	}
+	return out, nil
+}
 
 var filterWritable = `COALESCE(` + strings.Replace(filterAccess,
 	"WHERE fp.filter_id=f.id AND (", "WHERE fp.filter_id=f.id AND fp.rights=2 AND (", 1) + `,FALSE)`
@@ -671,7 +702,8 @@ func (s *Store) FilterColumns(ctx context.Context, workspaceID, userID, id strin
 	if err != nil {
 		return nil, err
 	}
-	if filter.Columns == nil {
+	// A configuration holds at least one column, so none means none is set.
+	if len(filter.Columns) == 0 {
 		return nil, pgx.ErrNoRows
 	}
 	return filter.Columns, nil
@@ -681,11 +713,17 @@ func (s *Store) SetFilterColumns(ctx context.Context, workspaceID, userID, id st
 	if len(columns) == 0 || len(columns) > 50 {
 		return fmt.Errorf("%w: choose between 1 and 50 columns", ErrFilterValidation)
 	}
-	allowed := map[string]bool{"key": true, "summary": true, "issuetype": true, "status": true, "priority": true, "assignee": true, "reporter": true, "created": true, "updated": true}
+	allowed, err := s.navigableColumnIndex(ctx, workspaceID)
+	if err != nil {
+		return err
+	}
 	seen := map[string]bool{}
 	for _, column := range columns {
-		if !allowed[column] && !strings.HasPrefix(column, "customfield_") || seen[column] {
-			return fmt.Errorf("%w: invalid or duplicate column", ErrFilterValidation)
+		if _, navigable := allowed[column]; !navigable {
+			return fmt.Errorf("%w: %s is not a navigable field", ErrFilterValidation, column)
+		}
+		if seen[column] {
+			return fmt.Errorf("%w: column %s is duplicated", ErrFilterValidation, column)
 		}
 		seen[column] = true
 	}

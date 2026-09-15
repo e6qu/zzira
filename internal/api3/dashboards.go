@@ -60,8 +60,8 @@ func dashboardQuery(w http.ResponseWriter, r *http.Request, keys ...string) bool
 			return false
 		}
 	}
-	if v := r.URL.Query().Get("extendAdminPermissions"); v != "" && v != "false" {
-		jiraError(w, 400, "Admin permission extension is not supported.")
+	if v := r.URL.Query().Get("extendAdminPermissions"); v != "" && v != "true" && v != "false" {
+		jiraError(w, 400, "extendAdminPermissions must be true or false.")
 		return false
 	}
 	return true
@@ -86,6 +86,15 @@ func (h *Handler) dashboardRoute(w http.ResponseWriter, r *http.Request, p []str
 	if e != nil {
 		writeJerr(w, e)
 		return
+	}
+	// extendAdminPermissions lets a site administrator change dashboards they
+	// do not own; it is refused to everyone else.
+	if r.URL.Query().Get("extendAdminPermissions") == "true" {
+		if admin, err := h.Store.IsAdmin(r.Context(), ws, user); err != nil || !admin {
+			jiraError(w, 403, "extendAdminPermissions requires the Administer Jira global permission.")
+			return
+		}
+		r = r.WithContext(store.WithDashboardAdministration(r.Context()))
 	}
 	if (len(p) == 0 || len(p) == 1 && p[0] == "search") && r.Method == http.MethodGet {
 		h.dashboardList(w, r, ws, user, len(p) > 0)
@@ -188,9 +197,31 @@ func (h *Handler) dashboardRoute(w http.ResponseWriter, r *http.Request, p []str
 	}
 	jiraError(w, 404, "No dashboard resource found.")
 }
+
+// dashboardSharedWith reports whether a dashboard is shared with the group or
+// project a search names; with neither named every dashboard matches.
+func dashboardSharedWith(d *models.Dashboard, groupName, groupID, projectID string) bool {
+	if groupName == "" && groupID == "" && projectID == "" {
+		return true
+	}
+	for _, share := range append(append([]models.DashboardShare{}, d.SharePermissions...), d.EditPermissions...) {
+		if share.Group != nil && (groupID != "" && share.Group.GroupID == groupID || groupName != "" && share.Group.Name == groupName) {
+			return true
+		}
+		if share.Project != nil && projectID != "" && share.Project.ID == projectID {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *Handler) dashboardList(w http.ResponseWriter, r *http.Request, ws, user string, search bool) {
 	if search {
-		if !dashboardQuery(w, r, "dashboardName", "accountId", "owner", "orderBy", "startAt", "maxResults", "status", "expand") {
+		if !dashboardQuery(w, r, "dashboardName", "accountId", "owner", "groupname", "groupId", "projectId", "orderBy", "startAt", "maxResults", "status", "expand") {
+			return
+		}
+		if r.URL.Query().Get("groupname") != "" && r.URL.Query().Get("groupId") != "" {
+			jiraError(w, 400, "groupname and groupId cannot both be given.")
 			return
 		}
 	} else if !dashboardQuery(w, r, "filter", "startAt", "maxResults") {
@@ -225,7 +256,7 @@ func (h *Handler) dashboardList(w http.ResponseWriter, r *http.Request, ws, user
 	}
 	for _, expand := range strings.Split(q.Get("expand"), ",") {
 		switch expand {
-		case "", "description", "owner", "view", "sharePermissions", "editPermissions", "isFavourite":
+		case "", "description", "owner", "view", "viewUrl", "favourite", "isFavourite", "favouritedCount", "sharePermissions", "editPermissions", "isWritable":
 		default:
 			jiraError(w, 400, "Unsupported dashboard expansion.")
 			return
@@ -249,6 +280,9 @@ func (h *Handler) dashboardList(w http.ResponseWriter, r *http.Request, ws, user
 			continue
 		}
 		if !strings.Contains(strings.ToLower(d.Name), strings.ToLower(q.Get("dashboardName"))) {
+			continue
+		}
+		if !dashboardSharedWith(d, q.Get("groupname"), q.Get("groupId"), q.Get("projectId")) {
 			continue
 		}
 		filtered = append(filtered, d)

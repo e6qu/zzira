@@ -34,6 +34,22 @@ Jira Cloud-compatible REST resources.
   is workspace scoped, administrator authorized, transactional, and paired
   with immutable action-log evidence.
 
+## Creating projects
+
+`POST /rest/api/3/project` accepts every template Jira documents for a project
+type: the Scrum, Kanban and basic software templates (team-managed ones
+included; zzira creates every project company-managed, with a Scrum or Kanban
+board as the template implies), every service management template, and every
+business template. Customer service projects are refused, as zzira has no
+customer service product. The request can name the project's
+`permissionScheme`, `notificationScheme`, `issueSecurityScheme`,
+`workflowScheme`, `issueTypeScheme`, `issueTypeScreenScheme` and `fieldScheme`
+(or the deprecated `fieldConfigurationScheme`), and a system `avatarId`. They
+are assigned in the same transaction that creates the project. A scheme or
+avatar that does not exist refuses the request with its field named, and no
+project is created. The deprecated `lead` is accepted in place of
+`leadAccountId`, but not together with a different one.
+
 ## Jira v3 resources
 
 | Resource family | Operations |
@@ -60,8 +76,12 @@ Jira Cloud-compatible REST resources.
   Code, and Deployments remain.
 - Sender addresses are syntax validated. Custom-domain ownership, verification
   warnings, bounce handling, and outbound notification delivery remain.
-- Project types reflect ZZIRA's installed products; Atlassian license discovery
-  and product-entitlement billing are outside the self-hosted boundary.
+- Project types follow the site's products. `GET /project/type/accessible`
+  lists the types an enabled product licenses: software with Jira Software,
+  service_desk with Jira Service Management, and business with any Jira
+  product. `GET /project/type/{key}/accessible` answers 404 to a person whose
+  application roles do not reach that product. Atlassian billing is outside the
+  self-hosted boundary.
 - Valid key generation is deterministic. Jira does not promise the exact
   replacement string, but clients that assume Atlassian's random choice may
   observe a different available key.

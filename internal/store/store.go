@@ -54,6 +54,8 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 	// Server-side prepared statements: JSONB operators like @>/? must never
 	// pass through pgx's client-side SQL sanitizer (it rejects literal ?).
 	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeCacheStatement
+	cfg.PrepareConn = prepareRequestConnection
+	cfg.AfterRelease = releaseRequestConnection
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -755,7 +757,12 @@ SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.descri
 	       i.updated_seq, i.updated_at,
 	       it.jira_id, it.hierarchy_level, pr.jira_id, COALESCE(pro.status_color, pr.status_color), COALESCE(pro.icon_url, pr.icon_url),
 	       res.id, res.jira_id, COALESCE(reso.name, res.name), COALESCE(reso.description, res.description), i.resolved_at,
-	       i.created_at, i.archived_at
+	       i.created_at, i.archived_at,
+	       i.original_estimate_seconds, i.remaining_estimate_seconds,
+	       (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id),
+	       (SELECT sum(t.original_estimate_seconds) FROM issues t WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask)),
+	       (SELECT sum(t.remaining_estimate_seconds) FROM issues t WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask)),
+	       (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w JOIN issues t ON t.id=w.issue_id WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask))
 FROM issues i
 JOIN statuses st ON st.id = i.status_id
 JOIN issue_types it ON it.id = i.issuetype_id
@@ -798,7 +805,9 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 		&i.UpdatedSeq, &updatedAt,
 		&i.IssueType.JiraID, &i.IssueType.HierarchyLevel, &priorityJiraID, &priorityColor, &priorityIcon,
 		&resolutionID, &resolutionJiraID, &resolutionName, &resolutionDescription, &resolvedAt,
-		&createdAt, &archivedAt)
+		&createdAt, &archivedAt,
+		&i.OriginalEstimateSeconds, &i.RemainingEstimateSeconds, &i.TimeSpentSeconds,
+		&i.AggregateOriginalEstimateSeconds, &i.AggregateRemainingEstimateSeconds, &i.AggregateTimeSpentSeconds)
 	if err != nil {
 		return nil, err
 	}
@@ -871,6 +880,23 @@ func (s *Store) CreateIssue(ctx context.Context, actorID, projectID, summary str
 // CreateIssueForReporter separates the authenticated change actor from the
 // issue reporter for on-behalf-of service requests.
 func (s *Store) CreateIssueForReporter(ctx context.Context, actorID, reporterID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, labels []string, fields map[string]json.RawMessage, securityLevelID, parentID string) (*models.Issue, *models.Action, error) {
+	return s.CreateEstimatedIssueForReporter(ctx, actorID, reporterID, projectID, summary, description, statusID, issueTypeID, priorityID, assigneeID, labels, fields, securityLevelID, parentID, IssueEstimates{})
+}
+
+// IssueEstimates are a new work item's original and remaining estimates in
+// seconds; nil leaves an estimate unset.
+type IssueEstimates struct {
+	Original, Remaining *int64
+}
+
+// CreateEstimatedIssueForReporter creates a work item with its time estimates.
+// As in Jira, an original estimate without a remaining one also starts the
+// remaining estimate.
+func (s *Store) CreateEstimatedIssueForReporter(ctx context.Context, actorID, reporterID, projectID, summary string, description json.RawMessage, statusID, issueTypeID, priorityID, assigneeID string, labels []string, fields map[string]json.RawMessage, securityLevelID, parentID string, estimates IssueEstimates) (*models.Issue, *models.Action, error) {
+	if estimates.Remaining == nil && estimates.Original != nil {
+		remaining := *estimates.Original
+		estimates.Remaining = &remaining
+	}
 	if labels == nil {
 		labels = []string{}
 	}
@@ -929,9 +955,12 @@ func (s *Store) CreateIssueForReporter(ctx context.Context, actorID, reporterID,
 	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO issues (id, workspace_id, project_id, key, summary, description, fields, labels,
-		                    status_id, issuetype_id, priority_id, assignee_id, reporter_id, security_level_id, parent_id, updated_seq)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,0)`,
-		issueID, wsID, projectID, issueKey, summary, description, fieldsJSON, labels, statusID, issueTypeID, nilIfEmpty(priorityID), nilIfEmpty(assigneeID), reporter, nilIfEmpty(securityLevelID), nilIfEmpty(parentID))
+		                    status_id, issuetype_id, priority_id, assignee_id, reporter_id, security_level_id, parent_id, updated_seq,
+		                    original_estimate_seconds, remaining_estimate_seconds, classification_level)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,0,$16,$17,
+		        (SELECT default_classification_level FROM projects WHERE id=$3))`,
+		issueID, wsID, projectID, issueKey, summary, description, fieldsJSON, labels, statusID, issueTypeID, nilIfEmpty(priorityID), nilIfEmpty(assigneeID), reporter, nilIfEmpty(securityLevelID), nilIfEmpty(parentID),
+		estimates.Original, estimates.Remaining)
 	if err != nil {
 		return nil, nil, err
 	}

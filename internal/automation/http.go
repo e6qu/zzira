@@ -35,8 +35,8 @@ func (h *Handler) TenantInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	prefix := "/gateway/api/automation/public/jira/"
-	path := strings.TrimPrefix(r.URL.Path, prefix)
+	// The site gateway and Atlassian's primary entry point serve the same API.
+	path := strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, "/gateway/api"), "/automation/public/jira/")
 	parts := strings.Split(path, "/")
 	if len(parts) < 4 || parts[1] != "rest" || (parts[2] != "v1" && parts[2] != "latest") || (parts[3] != "rule" && parts[3] != "template") {
 		automationError(w, http.StatusNotFound, "automation.resource.not_found", "No resource found", "")

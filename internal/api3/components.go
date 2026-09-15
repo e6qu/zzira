@@ -54,19 +54,19 @@ func (h *Handler) componentBean(r *http.Request, component *models.ProjectCompon
 	}
 	if component.LeadAccountID != "" {
 		if lead, err := h.Store.UserByID(r.Context(), component.LeadAccountID); err == nil {
-			bean["lead"] = h.userBean(lead)
+			bean["lead"] = h.userBeanFor(r.Context(), lead)
 		}
 	}
 	if component.RealAssigneeID != "" {
 		if assignee, err := h.Store.UserByID(r.Context(), component.RealAssigneeID); err == nil {
-			bean["assignee"], bean["realAssignee"] = h.userBean(assignee), h.userBean(assignee)
+			bean["assignee"], bean["realAssignee"] = h.userBeanFor(r.Context(), assignee), h.userBeanFor(r.Context(), assignee)
 		}
 	}
 	return bean
 }
 
 func (h *Handler) componentCollection(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, authErr := h.authWorkspace(r)
+	workspaceID, userID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -85,15 +85,26 @@ func (h *Handler) componentCollection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	projects := commaQuerySet(r, "projectIds")
-	if len(projects) > 0 {
-		filtered := components[:0]
-		for _, component := range components {
-			if querySetContains(projects, component.ProjectID) || querySetContains(projects, component.ProjectKey) {
-				filtered = append(filtered, component)
-			}
+	browsable := map[string]bool{}
+	filtered := components[:0]
+	for _, component := range components {
+		if len(projects) > 0 && !querySetContains(projects, component.ProjectID) && !querySetContains(projects, component.ProjectKey) {
+			continue
 		}
-		components = filtered
+		allowed, seen := browsable[component.ProjectID]
+		if !seen {
+			var browseErr error
+			if allowed, browseErr = h.canBrowseProject(r, workspaceID, userID, component.ProjectID); browseErr != nil {
+				componentError(w, browseErr)
+				return
+			}
+			browsable[component.ProjectID] = allowed
+		}
+		if allowed {
+			filtered = append(filtered, component)
+		}
 	}
+	components = filtered
 	h.writeComponentPage(w, r, components, "/rest/api/3/component")
 }
 
@@ -140,7 +151,7 @@ func (h *Handler) writeComponentPage(w http.ResponseWriter, r *http.Request, com
 }
 
 func (h *Handler) createComponent(w http.ResponseWriter, r *http.Request) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, actorID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -187,6 +198,9 @@ func (h *Handler) componentResource(w http.ResponseWriter, r *http.Request, part
 			componentError(w, err)
 			return
 		}
+		if !h.componentVisible(w, r, workspaceID, actorID, component) {
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"issueCount": component.IssueCount, "self": h.BaseURL + "/rest/api/3/component/" + component.ID})
 		return
 	}
@@ -199,14 +213,13 @@ func (h *Handler) componentResource(w http.ResponseWriter, r *http.Request, part
 		componentError(w, err)
 		return
 	}
+	if !h.componentVisible(w, r, workspaceID, actorID, component) {
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		writeJSON(w, http.StatusOK, h.componentBean(r, component, false))
 	case http.MethodPut:
-		if _, _, adminErr := h.authWorkspaceAdmin(r); adminErr != nil {
-			writeJerr(w, adminErr)
-			return
-		}
 		var request componentRequest
 		if !decodeProjectRequest(w, r, &request) {
 			return
@@ -231,10 +244,6 @@ func (h *Handler) componentResource(w http.ResponseWriter, r *http.Request, part
 		}
 		writeJSON(w, http.StatusOK, h.componentBean(r, updated, false))
 	case http.MethodDelete:
-		if _, _, adminErr := h.authWorkspaceAdmin(r); adminErr != nil {
-			writeJerr(w, adminErr)
-			return
-		}
 		if err := h.Store.DeleteComponent(r.Context(), workspaceID, actorID, component.ID, r.URL.Query().Get("moveIssuesTo")); err != nil {
 			componentError(w, err)
 			return
@@ -245,14 +254,33 @@ func (h *Handler) componentResource(w http.ResponseWriter, r *http.Request, part
 	}
 }
 
+// componentVisible answers 404 for a component in a project the caller cannot
+// browse, so its existence is not disclosed.
+func (h *Handler) componentVisible(w http.ResponseWriter, r *http.Request, workspaceID, userID string, component *models.ProjectComponent) bool {
+	allowed, err := h.canBrowseProject(r, workspaceID, userID, component.ProjectID)
+	if err != nil {
+		componentError(w, err)
+		return false
+	}
+	if !allowed {
+		jiraError(w, http.StatusNotFound, "The component does not exist.")
+	}
+	return allowed
+}
+
 func (h *Handler) projectComponents(w http.ResponseWriter, r *http.Request, projectIDOrKey string, paged bool) {
-	workspaceID, _, authErr := h.authWorkspace(r)
+	workspaceID, userID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
-	if _, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, projectIDOrKey); err != nil {
+	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, projectIDOrKey)
+	if err != nil {
 		projectError(w, err)
+		return
+	}
+	if allowed, browseErr := h.canBrowseProject(r, workspaceID, userID, project.ID); browseErr != nil || !allowed {
+		projectError(w, pgx.ErrNoRows)
 		return
 	}
 	for key := range r.URL.Query() {

@@ -208,8 +208,15 @@ func validatePermissionGrant(ctx context.Context, tx pgx.Tx, workspaceID string,
 	input.HolderType = strings.TrimSpace(input.HolderType)
 	input.HolderParameter = strings.TrimSpace(input.HolderParameter)
 	input.HolderValue = strings.TrimSpace(input.HolderValue)
-	if !permissionKeyPattern.MatchString(input.Permission) {
-		return input, fmt.Errorf("%w: permission key is invalid", ErrPermissionSchemeValidation)
+	// Schemes grant Jira's project permissions and those installed apps declare.
+	if definition, ok := PermissionDefinitionByKey(input.Permission); !ok || definition.Type != "PROJECT" {
+		appDefinition, _, found, err := appPermission(ctx, tx, workspaceID, input.Permission)
+		if err != nil {
+			return input, err
+		}
+		if !found || appDefinition.Type != "PROJECT" {
+			return input, fmt.Errorf("%w: permission %s is not a project permission", ErrPermissionSchemeValidation, input.Permission)
+		}
 	}
 	switch input.HolderType {
 	case "anyone", "assignee", "projectLead", "reporter", "sd.customer.portal.only":
@@ -519,7 +526,7 @@ func globalPermissionForUser(ctx context.Context, tx pgx.Tx, workspaceID, userID
 	if userID == "" {
 		return false, nil
 	}
-	var admin, member bool
+	var admin bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(
 		SELECT 1 FROM role_bindings rb JOIN sites si ON
 		 (rb.scope_type='site' AND rb.scope_id=si.id::text) OR
@@ -533,15 +540,16 @@ func globalPermissionForUser(ctx context.Context, tx pgx.Tx, workspaceID, userID
 	if admin {
 		return true, nil
 	}
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=$1 AND m.user_id=$2 AND u.active)`, workspaceID, userID).Scan(&member); err != nil {
-		return false, err
+	// Grants apply to Jira's global permissions and to active apps' ones.
+	if _, builtIn := PermissionDefinitionByKey(permission); !builtIn {
+		definition, _, found, err := appPermission(ctx, tx, workspaceID, permission)
+		if err != nil || !found || definition.Type != "GLOBAL" {
+			return false, err
+		}
 	}
-	switch permission {
-	case "BULK_CHANGE", "CREATE_SHARED_OBJECTS", "SHARE_DASHBOARDS", "USER_PICKER", "BROWSE_USERS", "CREATE_TEAM_MANAGED_PROJECT":
-		return member, nil
-	default:
-		return false, nil
-	}
+	var granted bool
+	err := tx.QueryRow(ctx, `SELECT `+globalPermissionGranted, workspaceID, userID, permission).Scan(&granted)
+	return granted, err
 }
 
 func hasProjectPermissionTx(ctx context.Context, tx pgx.Tx, workspaceID, userID, projectIDOrKey, issueID, permission string) (bool, string, error) {

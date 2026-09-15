@@ -86,7 +86,7 @@ func TestProjectLifecycleAndRecentProjects(t *testing.T) {
 	call(adminID, http.MethodPut, "/rest/api/3/project/"+projectKey+"/properties/app.lifecycle", `{"retention":"60d"}`, http.StatusCreated)
 	call(memberID, http.MethodGet, "/rest/api/3/project/"+projectKey, "", http.StatusOK)
 	recent := call(memberID, http.MethodGet, "/rest/api/3/project/recent?expand=projectKeys,permissions,insight&properties=app.lifecycle", "", http.StatusOK)
-	if !strings.Contains(recent.Body.String(), `"projectKeys":["`+projectKey+`"]`) || !strings.Contains(recent.Body.String(), `"app.lifecycle":{"retention":"60d"}`) || !strings.Contains(recent.Body.String(), `"ADMINISTER_PROJECTS":{"havePermission":false`) {
+	if !strings.Contains(recent.Body.String(), `"projectKeys":["`+projectKey+`"]`) || !strings.Contains(recent.Body.String(), `"app.lifecycle":{"retention":"60d"}`) || !strings.Contains(recent.Body.String(), `"permissions":{"canEdit":false}`) {
 		t.Fatal(recent.Body.String())
 	}
 	call(memberID, http.MethodPost, "/rest/api/3/project/"+projectKey+"/archive", "", http.StatusForbidden)

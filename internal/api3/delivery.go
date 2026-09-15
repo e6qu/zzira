@@ -29,7 +29,7 @@ type rejectedSoftwareItem struct {
 }
 
 func (h *Handler) softwareDeliveryRoute(w http.ResponseWriter, r *http.Request, kind string) {
-	workspaceID, _, authErr := h.authWorkspace(r)
+	workspaceID, actorID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -48,11 +48,14 @@ func (h *Handler) softwareDeliveryRoute(w http.ResponseWriter, r *http.Request, 
 		path = strings.TrimPrefix(path, directPrefix)
 	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 1 && parts[0] == "bulk" && r.Method == http.MethodPost && h.providerRateLimited(w, r, workspaceID, actorID, kind, false) {
+		return
+	}
 	if kind == "builds" {
 		h.buildRoute(w, r, workspaceID, parts)
 		return
 	}
-	h.deploymentRoute(w, r, workspaceID, parts)
+	h.deploymentRoute(w, r, workspaceID, actorID, parts)
 }
 
 func (h *Handler) buildRoute(w http.ResponseWriter, r *http.Request, workspaceID string, parts []string) {
@@ -104,10 +107,10 @@ func (h *Handler) buildRoute(w http.ResponseWriter, r *http.Request, workspaceID
 	}
 }
 
-func (h *Handler) deploymentRoute(w http.ResponseWriter, r *http.Request, workspaceID string, parts []string) {
+func (h *Handler) deploymentRoute(w http.ResponseWriter, r *http.Request, workspaceID, actorID string, parts []string) {
 	switch {
 	case len(parts) == 1 && parts[0] == "bulk" && r.Method == http.MethodPost:
-		h.submitDeployments(w, r, workspaceID)
+		h.submitDeployments(w, r, workspaceID, actorID)
 	case len(parts) == 1 && parts[0] == "bulkByProperties" && r.Method == http.MethodDelete:
 		properties, sequence, err := softwarePropertiesFromQuery(r)
 		if err != nil {
@@ -131,11 +134,20 @@ func (h *Handler) deploymentRoute(w http.ResponseWriter, r *http.Request, worksp
 				jiraError(w, http.StatusNotFound, "Deployment was not found.")
 				return
 			}
+			status, changeRequest, statusErr := h.Commands.DeploymentGatingStatus(r.Context(), workspaceID, *deployment)
+			if statusErr != nil {
+				jiraError(w, http.StatusInternalServerError, "Could not load the deployment gating status.")
+				return
+			}
+			details := []any{}
+			if changeRequest != nil {
+				details = append(details, map[string]any{"type": "issue", "issueKey": changeRequest.Key, "issueLink": h.BaseURL + "/service/requests/" + changeRequest.Key})
+			}
 			writeJSON(w, http.StatusOK, map[string]any{
 				"deploymentSequenceNumber": deployment.DeploymentSequenceNumber,
 				"pipelineId":               deployment.PipelineID, "environmentId": deployment.EnvironmentID,
 				"updatedTimestamp": deployment.LastUpdated.UTC().Format(time.RFC3339),
-				"gatingStatus":     "allowed", "details": []any{},
+				"gatingStatus":     status, "details": details,
 			})
 			return
 		}
@@ -218,7 +230,7 @@ func (h *Handler) submitBuilds(w http.ResponseWriter, r *http.Request, workspace
 	})
 }
 
-func (h *Handler) submitDeployments(w http.ResponseWriter, r *http.Request, workspaceID string) {
+func (h *Handler) submitDeployments(w http.ResponseWriter, r *http.Request, workspaceID, actorID string) {
 	var request softwareBulkRequest
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 5<<20))
 	if err := decoder.Decode(&request); err != nil || len(request.Deployments) == 0 || len(request.Deployments) > 100 {
@@ -259,6 +271,11 @@ func (h *Handler) submitDeployments(w http.ResponseWriter, r *http.Request, work
 	if err := h.Store.UpsertSoftwareDeployments(r.Context(), workspaceID, deployments); err != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not store deployments.")
 		return
+	}
+	// Deployments to gated environments open their change requests; a gate
+	// that fails leaves the deployment's gating status invalid.
+	for _, deployment := range deployments {
+		_ = h.Commands.GateDeployment(r.Context(), workspaceID, actorID, deployment)
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"acceptedDeployments": accepted, "rejectedDeployments": rejected,

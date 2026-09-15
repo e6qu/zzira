@@ -113,6 +113,9 @@ func (h *Handler) customFieldBean(f *models.CustomField) map[string]any {
 		"schema":      schema,
 		"description": f.Description,
 		"self":        h.BaseURL + "/rest/api/3/field/" + f.ID,
+		// zzira serves one locale, so the translations are the field's own text.
+		"translatedName":        f.Name,
+		"translatedDescription": f.Description,
 	}
 	if f.AppKey != "" {
 		key := f.AppKey + "__" + f.AppModuleKey
@@ -181,16 +184,26 @@ func (h *Handler) createField(w http.ResponseWriter, r *http.Request) {
 		typeKey = fieldType
 	}
 	fieldType = resolved
+	if req.SearcherKey != "" && !models.ValidCustomFieldSearcher(fieldType, req.SearcherKey) {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"searcherKey": "The searcher is not valid for the field type."})
+		return
+	}
 	seq, err := h.Store.NextCustomFieldNumber(r.Context())
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	id := fmt.Sprintf("customfield_%d", 10000+seq)
+	id := fmt.Sprintf("customfield_%d", seq)
 	field, err := h.Store.CreateWorkspaceCustomFieldOfKind(r.Context(), workspaceID, id, req.Name, fieldType, typeKey, req.Description)
 	if err != nil {
 		jiraError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if req.SearcherKey != "" {
+		if field, err = h.Store.UpdateCustomField(r.Context(), workspaceID, id, nil, nil, &req.SearcherKey); err != nil {
+			jiraError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	writeJSON(w, http.StatusCreated, h.customFieldBean(field))
 }

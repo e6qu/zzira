@@ -29,6 +29,15 @@ func scanWorklog(row pgx.Row) (*models.Worklog, error) {
 }
 
 func (s *Store) CreateWorklog(ctx context.Context, actorID, workspaceID, issueID string, comment json.RawMessage, seconds int) (*models.Worklog, *models.Action, error) {
+	return s.CreateWorklogWithEstimate(ctx, actorID, workspaceID, issueID, comment, seconds, WorklogEstimate{})
+}
+
+// CreateWorklogWithEstimate logs work and moves the remaining estimate as the
+// adjustment says.
+func (s *Store) CreateWorklogWithEstimate(ctx context.Context, actorID, workspaceID, issueID string, comment json.RawMessage, seconds int, estimate WorklogEstimate) (*models.Worklog, *models.Action, error) {
+	if err := ValidateWorklogEstimate(estimate); err != nil {
+		return nil, nil, err
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -63,6 +72,9 @@ func (s *Store) CreateWorklog(ctx context.Context, actorID, workspaceID, issueID
 	if err := appendAction(ctx, tx, action); err != nil {
 		return nil, nil, err
 	}
+	if err := adjustRemainingEstimate(ctx, tx, workspaceID, actorID, issueID, int64(seconds), estimate); err != nil {
+		return nil, nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, err
 	}
@@ -91,6 +103,15 @@ func (s *Store) WorklogByID(ctx context.Context, workspaceID, id string) (*model
 }
 
 func (s *Store) DeleteWorklog(ctx context.Context, actorID, workspaceID, worklogID string) (*models.Action, error) {
+	return s.DeleteWorklogWithEstimate(ctx, actorID, workspaceID, worklogID, WorklogEstimate{})
+}
+
+// DeleteWorklogWithEstimate removes logged work and moves the remaining
+// estimate back as the adjustment says.
+func (s *Store) DeleteWorklogWithEstimate(ctx context.Context, actorID, workspaceID, worklogID string, estimate WorklogEstimate) (*models.Action, error) {
+	if err := ValidateWorklogEstimate(estimate); err != nil {
+		return nil, err
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -121,6 +142,9 @@ func (s *Store) DeleteWorklog(ctx context.Context, actorID, workspaceID, worklog
 		return nil, err
 	}
 	if err := appendAction(ctx, tx, action); err != nil {
+		return nil, err
+	}
+	if err := adjustRemainingEstimate(ctx, tx, workspaceID, actorID, w.IssueID, -int64(w.TimeSpentSeconds), estimate); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {

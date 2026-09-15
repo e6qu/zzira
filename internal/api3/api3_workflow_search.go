@@ -46,14 +46,8 @@ func containsWorkflowUsage(ids []string, projectID string) bool {
 
 func workflowStatusReferences(wf workflow.Workflow) map[string]bool {
 	ids := make(map[string]bool)
-	for _, status := range wf.Statuses {
-		ids[status.StatusReference] = true
-	}
-	for _, transition := range wf.Transitions {
-		ids[transition.To] = true
-		for _, from := range transition.From {
-			ids[from] = true
-		}
+	for _, id := range wf.StatusIDs() {
+		ids[id] = true
 	}
 	return ids
 }
@@ -74,6 +68,9 @@ func workflowReferenceStatuses(wf workflow.Workflow, wire statusIDs) []map[strin
 		bean := map[string]any{"statusReference": wire.toWire(id), "deprecated": false, "properties": properties}
 		if exists && status.Layout != nil {
 			bean["layout"] = status.Layout
+		}
+		if exists && status.ApprovalConfiguration != nil {
+			bean["approvalConfiguration"] = status.ApprovalConfiguration
 		}
 		statuses = append(statuses, bean)
 	}
@@ -96,8 +93,26 @@ func workflowStatusCategory(category string) string {
 
 func workflowTransitionBean(transition workflow.Transition, wire statusIDs) map[string]any {
 	links := make([]map[string]any, 0, len(transition.From))
+	link := func(fromStatusReference any, ports workflow.LinkPorts) map[string]any {
+		bean := map[string]any{"fromStatusReference": fromStatusReference}
+		if ports.FromPort != nil {
+			bean["fromPort"] = *ports.FromPort
+		}
+		if ports.ToPort != nil {
+			bean["toPort"] = *ports.ToPort
+		}
+		return bean
+	}
 	for _, from := range transition.From {
-		links = append(links, map[string]any{"fromStatusReference": wire.toWire(from)})
+		links = append(links, link(wire.toWire(from), transition.Ports[from]))
+	}
+	// A global or initial transition's only link carries its designer ports.
+	if ports, ok := transition.Ports[""]; ok && len(transition.From) == 0 {
+		links = append(links, link(nil, ports))
+	}
+	properties := transition.Properties
+	if properties == nil {
+		properties = map[string]string{}
 	}
 	actions := transition.Actions
 	if actions == nil {
@@ -112,9 +127,13 @@ func workflowTransitionBean(transition workflow.Transition, wire statusIDs) map[
 		triggers = []workflow.Rule{}
 	}
 	bean := map[string]any{
-		"id": transition.ID, "name": transition.Name, "description": "",
-		"type": "DIRECTED", "toStatusReference": wire.toWire(transition.To), "links": links,
-		"properties": map[string]string{}, "actions": actions, "validators": validators, "triggers": triggers,
+		"id": transition.ID, "name": transition.Name, "description": transition.Description,
+		"type": transition.Kind(), "toStatusReference": wire.toWire(transition.To), "links": links,
+		"properties": properties, "actions": actions, "validators": validators, "triggers": triggers,
+		"customIssueEventId": nil,
+	}
+	if transition.CustomIssueEventID != "" {
+		bean["customIssueEventId"] = transition.CustomIssueEventID
 	}
 	if transition.Conditions != nil {
 		bean["conditions"] = transition.Conditions
@@ -172,11 +191,12 @@ func workflowSearchNextPage(baseURL string, r *http.Request, startAt int) string
 }
 
 func (h *Handler) workflowSearch(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+	access, authErr := h.authWorkflowAccess(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	workspaceID := access.workspaceID
 	startAt, maxResults, err := parseWorkflowSearchPage(r)
 	if err != nil {
 		jiraError(w, http.StatusBadRequest, err.Error())
@@ -218,6 +238,7 @@ func (h *Handler) workflowSearch(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	workflows = access.scoped(workflows)
 	query := strings.ToLower(r.URL.Query().Get("queryString"))
 	filtered := make([]workflow.Workflow, 0, len(workflows))
 	for _, item := range workflows {
@@ -239,17 +260,33 @@ func (h *Handler) workflowSearch(w http.ResponseWriter, r *http.Request) {
 		}
 		filtered = append(filtered, item)
 	}
-	orderBy := r.URL.Query().Get("orderBy")
-	if orderBy != "" && orderBy != "name" && orderBy != "+name" && orderBy != "-name" {
+	// orderBy is name, created or updated, optionally prefixed with + or -; a
+	// decoded + arrives as a space.
+	orderBy := strings.TrimSpace(r.URL.Query().Get("orderBy"))
+	orderField := strings.TrimLeft(orderBy, "+- ")
+	if orderBy != "" && orderField != "name" && orderField != "created" && orderField != "updated" {
 		jiraError(w, http.StatusBadRequest, "orderBy is invalid")
 		return
 	}
+	descending := strings.HasPrefix(orderBy, "-")
 	sort.SliceStable(filtered, func(i, j int) bool {
-		left, right := strings.ToLower(filtered[i].Name), strings.ToLower(filtered[j].Name)
-		if orderBy == "-name" {
-			return left > right
+		less, equal := false, false
+		switch orderField {
+		case "created":
+			less, equal = filtered[i].CreatedAt.Before(filtered[j].CreatedAt), filtered[i].CreatedAt.Equal(filtered[j].CreatedAt)
+		case "updated":
+			less, equal = filtered[i].UpdatedAt.Before(filtered[j].UpdatedAt), filtered[i].UpdatedAt.Equal(filtered[j].UpdatedAt)
+		default:
+			left, right := strings.ToLower(filtered[i].Name), strings.ToLower(filtered[j].Name)
+			less, equal = left < right, left == right
 		}
-		return left < right
+		if equal {
+			return strings.ToLower(filtered[i].Name) < strings.ToLower(filtered[j].Name)
+		}
+		if descending {
+			return !less
+		}
+		return less
 	})
 	if startAt > len(filtered) {
 		startAt = len(filtered)

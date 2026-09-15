@@ -1,4 +1,4 @@
-import { expect, test, Page } from '@playwright/test';
+import { APIRequestContext, expect, test, Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -8,6 +8,34 @@ function apiAuthHeader(): string {
   const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
   const token = process.env.ZZIRA_API_TOKEN ?? tokens[DEMO.email];
   return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
+}
+
+// useSecurityLevel creates a scheme with one level only the account can see,
+// associates it with the project through Jira's mapping task, and returns the
+// level's id.
+async function useSecurityLevel(request: APIRequestContext, auth: { headers: { Authorization: string } }, projectID: string, name: string, accountID: string): Promise<string> {
+  const created = await request.post('/rest/api/3/issuesecurityschemes', {
+    ...auth,
+    data: { name, levels: [{ name: 'Private', members: [{ type: 'user', parameter: accountID }] }] },
+  });
+  expect(created.status()).toBe(201);
+  const schemeID = String((await created.json()).id);
+  const scheme = await (await request.get(`/rest/api/3/issuesecurityschemes/${schemeID}`, auth)).json();
+  const levelID = String(scheme.levels[0].id);
+  const current = await (await request.get(`/rest/api/3/issuesecurityschemes/project?projectId=${projectID}`, auth)).json();
+  const mappings: { oldLevelId: string; newLevelId: string }[] = [];
+  for (const association of current.values ?? []) {
+    const previous = await (await request.get(`/rest/api/3/issuesecurityschemes/${association.issueSecuritySchemeId}`, auth)).json();
+    for (const level of previous.levels ?? []) mappings.push({ oldLevelId: String(level.id), newLevelId: levelID });
+  }
+  const assigned = await request.put('/rest/api/3/issuesecurityschemes/project', {
+    ...auth,
+    maxRedirects: 0,
+    data: { projectId: projectID, schemeId: schemeID, oldToNewSecurityLevelMappings: mappings },
+  });
+  expect(assigned.status()).toBe(303);
+  await expect.poll(async () => String((await (await request.get(`/rest/api/3/issuesecurityschemes/project?projectId=${projectID}`, auth)).json()).values?.[0]?.issueSecuritySchemeId)).toBe(schemeID);
+  return levelID;
 }
 
 async function login(page: Page) {
@@ -30,15 +58,8 @@ test('create journey and createmeta share every supported field', async ({ page,
   expect(fieldResponse.status()).toBe(201);
   const customFieldID = (await fieldResponse.json()).id;
 
-  const schemeID = `create_scheme_${unique}`;
-  const levelID = `create_private_${unique}`;
-  expect((await request.post('/rest/api/3/issuesecurityschemes', {
-    ...auth,
-    data: { id: schemeID, name: 'Create journey scheme', levels: [{ id: levelID, name: 'Private', members: [demoID] }] },
-  })).status()).toBe(201);
-  expect((await request.put('/rest/api/3/issuesecurityschemes/project/ZZ', {
-    ...auth, data: { id: schemeID },
-  })).status()).toBe(204);
+  const projectID = String((await (await request.get('/rest/api/3/project/ZZ', auth)).json()).id);
+  const levelID = await useSecurityLevel(request, auth, projectID, `Create journey ${unique}`, demoID);
 
   const issueTypes = await request.get('/rest/api/3/issue/createmeta/ZZ/issuetypes', auth);
   expect(issueTypes.status()).toBe(200);
@@ -74,7 +95,6 @@ test('create journey and createmeta share every supported field', async ({ page,
   expect((await request.get('/rest/api/3/issue/createmeta/ZZ/issuetypes/not-a-type', auth)).status()).toBe(400);
 
   const apiSummary = `Metadata API create ${unique}`;
-  const projectID = (await (await request.get('/rest/api/3/project/ZZ', auth)).json()).id as string;
   const apiCreated = await request.post('/rest/api/3/issue', {
     ...auth,
     data: { fields: {

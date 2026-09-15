@@ -22,7 +22,7 @@ func TestProjectSearchSelection(t *testing.T) {
 		bad         bool
 	}{
 		{"query=al&orderBy=-name", "CC,BB", false}, {"keys=AA&keys=CC", "AA,CC", false},
-		{"id=2", "BB", false}, {"typeKey=business", "", false}, {"orderBy=owner", "", true}, {"categoryId=1", "", false},
+		{"id=2", "BB", false}, {"typeKey=business", "", false}, {"orderBy=owner", "AA,BB,CC", false}, {"orderBy=lead", "", true}, {"categoryId=1", "", false},
 	} {
 		got, err := filterProjects(httptest.NewRequest("GET", "/rest/api/3/project/search?"+tt.query, nil), projects)
 		if (err != nil) != tt.bad {
@@ -263,9 +263,33 @@ func TestProjectAPILifecycle(t *testing.T) {
 	if !strings.Contains(cleaned.Body.String(), `"queryStrings":["assignee = currentUser()"]`) {
 		t.Fatal(cleaned.Body.String())
 	}
-	sanitized := call(actor, "POST", "/rest/api/3/jql/sanitize", `{"queries":[{"query":"project=TEAM"},{"accountId":"`+actor+`","query":"unknown = value"}]}`, 200)
-	if !strings.Contains(sanitized.Body.String(), `"sanitizedQuery":"project=TEAM"`) || !strings.Contains(sanitized.Body.String(), `"sanitizedQuery":null`) {
+	sanitized := call(actor, "POST", "/rest/api/3/jql/sanitize", `{"queries":[{"accountId":"`+actor+`","query":"project=TEAM"},{"accountId":"`+actor+`","query":"status ="}]}`, 200)
+	if !strings.Contains(sanitized.Body.String(), `"sanitizedQuery":"project=TEAM"`) || !strings.Contains(sanitized.Body.String(), `"errorMessages":["Error in the JQL Query`) {
 		t.Fatal(sanitized.Body.String())
+	}
+	// validateQuery: warn reports clause errors while failing clauses match
+	// nothing, strict refuses them all, none reports nothing.
+	warned := call(actor, "GET", "/rest/api/3/search?jql="+url.QueryEscape("nosuchfield = 1 OR project = TEAM ORDER BY nosuchorder")+"&validateQuery=warn", "", 200)
+	if !strings.Contains(warned.Body.String(), `"total":2`) || !strings.Contains(warned.Body.String(), `"warningMessages":["Error in the JQL Query`) || !strings.Contains(warned.Body.String(), "nosuchorder") {
+		t.Fatal(warned.Body.String())
+	}
+	strict := call(actor, "POST", "/rest/api/3/search", `{"jql":"nosuchfield = 1 OR otherfield = 2","validateQuery":"strict"}`, 400)
+	var strictBody struct {
+		ErrorMessages []string `json:"errorMessages"`
+	}
+	if err := json.Unmarshal(strict.Body.Bytes(), &strictBody); err != nil || len(strictBody.ErrorMessages) != 2 {
+		t.Fatalf("strict errors = %s", strict.Body.String())
+	}
+	if unvalidated := call(actor, "GET", "/rest/api/3/search?jql="+url.QueryEscape("nosuchfield = 1 OR project = TEAM")+"&validateQuery=none", "", 200); strings.Contains(unvalidated.Body.String(), "warningMessages") || !strings.Contains(unvalidated.Body.String(), `"total":2`) {
+		t.Fatal(unvalidated.Body.String())
+	}
+	call(actor, "GET", "/rest/api/3/search?jql="+url.QueryEscape("project = ")+"&validateQuery=none", "", 400)
+	parsedAll := call(actor, "POST", "/rest/api/3/jql/parse?validation=strict", `{"queries":["nosuchfield = 1 AND otherfield = 2"]}`, 200)
+	if strings.Count(parsedAll.Body.String(), "Error in the JQL Query") != 2 || strings.Contains(parsedAll.Body.String(), `"structure"`) {
+		t.Fatal(parsedAll.Body.String())
+	}
+	if parsedWarn := call(actor, "POST", "/rest/api/3/jql/parse?validation=warn", `{"queries":["nosuchfield = 1 AND otherfield = 2"]}`, 200); strings.Count(parsedWarn.Body.String(), "Error in the JQL Query") != 2 || !strings.Contains(parsedWarn.Body.String(), `"structure"`) {
+		t.Fatal(parsedWarn.Body.String())
 	}
 	legacy := call(actor, "GET", "/rest/api/3/search?jql=project%3DTEAM&maxResults=1", "", 200)
 	if !strings.Contains(legacy.Body.String(), `"total":2`) || !strings.Contains(legacy.Body.String(), `"maxResults":1`) {

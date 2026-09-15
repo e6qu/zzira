@@ -87,7 +87,7 @@ func notificationInputs(events []notificationEventRequest) ([]store.Notification
 	return inputs, nil
 }
 
-func (h *Handler) eventNotificationBean(entry models.NotificationSchemeEntry) map[string]any {
+func (h *Handler) eventNotificationBean(x *holderExpander, entry models.NotificationSchemeEntry) map[string]any {
 	bean := map[string]any{"id": entry.ID, "notificationType": entry.NotificationType}
 	if entry.Parameter != "" {
 		bean["parameter"] = entry.Parameter
@@ -98,10 +98,24 @@ func (h *Handler) eventNotificationBean(entry models.NotificationSchemeEntry) ma
 	if entry.NotificationType == "EmailAddress" {
 		bean["emailAddress"] = entry.Parameter
 	}
+	x.expand(bean, notificationRecipientKind(entry.NotificationType), entry.Parameter)
 	return bean
 }
 
-func (h *Handler) notificationSchemeBean(scheme *models.NotificationScheme, expanded bool, projectIDs []int64) map[string]any {
+// issueEventsByID indexes the site's built-in and custom events.
+func (h *Handler) issueEventsByID(r *http.Request, workspaceID string) map[int64]store.NotificationEventDefinition {
+	byID := map[int64]store.NotificationEventDefinition{}
+	events, err := h.Store.IssueEvents(r.Context(), workspaceID)
+	if err != nil {
+		events = store.NotificationEvents()
+	}
+	for _, event := range events {
+		byID[event.ID] = event
+	}
+	return byID
+}
+
+func (h *Handler) notificationSchemeBean(x *holderExpander, eventDefinitions map[int64]store.NotificationEventDefinition, scheme *models.NotificationScheme, expanded bool, projectIDs []int64) map[string]any {
 	bean := map[string]any{
 		"id": scheme.ID, "name": scheme.Name, "description": scheme.Description,
 		"self":  h.BaseURL + "/rest/api/3/notificationscheme/" + strconv.FormatInt(scheme.ID, 10),
@@ -113,10 +127,10 @@ func (h *Handler) notificationSchemeBean(scheme *models.NotificationScheme, expa
 	if expanded {
 		events := []map[string]any{}
 		for _, configured := range scheme.Events {
-			definition, _ := store.NotificationEvent(configured.EventID)
+			definition := eventDefinitions[configured.EventID]
 			notifications := make([]map[string]any, 0, len(configured.Notifications))
 			for _, entry := range configured.Notifications {
-				notifications = append(notifications, h.eventNotificationBean(entry))
+				notifications = append(notifications, h.eventNotificationBean(x, entry))
 			}
 			events = append(events, map[string]any{
 				"event":         map[string]any{"id": configured.EventID, "name": definition.Name, "description": definition.Description},
@@ -228,7 +242,7 @@ func (h *Handler) notificationSchemeRoute(w http.ResponseWriter, r *http.Request
 			notificationSchemeError(w, getErr)
 			return
 		}
-		writeJSON(w, http.StatusOK, h.notificationSchemeBean(scheme, expanded, nil))
+		writeJSON(w, http.StatusOK, h.notificationSchemeBean(h.newHolderExpander(r, workspaceID), h.issueEventsByID(r, workspaceID), scheme, expanded, nil))
 	case http.MethodPut:
 		workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
 		if authErr != nil {
@@ -352,7 +366,7 @@ func (h *Handler) notificationSchemeCollection(w http.ResponseWriter, r *http.Re
 	page := pageSlice(filtered, startAt, maxResults)
 	values := make([]map[string]any, 0, len(page))
 	for _, scheme := range page {
-		values = append(values, h.notificationSchemeBean(scheme, expanded, projectsByScheme[scheme.ID]))
+		values = append(values, h.notificationSchemeBean(h.newHolderExpander(r, workspaceID), h.issueEventsByID(r, workspaceID), scheme, expanded, projectsByScheme[scheme.ID]))
 	}
 	response := map[string]any{"startAt": startAt, "maxResults": maxResults, "total": len(filtered), "isLast": startAt+len(page) >= len(filtered), "values": values}
 	if startAt+len(page) < len(filtered) {
@@ -479,5 +493,5 @@ func (h *Handler) projectNotificationSchemeRoute(w http.ResponseWriter, r *http.
 		return
 	}
 	projectID, _ := strconv.ParseInt(project.ID, 10, 64)
-	writeJSON(w, http.StatusOK, h.notificationSchemeBean(scheme, expanded, []int64{projectID}))
+	writeJSON(w, http.StatusOK, h.notificationSchemeBean(h.newHolderExpander(r, workspaceID), h.issueEventsByID(r, workspaceID), scheme, expanded, []int64{projectID}))
 }

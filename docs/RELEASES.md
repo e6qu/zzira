@@ -70,9 +70,10 @@ This is a partial version/release implementation, not full Jira Cloud fidelity:
 - Issue version references are synchronized, but the release hub and its
   administration require an online connection. The version catalog itself has
   no local materialization yet. Pagination uses offsets under concurrent writes.
-- Delivery evidence follows issue associations. Cross-project deployment
-  grouping, release approvals, configurable gates and environment promotion
-  policies remain unfinished.
+- Delivery evidence follows issue associations. Releases name a driver and
+  collect approvals from the people asked to approve them; cross-project
+  deployment grouping, configurable gates and environment promotion policies
+  remain unfinished.
 
 The lifecycle and schema reference is the vendored Jira platform specification
 and [Atlassian's project versions API](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-project-versions/).

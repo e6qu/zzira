@@ -11,11 +11,11 @@ import (
 
 func scanServiceOrganization(row interface{ Scan(...any) error }) (*models.ServiceOrganization, error) {
 	organization := &models.ServiceOrganization{}
-	err := row.Scan(&organization.ID, &organization.WorkspaceID, &organization.Name, &organization.CreatedAt)
+	err := row.Scan(&organization.ID, &organization.WorkspaceID, &organization.Name, &organization.UUID, &organization.CreatedAt)
 	return organization, err
 }
 
-const serviceOrganizationSelect = `SELECT id,workspace_id,name,created_at FROM service_organizations `
+const serviceOrganizationSelect = `SELECT id,workspace_id,name,uuid::text,created_at FROM service_organizations `
 
 func (s *Store) ServiceOrganizations(ctx context.Context, workspaceID, viewerID, accountID string, agent bool) ([]models.ServiceOrganization, error) {
 	rows, err := s.Pool.Query(ctx, serviceOrganizationSelect+`
@@ -48,7 +48,7 @@ func (s *Store) CreateServiceOrganization(ctx context.Context, workspaceID, name
 	return scanServiceOrganization(s.Pool.QueryRow(ctx, `
 		INSERT INTO service_organizations(workspace_id,name) VALUES($1,$2)
 		ON CONFLICT(workspace_id,lower(name)) DO UPDATE SET name=service_organizations.name
-		RETURNING id,workspace_id,name,created_at`, workspaceID, name))
+		RETURNING id,workspace_id,name,uuid::text,created_at`, workspaceID, name))
 }
 
 func (s *Store) DeleteServiceOrganization(ctx context.Context, workspaceID, organizationID string) error {
@@ -172,7 +172,7 @@ func (s *Store) DeleteServiceOrganizationProperty(ctx context.Context, workspace
 }
 
 func (s *Store) ServiceDeskOrganizations(ctx context.Context, workspaceID, serviceDeskID string) ([]models.ServiceOrganization, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT service_organizations.id,service_organizations.workspace_id,service_organizations.name,service_organizations.created_at FROM service_organizations
+	rows, err := s.Pool.Query(ctx, `SELECT service_organizations.id,service_organizations.workspace_id,service_organizations.name,service_organizations.uuid::text,service_organizations.created_at FROM service_organizations
 		JOIN service_desk_organizations dso ON dso.organization_id=service_organizations.id
 		JOIN service_desks sd ON sd.id=dso.service_desk_id
 		WHERE sd.workspace_id=$1 AND sd.id=$2 ORDER BY lower(service_organizations.name),service_organizations.id::bigint`, workspaceID, serviceDeskID)
@@ -275,6 +275,22 @@ func (s *Store) SetServiceDeskCustomers(ctx context.Context, workspaceID, servic
 
 func (s *Store) SetServiceDeskCustomerAccess(ctx context.Context, workspaceID, serviceDeskID string, open bool) error {
 	result, err := s.Pool.Exec(ctx, `UPDATE service_desks SET customer_access_open=$3 WHERE workspace_id=$1 AND id=$2`, workspaceID, serviceDeskID, open)
+	if err == nil && result.RowsAffected() == 0 {
+		return fmt.Errorf("service desk does not exist")
+	}
+	return err
+}
+
+func (s *Store) SetServiceDeskAttachmentsEnabled(ctx context.Context, workspaceID, serviceDeskID string, enabled bool) error {
+	result, err := s.Pool.Exec(ctx, `UPDATE service_desks SET attachments_enabled=$3 WHERE workspace_id=$1 AND id=$2`, workspaceID, serviceDeskID, enabled)
+	if err == nil && result.RowsAffected() == 0 {
+		return fmt.Errorf("service desk does not exist")
+	}
+	return err
+}
+
+func (s *Store) SetServiceDeskFeedbackEnabled(ctx context.Context, workspaceID, serviceDeskID string, enabled bool) error {
+	result, err := s.Pool.Exec(ctx, `UPDATE service_desks SET feedback_enabled=$3 WHERE workspace_id=$1 AND id=$2`, workspaceID, serviceDeskID, enabled)
 	if err == nil && result.RowsAffected() == 0 {
 		return fmt.Errorf("service desk does not exist")
 	}

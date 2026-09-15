@@ -24,16 +24,26 @@ import (
 )
 
 type Handler struct {
-	Store         *store.Store
-	Commands      *commands.Service
-	Blobs         attachments.Store
-	BaseURL       string
-	WorkspaceSlug string
+	// ProviderRateLimit is how many requests a caller may make to one DevOps
+	// provider API in a minute; zero uses the default.
+	ProviderRateLimit int
+	Store             *store.Store
+	Commands          *commands.Service
+	Blobs             attachments.Store
+	BaseURL           string
+	WorkspaceSlug     string
 	// StaticDir holds the server's static assets, such as system avatar icons.
 	StaticDir string
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// The attachment downloads anonymous content and thumbnail reads redirect
+	// to are anonymous too.
+	secureDownload := r.Method == http.MethodGet && (strings.HasPrefix(r.URL.Path, "/secure/attachment/") || strings.HasPrefix(r.URL.Path, "/secure/thumbnail/"))
+	if !authn.PresentsCredentials(r) && (anonymousOperation(r.Method, r.URL.Path) || secureDownload) {
+		r = r.WithContext(authn.WithAnonymous(r.Context()))
+	}
+	r = h.withRequestViewer(r)
 	if strings.HasPrefix(r.URL.Path, "/rest/servicedeskapi/") {
 		h.serviceDeskRoute(w, r)
 		return
@@ -230,9 +240,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case path == "/permissions/project" && r.Method == http.MethodPost:
 		h.permittedProjects(w, r)
 	case path == "/workflow/search" && r.Method == http.MethodGet:
-		h.workflowRoute(w, r)
-	case path == "/workflow" && r.Method == http.MethodPost:
-		h.workflowRoute(w, r)
+		h.legacyWorkflowSearch(w, r)
 	case path == "/workflows/defaultEditor" && r.Method == http.MethodGet:
 		h.workflowDefaultEditor(w, r)
 	case path == "/workflows/search" && r.Method == http.MethodGet:
@@ -259,8 +267,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.workflowRuleConfigRoute(w, r, path)
 	case path == "/workflows" && r.Method == http.MethodPost:
 		h.readWorkflows(w, r)
-	case strings.HasPrefix(path, "/workflow/project/"):
-		h.workflowRoute(w, r)
 	case strings.HasPrefix(path, "/workflow/"):
 		h.workflowUsageRoute(w, r, path)
 	case path == "/role" || strings.HasPrefix(path, "/role/"):
@@ -365,6 +371,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.filterCRUD(w, r, strings.TrimPrefix(path, "/filter/"))
 	case path == "/bootstrap" && r.Method == http.MethodGet:
 		h.bootstrap(w, r)
+	case strings.HasPrefix(path, "/secure/attachment/"):
+		h.secureAttachmentRoute(w, r, strings.TrimPrefix(path, "/secure/attachment/"), false)
+	case strings.HasPrefix(path, "/secure/thumbnail/"):
+		h.secureAttachmentRoute(w, r, strings.TrimPrefix(path, "/secure/thumbnail/"), true)
 	case path == "/attachment/meta" && r.Method == http.MethodGet:
 		h.attachmentSettings(w, r)
 	case strings.HasPrefix(path, "/attachment/content/"):
@@ -500,6 +510,11 @@ func (h *Handler) authWorkspace(r *http.Request) (wsID, userID string, j *jerr) 
 	wsID, err = h.Store.WorkspaceBySlug(r.Context(), h.WorkspaceSlug)
 	if err != nil {
 		return "", "", &jerr{http.StatusInternalServerError, "no workspace configured", nil}
+	}
+	if authn.Anonymous(r.Context()) {
+		// The anonymous user reads only what permissions granted to anyone
+		// allow; each operation applies those checks to userID "".
+		return wsID, "", nil
 	}
 	ok, err := authz.CanSeeWorkspace(r.Context(), h.Store, wsID, userID)
 	if err != nil || !ok {
@@ -637,8 +652,114 @@ type createIssueRequest struct {
 		Security *struct {
 			ID string `json:"id"`
 		} `json:"security"`
-		Labels *[]string `json:"labels"`
+		Labels       *[]string          `json:"labels"`
+		TimeTracking *timeTrackingInput `json:"timetracking"`
 	} `json:"fields"`
+}
+
+// timeTrackingInput is Jira's timetracking field value: estimates written as
+// durations such as "1w 2d".
+type timeTrackingInput struct {
+	OriginalEstimate  *string `json:"originalEstimate"`
+	RemainingEstimate *string `json:"remainingEstimate"`
+}
+
+// estimateSeconds converts the timetracking field's estimates; an empty
+// estimate is store.ClearEstimate.
+func (input *timeTrackingInput) estimateSeconds(cfg models.TimeTrackingConfiguration) (original, remaining *int64, fieldErrors map[string]string) {
+	convert := func(value *string) *int64 {
+		if value == nil {
+			return nil
+		}
+		seconds := store.ClearEstimate
+		if strings.TrimSpace(*value) != "" {
+			parsed, err := models.ParseJiraDuration(*value, cfg)
+			if err != nil {
+				fieldErrors = map[string]string{"timetracking": err.Error()}
+				return nil
+			}
+			seconds = parsed
+		}
+		return &seconds
+	}
+	if input == nil {
+		return nil, nil, nil
+	}
+	original = convert(input.OriginalEstimate)
+	remaining = convert(input.RemainingEstimate)
+	return original, remaining, fieldErrors
+}
+
+// addTimeTracking adds Jira's time tracking fields to issue beans when time
+// tracking is on: the timetracking object, the estimate and spent seconds and
+// their sub-task aggregates, progress and work ratio.
+func (h *Handler) addTimeTracking(ctx context.Context, issues []*models.Issue, beans []map[string]any) {
+	configurations := map[string]*models.JiraSiteConfiguration{}
+	for index, issue := range issues {
+		configuration, loaded := configurations[issue.WorkspaceID]
+		if !loaded {
+			configuration, _ = h.Store.JiraSiteConfiguration(ctx, issue.WorkspaceID)
+			configurations[issue.WorkspaceID] = configuration
+		}
+		if configuration == nil || !configuration.TimeTrackingEnabled {
+			continue
+		}
+		fields, ok := beans[index]["fields"].(map[string]any)
+		if !ok {
+			continue
+		}
+		cfg := configuration.TimeTracking
+		tracking := map[string]any{}
+		seconds := func(value *int64) any {
+			if value == nil {
+				return nil
+			}
+			return *value
+		}
+		if issue.OriginalEstimateSeconds != nil {
+			tracking["originalEstimate"] = models.FormatJiraDuration(*issue.OriginalEstimateSeconds, cfg)
+			tracking["originalEstimateSeconds"] = *issue.OriginalEstimateSeconds
+		}
+		if issue.RemainingEstimateSeconds != nil {
+			tracking["remainingEstimate"] = models.FormatJiraDuration(*issue.RemainingEstimateSeconds, cfg)
+			tracking["remainingEstimateSeconds"] = *issue.RemainingEstimateSeconds
+		}
+		var spent any
+		if issue.TimeSpentSeconds > 0 {
+			tracking["timeSpent"] = models.FormatJiraDuration(issue.TimeSpentSeconds, cfg)
+			tracking["timeSpentSeconds"] = issue.TimeSpentSeconds
+			spent = issue.TimeSpentSeconds
+		}
+		var aggregateSpent any
+		if issue.AggregateTimeSpentSeconds > 0 {
+			aggregateSpent = issue.AggregateTimeSpentSeconds
+		}
+		progress := func(spentSeconds int64, remaining *int64) map[string]any {
+			total := spentSeconds
+			if remaining != nil {
+				total += *remaining
+			}
+			bean := map[string]any{"progress": spentSeconds, "total": total}
+			if total > 0 {
+				bean["percent"] = spentSeconds * 100 / total
+			}
+			return bean
+		}
+		workRatio := int64(-1)
+		if issue.OriginalEstimateSeconds != nil && *issue.OriginalEstimateSeconds > 0 {
+			workRatio = issue.TimeSpentSeconds * 100 / *issue.OriginalEstimateSeconds
+		}
+		fields["timetracking"] = tracking
+		fields["timeoriginalestimate"] = seconds(issue.OriginalEstimateSeconds)
+		fields["timeestimate"] = seconds(issue.RemainingEstimateSeconds)
+		fields["timespent"] = spent
+		fields["aggregatetimeoriginalestimate"] = seconds(issue.AggregateOriginalEstimateSeconds)
+		fields["aggregatetimeestimate"] = seconds(issue.AggregateRemainingEstimateSeconds)
+		fields["aggregatetimespent"] = aggregateSpent
+		fields["progress"] = progress(issue.TimeSpentSeconds, issue.RemainingEstimateSeconds)
+		fields["aggregateprogress"] = progress(issue.AggregateTimeSpentSeconds, issue.AggregateRemainingEstimateSeconds)
+		fields["workratio"] = workRatio
+	}
 }
 
 func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
@@ -716,7 +837,26 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	var originalEstimate, remainingEstimate *int64
+	if req.Fields.TimeTracking != nil {
+		configuration, configErr := h.Store.JiraSiteConfiguration(r.Context(), wsID)
+		if configErr != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		var fieldErrors map[string]string
+		if originalEstimate, remainingEstimate, fieldErrors = req.Fields.TimeTracking.estimateSeconds(configuration.TimeTracking); fieldErrors != nil {
+			jiraFieldError(w, http.StatusBadRequest, fieldErrors)
+			return
+		}
+		for _, estimate := range []**int64{&originalEstimate, &remainingEstimate} {
+			if *estimate != nil && **estimate == store.ClearEstimate {
+				*estimate = nil
+			}
+		}
+	}
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
+		OriginalEstimate: originalEstimate, RemainingEstimate: remainingEstimate,
 		ActorID:        userID,
 		WorkspaceID:    wsID,
 		ProjectIDOrKey: projectIDOrKey,
@@ -786,6 +926,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 	supported := map[string]struct{}{
 		"project": {}, "summary": {}, "description": {}, "issuetype": {}, "priority": {},
 		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "components": {}, "parent": {},
+		"timetracking": {},
 	}
 	for field := range raw.Fields {
 		if _, ok := supported[field]; ok || customFieldIDPattern.MatchString(field) || appCustomFieldKeyPattern.MatchString(field) {
@@ -825,7 +966,8 @@ type putIssueRequest struct {
 		Security *struct {
 			ID string `json:"id"`
 		} `json:"security"`
-		Labels *[]string `json:"labels"`
+		Labels       *[]string          `json:"labels"`
+		TimeTracking *timeTrackingInput `json:"timetracking"`
 	} `json:"fields"`
 }
 
@@ -840,13 +982,10 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		writeJerr(w, e)
 		return
 	}
-	for _, flag := range []string{"overrideScreenSecurity", "overrideEditableFlag"} {
-		if strings.EqualFold(r.URL.Query().Get(flag), "true") {
-			if admin, adminErr := h.Store.IsAdmin(r.Context(), wsID, userID); adminErr != nil || !admin {
-				jiraError(w, http.StatusForbidden, "Only administrators can use "+flag+".")
-				return
-			}
-		}
+	ctx, e := h.requestOverrides(r, wsID, userID, "overrideScreenSecurity", "overrideEditableFlag")
+	if e != nil {
+		writeJerr(w, e)
+		return
 	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -928,12 +1067,44 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		sid := req.Fields.Security.ID
 		securityID = &sid
 	}
-	if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{
+	// timetracking is set as a field or edited with the update operation.
+	timeTracking := req.Fields.TimeTracking
+	if operations, provided := req.Update["timetracking"]; provided {
+		delete(req.Update, "timetracking")
+		for _, operation := range operations {
+			raw, ok := operation["edit"]
+			if !ok || len(operation) != 1 {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"timetracking": "Time tracking supports only the edit operation."})
+				return
+			}
+			var edited timeTrackingInput
+			if err := json.Unmarshal(raw, &edited); err != nil {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"timetracking": "Invalid time tracking value."})
+				return
+			}
+			timeTracking = &edited
+		}
+	}
+	var originalEstimate, remainingEstimate *int64
+	if timeTracking != nil {
+		configuration, configErr := h.Store.JiraSiteConfiguration(r.Context(), wsID)
+		if configErr != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		var fieldErrors map[string]string
+		if originalEstimate, remainingEstimate, fieldErrors = timeTracking.estimateSeconds(configuration.TimeTracking); fieldErrors != nil {
+			jiraFieldError(w, http.StatusBadRequest, fieldErrors)
+			return
+		}
+	}
+	if _, _, err := h.Commands.UpdateIssue(ctx, commands.UpdateIssueInput{
 		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: idOrKey,
 		Summary: up.Summary, Description: up.Description,
 		PriorityID: up.PriorityID, AssigneeID: up.AssigneeID,
 		ParentIDOrKey:   parentIDOrKey,
 		SecurityLevelID: securityID, Labels: req.Fields.Labels, Fields: fields, VersionOperations: req.Update,
+		OriginalEstimate: originalEstimate, RemainingEstimate: remainingEstimate,
 	}); err != nil {
 		field := "fields"
 		if strings.Contains(err.Error(), "parent") || strings.Contains(err.Error(), "sub-task") {
@@ -1068,6 +1239,7 @@ func (h *Handler) getIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 // IssueBean is exported for the Agile edge, which must render identical beans.
 func (h *Handler) IssueBean(i *models.Issue) map[string]any {
 	bean := h.issueBean(i)
+	h.addTimeTracking(context.Background(), []*models.Issue{i}, []map[string]any{bean})
 	_ = h.decorateCustomFieldValues(context.Background(), i.WorkspaceID, []map[string]any{bean})
 	return bean
 }
@@ -1237,6 +1409,10 @@ func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKe
 }
 
 func (h *Handler) issueTransitionBeans(ctx context.Context, workspaceID, userID string, issue *models.Issue) ([]map[string]any, error) {
+	// Without Transition issues the list is empty, as Jira documents.
+	if allowed, err := h.hasProjectPermission(ctx, workspaceID, userID, issue.ProjectID, issue.ID, "TRANSITION_ISSUES"); err != nil || !allowed {
+		return []map[string]any{}, err
+	}
 	wf, err := h.Store.WorkflowForProjectAndIssueType(ctx, issue.ProjectID, issue.IssueType.ID)
 	if err != nil {
 		return nil, err
@@ -1244,6 +1420,10 @@ func (h *Handler) issueTransitionBeans(ctx context.Context, workspaceID, userID 
 	evaluation := workflow.ContextForIssue(userID, issue)
 	evaluation.IsAPI = true
 	evaluation.StatusHistory, err = h.Store.IssueStatusHistory(ctx, workspaceID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	evaluation.Approvals, err = h.Store.IssueApprovalDecisions(ctx, issue.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -1463,7 +1643,7 @@ func (h *Handler) issueChangelogBeans(ctx context.Context, workspaceID, issueID 
 			})
 		}
 		values = append(values, map[string]any{
-			"id": fmt.Sprintf("%d", entry.Seq), "author": h.userBean(entry.Author),
+			"id": fmt.Sprintf("%d", entry.Seq), "author": h.userBeanFor(ctx, entry.Author),
 			"created": entry.Created, "items": items,
 		})
 	}
@@ -1491,7 +1671,12 @@ func (h *Handler) editMeta(w http.ResponseWriter, r *http.Request, idOrKey strin
 		writeJerr(w, e)
 		return
 	}
-	metadata, err := h.issueEditMetadata(r.Context(), wsID, userID, issue)
+	ctx, e := h.requestOverrides(r, wsID, userID, "overrideScreenSecurity", "overrideEditableFlag")
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	metadata, err := h.issueEditMetadata(ctx, wsID, userID, issue)
 	if err != nil {
 		versionError(w, err)
 		return
@@ -1499,7 +1684,23 @@ func (h *Handler) editMeta(w http.ResponseWriter, r *http.Request, idOrKey strin
 	writeJSON(w, http.StatusOK, metadata)
 }
 
+// issueEditMetadata is the edit metadata the reader may use: fields are only
+// editable with the Edit issues permission for the issue, and none while its
+// status is not editable unless an app overrides the editable flag.
 func (h *Handler) issueEditMetadata(ctx context.Context, workspaceID, userID string, issue *models.Issue) (map[string]any, error) {
+	if allowed, err := h.hasProjectPermission(ctx, workspaceID, userID, issue.ProjectID, issue.ID, "EDIT_ISSUES"); err != nil || !allowed {
+		return map[string]any{"fields": map[string]any{}}, err
+	}
+	if !commands.OverridesFromContext(ctx).EditableFlag {
+		editable, err := h.Commands.IssueEditable(ctx, issue)
+		if err != nil || !editable {
+			return map[string]any{"fields": map[string]any{}}, err
+		}
+	}
+	return h.issueEditFields(ctx, workspaceID, userID, issue)
+}
+
+func (h *Handler) issueEditFields(ctx context.Context, workspaceID, userID string, issue *models.Issue) (map[string]any, error) {
 	metadata, err := h.Store.IssueCreateMetadata(ctx, workspaceID, userID)
 	if err != nil {
 		return nil, err
@@ -1521,6 +1722,14 @@ func (h *Handler) issueEditMetadata(ctx context.Context, workspaceID, userID str
 		behaviour, behaviourErr := h.Store.ResolveFieldBehaviour(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID)
 		if behaviourErr != nil {
 			return nil, behaviourErr
+		}
+		// An app overriding screen security sees the fields the field
+		// configuration hides.
+		if commands.OverridesFromContext(ctx).ScreenSecurity {
+			for field, rule := range behaviour {
+				rule.IsHidden = false
+				behaviour[field] = rule
+			}
 		}
 		project.FieldBehaviour = map[string]map[string]models.FieldBehaviour{issue.IssueType.ID: behaviour}
 		for _, source := range project.FieldsForIssueType(issue.IssueType.ID) {

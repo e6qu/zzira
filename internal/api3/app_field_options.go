@@ -8,6 +8,7 @@ import (
 
 	"github.com/e6qu/zzira/internal/apps"
 	"github.com/e6qu/zzira/internal/authz"
+	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -191,6 +192,13 @@ func (h *Handler) deselectAppFieldOption(w http.ResponseWriter, r *http.Request,
 		writeJerr(w, authErr)
 		return
 	}
+	// Apps with Administer Jira may deselect the option on hidden fields and on
+	// work items that are not editable.
+	ctx, overrideErr := h.requestOverrides(r, workspaceID, actorID, "overrideScreenSecurity", "overrideEditableFlag")
+	if overrideErr != nil {
+		writeJerr(w, overrideErr)
+		return
+	}
 	replaceWith := strings.TrimSpace(r.URL.Query().Get("replaceWith"))
 	if replaceWith == optionID {
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{
@@ -254,8 +262,10 @@ func (h *Handler) deselectAppFieldOption(w http.ResponseWriter, r *http.Request,
 		}
 		value = encoded
 	}
-	task, err := h.Store.EnqueueBulkEditTask(r.Context(), workspaceID, actorID, items,
-		[]store.BulkIssueEditOperation{{FieldID: fieldID, Action: "SET", Value: value}})
+	overrides := commands.OverridesFromContext(ctx)
+	task, err := h.Store.EnqueueBulkEditTask(r.Context(), workspaceID, actorID, store.BulkIssueEditTaskPayload{
+		Issues: items, Operations: []store.BulkIssueEditOperation{{FieldID: fieldID, Action: "SET", Value: value}}, SendBulkNotification: true,
+		OverrideScreenSecurity: overrides.ScreenSecurity, OverrideEditableFlag: overrides.EditableFlag})
 	if err != nil {
 		appFieldOptionError(w, err)
 		return

@@ -33,6 +33,9 @@ var systemAvatarIcons = map[string][]struct {
 	"priority":  {{10200, "priorities/highest.svg"}, {10201, "priorities/high.svg"}, {10202, "priorities/medium.svg"}, {10203, "priorities/low.svg"}, {10204, "priorities/lowest.svg"}},
 	"issuetype": {{10300, "issuetype-epic.svg"}, {10301, "issuetype-story.svg"}, {10302, "issuetype-task.svg"}, {10303, "issuetype-subtask.svg"}, {10304, "issuetype-bug.svg"}},
 	"project":   {{10400, "avatar-default.svg"}},
+	// SD_REQTYPE is Jira Service Management's request type icon; request
+	// types show the headset icon by default.
+	"SD_REQTYPE": {{10500, "request-type-default.svg"}},
 }
 
 // SystemAvatars lists the system avatars for an owner type.

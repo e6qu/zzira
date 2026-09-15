@@ -91,8 +91,10 @@ configuration so it can be assigned before anything else is mapped.
 Jira's `renderer` on a field configuration item is not stored; ZZIRA renders each
 field type one way. Workflow rules that set fields during a transition are
 automation rather than a person's edit, so they bypass the configuration, as
-post-functions do in Jira. The `/config/fieldschemes` field association surface, `expand` and
-`orderBy` on these endpoints, and exact Jira error wording also remain.
+post-functions do in Jira. Configurations filter by `isDefault` and by a `query` over names and
+descriptions; the configuration scheme lists take only paging and id filters.
+The `/config/fieldschemes` field association surface and exact Jira error
+wording also remain.
 
 `PUT /rest/api/3/issue/{key}` accepts a priority by `id` or by `name`, the same
 two wire forms creation accepts, and rejects an unknown one.

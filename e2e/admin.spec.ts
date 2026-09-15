@@ -81,7 +81,8 @@ test('site admin manages a directory group and its audited membership', async ({
   const policyName = `Office network ${Date.now()}`;
   await page.getByLabel('Policy name').fill(policyName);
   await page.getByLabel('Policy type').selectOption('ip-allowlist');
-  await page.getByLabel('Rule values').fill('192.0.2.0/24');
+  // The allowlist keeps the loopback addresses the browser runs from.
+  await page.getByLabel('Rule values').fill('192.0.2.0/24, 127.0.0.1, ::1');
   await page.getByRole('group', { name: 'Policy products' }).getByLabel('Jira Software').check();
   await page.getByRole('button', { name: 'Create policy' }).click();
   await expect(page).toHaveURL(/\/admin\?saved=Policy\+created$/);
@@ -92,6 +93,15 @@ test('site admin manages a directory group and its audited membership', async ({
   await expect(page).toHaveURL(/\/admin\?saved=Policy\+enabled$/);
   policy = page.locator('.admin-policy').filter({ hasText: policyName });
   await expect(policy).toContainText('enabled');
+
+  // Products run on plans; free plans cap their users.
+  await page.getByLabel('Confluence plan').selectOption('premium');
+  await page.getByRole('button', { name: 'Save plan for Confluence' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Product\+plan\+updated$/);
+  await expect(page.getByLabel('Confluence plan')).toHaveValue('premium');
+  await page.getByLabel('Confluence plan').selectOption('standard');
+  await page.getByRole('button', { name: 'Save plan for Confluence' }).click();
+  await expect(page.getByLabel('Confluence plan')).toHaveValue('standard');
 
   const groupName = `delivery-managers-${Date.now()}`;
   await page.getByLabel('Group name').fill(groupName);

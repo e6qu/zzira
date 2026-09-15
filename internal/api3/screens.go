@@ -2,11 +2,13 @@ package api3
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
@@ -103,6 +105,14 @@ func (h *Handler) screenCollection(w http.ResponseWriter, r *http.Request) {
 			IDs: securityQueryValues(r, "id"), QueryString: r.URL.Query().Get("queryString")})
 		if err != nil {
 			screenError(w, err)
+			return
+		}
+		// Every screen here is a global screen; team-managed project and
+		// template screens are not created on this site.
+		if scopes := commaQuerySet(r, "scope"); len(scopes) > 0 && !querySetContains(scopes, "GLOBAL") {
+			screens = screens[:0]
+		}
+		if !orderByNameOrID(w, r.URL.Query().Get("orderBy"), screens, func(s *models.Screen) string { return s.Name }, func(s *models.Screen) string { return s.ID }) {
 			return
 		}
 		page := pageSlice(screens, startAt, maxResults)
@@ -211,31 +221,102 @@ func (h *Handler) bulkScreenTabs(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, authErr)
 		return
 	}
+	query := r.URL.Query()
+	for _, name := range []string{"screenId", "tabId"} {
+		for _, raw := range query[name] {
+			if _, parseErr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); parseErr != nil {
+				jiraError(w, http.StatusBadRequest, "The screen ID or the tab ID is empty or invalid.")
+				return
+			}
+		}
+	}
+	startAt, maxResult := 0, 100
+	for name, target := range map[string]*int{"startAt": &startAt, "maxResult": &maxResult} {
+		if raw := query.Get(name); raw != "" {
+			value, parseErr := strconv.Atoi(raw)
+			if parseErr != nil || value < 0 {
+				jiraError(w, http.StatusBadRequest, name+" must be a non-negative integer.")
+				return
+			}
+			*target = value
+		}
+	}
+	// Jira caps a page of tabs at 100.
+	if maxResult > 100 {
+		maxResult = 100
+	}
 	grouped, err := h.Store.BulkScreenTabs(r.Context(), workspaceID, securityQueryValues(r, "screenId"))
 	if err != nil {
 		screenError(w, err)
 		return
 	}
+	tabIDs := map[string]bool{}
+	for _, id := range securityQueryValues(r, "tabId") {
+		tabIDs[id] = true
+	}
 	values := []map[string]any{}
 	for screenID, tabs := range grouped {
 		for _, tab := range tabs {
 			bean := h.screenTabBean(tab)
+			if len(tabIDs) > 0 && !tabIDs[fmt.Sprint(bean["id"])] {
+				continue
+			}
 			bean["screenId"] = wireNumericID(screenID)
 			values = append(values, bean)
 		}
 	}
 	sortScreenTabBeans(values)
-	writeJSON(w, http.StatusOK, values)
+	writeJSON(w, http.StatusOK, values[min(startAt, len(values)):min(startAt+maxResult, len(values))])
+}
+
+// screenTabReader authorizes reading a screen's tabs: Jira administrators
+// always, and a project's administrators when projectKey names their project
+// and its screen schemes use the screen.
+func (h *Handler) screenTabReader(r *http.Request, screenID string) (string, *jerr) {
+	workspaceID, userID, authErr := h.authWorkspace(r)
+	if authErr != nil {
+		return "", authErr
+	}
+	denied := &jerr{http.StatusForbidden, "You do not have permission to perform this operation.", nil}
+	admin, err := authz.IsWorkspaceAdmin(r.Context(), h.Store, workspaceID, userID)
+	switch {
+	case err != nil:
+		return "", &jerr{http.StatusInternalServerError, "internal error", nil}
+	case admin:
+		return workspaceID, nil
+	}
+	projectKey := r.URL.Query().Get("projectKey")
+	if projectKey == "" {
+		return "", denied
+	}
+	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, projectKey)
+	if err != nil || project.Key != projectKey {
+		return "", denied
+	}
+	allowed, err := h.hasProjectPermission(r.Context(), workspaceID, userID, project.ID, "", "ADMINISTER_PROJECTS")
+	if err != nil {
+		return "", &jerr{http.StatusInternalServerError, "internal error", nil}
+	}
+	if !allowed {
+		return "", denied
+	}
+	used, err := h.Store.ScreenUsedByProject(r.Context(), workspaceID, project.ID, screenID)
+	if err != nil {
+		return "", &jerr{http.StatusInternalServerError, "internal error", nil}
+	}
+	if !used {
+		return "", denied
+	}
+	return workspaceID, nil
 }
 
 func (h *Handler) screenTabCollection(w http.ResponseWriter, r *http.Request, screenID string) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
-	if authErr != nil {
-		writeJerr(w, authErr)
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
+	if r.Method == http.MethodGet {
+		workspaceID, authErr := h.screenTabReader(r, screenID)
+		if authErr != nil {
+			writeJerr(w, authErr)
+			return
+		}
 		tabs, err := h.Store.ScreenTabs(r.Context(), workspaceID, screenID)
 		if err != nil {
 			screenError(w, err)
@@ -246,6 +327,14 @@ func (h *Handler) screenTabCollection(w http.ResponseWriter, r *http.Request, sc
 			values = append(values, h.screenTabBean(tab))
 		}
 		writeJSON(w, http.StatusOK, values)
+		return
+	}
+	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	if authErr != nil {
+		writeJerr(w, authErr)
+		return
+	}
+	switch r.Method {
 	case http.MethodPost:
 		var request struct {
 			Name string `json:"name"`
@@ -419,10 +508,21 @@ func (h *Handler) screensForField(w http.ResponseWriter, r *http.Request, fieldI
 		screenError(w, err)
 		return
 	}
+	var tabs map[string]models.ScreenTab
+	if querySetContains(commaQuerySet(r, "expand"), "tab") {
+		if tabs, err = h.Store.ScreenTabsWithField(r.Context(), workspaceID, fieldID); err != nil {
+			screenError(w, err)
+			return
+		}
+	}
 	page := pageSlice(screens, startAt, maxResults)
 	values := make([]map[string]any, 0, len(page))
 	for _, screen := range page {
-		values = append(values, h.screenBean(screen))
+		bean := h.screenBean(screen)
+		if tab, ok := tabs[screen.ID]; ok {
+			bean["tab"] = h.screenTabBean(tab)
+		}
+		values = append(values, bean)
 	}
 	writeJSON(w, http.StatusOK, h.securityPageBean(r, values, len(screens), startAt, maxResults))
 }

@@ -184,25 +184,77 @@ func (h *Handler) projectTypes(w http.ResponseWriter, r *http.Request, suffix st
 		jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
-	accessible := suffix == "/accessible" || strings.HasSuffix(suffix, "/accessible")
-	if accessible {
-		if _, _, e := h.authWorkspace(r); e != nil {
-			writeJerr(w, e)
+	key := strings.TrimSuffix(strings.TrimPrefix(suffix, "/"), "accessible")
+	key = strings.TrimSuffix(key, "/")
+	if !strings.HasSuffix(suffix, "accessible") {
+		if key == "" {
+			writeJSON(w, http.StatusOK, jiraProjectTypes)
 			return
 		}
-	}
-	if suffix == "" || suffix == "/accessible" {
-		writeJSON(w, http.StatusOK, jiraProjectTypes)
+		for _, projectType := range jiraProjectTypes {
+			if projectType["key"] == key {
+				writeJSON(w, http.StatusOK, projectType)
+				return
+			}
+		}
+		jiraError(w, http.StatusNotFound, "Project type does not exist.")
 		return
 	}
-	key := strings.TrimSuffix(strings.TrimPrefix(suffix, "/"), "/accessible")
+	workspaceID, userID, e := h.authWorkspace(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	licensed, accessible, err := h.projectTypeAccess(r, workspaceID, userID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	// The list holds the types the site has a license for; one type is
+	// returned only to someone with access to its product.
+	if key == "" {
+		types := []map[string]any{}
+		for _, projectType := range jiraProjectTypes {
+			if licensed[projectType["key"].(string)] {
+				types = append(types, projectType)
+			}
+		}
+		writeJSON(w, http.StatusOK, types)
+		return
+	}
 	for _, projectType := range jiraProjectTypes {
-		if projectType["key"] == key {
+		if projectType["key"] == key && accessible[key] {
 			writeJSON(w, http.StatusOK, projectType)
 			return
 		}
 	}
-	jiraError(w, http.StatusNotFound, "Project type does not exist.")
+	jiraError(w, http.StatusNotFound, "Project type is not accessible to the user.")
+}
+
+// projectTypeAccess reports the project types the site's products license and
+// those the person can reach through their application roles. Software
+// projects come with Jira Software and service projects with Jira Service
+// Management; business projects come with any Jira product.
+func (h *Handler) projectTypeAccess(r *http.Request, workspaceID, userID string) (licensed, accessible map[string]bool, err error) {
+	productTypes := map[string]string{"jira-software": "software", "jira-servicedesk": "service_desk"}
+	licensed, accessible = map[string]bool{}, map[string]bool{}
+	roles, err := h.Store.ApplicationRoles(r.Context(), workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, role := range roles {
+		licensed[productTypes[role.Key]], licensed["business"] = true, true
+	}
+	held, err := h.Store.UserApplicationRoles(r.Context(), workspaceID, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, role := range held {
+		accessible[productTypes[role.Key]], accessible["business"] = true, true
+	}
+	delete(licensed, "")
+	delete(accessible, "")
+	return licensed, accessible, nil
 }
 
 func (h *Handler) projectMetadataRoute(w http.ResponseWriter, r *http.Request, parts []string) {
@@ -231,6 +283,10 @@ func (h *Handler) projectProperties(w http.ResponseWriter, r *http.Request, proj
 	workspaceID, actorID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
+		return
+	}
+	if allowed, err := h.canBrowseProject(r, workspaceID, actorID, projectIDOrKey); err != nil || !allowed {
+		jiraError(w, http.StatusNotFound, "Project resource does not exist or is not visible.")
 		return
 	}
 	if len(parts) == 0 && r.Method == http.MethodGet {
@@ -264,10 +320,6 @@ func (h *Handler) projectProperties(w http.ResponseWriter, r *http.Request, proj
 		}
 		writeJSON(w, http.StatusOK, property)
 	case http.MethodPut:
-		if _, _, e = h.authWorkspaceAdmin(r); e != nil {
-			writeJerr(w, e)
-			return
-		}
 		value, ok := decodeIssuePropertyValue(w, r)
 		if !ok {
 			return
@@ -283,10 +335,6 @@ func (h *Handler) projectProperties(w http.ResponseWriter, r *http.Request, proj
 		}
 		w.WriteHeader(status)
 	case http.MethodDelete:
-		if _, _, e = h.authWorkspaceAdmin(r); e != nil {
-			writeJerr(w, e)
-			return
-		}
 		if err := h.Store.DeleteProjectProperty(r.Context(), workspaceID, actorID, projectIDOrKey, key); err != nil {
 			projectGovernanceError(w, err)
 			return
@@ -331,7 +379,7 @@ func (h *Handler) projectFeatures(w http.ResponseWriter, r *http.Request, projec
 		return
 	}
 	if len(parts) == 1 && r.Method == http.MethodPut {
-		if _, _, e = h.authWorkspaceAdmin(r); e != nil {
+		if _, _, e = h.authWorkspace(r); e != nil {
 			writeJerr(w, e)
 			return
 		}
@@ -373,17 +421,27 @@ func (h *Handler) projectEmail(w http.ResponseWriter, r *http.Request, projectID
 	}
 	switch r.Method {
 	case http.MethodGet:
-		email := p.SenderEmail
-		if email == "" {
-			host := "zzira.local"
-			if base, err := urlpkg.Parse(h.BaseURL); err == nil && base.Hostname() != "" {
-				host = base.Hostname()
-			}
-			email = "jira@" + host
+		host := "zzira.local"
+		if base, err := urlpkg.Parse(h.BaseURL); err == nil && base.Hostname() != "" {
+			host = base.Hostname()
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"emailAddress": email, "emailAddressStatus": []string{}})
+		email, status := p.SenderEmail, []string{}
+		if email == "" {
+			email = "jira@" + host
+		} else if at := strings.LastIndex(email, "@"); at >= 0 && !strings.EqualFold(email[at+1:], host) {
+			// A sender on a custom domain reports the domain's claim status.
+			verified, err := h.Store.SenderDomainVerified(r.Context(), workspaceID, email[at+1:])
+			if err != nil {
+				projectGovernanceError(w, err)
+				return
+			}
+			if !verified {
+				status = append(status, "Email address or domain not verified.")
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"emailAddress": email, "emailAddressStatus": status})
 	case http.MethodPut:
-		if _, _, e = h.authWorkspaceAdmin(r); e != nil {
+		if _, _, e = h.authWorkspace(r); e != nil {
 			writeJerr(w, e)
 			return
 		}

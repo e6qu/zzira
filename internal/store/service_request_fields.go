@@ -14,7 +14,7 @@ func (s *Store) ServiceRequestTypeFields(ctx context.Context, workspaceID, servi
 		  CASE f.field_id WHEN 'summary' THEN 'Summary' WHEN 'description' THEN 'Description' ELSE cf.name END,
 		  CASE f.field_id WHEN 'summary' THEN 'text' WHEN 'description' THEN 'text' ELSE cf.type END,
 		  CASE f.field_id WHEN 'summary' THEN rt.description WHEN 'description' THEN 'Describe the request.' ELSE COALESCE(cf.description,'') END,
-		  f.help_text,f.required,(f.field_id LIKE 'customfield_%'),f.position
+		  f.help_text,f.required,(f.field_id LIKE 'customfield_%'),f.position,NOT f.visible,f.preset_value
 		FROM service_request_type_fields f
 		JOIN service_request_types rt ON rt.id=f.request_type_id
 		JOIN service_desks sd ON sd.id=rt.service_desk_id
@@ -30,7 +30,7 @@ func (s *Store) ServiceRequestTypeFields(ctx context.Context, workspaceID, servi
 	fields := make([]models.ServiceRequestTypeField, 0)
 	for rows.Next() {
 		var field models.ServiceRequestTypeField
-		if err := rows.Scan(&field.ID, &field.RequestTypeID, &field.Name, &field.Type, &field.Description, &field.HelpText, &field.Required, &field.Custom, &field.Position); err != nil {
+		if err := rows.Scan(&field.ID, &field.RequestTypeID, &field.Name, &field.Type, &field.Description, &field.HelpText, &field.Required, &field.Custom, &field.Position, &field.Hidden, &field.PresetValue); err != nil {
 			return nil, err
 		}
 		fields = append(fields, field)
@@ -55,7 +55,11 @@ func (s *Store) SetServiceRequestTypeFields(ctx context.Context, workspaceID, ac
 		return err
 	}
 	for position, field := range fields {
-		if _, err := tx.Exec(ctx, `INSERT INTO service_request_type_fields(request_type_id,field_id,required,help_text,position) VALUES($1,$2,$3,$4,$5)`, requestTypeID, field.ID, field.Required, field.HelpText, position); err != nil {
+		var preset any
+		if len(field.PresetValue) > 0 && string(field.PresetValue) != "null" {
+			preset = field.PresetValue
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO service_request_type_fields(request_type_id,field_id,required,help_text,position,visible,preset_value) VALUES($1,$2,$3,$4,$5,$6,$7)`, requestTypeID, field.ID, field.Required, field.HelpText, position, !field.Hidden, preset); err != nil {
 			return err
 		}
 	}
@@ -69,4 +73,42 @@ func (s *Store) SetServiceRequestTypeFields(ctx context.Context, workspaceID, ac
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// ServiceRequestFieldOption is an option a customer can choose for a request
+// type field, with the child options of a cascading select.
+type ServiceRequestFieldOption struct {
+	ID, Value string
+	Children  []ServiceRequestFieldOption
+}
+
+// ServiceRequestFieldOptions lists the enabled options of a custom field in
+// the context that applies to a service desk's project, in their order.
+func (s *Store) ServiceRequestFieldOptions(ctx context.Context, workspaceID, serviceDeskID, fieldID string) ([]ServiceRequestFieldOption, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT o.id::text,o.value,COALESCE(o.parent_id::text,'')
+		FROM service_desks sd
+		JOIN custom_field_options o ON o.context_id=jira_custom_field_context($3,sd.project_id,NULL)
+		WHERE sd.workspace_id=$1 AND sd.id=$2 AND NOT o.disabled
+		ORDER BY o.parent_id NULLS FIRST,o.position,o.id`, workspaceID, serviceDeskID, fieldID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	options := []ServiceRequestFieldOption{}
+	index := map[string]int{}
+	for rows.Next() {
+		var option ServiceRequestFieldOption
+		var parentID string
+		if err := rows.Scan(&option.ID, &option.Value, &parentID); err != nil {
+			return nil, err
+		}
+		if parentID == "" {
+			index[option.ID] = len(options)
+			options = append(options, option)
+		} else if position, ok := index[parentID]; ok {
+			options[position].Children = append(options[position].Children, option)
+		}
+	}
+	return options, rows.Err()
 }

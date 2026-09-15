@@ -95,6 +95,7 @@ The `view` operation is stored and resolvable but no read-only view form
 consumes it yet; the issue view renders its own layout. Bulk edit now offers the
 intersection of the screens every selected work item resolves, rather than the
 project's field superset. Workflow transition screens still carry their own field
-list rather than referencing a screen. Jira's `expand`, `orderBy`, and
-`queryString` parameters on these endpoints, screen scheme copy, and exact Jira
-error wording also remain.
+list rather than referencing a screen. Screen schemes and work type screen schemes filter by `queryString`, order by
+name or id, and expand the work type screen schemes using a screen scheme and
+the projects using a work type screen scheme; a scheme's project list filters
+by `query`. Screen scheme copy and exact Jira error wording also remain.

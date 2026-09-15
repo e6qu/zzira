@@ -234,7 +234,11 @@ func (s *Store) BoardIssuesFiltered(ctx context.Context, boardID, userID string,
 	if err := s.ExpandAppJQL(ctx, board.WorkspaceID, query); err != nil {
 		return nil, err
 	}
-	compiled := jql.CompileAt(query, userID, jql.DefaultResolver(), 3)
+	resolver, err := s.JQLResolver(ctx, board.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	compiled := jql.CompileAt(query, userID, resolver, 3)
 	if compiled.Err != nil {
 		return nil, compiled.Err
 	}
@@ -369,7 +373,7 @@ func (s *Store) UpdateBoardConfiguration(ctx context.Context, actorID, workspace
 	if err != nil {
 		return nil, nil, err
 	}
-	fields, err := s.CustomFieldsForWorkspace(ctx, workspaceID)
+	resolver, err := s.JQLResolver(ctx, workspaceID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -377,7 +381,7 @@ func (s *Store) UpdateBoardConfiguration(ctx context.Context, actorID, workspace
 		if err := s.ExpandAppJQL(ctx, workspaceID, query); err != nil {
 			return err
 		}
-		return jql.Compile(query, "validation-user", jql.WithCustomFields(jql.DefaultResolver(), fields)).Err
+		return jql.Compile(query, "validation-user", resolver).Err
 	})
 	if err != nil {
 		return nil, nil, err
@@ -1474,9 +1478,27 @@ func validateWorkflowAgainstStatuses(wf workflow.Workflow, statuses []models.Sta
 		}
 		statusLayouts[status.StatusReference] = struct{}{}
 	}
+	initialTransitions := 0
 	for _, transition := range wf.Transitions {
-		if strings.TrimSpace(transition.ID) == "" || strings.TrimSpace(transition.Name) == "" || transition.To == "" || len(transition.From) == 0 {
-			return nil, fmt.Errorf("every workflow transition requires an id, name, source, and destination")
+		if strings.TrimSpace(transition.ID) == "" || strings.TrimSpace(transition.Name) == "" || transition.To == "" {
+			return nil, fmt.Errorf("every workflow transition requires an id, name, and destination")
+		}
+		switch transition.Kind() {
+		case workflow.TransitionDirected:
+			if len(transition.From) == 0 {
+				return nil, fmt.Errorf("directed workflow transition %q requires a source status", transition.ID)
+			}
+		case workflow.TransitionGlobal, workflow.TransitionInitial:
+			if len(transition.From) > 0 {
+				return nil, fmt.Errorf("%s workflow transition %q cannot have source statuses", strings.ToLower(transition.Kind()), transition.ID)
+			}
+			if transition.Kind() == workflow.TransitionInitial {
+				if initialTransitions++; initialTransitions > 1 {
+					return nil, fmt.Errorf("a workflow can have only one initial transition")
+				}
+			}
+		default:
+			return nil, fmt.Errorf("workflow transition %q has unknown type %q", transition.ID, transition.Type)
 		}
 		if _, duplicate := transitionIDs[transition.ID]; duplicate {
 			return nil, fmt.Errorf("workflow transition id %q is duplicated", transition.ID)
@@ -1492,6 +1514,14 @@ func validateWorkflowAgainstStatuses(wf workflow.Workflow, statuses []models.Sta
 		}
 		if err := workflow.ValidateTransitionRules(transition); err != nil {
 			return nil, fmt.Errorf("workflow transition %q rules: %w", transition.ID, err)
+		}
+	}
+	for _, status := range wf.Statuses {
+		if status.ApprovalConfiguration == nil {
+			continue
+		}
+		if err := workflow.ValidateApprovalConfiguration(status.StatusReference, *status.ApprovalConfiguration, wf.Transitions); err != nil {
+			return nil, fmt.Errorf("workflow status %q: %w", status.StatusReference, err)
 		}
 	}
 	def, err := json.Marshal(wf)
@@ -1560,7 +1590,7 @@ func (s *Store) WorkflowDraftByID(ctx context.Context, workspaceID, id string) (
 
 // ListWorkflows returns all stored workflow definitions.
 func (s *Store) ListWorkflows(ctx context.Context, workspaceID string) ([]workflow.Workflow, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id,name,def,version,draft_def IS NOT NULL,COALESCE(project_id,''),entity_id::text FROM workflows WHERE workspace_id=$1 OR (id='wf_default' AND workspace_id IS NULL) ORDER BY id`, workspaceID)
+	rows, err := s.Pool.Query(ctx, `SELECT id,name,def,version,draft_def IS NOT NULL,COALESCE(project_id,''),entity_id::text,created_at,COALESCE(published_at,created_at) FROM workflows WHERE workspace_id=$1 OR (id='wf_default' AND workspace_id IS NULL) ORDER BY id`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -1570,13 +1600,15 @@ func (s *Store) ListWorkflows(ctx context.Context, workspaceID string) ([]workfl
 		var wf workflow.Workflow
 		var def []byte
 		var entityID string
-		if err := rows.Scan(&wf.ID, &wf.Name, &def, &wf.Version, &wf.HasDraft, &wf.ProjectID, &entityID); err != nil {
+		var createdAt, updatedAt time.Time
+		if err := rows.Scan(&wf.ID, &wf.Name, &def, &wf.Version, &wf.HasDraft, &wf.ProjectID, &entityID, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(def, &wf); err != nil {
 			return nil, err
 		}
 		wf.EntityID = entityID
+		wf.CreatedAt, wf.UpdatedAt = createdAt, updatedAt
 		out = append(out, wf)
 	}
 	return out, rows.Err()

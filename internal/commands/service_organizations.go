@@ -31,6 +31,33 @@ func (s *Service) requireServiceDeskAgent(ctx context.Context, workspaceID, serv
 	return nil
 }
 
+// requireServiceDeskAdmin allows a service desk's administrators: site
+// administrators and the people who administer the desk's project, as Jira
+// Service Management's service desk administrator permission does.
+// requireServiceDeskAdminAgent requires the agent access Jira asks of project
+// administrators managing request type properties.
+func (s *Service) requireServiceDeskAdminAgent(ctx context.Context, workspaceID, serviceDeskID, actorID string) error {
+	agent, err := s.Store.IsServiceAgent(ctx, workspaceID, serviceDeskID, actorID)
+	if err != nil {
+		return err
+	}
+	if !agent {
+		return fmt.Errorf("service desk administrator with agent access is required")
+	}
+	return nil
+}
+
+func (s *Service) requireServiceDeskAdmin(ctx context.Context, workspaceID, serviceDeskID, actorID string) error {
+	admin, err := s.Store.IsServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID)
+	if err != nil {
+		return err
+	}
+	if !admin {
+		return fmt.Errorf("service desk administrator access is required")
+	}
+	return nil
+}
+
 func (s *Service) requireServiceAdmin(ctx context.Context, workspaceID, actorID string) error {
 	admin, err := s.Store.IsAdmin(ctx, workspaceID, actorID)
 	if err != nil {
@@ -43,8 +70,13 @@ func (s *Service) requireServiceAdmin(ctx context.Context, workspaceID, actorID 
 }
 
 func (s *Service) CreateServiceOrganization(ctx context.Context, actorID, workspaceID, name string) (*models.ServiceOrganization, error) {
-	if err := s.requireAnyServiceAgent(ctx, workspaceID, actorID); err != nil {
+	// Service desk agents and administrators create organizations.
+	staff, err := s.Store.IsAnyServiceDeskStaff(ctx, workspaceID, actorID)
+	if err != nil {
 		return nil, err
+	}
+	if !staff {
+		return nil, fmt.Errorf("service desk agent or administrator access is required")
 	}
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 255 {
@@ -54,7 +86,8 @@ func (s *Service) CreateServiceOrganization(ctx context.Context, actorID, worksp
 }
 
 func (s *Service) DeleteServiceOrganization(ctx context.Context, actorID, workspaceID, organizationID string) error {
-	if err := s.requireAnyServiceAgent(ctx, workspaceID, actorID); err != nil {
+	// Deleting an organization needs the Jira administrator permission.
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
 		return err
 	}
 	return s.Store.DeleteServiceOrganization(ctx, workspaceID, organizationID)
@@ -96,7 +129,7 @@ func (s *Service) SetServiceDeskOrganization(ctx context.Context, actorID, works
 }
 
 func (s *Service) SetServiceDeskCustomers(ctx context.Context, actorID, workspaceID, serviceDeskID string, userIDs []string, add bool) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	if len(userIDs) == 0 {
@@ -106,10 +139,13 @@ func (s *Service) SetServiceDeskCustomers(ctx context.Context, actorID, workspac
 }
 
 func (s *Service) InviteServiceDeskCustomer(ctx context.Context, actorID, workspaceID, serviceDeskID, email, displayName string) (*models.User, error) {
+	// Jira requires the Jira Administrator global permission as well as
+	// service desk administration; site administrators hold both.
 	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
 		return nil, err
 	}
-	if _, err := s.Store.ServiceDesk(ctx, workspaceID, serviceDeskID); err != nil {
+	desk, err := s.Store.ServiceDesk(ctx, workspaceID, serviceDeskID)
+	if err != nil {
 		return nil, fmt.Errorf("service desk does not exist")
 	}
 	email, displayName = strings.TrimSpace(strings.ToLower(email)), strings.TrimSpace(displayName)
@@ -123,6 +159,12 @@ func (s *Service) InviteServiceDeskCustomer(ctx context.Context, actorID, worksp
 	if err := s.Store.SetServiceDeskCustomers(ctx, workspaceID, serviceDeskID, []string{customer.ID}, true); err != nil {
 		return nil, err
 	}
+	// An invitation is an email, as Jira sends.
+	subject := "You're invited to the " + desk.PortalName + " help center"
+	body := "Hi " + customer.DisplayName + ",\n\nYou can now raise and follow requests with " + desk.PortalName + ".\n/service/portals/" + desk.ID
+	if err := s.Store.QueueEmail(ctx, workspaceID, customer.Email, subject, body); err != nil {
+		return nil, err
+	}
 	return customer, nil
 }
 
@@ -134,21 +176,42 @@ func (s *Service) RevokePortalOnlyServiceCustomer(ctx context.Context, actorID, 
 }
 
 func (s *Service) SetServiceDeskCustomerAccess(ctx context.Context, actorID, workspaceID, serviceDeskID string, open bool) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	return s.Store.SetServiceDeskCustomerAccess(ctx, workspaceID, serviceDeskID, open)
 }
 
+// SetServiceDeskAttachmentsEnabled turns attachments on or off for a service
+// desk.
+func (s *Service) SetServiceDeskAttachmentsEnabled(ctx context.Context, actorID, workspaceID, serviceDeskID string, enabled bool) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	return s.Store.SetServiceDeskAttachmentsEnabled(ctx, workspaceID, serviceDeskID, enabled)
+}
+
+// SetServiceDeskFeedbackEnabled turns customer satisfaction feedback on or off
+// for a service desk.
+func (s *Service) SetServiceDeskFeedbackEnabled(ctx context.Context, actorID, workspaceID, serviceDeskID string, enabled bool) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	return s.Store.SetServiceDeskFeedbackEnabled(ctx, workspaceID, serviceDeskID, enabled)
+}
+
 func (s *Service) SetServiceDeskKnowledgeSpace(ctx context.Context, actorID, workspaceID, serviceDeskID, spaceID string, link bool) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	return s.Store.SetServiceDeskKnowledgeSpace(ctx, workspaceID, actorID, serviceDeskID, spaceID, link)
 }
 
 func (s *Service) SetServiceRequestTypeProperty(ctx context.Context, actorID, workspaceID, serviceDeskID, requestTypeID, key string, value json.RawMessage) (bool, error) {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return false, err
+	}
+	if err := s.requireServiceDeskAdminAgent(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return false, err
 	}
 	key = strings.TrimSpace(key)
@@ -159,7 +222,10 @@ func (s *Service) SetServiceRequestTypeProperty(ctx context.Context, actorID, wo
 }
 
 func (s *Service) DeleteServiceRequestTypeProperty(ctx context.Context, actorID, workspaceID, serviceDeskID, requestTypeID, key string) error {
-	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	if err := s.requireServiceDeskAdminAgent(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
 	return s.Store.DeleteServiceRequestTypeProperty(ctx, workspaceID, serviceDeskID, requestTypeID, key)

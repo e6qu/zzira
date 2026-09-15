@@ -28,6 +28,51 @@ const (
 	CustomFieldMultiVersion    = "multiversion"
 )
 
+// CustomFieldTypeLabel names a custom field type as Jira's collapsed JQL
+// fields do: Component[Dropdown] searches every dropdown named Component.
+func CustomFieldTypeLabel(fieldType string) string {
+	switch fieldType {
+	case CustomFieldSelect:
+		return "Dropdown"
+	case CustomFieldMultiSelect:
+		return "Select List (multiple choices)"
+	case CustomFieldCascadingSelect:
+		return "Select List (cascading)"
+	case CustomFieldNumber:
+		return "Number"
+	case CustomFieldDatetime:
+		return "Date Time Picker"
+	case CustomFieldDate:
+		return "Date Picker"
+	case CustomFieldURL:
+		return "URL"
+	case CustomFieldUser:
+		return "User Picker (single user)"
+	case CustomFieldMultiUser:
+		return "User Picker (multiple users)"
+	case CustomFieldGroup:
+		return "Group Picker (single group)"
+	case CustomFieldMultiGroup:
+		return "Group Picker (multiple groups)"
+	case CustomFieldLabels:
+		return "Labels"
+	case CustomFieldProject:
+		return "Project Picker (single project)"
+	case CustomFieldVersion:
+		return "Version Picker (single version)"
+	case CustomFieldMultiVersion:
+		return "Version Picker (multiple versions)"
+	default:
+		return "Short text"
+	}
+}
+
+// CollapsedFieldName is the JQL name that searches every custom field sharing
+// a name and type.
+func CollapsedFieldName(name, fieldType string) string {
+	return name + "[" + CustomFieldTypeLabel(fieldType) + "]"
+}
+
 // Tombstone actions are per-user: only excluded users receive them, telling
 // their replica to drop an issue they can no longer see.
 type TombstonePayload struct {
@@ -319,4 +364,10 @@ type VersionRelatedWork struct {
 	Category  string `json:"category"`
 	Title     string `json:"title,omitempty"`
 	URL       string `json:"url,omitempty"`
+}
+
+// WorkflowAgentTrigger is an agent run a workflow transition requests.
+type WorkflowAgentTrigger struct {
+	AgentID string `json:"agentId"`
+	Prompt  string `json:"promptValue"`
 }

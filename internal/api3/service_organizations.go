@@ -10,7 +10,7 @@ import (
 
 func (h *Handler) serviceOrganizationBean(organization models.ServiceOrganization) map[string]any {
 	return map[string]any{
-		"id": organization.ID, "name": organization.Name, "scimManaged": false,
+		"id": organization.ID, "uuid": organization.UUID, "name": organization.Name, "scimManaged": false, "created": serviceDate(organization.CreatedAt),
 		"_links": map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/organization/" + organization.ID},
 	}
 }
@@ -23,6 +23,23 @@ func (h *Handler) serviceAgentAccess(r *http.Request, workspaceID, actorID strin
 func (h *Handler) serviceDeskAgentAccess(r *http.Request, workspaceID, serviceDeskID, actorID string) bool {
 	agent, err := h.Store.IsServiceAgent(r.Context(), workspaceID, serviceDeskID, actorID)
 	return err == nil && agent
+}
+
+// serviceDeskAdminAccess reports whether the caller administers the service
+// desk: a site administrator or an administrator of the desk's project.
+// serviceDeskAccess reports whether the caller may access the service desk:
+// its administrators, its agents and the users its portal admits.
+func (h *Handler) serviceDeskAccess(r *http.Request, workspaceID, serviceDeskID, actorID string) (bool, error) {
+	allowed, err := h.Store.CanCreateServiceRequest(r.Context(), workspaceID, serviceDeskID, actorID)
+	if err != nil || allowed {
+		return allowed, err
+	}
+	return h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, serviceDeskID, actorID)
+}
+
+func (h *Handler) serviceDeskAdminAccess(r *http.Request, workspaceID, serviceDeskID, actorID string) bool {
+	admin, err := h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, serviceDeskID, actorID)
+	return err == nil && admin
 }
 
 func (h *Handler) createServiceCustomer(w http.ResponseWriter, r *http.Request, workspaceID, actorID string) {
@@ -65,6 +82,8 @@ func (h *Handler) revokeServiceCustomer(w http.ResponseWriter, r *http.Request, 
 	if err := h.Commands.RevokePortalOnlyServiceCustomer(r.Context(), actorID, workspaceID, accountID); err != nil {
 		if strings.Contains(err.Error(), "administrator") {
 			jiraError(w, http.StatusForbidden, err.Error())
+		} else if strings.Contains(err.Error(), "not an active portal-only customer") {
+			jiraError(w, http.StatusNotFound, "The account ID is invalid.")
 		} else {
 			jiraError(w, http.StatusBadRequest, err.Error())
 		}
@@ -80,8 +99,8 @@ func (h *Handler) serviceOrganizations(w http.ResponseWriter, r *http.Request, w
 		return
 	}
 	if r.Method == http.MethodPost {
-		if !agent {
-			jiraError(w, http.StatusForbidden, "Service agent access is required.")
+		if staff, err := h.Store.IsAnyServiceDeskStaff(r.Context(), workspaceID, actorID); err != nil || !staff {
+			jiraError(w, http.StatusForbidden, "Service desk agent or administrator access is required.")
 			return
 		}
 		var input struct {
@@ -128,8 +147,8 @@ func (h *Handler) serviceOrganization(w http.ResponseWriter, r *http.Request, wo
 		return
 	}
 	if r.Method == http.MethodDelete {
-		if !agent {
-			jiraError(w, http.StatusForbidden, "Service agent access is required.")
+		if admin, err := h.Store.IsAdmin(r.Context(), workspaceID, actorID); err != nil || !admin {
+			jiraError(w, http.StatusForbidden, "Jira administrator access is required.")
 			return
 		}
 		if err := h.Commands.DeleteServiceOrganization(r.Context(), actorID, workspaceID, organization.ID); err != nil {
@@ -264,7 +283,7 @@ func (h *Handler) serviceOrganizationUsers(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *Handler) serviceDeskCustomers(w http.ResponseWriter, r *http.Request, workspaceID, actorID, serviceDeskID string) {
-	if !h.serviceDeskAgentAccess(r, workspaceID, serviceDeskID, actorID) {
+	if !h.serviceDeskAgentAccess(r, workspaceID, serviceDeskID, actorID) && !h.serviceDeskAdminAccess(r, workspaceID, serviceDeskID, actorID) {
 		jiraError(w, http.StatusForbidden, "Service agent access is required.")
 		return
 	}
@@ -323,6 +342,10 @@ func (h *Handler) inviteServiceDeskCustomer(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *Handler) serviceDeskOrganizations(w http.ResponseWriter, r *http.Request, workspaceID, actorID, serviceDeskID string) {
+	if _, err := h.Store.ServiceDesk(r.Context(), workspaceID, serviceDeskID); err != nil {
+		jiraError(w, http.StatusNotFound, "The service desk does not exist.")
+		return
+	}
 	if !h.serviceDeskAgentAccess(r, workspaceID, serviceDeskID, actorID) {
 		jiraError(w, http.StatusForbidden, "Service agent access is required.")
 		return
@@ -333,9 +356,28 @@ func (h *Handler) serviceDeskOrganizations(w http.ResponseWriter, r *http.Reques
 			jiraError(w, http.StatusInternalServerError, "Could not load service desk organizations.")
 			return
 		}
+		// accountId narrows the list to the organizations the user belongs to.
+		member := map[string]bool(nil)
+		if accountID := r.URL.Query().Get("accountId"); accountID != "" {
+			if _, err := h.Store.UserByID(r.Context(), accountID); err != nil {
+				jiraError(w, http.StatusNotFound, "The user does not exist.")
+				return
+			}
+			memberships, err := h.Store.ServiceOrganizations(r.Context(), workspaceID, actorID, accountID, true)
+			if err != nil {
+				jiraError(w, http.StatusInternalServerError, "Could not load service desk organizations.")
+				return
+			}
+			member = make(map[string]bool, len(memberships))
+			for _, organization := range memberships {
+				member[organization.ID] = true
+			}
+		}
 		beans := make([]map[string]any, 0, len(organizations))
 		for _, organization := range organizations {
-			beans = append(beans, h.serviceOrganizationBean(organization))
+			if member == nil || member[organization.ID] {
+				beans = append(beans, h.serviceOrganizationBean(organization))
+			}
 		}
 		h.writeServicePage(w, r, beans)
 		return
@@ -350,7 +392,11 @@ func (h *Handler) serviceDeskOrganizations(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := h.Commands.SetServiceDeskOrganization(r.Context(), actorID, workspaceID, serviceDeskID, input.OrganizationID.String(), r.Method == http.MethodPost); err != nil {
-		jiraError(w, http.StatusBadRequest, err.Error())
+		if strings.Contains(err.Error(), "does not exist") {
+			jiraError(w, http.StatusNotFound, "The organization does not exist.")
+		} else {
+			jiraError(w, http.StatusBadRequest, err.Error())
+		}
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -3,6 +3,8 @@ package api3
 import (
 	"encoding/json"
 	"errors"
+	"github.com/e6qu/zzira/internal/apps"
+	"github.com/e6qu/zzira/internal/authz"
 	"net/http"
 	"strconv"
 	"strings"
@@ -87,7 +89,7 @@ func permissionExpand(r *http.Request) (bool, error) {
 	return expanded, nil
 }
 
-func (h *Handler) permissionGrantBean(schemeID int64, grant models.PermissionGrant) map[string]any {
+func (h *Handler) permissionGrantBean(x *holderExpander, schemeID int64, grant models.PermissionGrant) map[string]any {
 	holder := map[string]any{"type": grant.HolderType}
 	if grant.HolderParameter != "" {
 		holder["parameter"] = grant.HolderParameter
@@ -95,13 +97,14 @@ func (h *Handler) permissionGrantBean(schemeID int64, grant models.PermissionGra
 	if grant.HolderValue != "" {
 		holder["value"] = grant.HolderValue
 	}
+	x.expand(holder, permissionHolderKind(grant.HolderType), grant.HolderValue)
 	return map[string]any{
 		"id": grant.ID, "self": h.BaseURL + "/rest/api/3/permissionscheme/" + strconv.FormatInt(schemeID, 10) + "/permission/" + strconv.FormatInt(grant.ID, 10),
 		"permission": grant.Permission, "holder": holder,
 	}
 }
 
-func (h *Handler) permissionSchemeBean(scheme *models.PermissionScheme, expanded bool) map[string]any {
+func (h *Handler) permissionSchemeBean(x *holderExpander, scheme *models.PermissionScheme, expanded bool) map[string]any {
 	bean := map[string]any{
 		"id": scheme.ID, "self": h.BaseURL + "/rest/api/3/permissionscheme/" + strconv.FormatInt(scheme.ID, 10),
 		"name": scheme.Name, "description": scheme.Description,
@@ -110,7 +113,7 @@ func (h *Handler) permissionSchemeBean(scheme *models.PermissionScheme, expanded
 	if expanded {
 		permissions := make([]map[string]any, 0, len(scheme.Grants))
 		for _, grant := range scheme.Grants {
-			permissions = append(permissions, h.permissionGrantBean(scheme.ID, grant))
+			permissions = append(permissions, h.permissionGrantBean(x, scheme.ID, grant))
 		}
 		bean["permissions"] = permissions
 		bean["expand"] = "permissions"
@@ -143,7 +146,7 @@ func (h *Handler) permissionSchemeRoute(w http.ResponseWriter, r *http.Request, 
 			}
 			values := make([]map[string]any, 0, len(schemes))
 			for _, scheme := range schemes {
-				values = append(values, h.permissionSchemeBean(scheme, expanded))
+				values = append(values, h.permissionSchemeBean(h.newHolderExpander(r, workspaceID), scheme, expanded))
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"permissionSchemes": values})
 			return
@@ -167,7 +170,7 @@ func (h *Handler) permissionSchemeRoute(w http.ResponseWriter, r *http.Request, 
 				permissionSchemeError(w, createErr)
 				return
 			}
-			writeJSON(w, http.StatusCreated, h.permissionSchemeBean(scheme, expanded))
+			writeJSON(w, http.StatusCreated, h.permissionSchemeBean(h.newHolderExpander(r, workspaceID), scheme, expanded))
 			return
 		}
 		jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -202,7 +205,7 @@ func (h *Handler) permissionSchemeRoute(w http.ResponseWriter, r *http.Request, 
 			permissionSchemeError(w, getErr)
 			return
 		}
-		writeJSON(w, http.StatusOK, h.permissionSchemeBean(scheme, expanded))
+		writeJSON(w, http.StatusOK, h.permissionSchemeBean(h.newHolderExpander(r, workspaceID), scheme, expanded))
 	case http.MethodPut:
 		workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
 		if authErr != nil {
@@ -223,7 +226,7 @@ func (h *Handler) permissionSchemeRoute(w http.ResponseWriter, r *http.Request, 
 			permissionSchemeError(w, updateErr)
 			return
 		}
-		writeJSON(w, http.StatusOK, h.permissionSchemeBean(scheme, expanded))
+		writeJSON(w, http.StatusOK, h.permissionSchemeBean(h.newHolderExpander(r, workspaceID), scheme, expanded))
 	case http.MethodDelete:
 		workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
 		if authErr != nil {
@@ -256,7 +259,7 @@ func (h *Handler) permissionGrantRoute(w http.ResponseWriter, r *http.Request, s
 			}
 			values := make([]map[string]any, 0, len(grants))
 			for _, grant := range grants {
-				values = append(values, h.permissionGrantBean(schemeID, grant))
+				values = append(values, h.permissionGrantBean(h.newHolderExpander(r, workspaceID), schemeID, grant))
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"permissions": values, "expand": "permissions"})
 		case http.MethodPost:
@@ -273,7 +276,7 @@ func (h *Handler) permissionGrantRoute(w http.ResponseWriter, r *http.Request, s
 				permissionSchemeError(w, err)
 				return
 			}
-			writeJSON(w, http.StatusCreated, h.permissionGrantBean(schemeID, grant))
+			writeJSON(w, http.StatusCreated, h.permissionGrantBean(h.newHolderExpander(r, workspaceID), schemeID, grant))
 		default:
 			jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		}
@@ -299,7 +302,7 @@ func (h *Handler) permissionGrantRoute(w http.ResponseWriter, r *http.Request, s
 			permissionSchemeError(w, getErr)
 			return
 		}
-		writeJSON(w, http.StatusOK, h.permissionGrantBean(schemeID, grant))
+		writeJSON(w, http.StatusOK, h.permissionGrantBean(h.newHolderExpander(r, workspaceID), schemeID, grant))
 		return
 	}
 	if r.Method == http.MethodDelete {
@@ -350,7 +353,7 @@ func (h *Handler) projectPermissionSchemeRoute(w http.ResponseWriter, r *http.Re
 			jiraError(w, http.StatusForbidden, "Administer Jira or Administer projects permission is required.")
 			return
 		}
-		writeJSON(w, http.StatusOK, h.permissionSchemeBean(scheme, expanded))
+		writeJSON(w, http.StatusOK, h.permissionSchemeBean(h.newHolderExpander(r, workspaceID), scheme, expanded))
 		return
 	}
 	if r.Method == http.MethodPut {
@@ -374,10 +377,24 @@ func (h *Handler) projectPermissionSchemeRoute(w http.ResponseWriter, r *http.Re
 			permissionSchemeError(w, assignErr)
 			return
 		}
-		writeJSON(w, http.StatusOK, h.permissionSchemeBean(scheme, expanded))
+		writeJSON(w, http.StatusOK, h.permissionSchemeBean(h.newHolderExpander(r, workspaceID), scheme, expanded))
 		return
 	}
 	jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
+}
+
+// permissionCatalog lists Jira's permissions and those the site's apps declare,
+// indexed by key.
+func (h *Handler) permissionCatalog(r *http.Request, workspaceID string) ([]store.PermissionDefinition, map[string]store.PermissionDefinition, error) {
+	definitions, err := h.Store.PermissionCatalog(r.Context(), workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	byKey := make(map[string]store.PermissionDefinition, len(definitions))
+	for _, definition := range definitions {
+		byKey[definition.Key] = definition
+	}
+	return definitions, byKey, nil
 }
 
 func (h *Handler) allPermissions(w http.ResponseWriter, r *http.Request) {
@@ -386,8 +403,13 @@ func (h *Handler) allPermissions(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, authErr)
 		return
 	}
+	catalog, _, err := h.permissionCatalog(r, workspaceID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not evaluate permissions.")
+		return
+	}
 	permissions := map[string]any{}
-	for _, definition := range store.PermissionDefinitions() {
+	for _, definition := range catalog {
 		have := false
 		var err error
 		if definition.Type == "GLOBAL" {
@@ -433,15 +455,21 @@ func (h *Handler) bulkPermissions(w http.ResponseWriter, r *http.Request) {
 	userID := request.AccountID
 	if userID == "" {
 		userID = actorID
-	} else if userID != actorID {
+	} else if _, fromApp := apps.InstallationFromContext(r.Context()); userID != actorID && !fromApp {
+		// A Connect app calling from its server may check any user.
 		admin, err := h.Store.HasGlobalPermission(r.Context(), workspaceID, actorID, "ADMINISTER")
 		if err != nil || !admin {
 			jiraError(w, http.StatusForbidden, "Administer Jira permission is required to inspect another user.")
 			return
 		}
 	}
-	if len(request.ProjectPermissions) > 1000 {
-		jiraError(w, http.StatusBadRequest, "No more than 1000 project permission entries can be checked.")
+	// Jira checks at most 1000 projects and 1000 issues across the request.
+	projectCount, issueCount := 0, 0
+	for _, entry := range request.ProjectPermissions {
+		projectCount, issueCount = projectCount+len(entry.Projects), issueCount+len(entry.Issues)
+	}
+	if projectCount > 1000 || issueCount > 1000 {
+		jiraError(w, http.StatusBadRequest, "No more than 1000 projects and 1000 issues can be checked.")
 		return
 	}
 	global := []string{}
@@ -452,10 +480,6 @@ func (h *Handler) bulkPermissions(w http.ResponseWriter, r *http.Request) {
 	}
 	projectGrants := []map[string]any{}
 	for _, entry := range request.ProjectPermissions {
-		if len(entry.Projects) > 1000 || len(entry.Issues) > 1000 {
-			jiraError(w, http.StatusBadRequest, "No more than 1000 projects and 1000 issues can be checked.")
-			return
-		}
 		for _, permission := range entry.Permissions {
 			if permission == "" {
 				continue
@@ -525,11 +549,12 @@ func (h *Handler) permissionContext(r *http.Request, workspaceID string) (projec
 	values := r.URL.Query()
 	projectKey, projectIDQuery := values.Get("projectKey"), values.Get("projectId")
 	issueKey, issueIDQuery := values.Get("issueKey"), values.Get("issueId")
-	if projectKey != "" && projectIDQuery != "" {
-		return "", "", &jerr{status: http.StatusBadRequest, message: "projectKey and projectId cannot be used together."}
+	// As in Jira, a key is ignored when the id is given.
+	if projectIDQuery != "" {
+		projectKey = ""
 	}
-	if issueKey != "" && issueIDQuery != "" {
-		return "", "", &jerr{status: http.StatusBadRequest, message: "issueKey and issueId cannot be used together."}
+	if issueIDQuery != "" {
+		issueKey = ""
 	}
 	issueID = issueKey
 	if issueID == "" {
@@ -592,18 +617,43 @@ func (h *Handler) myPermissions(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, contextErr)
 		return
 	}
+	// The project or work item must be one the caller can see.
+	if issueID != "" {
+		issue, err := h.Store.IssueByIDOrKey(r.Context(), workspaceID, issueID)
+		if err != nil {
+			jiraError(w, http.StatusNotFound, "The issue does not exist.")
+			return
+		}
+		visible, err := authz.CanSeeIssue(r.Context(), h.Store, workspaceID, issue.ProjectID, userID, issue.ID, issue.SecurityLevelID)
+		if err != nil || !visible {
+			jiraError(w, http.StatusNotFound, "The issue does not exist.")
+			return
+		}
+	} else if projectID != "" {
+		if allowed, err := h.canBrowseProject(r, workspaceID, userID, projectID); err != nil || !allowed {
+			jiraError(w, http.StatusNotFound, "The project does not exist.")
+			return
+		}
+	}
+	_, byKey, catalogErr := h.permissionCatalog(r, workspaceID)
+	if catalogErr != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not evaluate permissions.")
+		return
+	}
 	keys := requestedPermissionKeys(r.URL.Query().Get("permissions"))
 	if len(keys) == 0 {
-		for _, definition := range store.PermissionDefinitions() {
-			keys = append(keys, definition.Key)
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"permissions": "At least one permission is required."})
+		return
+	}
+	for _, key := range keys {
+		if _, known := byKey[key]; !known {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"permissions": "Unknown permission: " + key})
+			return
 		}
 	}
 	permissions := map[string]any{}
 	for _, key := range keys {
-		definition, known := store.PermissionDefinitionByKey(key)
-		if !known {
-			continue
-		}
+		definition := byKey[key]
 		have := false
 		var err error
 		if definition.Type == "GLOBAL" {
@@ -678,6 +728,11 @@ func (h *Handler) usersWithPermissions(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "Could not search users.")
 		return
 	}
+	_, catalog, err := h.permissionCatalog(r, workspaceID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not search users.")
+		return
+	}
 	if startAt > 1000 || startAt >= len(members) {
 		writeJSON(w, http.StatusOK, []any{})
 		return
@@ -693,7 +748,7 @@ func (h *Handler) usersWithPermissions(w http.ResponseWriter, r *http.Request) {
 		}
 		allowed := true
 		for _, permission := range permissions {
-			definition, known := store.PermissionDefinitionByKey(permission)
+			definition, known := catalog[permission]
 			if !known {
 				allowed = false
 				break
@@ -714,7 +769,7 @@ func (h *Handler) usersWithPermissions(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if allowed {
-			results = append(results, h.userBean(member))
+			results = append(results, h.userBeanFor(r.Context(), member))
 		}
 	}
 	writeJSON(w, http.StatusOK, results)

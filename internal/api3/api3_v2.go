@@ -50,36 +50,53 @@ func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	categories, err := h.projectCategoryMap(r.Context(), wsID)
+	if raw := r.URL.Query().Get("recent"); raw != "" {
+		// recent returns the caller's most recently viewed projects, up to 20.
+		limit, parseErr := strconv.Atoi(raw)
+		if parseErr != nil || limit < 0 {
+			jiraError(w, http.StatusBadRequest, "recent must be a non-negative integer.")
+			return
+		}
+		recent, recentErr := h.Store.RecentProjects(r.Context(), wsID, userID)
+		if recentErr != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		browsable := map[string]bool{}
+		for _, p := range projects {
+			browsable[p.ID] = true
+		}
+		projects = projects[:0]
+		for _, p := range recent {
+			if browsable[p.ID] && len(projects) < min(limit, 20) {
+				projects = append(projects, p)
+			}
+		}
+	}
+	view, err := h.newProjectView(r, wsID, false)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	out := make([]map[string]any, 0, len(projects))
 	for _, p := range projects {
-		bean := h.projectBean(p)
-		if category := categories[p.CategoryID]; category != nil {
-			bean["projectCategory"] = h.categoryBean(category)
+		bean, beanErr := h.projectRepresentation(r, wsID, userID, p, view)
+		if beanErr != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
 		out = append(out, bean)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
+// searchProjects pages the projects the caller may act on, as Jira's project
+// search does: by action and status, with filters, property queries,
+// ordering and expansions.
 func (h *Handler) searchProjects(w http.ResponseWriter, r *http.Request) {
 	wsID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
-		return
-	}
-	projects, err := h.Store.ProjectsWithPermissions(r.Context(), wsID, userID, []string{"BROWSE_PROJECTS"})
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	categories, err := h.projectCategoryMap(r.Context(), wsID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	start, limit, e := metadataPage(r)
@@ -87,18 +104,88 @@ func (h *Handler) searchProjects(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, e)
 		return
 	}
-	projects, e = filterProjects(r, projects)
+	permissions := map[string][]string{
+		"view": {"BROWSE_PROJECTS", "ADMINISTER_PROJECTS"}, "browse": {"BROWSE_PROJECTS"},
+		"edit": {"ADMINISTER_PROJECTS"}, "create": {"CREATE_ISSUES"},
+	}
+	action := strings.ToLower(r.URL.Query().Get("action"))
+	if action == "" {
+		action = "view"
+	}
+	anyOf, known := permissions[action]
+	if !known {
+		jiraError(w, http.StatusBadRequest, "action must be view, browse, edit or create.")
+		return
+	}
+	states := commaQuerySet(r, "status")
+	if len(states) == 0 {
+		states = map[string]struct{}{"live": {}}
+	}
+	lifecycle := map[string]string{"live": store.ProjectLifecycleActive, "archived": store.ProjectLifecycleArchived, "deleted": store.ProjectLifecycleTrashed}
+	candidates := []*models.Project{}
+	for state := range states {
+		stored, ok := lifecycle[state]
+		if !ok {
+			jiraError(w, http.StatusBadRequest, "status must be live, archived or deleted.")
+			return
+		}
+		projects, err := h.Store.ProjectsByLifecycle(r.Context(), wsID, stored)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		candidates = append(candidates, projects...)
+	}
+	propertyQuery, err := parseProjectPropertyQuery(r.URL.Query().Get("propertyQuery"))
+	if err != nil {
+		jiraError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	projects, e := filterProjects(r, candidates)
 	if e != nil {
 		writeJerr(w, e)
+		return
+	}
+	permitted := projects[:0]
+	for _, p := range projects {
+		allowed := false
+		for _, permission := range anyOf {
+			granted, permissionErr := h.hasProjectPermission(r.Context(), wsID, userID, p.ID, "", permission)
+			if permissionErr != nil {
+				jiraError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if granted {
+				allowed = true
+				break
+			}
+		}
+		if allowed && propertyQuery != nil {
+			properties, propertyErr := h.Store.ProjectProperties(r.Context(), wsID, p.ID)
+			allowed = propertyErr == nil && propertyQuery.matches(properties)
+		}
+		if allowed {
+			permitted = append(permitted, p)
+		}
+	}
+	projects = permitted
+	view, err := h.newProjectView(r, wsID, false)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if err = h.orderProjects(r, wsID, projects, view.categories); err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	total := len(projects)
 	end := min(start, total) + min(limit, total-min(start, total))
 	values := make([]map[string]any, 0, end-min(start, total))
 	for _, p := range projects[min(start, total):end] {
-		bean := h.projectBean(p)
-		if category := categories[p.CategoryID]; category != nil {
-			bean["projectCategory"] = h.categoryBean(category)
+		bean, beanErr := h.projectRepresentation(r, wsID, userID, p, view)
+		if beanErr != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
 		values = append(values, bean)
 	}
@@ -114,6 +201,69 @@ func (h *Handler) searchProjects(w http.ResponseWriter, r *http.Request) {
 		page["nextPage"] = h.projectPageURL(r, end, limit)
 	}
 	writeJSON(w, http.StatusOK, page)
+}
+
+// orderProjects applies the orderings that need more than a project's key and
+// name: category, lead, issue counts and lifecycle dates.
+func (h *Handler) orderProjects(r *http.Request, workspaceID string, projects []*models.Project, categories map[string]*models.ProjectCategory) error {
+	order := r.URL.Query().Get("orderBy")
+	field := strings.TrimLeft(order, "+-")
+	descending := strings.HasPrefix(order, "-")
+	var sortKey func(*models.Project) (string, int64)
+	switch field {
+	case "category":
+		sortKey = func(p *models.Project) (string, int64) {
+			if category := categories[p.CategoryID]; category != nil {
+				return strings.ToLower(category.Name), 0
+			}
+			return "", 0
+		}
+	case "owner":
+		leads := map[string]string{}
+		for _, p := range projects {
+			if _, seen := leads[p.LeadAccountID]; seen || p.LeadAccountID == "" {
+				continue
+			}
+			if lead, err := h.Store.UserByID(r.Context(), p.LeadAccountID); err == nil {
+				leads[p.LeadAccountID] = strings.ToLower(lead.DisplayName)
+			}
+		}
+		sortKey = func(p *models.Project) (string, int64) { return leads[p.LeadAccountID], 0 }
+	case "issueCount", "lastIssueUpdatedDate":
+		counts, updated := map[string]int64{}, map[string]int64{}
+		for _, p := range projects {
+			count, last, err := h.Store.ProjectInsight(r.Context(), workspaceID, p.ID)
+			if err != nil {
+				return err
+			}
+			counts[p.ID], updated[p.ID] = int64(count), last
+		}
+		sortKey = func(p *models.Project) (string, int64) {
+			if field == "issueCount" {
+				return "", counts[p.ID]
+			}
+			return "", updated[p.ID]
+		}
+	case "archivedDate":
+		sortKey = func(p *models.Project) (string, int64) { return p.ArchivedAt, 0 }
+	case "deletedDate":
+		sortKey = func(p *models.Project) (string, int64) { return p.TrashedAt, 0 }
+	default:
+		return nil
+	}
+	sort.SliceStable(projects, func(i, j int) bool {
+		leftText, leftNumber := sortKey(projects[i])
+		rightText, rightNumber := sortKey(projects[j])
+		if leftText == rightText && leftNumber == rightNumber {
+			return projects[i].Key < projects[j].Key
+		}
+		less := leftText < rightText || leftText == rightText && leftNumber < rightNumber
+		if descending {
+			return !less
+		}
+		return less
+	})
+	return nil
 }
 
 func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, keyOrID string) {
@@ -140,11 +290,13 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request, keyOrID str
 		jiraError(w, http.StatusNotFound, "No project could be found with key or id "+keyOrID+".")
 		return
 	}
-	if err = h.Store.RecordProjectView(r.Context(), wsID, userID, project.ID); err != nil {
-		jiraError(w, http.StatusInternalServerError, "internal error")
-		return
+	if userID != "" {
+		if err = h.Store.RecordProjectView(r.Context(), wsID, userID, project.ID); err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
 	}
-	h.writeProject(w, r, project)
+	h.writeProject(w, r, userID, project)
 }
 
 // ---- createmeta ----
@@ -155,7 +307,7 @@ func (h *Handler) createMeta(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, e)
 		return
 	}
-	meta, err := h.Store.IssueCreateMetadata(r.Context(), wsID, userID)
+	meta, err := h.creatableMetadata(r, wsID, userID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -267,7 +419,7 @@ func (h *Handler) createMetaProject(r *http.Request, projectIDOrKey string) (*mo
 	if e != nil {
 		return nil, e
 	}
-	meta, err := h.Store.IssueCreateMetadata(r.Context(), wsID, userID)
+	meta, err := h.creatableMetadata(r, wsID, userID)
 	if err != nil {
 		return nil, &jerr{http.StatusInternalServerError, "internal error", nil}
 	}
@@ -278,6 +430,44 @@ func (h *Handler) createMetaProject(r *http.Request, projectIDOrKey string) (*mo
 		}
 	}
 	return nil, &jerr{http.StatusBadRequest, "You cannot create issues in this project.", nil}
+}
+
+// creatableMetadata is the create metadata for the projects where the caller
+// holds Create issues; the project field offers only those projects.
+func (h *Handler) creatableMetadata(r *http.Request, workspaceID, userID string) (*models.IssueCreateMetadata, error) {
+	meta, err := h.Store.IssueCreateMetadata(r.Context(), workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	creatable, err := h.Store.ProjectsWithPermissions(r.Context(), workspaceID, userID, []string{"CREATE_ISSUES"})
+	if err != nil {
+		return nil, err
+	}
+	allowed := map[string]bool{}
+	for _, project := range creatable {
+		allowed[project.ID] = true
+	}
+	projects := meta.Projects[:0]
+	for _, project := range meta.Projects {
+		if !allowed[project.Project.ID] {
+			continue
+		}
+		for i := range project.Fields {
+			if project.Fields[i].ID != "project" {
+				continue
+			}
+			options := []models.CreateFieldOption{}
+			for _, option := range project.Fields[i].Options {
+				if allowed[option.ID] {
+					options = append(options, option)
+				}
+			}
+			project.Fields[i].Options = options
+		}
+		projects = append(projects, project)
+	}
+	meta.Projects = projects
+	return meta, nil
 }
 
 // createMetaIssueTypeBean is the issue type bean create metadata carries: the
@@ -305,6 +495,9 @@ func (h *Handler) legacyCreateFieldBean(field models.CreateFieldMeta) map[string
 		bean["hasDefaultValue"] = false
 	}
 	bean["operations"] = []string{"set"}
+	if field.ID == "timetracking" {
+		bean["operations"] = []string{"set", "edit"}
+	}
 	return bean
 }
 
@@ -414,9 +607,9 @@ func (h *Handler) compileJQL(ctx context.Context, workspaceID, raw, currentUser 
 	if err := h.Store.ExpandAppJQL(ctx, workspaceID, q); err != nil {
 		return jql.Compiled{}, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
 	}
-	resolver := jql.DefaultResolver()
-	if customFields, err := h.Store.CustomFieldsForWorkspace(ctx, workspaceID); err == nil {
-		resolver = jql.WithCustomFields(resolver, customFields)
+	resolver, err := h.Store.JQLResolver(ctx, workspaceID)
+	if err != nil {
+		return jql.Compiled{}, &jerr{http.StatusInternalServerError, "internal error", nil}
 	}
 	// offset 2: store.Search reserves $1 for the workspace predicate
 	c := jql.CompileAt(q, currentUser, resolver, 2)
@@ -424,6 +617,43 @@ func (h *Handler) compileJQL(ctx context.Context, workspaceID, raw, currentUser 
 		return jql.Compiled{}, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + c.Err.Error(), nil}
 	}
 	return c, nil
+}
+
+// compileJQLValidated compiles a query under Jira's validation modes.
+// Malformed JQL is always refused. strict (and its legacy synonym true)
+// reports every clause error; warn (and false) reports them as warnings while
+// the failing clauses match nothing; none reports nothing.
+func (h *Handler) compileJQLValidated(ctx context.Context, workspaceID, raw, currentUser, mode string) (compiled jql.Compiled, warnings, errors []string, failure *jerr) {
+	if raw == "" {
+		raw = "ORDER BY updated DESC"
+	}
+	q, err := jql.Parse(raw)
+	if err != nil {
+		return jql.Compiled{}, nil, nil, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
+	}
+	if err = h.Store.ExpandAppJQL(ctx, workspaceID, q); err != nil {
+		return jql.Compiled{}, nil, nil, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
+	}
+	resolver, resolverErr := h.Store.JQLResolver(ctx, workspaceID)
+	if resolverErr != nil {
+		return jql.Compiled{}, nil, nil, &jerr{http.StatusInternalServerError, "internal error", nil}
+	}
+	compiled = jql.CompileLenientAt(q, currentUser, resolver, 2)
+	if compiled.Err != nil {
+		return jql.Compiled{}, nil, nil, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + compiled.Err.Error(), nil}
+	}
+	messages := make([]string, 0, len(compiled.Warnings))
+	for _, warning := range compiled.Warnings {
+		messages = append(messages, "Error in the JQL Query: "+warning)
+	}
+	switch mode {
+	case "none":
+		return compiled, nil, nil, nil
+	case "warn", "false":
+		return compiled, messages, nil, nil
+	default:
+		return compiled, nil, messages, nil
+	}
 }
 
 const defaultSearchPageSize = 50
@@ -476,9 +706,13 @@ func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, jqlText stri
 		writeJerr(w, e)
 		return
 	}
-	c, e := h.compileJQL(r.Context(), wsID, jqlText, userID)
+	c, warnings, validationErrors, e := h.compileJQLValidated(r.Context(), wsID, jqlText, userID, options.Validate)
 	if e != nil {
 		writeJerr(w, e)
+		return
+	}
+	if len(validationErrors) > 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"errorMessages": validationErrors, "errors": map[string]string{}})
 		return
 	}
 	issues, total, err := h.Store.Search(r.Context(), wsID, userID, c, maxResults, startAt)
@@ -503,6 +737,9 @@ func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, jqlText stri
 		"maxResults": maxResults,
 		"total":      total,
 		"issues":     beans,
+	}
+	if len(warnings) > 0 {
+		response["warningMessages"] = warnings
 	}
 	requested := normalizeSearchFields(options.Fields, definitions, options.FieldsByKeys)
 	names, schemas := searchFieldMetadata(requested, true, options.FieldsByKeys, definitions)

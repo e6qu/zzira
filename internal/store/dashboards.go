@@ -25,9 +25,21 @@ type DashboardDetails struct {
 	NewOwnerID string `json:"-"`
 }
 
-const dashboardAccess = `(d.owner_id=$2 OR d.share_permissions @> '[{"type":"loggedin"}]'::jsonb OR d.edit_permissions @> '[{"type":"loggedin"}]'::jsonb OR EXISTS(SELECT 1 FROM jsonb_array_elements(d.share_permissions || d.edit_permissions) perm WHERE perm->'user'->>'accountId'=$2))`
-const dashboardWritable = `(d.owner_id=$2 OR d.edit_permissions @> '[{"type":"loggedin"}]'::jsonb OR EXISTS(SELECT 1 FROM jsonb_array_elements(d.edit_permissions) perm WHERE perm->'user'->>'accountId'=$2))`
-const dashboardSelect = `SELECT d.id,d.workspace_id,d.owner_id,u.display_name,d.name,d.description,d.share_permissions,d.edit_permissions,d.layout,d.refresh_ms,EXISTS(SELECT 1 FROM dashboard_favourites f WHERE f.dashboard_id=d.id AND f.user_id=$2),(SELECT count(*) FROM dashboard_favourites f WHERE f.dashboard_id=d.id),` + dashboardWritable + ` FROM dashboards d JOIN users u ON u.id=d.owner_id WHERE d.workspace_id=$1 AND NOT d.deleted AND EXISTS(SELECT 1 FROM memberships m WHERE m.workspace_id=$1 AND m.user_id=$2 AND EXISTS (SELECT 1 FROM sites si JOIN directories dr ON dr.organization_id=si.organization_id JOIN directory_users du ON du.directory_id=dr.id AND du.user_id=m.user_id WHERE si.workspace_id=m.workspace_id AND dr.active AND du.active)) AND ` + dashboardAccess
+// dashboardShareMatch decides whether the user in $2 is among the people a
+// share list names: everyone signed in, a user, a group's members, the people
+// who can browse a shared project, or the members of a shared project role.
+func dashboardShareMatch(list string) string {
+	return `EXISTS(SELECT 1 FROM jsonb_array_elements(` + list + `) perm WHERE perm->>'type'='loggedin'
+		OR perm->'user'->>'accountId'=$2
+		OR (perm->>'type'='group' AND EXISTS(SELECT 1 FROM group_members gm JOIN groups g ON g.id=gm.group_id JOIN directories dr ON dr.id=g.directory_id WHERE g.id::text=perm->'group'->>'groupId' AND gm.user_id=$2 AND dr.active))
+		OR (perm->>'type'='project' AND jira_has_project_permission(d.workspace_id, perm->'project'->>'id', $2::text, NULL, 'BROWSE_PROJECTS'))
+		OR (perm->>'type'='projectRole' AND EXISTS(SELECT 1 FROM role_bindings rb WHERE rb.scope_type='project' AND rb.scope_id=perm->'project'->>'id' AND rb.role_key=perm->'role'->>'id'
+			AND ((rb.principal_type='user' AND rb.principal_id=$2) OR (rb.principal_type='group' AND EXISTS(SELECT 1 FROM group_members gm JOIN groups g ON g.id=gm.group_id JOIN directories dr ON dr.id=g.directory_id WHERE gm.group_id::text=rb.principal_id AND gm.user_id=$2 AND dr.active))))))`
+}
+
+var dashboardAccess = `(d.owner_id=$2 OR ` + dashboardShareMatch("d.share_permissions || d.edit_permissions") + `)`
+var dashboardWritable = `(d.owner_id=$2 OR ` + dashboardShareMatch("d.edit_permissions") + `)`
+var dashboardSelect = `SELECT d.id,d.workspace_id,d.owner_id,u.display_name,d.name,d.description,d.share_permissions,d.edit_permissions,d.layout,d.refresh_ms,EXISTS(SELECT 1 FROM dashboard_favourites f WHERE f.dashboard_id=d.id AND f.user_id=$2),(SELECT count(*) FROM dashboard_favourites f WHERE f.dashboard_id=d.id),` + dashboardWritable + ` FROM dashboards d JOIN users u ON u.id=d.owner_id WHERE d.workspace_id=$1 AND NOT d.deleted AND EXISTS(SELECT 1 FROM memberships m WHERE m.workspace_id=$1 AND m.user_id=$2 AND EXISTS (SELECT 1 FROM sites si JOIN directories dr ON dr.organization_id=si.organization_id JOIN directory_users du ON du.directory_id=dr.id AND du.user_id=m.user_id WHERE si.workspace_id=m.workspace_id AND dr.active AND du.active)) AND ` + dashboardAccess
 
 func scanDashboard(row pgx.Row) (*models.Dashboard, error) {
 	d := &models.Dashboard{}
@@ -63,7 +75,24 @@ func (s *Store) Dashboards(ctx context.Context, ws, user string) ([]*models.Dash
 	}
 	return out, rows.Err()
 }
+
+type dashboardAdministrationKey struct{}
+
+// WithDashboardAdministration marks a change made with Jira's
+// extendAdminPermissions: a site administrator acting on any dashboard.
+func WithDashboardAdministration(ctx context.Context) context.Context {
+	return context.WithValue(ctx, dashboardAdministrationKey{}, true)
+}
+
 func lockDashboard(ctx context.Context, tx pgx.Tx, ws, user, id string, ownerOnly bool) (*models.Dashboard, error) {
+	if extended, _ := ctx.Value(dashboardAdministrationKey{}).(bool); extended {
+		if err := projectAdmin(ctx, tx, ws, user); err != nil {
+			return nil, ErrDashboardPermission
+		}
+		// Administration reaches dashboards the administrator was not shared.
+		unshared := strings.Replace(dashboardSelect, " AND "+dashboardAccess, "", 1)
+		return scanDashboard(tx.QueryRow(ctx, unshared+` AND d.id=$3 FOR UPDATE OF d`, ws, user, id))
+	}
 	d, err := scanDashboard(tx.QueryRow(ctx, dashboardSelect+` AND d.id=$3 FOR UPDATE OF d`, ws, user, id))
 	if err != nil {
 		return nil, err
@@ -105,8 +134,42 @@ func validateDashboardDetails(ctx context.Context, tx pgx.Tx, ws string, in *Das
 				if !exists {
 					return fmt.Errorf("%w: select a member of this workspace", ErrDashboardValidation)
 				}
+			case "group":
+				if perm.Group == nil || perm.User != nil || perm.Project != nil || perm.Role != nil {
+					return fmt.Errorf("%w: a group share names one group", ErrDashboardValidation)
+				}
+				if err := tx.QueryRow(ctx, `SELECT g.id::text,g.name FROM groups g JOIN directories dr ON dr.id=g.directory_id JOIN sites si ON si.organization_id=dr.organization_id
+					WHERE si.workspace_id=$1 AND dr.active AND (g.id::text=$2 OR ($2='' AND g.name=$3)) ORDER BY g.name LIMIT 1`, ws, perm.Group.GroupID, perm.Group.Name).Scan(&perm.Group.GroupID, &perm.Group.Name); err != nil {
+					if errors.Is(err, pgx.ErrNoRows) {
+						return fmt.Errorf("%w: select a group of this site", ErrDashboardValidation)
+					}
+					return err
+				}
+			case "project", "projectRole":
+				if perm.Project == nil || strings.TrimSpace(perm.Project.ID) == "" || perm.User != nil || perm.Group != nil {
+					return fmt.Errorf("%w: a project share names one project", ErrDashboardValidation)
+				}
+				if err := tx.QueryRow(ctx, `SELECT id,key,name FROM projects WHERE workspace_id=$1 AND lifecycle_state='ACTIVE' AND (id=$2 OR upper(key)=upper($2))`, ws, strings.TrimSpace(perm.Project.ID)).Scan(&perm.Project.ID, &perm.Project.Key, &perm.Project.Name); err != nil {
+					if errors.Is(err, pgx.ErrNoRows) {
+						return fmt.Errorf("%w: select an active project", ErrDashboardValidation)
+					}
+					return err
+				}
+				switch {
+				case perm.Role != nil:
+					perm.Type = "projectRole"
+					if err := tx.QueryRow(ctx, `SELECT name FROM project_roles WHERE workspace_id=$1 AND id::text=$2`, ws, string(perm.Role.ID)).Scan(&perm.Role.Name); err != nil {
+						if errors.Is(err, pgx.ErrNoRows) {
+							return fmt.Errorf("%w: select a project role", ErrDashboardValidation)
+						}
+						return err
+					}
+				case perm.Type == "projectRole":
+					return fmt.Errorf("%w: a project role share names a role", ErrDashboardValidation)
+				}
 			default:
-				return fmt.Errorf("%w: only user and authenticated sharing are supported", ErrDashboardValidation)
+				// Jira Cloud no longer shares dashboards publicly.
+				return fmt.Errorf("%w: dashboards are shared with users, groups, projects, project roles or everyone signed in", ErrDashboardValidation)
 			}
 		}
 	}

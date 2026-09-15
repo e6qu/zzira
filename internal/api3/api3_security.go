@@ -24,36 +24,6 @@ type securityLevelRequest struct {
 	Members     []securityMemberRequest `json:"members"`
 }
 
-// UnmarshalJSON retains zzira's pre-v3 extension, where members were account ID
-// strings, while accepting Jira Cloud's holder objects on the same endpoint.
-func (request *securityLevelRequest) UnmarshalJSON(data []byte) error {
-	var wire struct {
-		ID          string            `json:"id"`
-		Name        string            `json:"name"`
-		Description string            `json:"description"`
-		Default     bool              `json:"isDefault"`
-		Members     []json.RawMessage `json:"members"`
-	}
-	if err := json.Unmarshal(data, &wire); err != nil {
-		return err
-	}
-	request.ID, request.Name, request.Description, request.Default = wire.ID, wire.Name, wire.Description, wire.Default
-	request.Members = nil
-	for _, raw := range wire.Members {
-		var member securityMemberRequest
-		if err := json.Unmarshal(raw, &member); err == nil && member.Type != "" {
-			request.Members = append(request.Members, member)
-			continue
-		}
-		var accountID string
-		if err := json.Unmarshal(raw, &accountID); err != nil {
-			return err
-		}
-		request.Members = append(request.Members, securityMemberRequest{Type: "user", Parameter: accountID})
-	}
-	return nil
-}
-
 func isIssueSecurityPath(path string) bool {
 	return path == "/issuesecurityschemes" || strings.HasPrefix(path, "/issuesecurityschemes/") ||
 		strings.HasPrefix(path, "/securitylevel/") ||
@@ -102,7 +72,7 @@ func (h *Handler) securityLevelBean(schemeID string, level models.SecurityLevel)
 	}
 }
 
-func (h *Handler) securityMemberBean(member models.SecurityLevelMember) map[string]any {
+func (h *Handler) securityMemberBean(x *holderExpander, member models.SecurityLevelMember) map[string]any {
 	holder := map[string]any{"type": member.HolderType}
 	if member.HolderParameter != "" {
 		holder["parameter"] = member.HolderParameter
@@ -110,6 +80,7 @@ func (h *Handler) securityMemberBean(member models.SecurityLevelMember) map[stri
 	if member.HolderValue != "" {
 		holder["value"] = member.HolderValue
 	}
+	x.expand(holder, permissionHolderKind(member.HolderType), member.HolderValue)
 	return map[string]any{
 		"id": strconv.FormatInt(member.ID, 10), "issueSecuritySchemeId": member.SchemeID,
 		"issueSecurityLevelId": member.LevelID, "holder": holder, "managed": member.Managed,
@@ -213,10 +184,6 @@ func (h *Handler) securitySchemeRoute(w http.ResponseWriter, r *http.Request, pa
 		h.securitySchemeSearch(w, r)
 		return
 	}
-	if strings.HasPrefix(path, "/issuesecurityschemes/project/") {
-		h.legacyProjectSecurityRoute(w, r, strings.TrimPrefix(path, "/issuesecurityschemes/project/"))
-		return
-	}
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(path, "/issuesecurityschemes/"), "/"), "/")
 	if len(parts) == 0 || parts[0] == "" {
 		jiraError(w, http.StatusNotFound, "No resource found")
@@ -261,39 +228,11 @@ func (h *Handler) securitySchemeCollection(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusOK, map[string]any{"issueSecuritySchemes": values})
 	case http.MethodPost:
 		var request struct {
-			ID          string                 `json:"id"`
 			Name        string                 `json:"name"`
 			Description string                 `json:"description"`
 			Levels      []securityLevelRequest `json:"levels"`
 		}
 		if !decodeProjectRequest(w, r, &request) {
-			return
-		}
-		if request.ID != "" {
-			legacy := models.SecurityScheme{ID: request.ID, WorkspaceID: workspaceID, Name: request.Name, Description: request.Description}
-			for _, requestedLevel := range request.Levels {
-				level := models.SecurityLevel{ID: requestedLevel.ID, Name: requestedLevel.Name, Description: requestedLevel.Description, IsDefault: requestedLevel.Default}
-				if level.ID == "" {
-					issueSecurityError(w, store.ErrIssueSecurityValidation)
-					return
-				}
-				for _, member := range requestedLevel.Members {
-					if member.Type != "user" || member.Parameter == "" {
-						issueSecurityError(w, store.ErrIssueSecurityValidation)
-						return
-					}
-					level.Members = append(level.Members, member.Parameter)
-				}
-				if level.IsDefault {
-					legacy.DefaultLevelID = level.ID
-				}
-				legacy.Levels = append(legacy.Levels, level)
-			}
-			if err := h.Store.CreateSecurityScheme(r.Context(), legacy); err != nil {
-				issueSecurityError(w, err)
-				return
-			}
-			writeJSON(w, http.StatusCreated, map[string]any{"id": legacy.ID})
 			return
 		}
 		scheme, err := h.Store.CreateIssueSecurityScheme(r.Context(), workspaceID, actorID, request.Name, request.Description, securityInputs(request.Levels))
@@ -450,10 +389,11 @@ func (h *Handler) securityMemberSearch(w http.ResponseWriter, r *http.Request, s
 		issueSecurityError(w, err)
 		return
 	}
+	expander := h.newHolderExpander(r, workspaceID)
 	page := pageSlice(members, startAt, maxResults)
 	values := make([]map[string]any, 0, len(page))
 	for _, member := range page {
-		values = append(values, h.securityMemberBean(member))
+		values = append(values, h.securityMemberBean(expander, member))
 	}
 	writeJSON(w, http.StatusOK, h.securityPageBean(r, values, len(members), startAt, maxResults))
 }
@@ -775,51 +715,4 @@ func (h *Handler) projectSecurityRoute(w http.ResponseWriter, r *http.Request, p
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"levels": levels})
-}
-
-// legacyProjectSecurityRoute preserves zzira's original project-key mapping
-// extension for existing clients. Jira Cloud clients use the paginated
-// /issuesecurityschemes/project endpoint above.
-func (h *Handler) legacyProjectSecurityRoute(w http.ResponseWriter, r *http.Request, projectIDOrKey string) {
-	workspaceID, _, authErr := h.authWorkspaceAdmin(r)
-	if authErr != nil {
-		writeJerr(w, authErr)
-		return
-	}
-	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, projectIDOrKey)
-	if err != nil {
-		issueSecurityError(w, store.ErrIssueSecurityNotFound)
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		scheme, _, err := h.Store.AssignedIssueSecurityScheme(r.Context(), workspaceID, project.ID, true)
-		if err != nil {
-			issueSecurityError(w, err)
-			return
-		}
-		if scheme == nil {
-			writeJSON(w, http.StatusOK, map[string]any{"id": nil})
-			return
-		}
-		writeJSON(w, http.StatusOK, h.securitySchemeBean(scheme, true))
-	case http.MethodPut:
-		var request struct {
-			ID string `json:"id"`
-		}
-		if !decodeProjectRequest(w, r, &request) {
-			return
-		}
-		if request.ID == "" {
-			issueSecurityError(w, store.ErrIssueSecurityValidation)
-			return
-		}
-		if err := h.Store.AssignSecurityScheme(r.Context(), project.ID, request.ID); err != nil {
-			issueSecurityError(w, err)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	default:
-		jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
-	}
 }

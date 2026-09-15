@@ -106,7 +106,15 @@ cut into a context id of `s`. The two operations are now matched separately,
 - `migrations/143_custom_field_trash.sql` is exercised from a clean PostgreSQL
   schema.
 
-Jira's `expand=lastUsed`, field translations (`translatedName`,
-`translatedDescription`), `stableId`, the searcher key's effect on how a field
-is searched, `PUT`/`DELETE /field/association`, the legacy
+Field search expands `key`, `stableId` and `lastUsed` — taken from the latest
+recorded change to the field on a work item — and orders by `contextsCount`,
+`screensCount` and `lastUsed`. Field translations (`translatedName`,
+`translatedDescription`), `PUT`/`DELETE /field/association`, the legacy
 `/field/{fieldKey}/option` surface and `/config/fieldschemes` remain.
+
+A field's searcher key, set on creation or update, must be one Jira allows for
+the field's type; any other answers 400. It decides how JQL searches the field.
+Exact number and exact text searchers match values, while number, date and
+version range searchers also compare with `>`, `>=`, `<` and `<=`. A text
+searcher only matches with `~`. Autocomplete offers the same operators, and a
+field without a searcher keeps its type's operators.

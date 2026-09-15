@@ -16,6 +16,8 @@ package jql
 import (
 	"fmt"
 	"math"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -153,6 +155,7 @@ type token struct {
 	kind string // word, quoted, lparen, rparen, comma, eof
 	text string
 	pos  int
+	end  int // offset just past the token in the source, closing quote included
 }
 
 func lex(src string) ([]token, error) {
@@ -164,24 +167,24 @@ func lex(src string) ([]token, error) {
 		case c == ' ' || c == '\t' || c == '\n':
 			i++
 		case c == '(':
-			out = append(out, token{"lparen", "(", i})
+			out = append(out, token{"lparen", "(", i, i + 1})
 			i++
 		case c == ')':
-			out = append(out, token{"rparen", ")", i})
+			out = append(out, token{"rparen", ")", i, i + 1})
 			i++
 		case c == ',':
-			out = append(out, token{"comma", ",", i})
+			out = append(out, token{"comma", ",", i, i + 1})
 			i++
 		case strings.ContainsRune("=!~<>", rune(c)):
 			if i+1 < len(src) {
 				two := string(c) + string(src[i+1])
 				if two == "!=" || two == "!~" || two == "~=" || two == ">=" || two == "<=" {
-					out = append(out, token{"word", two, i})
+					out = append(out, token{"word", two, i, i + 2})
 					i += 2
 					continue
 				}
 			}
-			out = append(out, token{"word", string(c), i})
+			out = append(out, token{"word", string(c), i, i + 1})
 			i++
 		case c == '\'' || c == '"':
 			j := i + 1
@@ -203,18 +206,18 @@ func lex(src string) ([]token, error) {
 			if !closed {
 				return nil, &SyntaxError{i, "unterminated string"}
 			}
-			out = append(out, token{"quoted", b.String(), i})
+			out = append(out, token{"quoted", b.String(), i, j + 1})
 			i = j + 1
 		default:
 			j := i
 			for j < len(src) && !strings.ContainsRune(" \t\n()',=!~<>", rune(src[j])) {
 				j++
 			}
-			out = append(out, token{"word", src[i:j], i})
+			out = append(out, token{"word", src[i:j], i, j})
 			i = j
 		}
 	}
-	out = append(out, token{"eof", "", len(src)})
+	out = append(out, token{"eof", "", len(src), len(src)})
 	return out, nil
 }
 
@@ -227,6 +230,85 @@ var operators = map[string]string{
 type parser struct {
 	toks []token
 	pos  int
+	// collect records each clause's field and operands with where they sit in
+	// the source, for rewriting a query without reformatting it.
+	collect  bool
+	operands []Operand
+	fields   []FieldReference
+	clause   Operand
+	call     int
+}
+
+// Operand is one value a clause compares with and where it sits in the query.
+// Role is "value" for the clause's own values, or the history predicate the
+// value belongs to: by, from, to, before, after or during.
+type Operand struct {
+	Field, Operator, Role, Value      string
+	Start, End                        int
+	OperatorStart, OperatorEnd        int
+	Quoted, Function, InParenthesized bool
+}
+
+// FieldReference is a clause's field name and where it sits in the query.
+type FieldReference struct {
+	Name       string
+	Start, End int
+}
+
+// Operands parses a query and lists its clauses' fields and operands, in
+// source order. Function arguments and ORDER BY fields are not operands.
+func Operands(src string) ([]Operand, []FieldReference, error) {
+	if _, err := Parse(src); err != nil {
+		return nil, nil, err
+	}
+	toks, err := lex(src)
+	if err != nil {
+		return nil, nil, err
+	}
+	main, _ := splitOrderClause(toks)
+	p := &parser{toks: main, collect: true}
+	if p.peek().kind != "eof" {
+		if _, err = p.parseOr(); err != nil {
+			return nil, nil, err
+		}
+	}
+	return p.operands, p.fields, nil
+}
+
+// Edit replaces the source between Start and End with Text.
+type Edit struct {
+	Start, End int
+	Text       string
+}
+
+// ApplyEdits rewrites non-overlapping spans of a query, leaving the rest of
+// its text as written.
+func ApplyEdits(src string, edits []Edit) string {
+	ordered := append([]Edit(nil), edits...)
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Start > ordered[j].Start })
+	for _, edit := range ordered {
+		src = src[:edit.Start] + edit.Text + src[edit.End:]
+	}
+	return src
+}
+
+// Quote writes a value as a JQL operand: bare when it is a plain word, and
+// double-quoted otherwise.
+func Quote(value string) string {
+	if value != "" && !reserved(strings.ToLower(value)) && !strings.ContainsAny(value, " \t\n()',=!~<>\"\\") {
+		return value
+	}
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(value) + `"`
+}
+
+func (p *parser) record(t token, value string, end int, function bool) {
+	if !p.collect || p.call > 0 || p.clause.Field == "" {
+		return
+	}
+	operand := p.clause
+	operand.Value, operand.Start, operand.End = value, t.pos, end
+	operand.Quoted, operand.Function = t.kind == "quoted", function
+	p.operands = append(p.operands, operand)
 }
 
 func (p *parser) peek() token { return p.toks[p.pos] }
@@ -354,7 +436,7 @@ func splitOrderClause(toks []token) (main, order []token) {
 		case "word":
 			if depth == 0 && strings.EqualFold(t.text, "order") &&
 				i+1 < len(toks) && toks[i+1].kind == "word" && strings.EqualFold(toks[i+1].text, "by") {
-				mainToks := append(append([]token{}, toks[:i]...), token{"eof", "", toks[i].pos})
+				mainToks := append(append([]token{}, toks[:i]...), token{"eof", "", toks[i].pos, toks[i].pos})
 				return mainToks, toks[i+2:]
 			}
 		}
@@ -479,8 +561,13 @@ func (p *parser) isClauseStart() bool {
 }
 
 func (p *parser) parseClause() (Node, error) {
+	fieldTok := p.peek()
 	field := canonicalField(p.word())
 	opTok := p.next()
+	if p.collect {
+		p.fields = append(p.fields, FieldReference{Name: field, Start: fieldTok.pos, End: fieldTok.end})
+		p.clause = Operand{Field: field, Operator: strings.ToLower(opTok.text), Role: "value", OperatorStart: opTok.pos, OperatorEnd: opTok.end}
+	}
 	op := operators[opTok.text]
 	switch {
 	case op != "":
@@ -546,7 +633,14 @@ func canonicalField(field string) string {
 	case "resolved":
 		return "resolutiondate"
 	default:
-		return strings.ToLower(field)
+		// cf[10000] names a custom field by its number.
+		lower := strings.ToLower(field)
+		if strings.HasPrefix(lower, "cf[") && strings.HasSuffix(lower, "]") {
+			if number := lower[3 : len(lower)-1]; number != "" && strings.Trim(number, "0123456789") == "" {
+				return "customfield_" + number
+			}
+		}
+		return lower
 	}
 }
 
@@ -566,6 +660,7 @@ func (p *parser) parseInClause(field string, negated bool) (Node, error) {
 		return Clause{Field: field, Op: op, Values: []string{value}}, nil
 	}
 	p.next()
+	p.clause.InParenthesized = true
 	var vals []string
 	for {
 		v, err := p.parseValue()
@@ -583,6 +678,7 @@ func (p *parser) parseInClause(field string, negated bool) (Node, error) {
 		return nil, &SyntaxError{p.peek().pos, "expected ) to close IN"}
 	}
 	p.next()
+	p.clause.InParenthesized = false
 	op := "in"
 	if negated {
 		op = "notin"
@@ -641,6 +737,7 @@ func (p *parser) parseWasPredicates() ([]HistoryPredicate, error) {
 		}
 		seen[kind] = true
 		p.next()
+		p.clause.Role = kind
 		predicate := HistoryPredicate{Kind: kind}
 		if kind == "during" {
 			if p.peek().kind != "lparen" {
@@ -689,6 +786,7 @@ func (p *parser) parseChangedClause(field string) (Node, error) {
 		}
 		seen[kind] = true
 		p.next()
+		p.clause.Role = kind
 		predicate := HistoryPredicate{Kind: kind}
 		if kind == "during" {
 			if p.peek().kind != "lparen" {
@@ -732,6 +830,7 @@ func (p *parser) parseValue() (string, error) {
 		// compiler (for example startOfMonth(-1M) or currentUser()).
 		if t.kind == "word" && p.peek().kind == "lparen" {
 			p.next()
+			p.call++
 			args := []string{}
 			if p.peek().kind != "rparen" {
 				for {
@@ -749,9 +848,13 @@ func (p *parser) parseValue() (string, error) {
 			if p.peek().kind != "rparen" {
 				return "", &SyntaxError{p.peek().pos, "expected ) after function call"}
 			}
-			p.next()
-			return t.text + "(" + strings.Join(args, ",") + ")", nil
+			closing := p.next()
+			p.call--
+			call := t.text + "(" + strings.Join(args, ",") + ")"
+			p.record(t, call, closing.end, true)
+			return call, nil
 		}
+		p.record(t, t.text, t.end, false)
 		return t.text, nil
 	}
 	return "", &SyntaxError{t.pos, "expected value"}
@@ -766,11 +869,98 @@ type FieldResolver struct {
 	TextColumns  []string          // columns searched by bare text and ~
 	DefaultOrder map[string]string
 	DateFields   map[string]bool
+	// DurationFields hold time in seconds and compare with durations such as
+	// "2h" or "1w 2d"; NumberFields hold plain numbers. Both are empty when
+	// unset.
+	DurationFields map[string]bool
+	NumberFields   map[string]bool
 	// JSONArrayFields are fields whose value is a JSON array of ids.
 	JSONArrayFields map[string]string
 	// CustomValueFields are custom fields whose values name options, people or
 	// groups, or are lists, by the name a query uses.
 	CustomValueFields map[string]CustomValueField
+	// CollapsedFields maps a collapsed name, such as component[dropdown], to
+	// the custom fields sharing that name and type.
+	CollapsedFields map[string][]string
+	// EntityProperties are the indexed issue property values apps declare, by
+	// their JQL name: issue.property[key].path, or the app's alias.
+	EntityProperties map[string]EntityPropertyField
+	// FieldOperators are the operators a custom field's searcher allows.
+	FieldOperators map[string][]string
+}
+
+// EntityPropertyField is an indexed value inside an issue property: the value
+// at Path in the property PropertyKey, compared as Type (number, string,
+// text, date or user). A value that is a JSON array matches by any element.
+type EntityPropertyField struct {
+	PropertyKey string
+	Path        []string
+	Type        string
+}
+
+// EntityPropertyFieldName is the JQL name of an indexed issue property value.
+func EntityPropertyFieldName(propertyKey, objectName string) string {
+	return "issue.property[" + propertyKey + "]." + objectName
+}
+
+// WithEntityProperties extends a resolver with the issue property values apps
+// index. Each is searchable as issue.property[key].path and, when the app gives
+// one, by its alias, which never hides a system or custom field. Indexed values
+// can also order results.
+func WithEntityProperties(base FieldResolver, indexes []models.AppEntityPropertyIndex) FieldResolver {
+	res := base
+	if res.EntityProperties == nil {
+		res.EntityProperties = map[string]EntityPropertyField{}
+	}
+	if res.DateFields == nil {
+		res.DateFields = map[string]bool{}
+	}
+	if res.DefaultOrder == nil {
+		res.DefaultOrder = map[string]string{}
+	}
+	for _, index := range indexes {
+		if index.EntityType != "issue" {
+			continue
+		}
+		field := EntityPropertyField{PropertyKey: index.PropertyKey, Path: strings.Split(index.ObjectName, "."), Type: index.Type}
+		names := []string{strings.ToLower(EntityPropertyFieldName(index.PropertyKey, index.ObjectName))}
+		if alias := strings.ToLower(strings.TrimSpace(index.Alias)); alias != "" {
+			_, column := res.Columns[alias]
+			_, custom := res.CustomValueFields[alias]
+			_, taken := res.EntityProperties[alias]
+			if !column && !custom && !taken {
+				names = append(names, alias)
+			}
+		}
+		for _, name := range names {
+			res.EntityProperties[name] = field
+			if field.Type == "date" {
+				res.DateFields[name] = true
+			}
+			res.DefaultOrder[name] = entityPropertyOrder(field)
+		}
+	}
+	return res
+}
+
+// entityPropertyOrder is the value an indexed property orders by. The key and
+// path are validated when the app installs, and are quoted as SQL literals.
+func entityPropertyOrder(field EntityPropertyField) string {
+	quote := func(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
+	value := "ep.value #>> ARRAY[" + func() string {
+		parts := make([]string, 0, len(field.Path))
+		for _, part := range field.Path {
+			parts = append(parts, quote(part))
+		}
+		return strings.Join(parts, ",")
+	}() + "]::text[]"
+	switch field.Type {
+	case "number":
+		value = "jql_try_numeric(" + value + ")"
+	case "date":
+		value = "jql_try_timestamptz(" + value + ")"
+	}
+	return "(SELECT " + value + " FROM issue_properties ep WHERE ep.issue_id = i.id AND ep.key = " + quote(field.PropertyKey) + ")"
 }
 
 // CustomValueField is a custom field a query matches by what its value names.
@@ -789,6 +979,16 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 		res.DateFields = map[string]bool{}
 	}
 	for _, f := range fields {
+		if operators := models.SearcherOperators(f.SearcherKey); operators != nil {
+			if res.FieldOperators == nil {
+				res.FieldOperators = map[string][]string{}
+			}
+			res.FieldOperators[f.ID] = operators
+			res.FieldOperators[strings.ToLower(f.Name)] = operators
+			if f.AppKey != "" {
+				res.FieldOperators[strings.ToLower(f.AppKey+"__"+f.AppModuleKey)] = operators
+			}
+		}
 		col := `i.fields->>'` + f.ID + `'`
 		if f.Type == models.CustomFieldNumber {
 			col = `NULLIF(i.fields->>'` + f.ID + `','')::numeric`
@@ -830,6 +1030,20 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 		}
 		res.TextColumns = append(res.TextColumns, `i.fields->>'`+f.ID+`'`)
 	}
+	groups := map[string][]string{}
+	for _, f := range fields {
+		alias := strings.ToLower(models.CollapsedFieldName(f.Name, f.Type))
+		groups[alias] = append(groups[alias], f.ID)
+	}
+	for alias, members := range groups {
+		if len(members) < 2 {
+			continue
+		}
+		if res.CollapsedFields == nil {
+			res.CollapsedFields = map[string][]string{}
+		}
+		res.CollapsedFields[alias] = members
+	}
 	return res
 }
 
@@ -859,6 +1073,12 @@ func DefaultResolver() FieldResolver {
 			"environment":    `i.fields->>'environment'`,
 			"component":      `i.fields->>'component'`,
 			"sprint":         `i.fields->>'sprint'`,
+			// Time tracking, in seconds; work ratio is time spent as a
+			// percentage of the original estimate.
+			"originalestimate":  "i.original_estimate_seconds",
+			"remainingestimate": "i.remaining_estimate_seconds",
+			"timespent":         "(SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id)",
+			"workratio":         "CASE WHEN i.original_estimate_seconds > 0 THEN (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id) * 100 / i.original_estimate_seconds END",
 		},
 		TextColumns: []string{"i.summary", "i.description::text"},
 		DefaultOrder: map[string]string{
@@ -866,8 +1086,13 @@ func DefaultResolver() FieldResolver {
 			"status": "st.name", "priority": "COALESCE(pro.position, pr2.position)", "assignee": "a.display_name", "issuetype": "COALESCE(ito.name, it.name)",
 			"reporter": "r.display_name", "project": "pr.key", "parent": "parent.key", "resolution": "COALESCE(reso.position, res.position)",
 			"due": `NULLIF(i.fields->>'duedate','')::timestamptz`, "resolutiondate": "i.resolved_at",
+			"originalestimate": "i.original_estimate_seconds", "remainingestimate": "i.remaining_estimate_seconds",
+			"timespent": "(SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id)",
+			"workratio": "CASE WHEN i.original_estimate_seconds > 0 THEN (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id) * 100 / i.original_estimate_seconds END",
 		},
-		DateFields: map[string]bool{"updated": true, "created": true, "due": true, "resolutiondate": true},
+		DateFields:     map[string]bool{"updated": true, "created": true, "due": true, "resolutiondate": true},
+		DurationFields: map[string]bool{"originalestimate": true, "remainingestimate": true, "timespent": true},
+		NumberFields:   map[string]bool{"workratio": true},
 	}
 }
 
@@ -876,6 +1101,8 @@ type Compiled struct {
 	Args     []any
 	OrderSQL string
 	Err      error
+	// Warnings are the clause and ordering errors a lenient compile skipped.
+	Warnings []string
 }
 
 // Compile turns a parsed query into a WHERE fragment. `userArg` is the
@@ -888,10 +1115,22 @@ func Compile(q *Query, currentUserID string, res FieldResolver) Compiled {
 // CompileAt is Compile with placeholder numbering starting at paramOffset
 // (use when the caller prepends its own parameters, e.g. workspace id = $1).
 func CompileAt(q *Query, currentUserID string, res FieldResolver, paramOffset int) Compiled {
+	return compileQuery(q, currentUserID, res, paramOffset, false)
+}
+
+// CompileLenientAt compiles a query the way Jira validates it in warn mode:
+// a clause that fails validation matches nothing and an ordering field that
+// cannot be sorted is skipped, each reported in Warnings instead of failing
+// the whole query.
+func CompileLenientAt(q *Query, currentUserID string, res FieldResolver, paramOffset int) Compiled {
+	return compileQuery(q, currentUserID, res, paramOffset, true)
+}
+
+func compileQuery(q *Query, currentUserID string, res FieldResolver, paramOffset int, lenient bool) Compiled {
 	if q == nil || q.Root == nil {
 		return Compiled{Err: &SyntaxError{0, "empty query"}}
 	}
-	c := &compiler{res: res, user: currentUserID, offset: paramOffset - 1}
+	c := &compiler{res: res, user: currentUserID, offset: paramOffset - 1, lenient: lenient}
 	c.now = time.Now().UTC()
 	where := c.node(q.Root)
 	if c.err != nil {
@@ -908,6 +1147,10 @@ func CompileAt(q *Query, currentUserID string, res FieldResolver, paramOffset in
 		for _, requested := range orders {
 			col, ok := res.DefaultOrder[requested.Field]
 			if !ok {
+				if lenient {
+					c.warnings = append(c.warnings, (&SyntaxError{0, "cannot order by " + requested.Field}).Error())
+					continue
+				}
 				return Compiled{Err: &SyntaxError{0, "cannot order by " + requested.Field}}
 			}
 			dir := "ASC"
@@ -922,7 +1165,7 @@ func CompileAt(q *Query, currentUserID string, res FieldResolver, paramOffset in
 	if !strings.Contains(strings.Join(orderParts, ","), "i.id ") {
 		orderParts = append(orderParts, "i.id ASC")
 	}
-	return Compiled{Where: where, Args: c.args, OrderSQL: strings.Join(orderParts, ", ")}
+	return Compiled{Where: where, Args: c.args, OrderSQL: strings.Join(orderParts, ", "), Warnings: c.warnings}
 }
 
 type compiler struct {
@@ -932,6 +1175,26 @@ type compiler struct {
 	err    error
 	offset int
 	now    time.Time
+	// lenient turns a failing clause into a warning and FALSE.
+	lenient  bool
+	warnings []string
+}
+
+// terminal compiles one clause. In a lenient compile a clause that fails is
+// recorded as a warning, its parameters are dropped so later placeholders stay
+// consecutive, and it matches nothing.
+func (c *compiler) terminal(compile func() string) string {
+	if !c.lenient {
+		return compile()
+	}
+	mark := len(c.args)
+	sql := compile()
+	if c.err == nil {
+		return sql
+	}
+	c.warnings = append(c.warnings, c.err.Error())
+	c.err, c.args = nil, c.args[:mark]
+	return "FALSE"
 }
 
 func (c *compiler) arg(v any) string {
@@ -968,15 +1231,39 @@ func (c *compiler) node(n Node) string {
 		}
 		return "(" + strings.Join(likes, " OR ") + ")"
 	case Clause:
-		return c.clause(t)
+		return c.terminal(func() string { return c.clause(t) })
 	case HistoryClause:
-		return c.historyClause(t)
+		return c.terminal(func() string { return c.historyClause(t) })
 	}
 	c.err = &SyntaxError{0, "unknown node"}
 	return ""
 }
 
 func (c *compiler) clause(cl Clause) string {
+	// A collapsed field searches each field sharing its name and type: any of
+	// them may match, and a negative condition must hold for all of them.
+	if members, ok := c.res.CollapsedFields[cl.Field]; ok {
+		joiner := " OR "
+		switch cl.Op {
+		case "!=", "notin", "!~", "empty":
+			joiner = " AND "
+		}
+		parts := make([]string, 0, len(members))
+		for _, member := range members {
+			memberClause := cl
+			memberClause.Field = member
+			parts = append(parts, "("+c.clause(memberClause)+")")
+			if c.err != nil {
+				return ""
+			}
+		}
+		return "(" + strings.Join(parts, joiner) + ")"
+	}
+	// A custom field's searcher decides which operators may search it.
+	if allowed, ok := c.res.FieldOperators[cl.Field]; ok && !slices.Contains(allowed, cl.Op) {
+		c.err = &SyntaxError{0, "operator " + cl.Op + " is not supported by " + cl.Field}
+		return ""
+	}
 	if containsJQLFunction(cl.Values, "breached", "completed", "everBreached", "paused", "remaining", "running", "withinCalendarHours") {
 		return c.slaClause(cl)
 	}
@@ -1013,6 +1300,12 @@ func (c *compiler) clause(cl Clause) string {
 	if (cl.Field == "issue" || cl.Field == "key" || cl.Field == "id") && containsJQLFunction(cl.Values,
 		"linkedIssues", "linkedWorkItems", "watchedIssues", "watchedWorkItems", "votedIssues", "votedWorkItems", "updatedBy") {
 		return c.issueFunctionClause(cl)
+	}
+	if cl.Field == "project" && (cl.Op == "=" || cl.Op == "!=" || cl.Op == "in" || cl.Op == "notin") && !containsAnyFunction(cl.Values) {
+		return c.projectClause(cl)
+	}
+	if field, indexed := c.res.EntityProperties[cl.Field]; indexed {
+		return c.entityPropertyClause(cl, field)
 	}
 	col, ok := c.res.Columns[cl.Field]
 	if !ok {
@@ -1090,12 +1383,122 @@ func (c *compiler) clause(cl Clause) string {
 	case ">", ">=", "<", "<=":
 		return col + " " + cl.Op + " " + c.arg(c.fieldValue(cl.Field, cl.Values[0]))
 	case "empty":
+		if c.res.DurationFields[cl.Field] || c.res.NumberFields[cl.Field] {
+			return "(" + col + " IS NULL)"
+		}
 		return "(" + col + " IS NULL OR " + col + " = '')"
 	case "notempty":
+		if c.res.DurationFields[cl.Field] || c.res.NumberFields[cl.Field] {
+			return "(" + col + " IS NOT NULL)"
+		}
 		return "(" + col + " IS NOT NULL AND " + col + " <> '')"
 	}
 	c.err = &SyntaxError{0, "unsupported operator " + cl.Op}
 	return ""
+}
+
+// entityPropertyClause compares an indexed issue property value. A property
+// whose value at the path is an array matches when any element does, and, as
+// for other fields, negative operators never match work items without a value.
+func (c *compiler) entityPropertyClause(cl Clause, field EntityPropertyField) string {
+	supported := map[string][]string{
+		"number": {"=", "!=", ">", ">=", "<", "<=", "in", "notin", "empty", "notempty"},
+		"date":   {"=", "!=", ">", ">=", "<", "<=", "in", "notin", "empty", "notempty"},
+		"string": {"=", "!=", "in", "notin", "empty", "notempty"},
+		"user":   {"=", "!=", "in", "notin", "empty", "notempty"},
+		"text":   {"~", "!~", "empty", "notempty"},
+	}[field.Type]
+	if !slices.Contains(supported, cl.Op) {
+		c.err = &SyntaxError{0, "operator " + cl.Op + " is not supported by " + cl.Field}
+		return ""
+	}
+	key, path := c.arg(field.PropertyKey), c.arg(field.Path)
+	value, cast := "v.value", "::text"
+	switch field.Type {
+	case "number":
+		value, cast = "jql_try_numeric(v.value)", "::numeric"
+	case "date":
+		value, cast = "jql_try_timestamptz(v.value)", "::timestamptz"
+	}
+	matching := func(condition string) string {
+		at := "ep.value #> " + path + "::text[]"
+		return "EXISTS (SELECT 1 FROM issue_properties ep CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(" + at + ") = 'array' THEN " + at + " ELSE jsonb_build_array(" + at + ") END) AS v(value) WHERE ep.issue_id = i.id AND ep.key = " + key + "::text AND " + value + " IS NOT NULL AND (" + condition + "))"
+	}
+	operand := func(raw string) string {
+		trimmed := strings.Trim(strings.TrimSpace(raw), `"'`)
+		switch field.Type {
+		case "number":
+			number, err := strconv.ParseFloat(trimmed, 64)
+			if err != nil {
+				c.err = &SyntaxError{0, "invalid number " + strconv.Quote(raw) + " for " + cl.Field}
+				return "NULL"
+			}
+			return c.arg(strconv.FormatFloat(number, 'f', -1, 64)) + cast
+		case "date":
+			return c.arg(c.fieldValue(cl.Field, raw)) + cast
+		case "user":
+			if name, args, function := splitFunction(raw); function {
+				if strings.EqualFold(name, "currentUser") && len(args) == 0 {
+					return c.arg(c.user) + cast
+				}
+				c.err = &SyntaxError{0, "unsupported function " + name + "() for " + cl.Field}
+				return "NULL"
+			}
+		}
+		return c.arg(raw) + cast
+	}
+	present := matching("TRUE")
+	switch cl.Op {
+	case "empty":
+		return "NOT " + present
+	case "notempty":
+		return present
+	case "~":
+		return matching("v.value ILIKE " + c.arg("%"+cl.Values[0]+"%"))
+	case "!~":
+		return "(" + present + " AND NOT " + matching("v.value ILIKE "+c.arg("%"+cl.Values[0]+"%")) + ")"
+	case "=", "!=":
+		equal := matching(value + " = " + operand(cl.Values[0]))
+		if cl.Op == "=" {
+			return equal
+		}
+		return "(" + present + " AND NOT " + equal + ")"
+	case "in", "notin":
+		operands := make([]string, 0, len(cl.Values))
+		for _, raw := range cl.Values {
+			operands = append(operands, operand(raw))
+		}
+		member := matching(value + " IN (" + strings.Join(operands, ",") + ")")
+		if cl.Op == "in" {
+			return member
+		}
+		return "(" + present + " AND NOT " + member + ")"
+	default:
+		return matching(value + " " + cl.Op + " " + operand(cl.Values[0]))
+	}
+}
+
+// projectClause matches a project by its key, id or name, as Jira does.
+func (c *compiler) projectClause(cl Clause) string {
+	matches := make([]string, 0, len(cl.Values))
+	for _, value := range cl.Values {
+		placeholder := c.arg(value)
+		matches = append(matches, "(pr.key = upper("+placeholder+"::text) OR pr.id = "+placeholder+"::text OR lower(pr.name) = lower("+placeholder+"::text))")
+	}
+	match := "(" + strings.Join(matches, " OR ") + ")"
+	if cl.Op == "!=" || cl.Op == "notin" {
+		return "NOT " + match
+	}
+	return match
+}
+
+func containsAnyFunction(values []string) bool {
+	for _, value := range values {
+		if _, _, function := splitFunction(value); function {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *compiler) slaClause(cl Clause) string {
@@ -1464,6 +1867,24 @@ func (c *compiler) componentClause(cl Clause) string {
 
 // fieldValue resolves semantic values: status names, currentUser(), EMPTY/null.
 func (c *compiler) fieldValue(field, value string) any {
+	if c.res.DurationFields[field] || c.res.NumberFields[field] {
+		text := strings.Trim(strings.TrimSpace(value), `"'`)
+		if c.res.NumberFields[field] {
+			number, err := strconv.ParseInt(text, 10, 64)
+			if err != nil {
+				c.err = &SyntaxError{0, "invalid number " + strconv.Quote(value) + " for " + field}
+				return nil
+			}
+			return number
+		}
+		// Durations use Jira's default working time: 8 hours a day, 5 days a week.
+		seconds, err := models.ParseJiraDuration(text, models.TimeTrackingConfiguration{DefaultUnit: "minute", WorkingHoursPerDay: 8, WorkingDaysPerWeek: 5})
+		if err != nil {
+			c.err = &SyntaxError{0, "invalid duration " + strconv.Quote(value) + " for " + field}
+			return nil
+		}
+		return seconds
+	}
 	// Unresolved is Jira's name for having no resolution at all, so it compares
 	// as the absence of one rather than as a resolution called "Unresolved".
 	if field == "resolution" && strings.EqualFold(strings.Trim(strings.TrimSpace(value), `"'`), "unresolved") {

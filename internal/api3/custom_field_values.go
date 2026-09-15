@@ -138,7 +138,7 @@ func (h *Handler) decorateCustomFieldValues(ctx context.Context, workspaceID str
 	}
 	user := func(id string) map[string]any {
 		if found, ok := catalog.Users[id]; ok {
-			return h.userBean(found)
+			return h.userBeanFor(ctx, found)
 		}
 		return map[string]any{"accountId": id}
 	}

@@ -505,6 +505,37 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 		t.Fatalf("dynamic issue field not materialized: %+v, %v", fields, err)
 	}
 	dynamicFieldID := dynamicField.ID
+	// Entity property indexes and issue glances register dynamically too.
+	call(http.MethodPost, dynamicPath, `{"jiraEntityProperties":[{"key":"dynamic-release-index","name":{"value":"Release index"},"keyConfigurations":[{"propertyKey":"release","extractions":[{"objectName":"train","type":"string","alias":"releaseTrain"}]}]}],
+		"jiraIssueGlances":[{"key":"dynamic-glance","name":{"value":"Release glance"},"icon":{"url":"/glance.svg"},"content":{"type":"label","label":{"value":"Release"}},"target":{"type":"web_panel","url":"/glance"}}]}`, http.StatusOK)
+	dynamicIndexed := func() bool {
+		indexes, err := st.EntityPropertyIndexes(ctx, workspaceID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, index := range indexes {
+			if index.ModuleKey == "dynamic-release-index" && index.PropertyKey == "release" && index.ObjectName == "train" && index.Alias == "releaseTrain" {
+				return true
+			}
+		}
+		return false
+	}
+	dynamicGlance := func() bool {
+		contexts, err := st.AppModulesByLocation(ctx, workspaceID, "jira.issue.context")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, module := range contexts {
+			if module.InstallationID == installation.ID && module.Key == "dynamic-glance" && module.Type == "jira:issueGlance" && module.Dynamic {
+				return true
+			}
+		}
+		return false
+	}
+	if !dynamicIndexed() || !dynamicGlance() {
+		t.Fatal("dynamic entity property index or issue glance was not materialized")
+	}
+	call(http.MethodPost, dynamicPath, `{"jiraEntityProperties":[{"key":"dynamic-bad-index","name":{"value":"Bad"},"entityType":"board","keyConfigurations":[{"propertyKey":"release","extractions":[{"objectName":"train","type":"string"}]}]}]}`, http.StatusBadRequest)
 	call(http.MethodPost, dynamicPath, `{"webPanels":[{"key":"static-panel","url":"/duplicate","location":"atl.jira.view.issue.right.context","name":{"value":"Duplicate"}}]}`, http.StatusBadRequest)
 	if err := st.UpdateAppState(ctx, workspaceID, adminID, appKey, "uninstalled", true); err != nil {
 		t.Fatal(err)
@@ -534,6 +565,9 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 	}
 	if err != nil || !contentAdded {
 		t.Fatalf("issue content state was not restored after reinstall: %+v, %v", issueContent, err)
+	}
+	if !dynamicIndexed() || !dynamicGlance() {
+		t.Fatal("dynamic entity property index or issue glance was not restored after reinstall")
 	}
 	fields, err = st.CustomFieldsForWorkspace(ctx, workspaceID)
 	reinstalledStatic, reinstalledDynamic := fieldByKey(fields, "static-score"), fieldByKey(fields, "dynamic-score")

@@ -104,11 +104,12 @@ func (h *Handler) workflowHistoryRoute(w http.ResponseWriter, r *http.Request, p
 
 // readWorkflows implements Jira's bulk POST /rest/api/3/workflows read.
 func (h *Handler) readWorkflows(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, e := h.authWorkspaceAdmin(r)
+	access, e := h.authWorkflowAccess(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
 	}
+	workspaceID := access.workspaceID
 	var request struct {
 		WorkflowIDs          []string `json:"workflowIds"`
 		WorkflowNames        []string `json:"workflowNames"`
@@ -126,6 +127,7 @@ func (h *Handler) readWorkflows(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	workflows = access.scoped(workflows)
 	wanted := map[string]bool{}
 	for _, id := range request.WorkflowIDs {
 		wanted["id:"+id] = true

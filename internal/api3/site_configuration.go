@@ -5,13 +5,19 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 func siteConfigurationError(w http.ResponseWriter, err error) {
+	if errors.Is(err, commands.ErrSiteConfigurationNotFound) {
+		jiraError(w, http.StatusNotFound, strings.TrimSpace(strings.TrimPrefix(err.Error(), commands.ErrSiteConfigurationNotFound.Error()+":")))
+		return
+	}
 	if errors.Is(err, commands.ErrSiteConfigurationValidation) {
 		jiraError(w, http.StatusBadRequest, strings.TrimSpace(strings.TrimPrefix(err.Error(), commands.ErrSiteConfigurationValidation.Error()+":")))
 		return
@@ -89,11 +95,27 @@ func (h *Handler) siteApplicationProperties(w http.ResponseWriter, r *http.Reque
 			jiraError(w, http.StatusNotFound, "Application property was not found.")
 			return
 		}
-		filter := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("keyFilter")))
-		if filter != "" {
+		// Cloud administrators are its system administrators, and no editable
+		// property is kept for system administrators alone.
+		switch r.URL.Query().Get("permissionLevel") {
+		case "", "ADMIN", "SYSADMIN":
+		case "SYSADMIN_ONLY":
+			properties = properties[:0]
+		default:
+			jiraError(w, http.StatusBadRequest, "permissionLevel must be ADMIN, SYSADMIN or SYSADMIN_ONLY.")
+			return
+		}
+		// keyFilter is a regular expression the whole key must match, so
+		// jira.lf.* selects the look and feel properties.
+		if filter := r.URL.Query().Get("keyFilter"); filter != "" {
+			pattern, compileErr := regexp.Compile("^(?:" + filter + ")$")
+			if compileErr != nil {
+				jiraError(w, http.StatusBadRequest, "keyFilter must be a valid regular expression.")
+				return
+			}
 			filtered := properties[:0]
 			for _, property := range properties {
-				if strings.Contains(strings.ToLower(property.Key), filter) {
+				if pattern.MatchString(property.Key) {
 					filtered = append(filtered, property)
 				}
 			}
@@ -176,14 +198,35 @@ func (h *Handler) siteTimeTracking(w http.ResponseWriter, r *http.Request, path 
 		jiraError(w, http.StatusInternalServerError, "Could not load time tracking configuration.")
 		return
 	}
-	provider := models.TimeTrackingProvider{Key: "Jira", Name: "JIRA provided time tracking", URL: h.BaseURL + "/admin#admin-jira-configuration"}
+	installed, err := h.Store.TimeTrackingProviders(r.Context(), workspaceID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load time tracking providers.")
+		return
+	}
+	// Jira's provider is configured on the site administration page; an app's
+	// provider on the admin page its descriptor names, when it names one.
+	providers := make([]models.TimeTrackingProvider, 0, len(installed))
+	provider := models.TimeTrackingProvider{}
+	for _, item := range installed {
+		bean := models.TimeTrackingProvider{Key: item.Key, Name: item.Name}
+		switch {
+		case item.Key == store.JiraTimeTrackingProviderKey:
+			bean.URL = h.BaseURL + "/admin#admin-jira-configuration"
+		case item.AdminPageKey != "":
+			bean.URL = h.BaseURL + "/plugins/servlet/ac/" + item.AppKey + "/" + item.AdminPageKey
+		}
+		providers = append(providers, bean)
+		if item.Key == cfg.TimeTrackingProvider || (provider.Key == "" && item.Key == store.JiraTimeTrackingProviderKey) {
+			provider = bean
+		}
+	}
 	switch path {
 	case "/configuration/timetracking/list":
 		if r.Method != http.MethodGet {
 			jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
-		writeJSON(w, http.StatusOK, []models.TimeTrackingProvider{provider})
+		writeJSON(w, http.StatusOK, providers)
 	case "/configuration/timetracking/options":
 		switch r.Method {
 		case http.MethodGet:
@@ -234,8 +277,6 @@ func (h *Handler) siteTimeTracking(w http.ResponseWriter, r *http.Request, path 
 	}
 }
 
-var navigatorColumnLabels = map[string]string{"issuekey": "Key", "summary": "Summary", "description": "Description", "issuetype": "Work type", "priority": "Priority", "status": "Status", "assignee": "Assignee", "reporter": "Reporter", "created": "Created", "updated": "Updated", "fixVersions": "Fix versions", "versions": "Affects versions", "components": "Components", "labels": "Labels"}
-
 func (h *Handler) issueNavigatorColumns(w http.ResponseWriter, r *http.Request) {
 	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
 	if authErr != nil {
@@ -249,17 +290,10 @@ func (h *Handler) issueNavigatorColumns(w http.ResponseWriter, r *http.Request) 
 			jiraError(w, http.StatusInternalServerError, "Could not load issue navigator columns.")
 			return
 		}
-		custom, err := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
+		labels, err := h.Store.NavigableColumnLabels(r.Context(), workspaceID)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "Could not load issue navigator columns.")
 			return
-		}
-		labels := map[string]string{}
-		for key, label := range navigatorColumnLabels {
-			labels[key] = label
-		}
-		for _, field := range custom {
-			labels[field.ID] = field.Name
 		}
 		items := make([]models.ColumnItem, 0, len(cfg.NavigatorColumns))
 		for _, value := range cfg.NavigatorColumns {

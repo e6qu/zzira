@@ -29,7 +29,53 @@ type CreateProjectInput struct {
 	ProjectTypeKey     string `json:"projectTypeKey"`
 	ProjectTemplateKey string `json:"projectTemplateKey"`
 	CategoryID         int64  `json:"categoryId"`
+	// Lead is Jira's deprecated name for leadAccountId.
+	Lead     string `json:"lead"`
+	AvatarID int64  `json:"avatarId"`
+	// The schemes a project starts with, by the ids clients see; zero keeps
+	// the site default. fieldConfigurationScheme is Jira's deprecated name for
+	// fieldScheme.
+	FieldConfigurationScheme int64 `json:"fieldConfigurationScheme"`
+	FieldScheme              int64 `json:"fieldScheme"`
+	IssueSecurityScheme      int64 `json:"issueSecurityScheme"`
+	IssueTypeScheme          int64 `json:"issueTypeScheme"`
+	IssueTypeScreenScheme    int64 `json:"issueTypeScreenScheme"`
+	NotificationScheme       int64 `json:"notificationScheme"`
+	PermissionScheme         int64 `json:"permissionScheme"`
+	WorkflowScheme           int64 `json:"workflowScheme"`
 }
+
+// Jira's project templates for each project type and the board each gives.
+var (
+	softwareProjectTemplates = map[string]string{
+		"": "scrum", "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic": "scrum", "com.pyxis.greenhopper.jira:gh-simplified-agility-scrum": "scrum",
+		"com.pyxis.greenhopper.jira:gh-cross-team-template": "scrum", "com.pyxis.greenhopper.jira:gh-cross-team-planning-template": "scrum",
+		"com.pyxis.greenhopper.jira:gh-simplified-kanban-classic": "kanban", "com.pyxis.greenhopper.jira:gh-simplified-agility-kanban": "kanban",
+		"com.pyxis.greenhopper.jira:gh-simplified-basic": "kanban",
+	}
+	serviceProjectTemplates = map[string]bool{
+		"com.atlassian.servicedesk:simplified-it-service-management": true, "com.atlassian.servicedesk:simplified-it-service-management-basic": true,
+		"com.atlassian.servicedesk:simplified-it-service-management-operations": true, "com.atlassian.servicedesk:simplified-internal-service-desk": true,
+		"com.atlassian.servicedesk:simplified-external-service-desk": true, "com.atlassian.servicedesk:simplified-hr-service-desk": true,
+		"com.atlassian.servicedesk:simplified-facilities-service-desk": true, "com.atlassian.servicedesk:simplified-legal-service-desk": true,
+		"com.atlassian.servicedesk:simplified-marketing-service-desk": true, "com.atlassian.servicedesk:simplified-finance-service-desk": true,
+		"com.atlassian.servicedesk:simplified-analytics-service-desk": true, "com.atlassian.servicedesk:simplified-design-service-desk": true,
+		"com.atlassian.servicedesk:simplified-sales-service-desk": true, "com.atlassian.servicedesk:simplified-halp-service-desk": true,
+		"com.atlassian.servicedesk:next-gen-it-service-desk": true, "com.atlassian.servicedesk:next-gen-hr-service-desk": true,
+		"com.atlassian.servicedesk:next-gen-legal-service-desk": true, "com.atlassian.servicedesk:next-gen-marketing-service-desk": true,
+		"com.atlassian.servicedesk:next-gen-facilities-service-desk": true, "com.atlassian.servicedesk:next-gen-analytics-service-desk": true,
+		"com.atlassian.servicedesk:next-gen-finance-service-desk": true, "com.atlassian.servicedesk:next-gen-design-service-desk": true,
+		"com.atlassian.servicedesk:next-gen-sales-service-desk": true, "com.atlassian.servicedesk:company-managed-blank-service-project": true,
+		"com.atlassian.servicedesk:company-managed-general-service-project": true, "com.atlassian.servicedesk:team-managed-general-service-project": true,
+	}
+	businessProjectTemplates = map[string]bool{
+		"": true, "com.atlassian.jira-core-project-templates:jira-core-simplified-content-management": true,
+		"com.atlassian.jira-core-project-templates:jira-core-simplified-document-approval": true, "com.atlassian.jira-core-project-templates:jira-core-simplified-lead-tracking": true,
+		"com.atlassian.jira-core-project-templates:jira-core-simplified-process-control": true, "com.atlassian.jira-core-project-templates:jira-core-simplified-procurement": true,
+		"com.atlassian.jira-core-project-templates:jira-core-simplified-project-management": true, "com.atlassian.jira-core-project-templates:jira-core-simplified-recruitment": true,
+		"com.atlassian.jira-core-project-templates:jira-core-simplified-task-tracking": true, "com.atlassian.jira-core-project-templates:jira-core-simplified-task-": true,
+	}
+)
 
 var projectKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{1,9}$`)
 
@@ -79,25 +125,32 @@ func (s *Service) ValidateNewProject(ctx context.Context, workspaceID string, in
 	boardType := "scrum"
 	switch in.ProjectTypeKey {
 	case "software":
-		switch in.ProjectTemplateKey {
-		case "", "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic":
-		case "com.pyxis.greenhopper.jira:gh-simplified-kanban-classic":
-			boardType = "kanban"
-		default:
-			fields["projectTemplateKey"] = "Choose a company-managed Scrum or Kanban template."
+		if board, ok := softwareProjectTemplates[in.ProjectTemplateKey]; ok {
+			boardType = board
+		} else {
+			fields["projectTemplateKey"] = "Choose a software project template."
 		}
 	case "service_desk":
 		boardType = "kanban"
-		if in.ProjectTemplateKey != "com.atlassian.servicedesk:simplified-it-service-management" {
-			fields["projectTemplateKey"] = "Choose the IT service management template."
+		if !serviceProjectTemplates[in.ProjectTemplateKey] {
+			fields["projectTemplateKey"] = "Choose a service management project template."
 		}
 	case "business":
 		boardType = "kanban"
-		if in.ProjectTemplateKey != "" && in.ProjectTemplateKey != "com.atlassian.jira-core-project-templates:jira-core-simplified-project-management" {
-			fields["projectTemplateKey"] = "Choose the business project management template."
+		if !businessProjectTemplates[in.ProjectTemplateKey] {
+			fields["projectTemplateKey"] = "Choose a business project template."
 		}
 	default:
 		fields["projectTypeKey"] = "Choose a business, software, or service management project."
+	}
+	if in.Lead != "" {
+		if in.LeadAccountID != "" && in.LeadAccountID != in.Lead {
+			fields["lead"] = "Give leadAccountId, or the deprecated lead, but not both."
+		}
+		in.LeadAccountID = in.Lead
+	}
+	if in.FieldScheme != 0 && in.FieldConfigurationScheme != 0 && in.FieldScheme != in.FieldConfigurationScheme {
+		fields["fieldScheme"] = "Give fieldScheme, or the deprecated fieldConfigurationScheme, but not both."
 	}
 	if in.LeadAccountID == "" {
 		fields["leadAccountId"] = "Choose a project lead."
@@ -120,9 +173,21 @@ func (s *Service) CreateProject(ctx context.Context, actorID, workspaceID string
 	if err != nil {
 		return nil, err
 	}
-	p, err := s.Store.CreateProject(ctx, actorID, project, boardType)
+	fieldScheme := in.FieldScheme
+	if fieldScheme == 0 {
+		fieldScheme = in.FieldConfigurationScheme
+	}
+	p, err := s.Store.CreateProjectWithSchemes(ctx, actorID, project, boardType, store.NewProjectSchemes{
+		AvatarID: in.AvatarID, PermissionScheme: in.PermissionScheme, NotificationScheme: in.NotificationScheme,
+		IssueSecurityScheme: in.IssueSecurityScheme, WorkflowScheme: in.WorkflowScheme, IssueTypeScheme: in.IssueTypeScheme,
+		IssueTypeScreenScheme: in.IssueTypeScreenScheme, FieldConfigurationScheme: fieldScheme,
+	})
 	if errors.Is(err, store.ErrProjectCategoryInvalid) {
 		return nil, &ProjectValidationError{map[string]string{"categoryId": err.Error()}}
+	}
+	var schemeErr *store.ProjectSchemeError
+	if errors.As(err, &schemeErr) {
+		return nil, &ProjectValidationError{map[string]string{schemeErr.Field: schemeErr.Message}}
 	}
 	var pgerr *pgconn.PgError
 	if errors.As(err, &pgerr) && pgerr.Code == "23505" {

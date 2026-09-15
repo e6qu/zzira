@@ -518,3 +518,57 @@ func TestCustomWorkflowOverridesDefault(t *testing.T) {
 		t.Fatal("default transitions must not leak into custom workflow")
 	}
 }
+
+func TestApprovalReminderAndAgentRules(t *testing.T) {
+	approvalConfiguration := `{"statusExternalUuid":"approved"}`
+	transition := Transition{
+		ID: "21", Name: "Approve", From: []string{"a"}, To: "b",
+		Conditions: &ConditionGroup{Operation: "ALL", Conditions: []Rule{
+			{ID: "c1", RuleKey: RuleBlockInProgressApproval, Parameters: map[string]string{}},
+			{ID: "c2", RuleKey: RuleApprovalsBlockUntilApproved, Parameters: map[string]string{"approvalConfigurationJson": approvalConfiguration}},
+		}},
+		Screen:  &Rule{ID: "s1", RuleKey: RuleRemindToUpdateFields, Parameters: map[string]string{"remindingFieldIds": "assignee,customfield_10025", "remindingMessage": "Check the owner", "remindingAlwaysAsk": "true"}},
+		Actions: []Rule{{ID: "a1", RuleKey: RuleTriggerAgent, Parameters: map[string]string{"agentId": "app_principal_7", "promptValue": "Summarize"}}},
+	}
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatal(err)
+	}
+	for decisions, want := range map[string]bool{"": false, "pending": false, "approved": true, "approved,pending": false, "declined": false} {
+		context := EvaluationContext{Approvals: commaValues(decisions)}
+		if got := transition.ConditionsAllow(context); got != want {
+			t.Fatalf("approvals %q allow = %v, want %v", decisions, got, want)
+		}
+	}
+	rejected := Rule{ID: "c3", RuleKey: RuleApprovalsBlockUntilRejected, Parameters: map[string]string{"approvalConfigurationJson": approvalConfiguration}}
+	if !evaluateCondition(rejected, EvaluationContext{Approvals: []string{"declined"}}) || evaluateCondition(rejected, EvaluationContext{Approvals: []string{"approved"}}) {
+		t.Fatal("block until rejected")
+	}
+	if fields := transition.ScreenFields(); len(fields) != 2 || fields[1] != "customfield_10025" {
+		t.Fatalf("reminder fields = %v", fields)
+	}
+	if message, always, ok := transition.ScreenReminder(); !ok || !always || message != "Check the owner" {
+		t.Fatalf("reminder = %q %v %v", message, always, ok)
+	}
+	if ids, err := transition.TriggerWebhookIDs(); err != nil || len(ids) != 0 {
+		t.Fatalf("webhooks = %v err=%v", ids, err)
+	}
+	if triggers := transition.AgentTriggers(); len(triggers) != 1 || triggers[0].AgentID != "app_principal_7" || triggers[0].Prompt != "Summarize" {
+		t.Fatalf("agent triggers = %+v", triggers)
+	}
+	for name, broken := range map[string]Transition{
+		"approval parameters": {ID: "31", Name: "x", From: []string{"a"}, To: "b", Conditions: &ConditionGroup{Operation: "ALL", Conditions: []Rule{{ID: "x1", RuleKey: RuleBlockInProgressApproval, Parameters: map[string]string{"extra": "1"}}}}},
+		"approval json":       {ID: "31", Name: "x", From: []string{"a"}, To: "b", Conditions: &ConditionGroup{Operation: "ALL", Conditions: []Rule{{ID: "x1", RuleKey: RuleApprovalsBlockUntilApproved, Parameters: map[string]string{"approvalConfigurationJson": "nope"}}}}},
+		"reminder fields":     {ID: "31", Name: "x", From: []string{"a"}, To: "b", Screen: &Rule{ID: "x1", RuleKey: RuleRemindToUpdateFields, Parameters: map[string]string{"remindingMessage": "m"}}},
+		"agent id":            {ID: "31", Name: "x", From: []string{"a"}, To: "b", Actions: []Rule{{ID: "x1", RuleKey: RuleTriggerAgent, Parameters: map[string]string{"promptValue": ""}}}},
+	} {
+		if err := ValidateTransitionRules(broken); err == nil {
+			t.Fatalf("%s: accepted", name)
+		}
+	}
+	if next := NextTransitionID(Default().Transitions); next != "41" {
+		t.Fatalf("next transition id = %s", next)
+	}
+	if next := NextTransitionID(nil); next != "11" {
+		t.Fatalf("first transition id = %s", next)
+	}
+}

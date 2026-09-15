@@ -6,7 +6,7 @@ URL. The current delivered slice includes:
 | Route | Behavior |
 |---|---|
 | `POST /rest/api/3/bulk/issues/delete` | Queue deletion for up to 1,000 selected work items with execution-time access checks and per-item results |
-| `POST /rest/api/3/bulk/issues/move` | Queue project, issue-type and explicit parent moves with workflow status inference, key aliases and per-item results |
+| `POST /rest/api/3/bulk/issues/move` | Queue project, issue-type and parent moves with status, classification and required-field mappings, sub-tasks moving with their parent, key aliases and per-item results |
 | `GET /rest/api/3/bulk/issues/transition` | Group common, screenless transitions by workflow for up to 1,000 selected work items, with cursor paging |
 | `POST /rest/api/3/bulk/issues/transition` | Queue one or more validated transition groups and report per-item execution outcomes |
 | `GET /rest/api/3/bulk/issues/fields` | Discover the fields shared by the selected work items, with field search and 50-item cursor pages |
@@ -40,10 +40,26 @@ changes project keys atomically, and keeps every former key as an issue alias.
 Project-bound version/component values and incompatible security levels are
 cleared when crossing projects. A transactional task-item marker makes worker
 replay idempotent. The navigator exposes project, type and parent controls and
-uses the common progress page. Classification mappings, mandatory-field value
-mappings, and implicit parent-with-subtasks moves are rejected explicitly; the
-task reports an execution-time error if a parent acquires subtasks after
-submission.
+uses the common progress page.
+
+Each target mapping follows Jira's inference switches:
+
+- **Classification.** With `inferClassificationDefaults`, a work item without
+  a classification takes the destination project's default level, and one
+  with a level keeps it. Otherwise `targetClassification` must map every
+  source level to a published level, or that item fails.
+- **Required fields.** With `inferFieldDefaults`, work items keep their
+  values for fields the destination's field configuration requires, and one
+  without a value fails. Otherwise `targetMandatoryFields` supplies raw value
+  lists or ADF documents for required custom fields. Existing values are kept
+  unless `retain` is false.
+- **Sub-tasks.** When a parent moves to another project, its sub-tasks move
+  with it and stay under it. A sub-task keeps its type when the destination
+  offers it. With `inferSubtaskTypeDefault` it otherwise takes a sub-task type
+  the destination offers; without it, the parent fails.
+
+Every moved work item, sub-tasks included, fires the notification scheme's
+Issue moved event.
 
 Transition discovery evaluates each selected issue's current workflow,
 status-history and hierarchy conditions as the requesting administrator. It
@@ -69,10 +85,16 @@ work item through the ordinary update command, preserving validation, immutable
 history, notifications, security tombstones and SLA reconciliation. Replayed
 set/add/remove operations do not append duplicate issue actions.
 
-Workspace administrators currently stand in for Jira's global **Bulk change**
-permission. Configurable global permission grants and Jira's notification
-controls remain part of the administration completion work. The
-`sendBulkNotification` switch is accepted but bulk email delivery is not yet
-available. Cascading/color/date/select/group/multi-user/URL/time-tracking and
-issue-type bulk field families remain. Queue retention also needs Jira's 14-day
-expiry behavior.
+Bulk operations need Jira's global **Bulk change** permission, which
+administrators grant on the global permissions page.
+
+Delete, move, transition and edit accept `sendBulkNotification`, which
+defaults to true. While a task runs, the notification scheme events it raises
+(Issue deleted, Issue moved, the transition's event or Issue updated) still
+create in-app notifications. Instead of one email per work item, each recipient
+gets one bulk change email listing the work items, once the task finishes. With
+`sendBulkNotification` false, the task sends no email. A retried task sends at
+most one bulk email per recipient.
+
+Cascading/color/date/select/group/multi-user/URL/time-tracking and issue-type
+bulk field families remain. Bulk task progress is kept for 14 days.

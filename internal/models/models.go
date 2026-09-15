@@ -231,6 +231,15 @@ type Issue struct {
 	SecurityLevelID string                     `json:"securityLevelId,omitempty"`
 	Fields          map[string]json.RawMessage `json:"fields,omitempty"`
 
+	// Time tracking, in seconds: the original and remaining estimates, which
+	// are nil while unset, and the time logged. The aggregates add sub-tasks.
+	OriginalEstimateSeconds           *int64 `json:"originalEstimateSeconds,omitempty"`
+	RemainingEstimateSeconds          *int64 `json:"remainingEstimateSeconds,omitempty"`
+	TimeSpentSeconds                  int64  `json:"timeSpentSeconds,omitempty"`
+	AggregateOriginalEstimateSeconds  *int64 `json:"aggregateOriginalEstimateSeconds,omitempty"`
+	AggregateRemainingEstimateSeconds *int64 `json:"aggregateRemainingEstimateSeconds,omitempty"`
+	AggregateTimeSpentSeconds         int64  `json:"aggregateTimeSpentSeconds,omitempty"`
+
 	UpdatedSeq int64  `json:"-"`
 	UpdatedAt  string `json:"updated"`
 }
@@ -272,44 +281,50 @@ type SyncResponse struct {
 // ---- View models (render-only) ----
 
 type IssueView struct {
-	Issue               Issue
-	ProjectKey          string
-	ProjectName         string
-	BoardID             string
-	CanEdit             bool
+	Issue       Issue
+	ProjectKey  string
+	ProjectName string
+	BoardID     string
+	CanEdit     bool
+	// Editable is false while the work item's status sets jira.issue.editable
+	// to false; its fields and estimates cannot then be changed.
+	Editable            bool
 	CanTriage           bool
 	AttachmentsEnabled  bool
 	IssueLinkingEnabled bool
 	TimeTrackingEnabled bool
-	VotingEnabled       bool
-	WatchingEnabled     bool
-	CurrentUserID       string
-	Comments            []Comment
-	Transitions         []WorkflowTransition
-	History             []ChangelogEntry
-	Attachments         []Attachment
-	Worklogs            []Worklog
-	Activity            []IssueActivityItem
-	Members             []User
-	Priorities          []Priority
-	SecurityLevels      []WorkflowTransition
-	SecurityLevelName   string
-	CustomFields        []CustomFieldView
-	Watchers            []User
-	IsWatching          bool
-	Voters              []User
-	HasVoted            bool
-	Links               []IssueLinkView
-	LinkTypes           []LinkType
-	Children            []Issue
-	ParentOptions       []CreateFieldOption
-	Forms               []IssueForm
-	Development         []DevelopmentItem
-	Delivery            []DeliveryItem
-	AppPanels           []AppModule
-	AppActivityTabs     []AppModule
-	AppContexts         []AppModule
-	AppIssueContent     []AppIssueContent
+	// TimeTracking describes the work item's estimates and logged time in the
+	// site's duration format.
+	TimeTracking      TimeTrackingView
+	VotingEnabled     bool
+	WatchingEnabled   bool
+	CurrentUserID     string
+	Comments          []Comment
+	Transitions       []WorkflowTransition
+	History           []ChangelogEntry
+	Attachments       []Attachment
+	Worklogs          []Worklog
+	Activity          []IssueActivityItem
+	Members           []User
+	Priorities        []Priority
+	SecurityLevels    []WorkflowTransition
+	SecurityLevelName string
+	CustomFields      []CustomFieldView
+	Watchers          []User
+	IsWatching        bool
+	Voters            []User
+	HasVoted          bool
+	Links             []IssueLinkView
+	LinkTypes         []LinkType
+	Children          []Issue
+	ParentOptions     []CreateFieldOption
+	Forms             []IssueForm
+	Development       []DevelopmentItem
+	Delivery          []DeliveryItem
+	AppPanels         []AppModule
+	AppActivityTabs   []AppModule
+	AppContexts       []AppModule
+	AppIssueContent   []AppIssueContent
 }
 
 // IssueActivityItem is one entry in the issue's chronological activity ledger.
@@ -339,6 +354,8 @@ type WorkflowTransition struct {
 	ID           string
 	Name         string
 	ScreenFields []string
+	// ScreenMessage is the prompt a remind-people-to-update-fields screen shows.
+	ScreenMessage string
 }
 
 // EditDialogView drives the edit-issue dialog; rendered by both server and

@@ -21,7 +21,8 @@ var connectModuleKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9-]{1,100}$`)
 var jqlFunctionNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{0,254}$`)
 
 var allowedScopes = map[string]bool{
-	"read:jira-work": true, "write:jira-work": true,
+	"read:jira-work": true, "write:jira-work": true, "delete:jira-work": true,
+	"admin:jira-project": true, "admin:jira": true, "act-as-user:jira": true,
 	"read:confluence-content": true, "write:confluence-content": true,
 	"delete:confluence-content": true, "admin:confluence": true, "access:email-addresses": true,
 	"read:app-data:confluence": true, "write:app-data:confluence": true,
@@ -67,7 +68,12 @@ type descriptorWire struct {
 	ScheduledTriggers []scheduledTriggerWire `json:"scheduledTriggers"`
 	IssueFields       []models.AppIssueField `json:"-"`
 	JQLFunctions      []jqlFunctionWire      `json:"jqlFunctions"`
-	Format            string                 `json:"-"`
+	Permissions       []models.AppPermission `json:"-"`
+	// TimeTrackingProviders are Connect jiraTimeTrackingProviders modules.
+	TimeTrackingProviders []models.AppTimeTrackingProvider `json:"-"`
+	// EntityPropertyIndexes are Connect jiraEntityProperties extractions.
+	EntityPropertyIndexes []models.AppEntityPropertyIndex `json:"-"`
+	Format                string                          `json:"-"`
 }
 
 type jqlFunctionWire struct {
@@ -210,6 +216,38 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 		moduleKeys[function.Key] = true
 		descriptor.JQLFunctions = append(descriptor.JQLFunctions, function)
 	}
+	for _, permission := range wire.Permissions {
+		validated, err := validateAppPermission(permission, moduleKeys)
+		if err != nil {
+			return models.AppDescriptor{}, err
+		}
+		moduleKeys[validated.Key] = true
+		descriptor.Permissions = append(descriptor.Permissions, validated)
+	}
+	adminPages := map[string]bool{}
+	for _, module := range descriptor.Modules {
+		if module.Type == "jira:adminPage" {
+			adminPages[module.Key] = true
+		}
+	}
+	for _, provider := range wire.TimeTrackingProviders {
+		provider.Key, provider.Name, provider.AdminPageKey = strings.TrimSpace(provider.Key), strings.TrimSpace(provider.Name), strings.TrimSpace(provider.AdminPageKey)
+		if !appPermissionKeyPattern.MatchString(provider.Key) || moduleKeys[provider.Key] {
+			return models.AppDescriptor{}, fmt.Errorf("time tracking provider modules need a unique key of at most 100 letters, digits and hyphens")
+		}
+		if provider.Name == "" || len(provider.Name) > 255 {
+			return models.AppDescriptor{}, fmt.Errorf("time tracking provider %q needs a name of at most 255 characters", provider.Key)
+		}
+		if provider.AdminPageKey != "" && !adminPages[provider.AdminPageKey] {
+			return models.AppDescriptor{}, fmt.Errorf("time tracking provider %q names admin page %q, which the app does not declare", provider.Key, provider.AdminPageKey)
+		}
+		moduleKeys[provider.Key] = true
+		descriptor.TimeTrackingProviders = append(descriptor.TimeTrackingProviders, provider)
+	}
+	if err := validateEntityPropertyIndexes(wire.EntityPropertyIndexes, moduleKeys); err != nil {
+		return models.AppDescriptor{}, err
+	}
+	descriptor.EntityPropertyIndexes = wire.EntityPropertyIndexes
 	descriptor.Lifecycle = map[string]string{}
 	for event, path := range wire.Lifecycle {
 		if !map[string]bool{"installed": true, "enabled": true, "disabled": true, "upgraded": true, "uninstalled": true}[event] || !validAppCallbackPath(path) {
@@ -352,6 +390,68 @@ func ensureJSONEnd(decoder *json.Decoder) error {
 			return fmt.Errorf("app descriptor must contain one JSON object")
 		}
 		return fmt.Errorf("invalid app descriptor: %w", err)
+	}
+	return nil
+}
+
+var appPermissionKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9-]{1,100}$`)
+
+// validateAppPermission applies the Connect project and global permission
+// module rules: a unique key of letters, digits and hyphens, a name and a
+// description, a known category, and known default grants.
+func validateAppPermission(permission models.AppPermission, moduleKeys map[string]bool) (models.AppPermission, error) {
+	permission.Key, permission.Name, permission.Description = strings.TrimSpace(permission.Key), strings.TrimSpace(permission.Name), strings.TrimSpace(permission.Description)
+	if !appPermissionKeyPattern.MatchString(permission.Key) || moduleKeys[permission.Key] {
+		return permission, fmt.Errorf("permission modules need a unique key of at most 100 letters, digits and hyphens")
+	}
+	if permission.Name == "" || len(permission.Name) > 1500 || permission.Description == "" || len(permission.Description) > 1500 {
+		return permission, fmt.Errorf("permission %q needs a name and a description of at most 1500 characters", permission.Key)
+	}
+	switch permission.Type {
+	case "PROJECT":
+		if permission.Category == "" {
+			permission.Category = "other"
+		}
+		switch permission.Category {
+		case "projects", "issues", "voters_and_watchers", "comments", "attachments", "time_tracking", "other", "administration":
+		default:
+			return permission, fmt.Errorf("project permission %q has an unknown category %q", permission.Key, permission.Category)
+		}
+		permission.DefaultGrants, permission.AnonymousAllowed = nil, false
+	case "GLOBAL":
+		permission.Category = ""
+		for index, grant := range permission.DefaultGrants {
+			grant = strings.ToUpper(strings.TrimSpace(grant))
+			if grant != "NONE" && grant != "ALL" && grant != "JIRA-ADMINISTRATORS" {
+				return permission, fmt.Errorf("global permission %q has an unknown default grant %q", permission.Key, grant)
+			}
+			permission.DefaultGrants[index] = grant
+		}
+	default:
+		return permission, fmt.Errorf("permission %q has an unknown type", permission.Key)
+	}
+	return permission, nil
+}
+
+// validateEntityPropertyIndexes checks that entity property modules use keys
+// no other module uses and that aliases are unique across the app, then
+// claims the module keys.
+func validateEntityPropertyIndexes(indexes []models.AppEntityPropertyIndex, moduleKeys map[string]bool) error {
+	modules, aliases := map[string]bool{}, map[string]string{}
+	for _, index := range indexes {
+		if moduleKeys[index.ModuleKey] && !modules[index.ModuleKey] {
+			return fmt.Errorf("entity property module key %q is already used by another module", index.ModuleKey)
+		}
+		modules[index.ModuleKey] = true
+		if alias := strings.ToLower(index.Alias); alias != "" {
+			if owner, taken := aliases[alias]; taken && owner != index.ModuleKey {
+				return fmt.Errorf("entity property alias %q is used by more than one module", index.Alias)
+			}
+			aliases[alias] = index.ModuleKey
+		}
+	}
+	for key := range modules {
+		moduleKeys[key] = true
 	}
 	return nil
 }

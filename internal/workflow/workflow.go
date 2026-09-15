@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -32,6 +34,17 @@ const (
 	RuleDevelopmentTrigger       = "system:development-triggers"
 	DevelopmentBranchCreated     = "com.atlassian.jira.plugins.jira-development-integration-plugin:branch-created-trigger"
 	RuleTransitionScreen         = "system:transition-screen"
+	// Approval conditions: block while an approval is pending, or until one is
+	// approved or rejected.
+	RuleBlockInProgressApproval     = "system:block-in-progress-approval"
+	RuleApprovalsBlockUntilApproved = "system:jsd-approvals-block-until-approved"
+	RuleApprovalsBlockUntilRejected = "system:jsd-approvals-block-until-rejected"
+	// RuleRemindToUpdateFields is a screen rule prompting people to update
+	// fields during the transition.
+	RuleRemindToUpdateFields = "system:remind-people-to-update-fields"
+	// RuleTriggerAgent is a post function requesting an agent run after the
+	// transition.
+	RuleTriggerAgent = "system:trigger-agent"
 )
 
 // Rule is the Jira Cloud workflow rule wire shape. Parameters remain strings
@@ -66,6 +79,24 @@ type EvaluationContext struct {
 	FormsAttached  int
 	FormsSubmitted bool
 	IsAPI          bool
+	// Approvals holds the final decision of each approval on the work item:
+	// pending, approved or declined.
+	Approvals []string
+}
+
+// approvalState summarizes the approvals on a work item.
+func approvalState(decisions []string) (pending, approved, declined int) {
+	for _, decision := range decisions {
+		switch decision {
+		case "pending":
+			pending++
+		case "approved":
+			approved++
+		case "declined":
+			declined++
+		}
+	}
+	return pending, approved, declined
 }
 
 type TransitionHistory struct {
@@ -83,22 +114,126 @@ type Layout struct {
 
 // StatusLayout keeps a workflow's status membership and designer placement.
 type StatusLayout struct {
-	StatusReference string            `json:"statusReference"`
-	Layout          *Layout           `json:"layout,omitempty"`
-	Properties      map[string]string `json:"properties"`
+	StatusReference       string                 `json:"statusReference"`
+	Layout                *Layout                `json:"layout,omitempty"`
+	Properties            map[string]string      `json:"properties"`
+	ApprovalConfiguration *ApprovalConfiguration `json:"approvalConfiguration,omitempty"`
+}
+
+// ApprovalConfiguration is a status's Jira Service Management approval: the
+// user picker field naming its approvers, how many approvals it needs, and the
+// transitions that run once it is approved or declined.
+type ApprovalConfiguration struct {
+	Active              string   `json:"active"`
+	ConditionType       string   `json:"conditionType"`
+	ConditionValue      string   `json:"conditionValue"`
+	Exclude             []string `json:"exclude,omitempty"`
+	FieldID             string   `json:"fieldId"`
+	PrePopulatedFieldID string   `json:"prePopulatedFieldId,omitempty"`
+	TransitionApproved  string   `json:"transitionApproved"`
+	TransitionRejected  string   `json:"transitionRejected"`
+}
+
+// StatusApproval returns the active approval configured on a status, if any.
+func (w Workflow) StatusApproval(statusID string) *ApprovalConfiguration {
+	for _, status := range w.Statuses {
+		if status.StatusReference == statusID && status.ApprovalConfiguration != nil && status.ApprovalConfiguration.Active == "true" {
+			configuration := *status.ApprovalConfiguration
+			return &configuration
+		}
+	}
+	return nil
+}
+
+// ValidateApprovalConfiguration checks a status's approval configuration
+// against Jira's documented limits and the workflow's transitions.
+func ValidateApprovalConfiguration(statusID string, configuration ApprovalConfiguration, transitions []Transition) error {
+	if configuration.Active != "true" && configuration.Active != "false" {
+		return fmt.Errorf("approval configuration active must be true or false")
+	}
+	limit := 20
+	switch configuration.ConditionType {
+	case "number", "numberPerPrincipal":
+	case "percent":
+		limit = 100
+	default:
+		return fmt.Errorf("approval condition type must be number, percent or numberPerPrincipal")
+	}
+	if value, err := strconv.Atoi(configuration.ConditionValue); err != nil || value < 1 || value > limit {
+		return fmt.Errorf("approval condition value must be a whole number from 1 to %d", limit)
+	}
+	for _, role := range configuration.Exclude {
+		if role != "assignee" && role != "reporter" {
+			return fmt.Errorf("approval exclusions must be assignee or reporter")
+		}
+	}
+	if !strings.HasPrefix(configuration.FieldID, "customfield_") {
+		return fmt.Errorf("approval configuration fieldId must name the approvers custom field")
+	}
+	if configuration.PrePopulatedFieldID != "" && !strings.HasPrefix(configuration.PrePopulatedFieldID, "customfield_") {
+		return fmt.Errorf("approval configuration prePopulatedFieldId must name a custom field")
+	}
+	for _, id := range []string{configuration.TransitionApproved, configuration.TransitionRejected} {
+		if !transitionLeaves(transitions, id, statusID) {
+			return fmt.Errorf("approval transition %q must be a transition out of the status", id)
+		}
+	}
+	return nil
+}
+
+// transitionLeaves reports whether the transition runs from the status.
+func transitionLeaves(transitions []Transition, id, statusID string) bool {
+	for _, transition := range transitions {
+		if id == "" || transition.ID != id {
+			continue
+		}
+		if transition.Kind() == TransitionGlobal {
+			return true
+		}
+		for _, from := range transition.From {
+			if from == statusID {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Transition is one workflow edge.
+// Transition types. A directed transition runs from the statuses it links;
+// a global transition runs from every status in the workflow; the initial
+// transition creates work items in its destination status.
+const (
+	TransitionDirected = "DIRECTED"
+	TransitionGlobal   = "GLOBAL"
+	TransitionInitial  = "INITIAL"
+)
+
+// LinkPorts are the designer ports a transition link starts and ends on.
+type LinkPorts struct {
+	FromPort *int `json:"fromPort,omitempty"`
+	ToPort   *int `json:"toPort,omitempty"`
+}
+
 type Transition struct {
-	ID         string          `json:"id"`
-	Name       string          `json:"name"`
-	From       []string        `json:"from"`
-	To         string          `json:"to"`
-	Actions    []Rule          `json:"actions,omitempty"`
-	Validators []Rule          `json:"validators,omitempty"`
-	Triggers   []Rule          `json:"triggers,omitempty"`
-	Conditions *ConditionGroup `json:"conditions,omitempty"`
-	Screen     *Rule           `json:"transitionScreen,omitempty"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Type        string            `json:"type,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Properties  map[string]string `json:"properties,omitempty"`
+	From        []string          `json:"from"`
+	// Ports holds each link's designer ports, keyed by the source status; a
+	// global or initial transition keys its single link by "".
+	Ports      map[string]LinkPorts `json:"ports,omitempty"`
+	To         string               `json:"to"`
+	Actions    []Rule               `json:"actions,omitempty"`
+	Validators []Rule               `json:"validators,omitempty"`
+	Triggers   []Rule               `json:"triggers,omitempty"`
+	Conditions *ConditionGroup      `json:"conditions,omitempty"`
+	Screen     *Rule                `json:"transitionScreen,omitempty"`
+	// CustomIssueEventID is the event the transition fires instead of the
+	// one Jira derives from the status change.
+	CustomIssueEventID string `json:"customIssueEventId,omitempty"`
 }
 
 // Workflow is a named set of transitions over its visible status registry.
@@ -115,6 +250,10 @@ type Workflow struct {
 	Version                         int            `json:"-"`
 	// EntityID is the UUID clients identify the workflow by.
 	EntityID string `json:"-"`
+	// CreatedAt and UpdatedAt are when the workflow was created and last
+	// published.
+	CreatedAt time.Time `json:"-"`
+	UpdatedAt time.Time `json:"-"`
 }
 
 type Scheme struct {
@@ -127,6 +266,15 @@ type Scheme struct {
 	Version           int               `json:"-"`
 	// JiraID is the id clients see.
 	JiraID int64 `json:"-"`
+	// IsDefault marks the site's default workflow scheme.
+	IsDefault bool `json:"-"`
+	// DraftView is set when the scheme carries its draft's mappings; the
+	// published mappings are then kept in the Original fields.
+	DraftView                 bool              `json:"-"`
+	OriginalDefaultWorkflowID string            `json:"-"`
+	OriginalIssueTypeMappings map[string]string `json:"-"`
+	DraftModifiedAt           string            `json:"-"`
+	DraftModifiedBy           string            `json:"-"`
 }
 
 // Default is the built-in workflow: To Do ↔ In Progress → Done, Done → To Do.
@@ -136,6 +284,7 @@ func Default() Workflow {
 		ID:   "wf_default",
 		Name: "Default",
 		Transitions: []Transition{
+			{ID: "1", Name: "Create", Type: TransitionInitial, To: "st_todo"},
 			{ID: "11", Name: "To Do", From: []string{"st_inprogress", "st_done"}, To: "st_todo"},
 			{ID: "21", Name: "In Progress", From: []string{"st_todo", "st_done"}, To: "st_inprogress"},
 			{ID: "31", Name: "Done", From: []string{"st_todo", "st_inprogress"}, To: "st_done"},
@@ -143,18 +292,83 @@ func Default() Workflow {
 	}
 }
 
+// Kind is the transition's type; a stored transition without one is directed.
+func (t Transition) Kind() string {
+	if t.Type == "" {
+		return TransitionDirected
+	}
+	return t.Type
+}
+
+// runsFrom reports whether the transition can start from the status. A global
+// transition runs from every status of its workflow, including its own
+// destination, as in Jira; the initial transition only runs on creation.
+func (w Workflow) runsFrom(t Transition, statusID string) bool {
+	switch t.Kind() {
+	case TransitionInitial:
+		return false
+	case TransitionGlobal:
+		return slices.Contains(w.StatusIDs(), statusID)
+	}
+	return slices.Contains(t.From, statusID)
+}
+
 // Available returns the transitions legal from the given status.
 func (w Workflow) Available(statusID string) []Transition {
 	var out []Transition
 	for _, t := range w.Transitions {
-		for _, from := range t.From {
-			if from == statusID {
-				out = append(out, t)
-				break
-			}
+		if w.runsFrom(t, statusID) {
+			out = append(out, t)
 		}
 	}
 	return out
+}
+
+// StatusIDs lists the workflow's statuses: its designer statuses first, then
+// every status its transitions reach or leave, each once.
+func (w Workflow) StatusIDs() []string {
+	seen := make(map[string]bool)
+	ids := make([]string, 0, len(w.Statuses))
+	add := func(id string) {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	for _, status := range w.Statuses {
+		add(status.StatusReference)
+	}
+	for _, t := range w.Transitions {
+		for _, from := range t.From {
+			add(from)
+		}
+		add(t.To)
+	}
+	return ids
+}
+
+// Initial returns the workflow's initial transition, or nil.
+func (w Workflow) Initial() *Transition {
+	for i := range w.Transitions {
+		if w.Transitions[i].Kind() == TransitionInitial {
+			return &w.Transitions[i]
+		}
+	}
+	return nil
+}
+
+// InitialStatus is the status new work items start in: the initial
+// transition's destination. A workflow stored before it had one starts in To
+// Do when it uses that status, and otherwise in its first status.
+func (w Workflow) InitialStatus() string {
+	if initial := w.Initial(); initial != nil {
+		return initial.To
+	}
+	ids := w.StatusIDs()
+	if len(ids) == 0 || slices.Contains(ids, "st_todo") {
+		return "st_todo"
+	}
+	return ids[0]
 }
 
 // AvailableFor returns legal transitions whose conditions allow the actor.
@@ -186,12 +400,7 @@ func (w Workflow) Validate(transitionID, currentStatusID string) (*Transition, b
 		if t.ID != transitionID {
 			continue
 		}
-		for _, from := range t.From {
-			if from == currentStatusID {
-				return t, true
-			}
-		}
-		return t, false
+		return t, w.runsFrom(*t, currentStatusID)
 	}
 	return nil, false
 }
@@ -275,6 +484,15 @@ func evaluateCondition(rule Rule, context EvaluationContext) bool {
 		return true
 	case RuleRestrictFromAllUsers:
 		return rule.Parameters["restrictMode"] == "users" && context.IsAPI
+	case RuleBlockInProgressApproval:
+		pending, _, _ := approvalState(context.Approvals)
+		return pending == 0
+	case RuleApprovalsBlockUntilApproved:
+		pending, approved, _ := approvalState(context.Approvals)
+		return pending == 0 && approved > 0
+	case RuleApprovalsBlockUntilRejected:
+		pending, _, declined := approvalState(context.Approvals)
+		return pending == 0 && declined > 0
 	case RuleRestrictIssueTransition:
 	default:
 		return false
@@ -464,7 +682,7 @@ func (t Transition) AssigneeEffect(context EvaluationContext) (string, bool, err
 	var assigneeID string
 	changed := false
 	for _, action := range t.Actions {
-		if action.RuleKey == RuleUpdateField || action.RuleKey == RuleCopyFieldValue || action.RuleKey == RuleTriggerWebhook || IsAppRule(action.RuleKey) {
+		if action.RuleKey == RuleUpdateField || action.RuleKey == RuleCopyFieldValue || action.RuleKey == RuleTriggerWebhook || action.RuleKey == RuleTriggerAgent || IsAppRule(action.RuleKey) {
 			continue
 		}
 		if action.RuleKey != RuleChangeAssignee {
@@ -501,7 +719,7 @@ func (t Transition) FieldUpdateEffects() ([]FieldUpdateEffect, error) {
 			continue
 		}
 		switch action.RuleKey {
-		case RuleChangeAssignee, RuleTriggerWebhook:
+		case RuleChangeAssignee, RuleTriggerWebhook, RuleTriggerAgent:
 			continue
 		case RuleUpdateField:
 			field := action.Parameters["field"]
@@ -546,7 +764,7 @@ func (t Transition) TriggerWebhookIDs() ([]string, error) {
 			continue
 		}
 		switch action.RuleKey {
-		case RuleChangeAssignee, RuleUpdateField, RuleCopyFieldValue:
+		case RuleChangeAssignee, RuleUpdateField, RuleCopyFieldValue, RuleTriggerAgent:
 			continue
 		case RuleTriggerWebhook:
 			id := strings.TrimSpace(action.Parameters["webhookId"])
@@ -562,6 +780,35 @@ func (t Transition) TriggerWebhookIDs() ([]string, error) {
 		}
 	}
 	return ids, nil
+}
+
+// AgentTrigger is an agent run a transition's post function requests.
+type AgentTrigger struct {
+	AgentID, Prompt string
+}
+
+// AgentTriggers returns the agent runs a transition requests, in workflow
+// order.
+func (t Transition) AgentTriggers() []AgentTrigger {
+	triggers := []AgentTrigger{}
+	for _, action := range t.Actions {
+		if action.RuleKey == RuleTriggerAgent {
+			triggers = append(triggers, AgentTrigger{AgentID: strings.TrimSpace(action.Parameters["agentId"]), Prompt: action.Parameters["promptValue"]})
+		}
+	}
+	return triggers
+}
+
+// NextTransitionID numbers a new transition the way Jira does: the next
+// multiple of ten plus one above the workflow's highest numeric id.
+func NextTransitionID(transitions []Transition) string {
+	highest := 1
+	for _, transition := range transitions {
+		if id, err := strconv.Atoi(transition.ID); err == nil && id > highest {
+			highest = id
+		}
+	}
+	return strconv.Itoa((highest/10+1)*10 + 1)
 }
 
 func readableWorkflowField(field string) bool {
@@ -618,7 +865,19 @@ func ValidateTransitionRules(transition Transition) error {
 		if err := validateRuleID(*transition.Screen); err != nil {
 			return err
 		}
-		if transition.Screen.RuleKey != RuleTransitionScreen || len(commaValues(transition.Screen.Parameters["fields"])) == 0 {
+		switch transition.Screen.RuleKey {
+		case RuleTransitionScreen:
+			if len(commaValues(transition.Screen.Parameters["fields"])) == 0 {
+				return fmt.Errorf("workflow transition screen is unsupported or incomplete")
+			}
+		case RuleRemindToUpdateFields:
+			if len(commaValues(transition.Screen.Parameters["remindingFieldIds"])) == 0 {
+				return fmt.Errorf("remind-people-to-update-fields requires remindingFieldIds")
+			}
+			if always := transition.Screen.Parameters["remindingAlwaysAsk"]; always != "" && always != "true" && always != "false" {
+				return fmt.Errorf("remind-people-to-update-fields remindingAlwaysAsk must be true or false")
+			}
+		default:
 			return fmt.Errorf("workflow transition screen is unsupported or incomplete")
 		}
 	}
@@ -743,6 +1002,10 @@ func ValidateTransitionRules(transition Transition) error {
 			if strings.TrimSpace(action.Parameters["webhookId"]) == "" {
 				return fmt.Errorf("trigger-webhook registration is required")
 			}
+		case RuleTriggerAgent:
+			if strings.TrimSpace(action.Parameters["agentId"]) == "" {
+				return fmt.Errorf("trigger-agent requires the agent's account id")
+			}
 		default:
 			return fmt.Errorf("workflow post-function %q is unsupported", action.RuleKey)
 		}
@@ -797,7 +1060,19 @@ func (t Transition) ScreenFields() []string {
 	if t.Screen == nil {
 		return nil
 	}
+	if t.Screen.RuleKey == RuleRemindToUpdateFields {
+		return commaValues(t.Screen.Parameters["remindingFieldIds"])
+	}
 	return commaValues(t.Screen.Parameters["fields"])
+}
+
+// ScreenReminder returns the message a remind-people-to-update-fields screen
+// shows and whether it always asks.
+func (t Transition) ScreenReminder() (message string, alwaysAsk, ok bool) {
+	if t.Screen == nil || t.Screen.RuleKey != RuleRemindToUpdateFields {
+		return "", false, false
+	}
+	return t.Screen.Parameters["remindingMessage"], t.Screen.Parameters["remindingAlwaysAsk"] == "true", true
 }
 
 func (t Transition) RequiredFields() map[string]bool {
@@ -876,6 +1151,16 @@ func validateConditionConfiguration(group ConditionGroup, seen map[string]bool) 
 			if condition.Parameters["blocker"] != "CHILD" || len(commaValues(condition.Parameters["statusIds"])) == 0 {
 				return fmt.Errorf("child blocking condition requires blocker CHILD and statusIds")
 			}
+		case RuleBlockInProgressApproval:
+			if len(condition.Parameters) != 0 {
+				return fmt.Errorf("block-in-progress-approval does not accept parameters")
+			}
+		case RuleApprovalsBlockUntilApproved, RuleApprovalsBlockUntilRejected:
+			raw := strings.TrimSpace(condition.Parameters["approvalConfigurationJson"])
+			var configuration map[string]any
+			if raw == "" || json.Unmarshal([]byte(raw), &configuration) != nil {
+				return fmt.Errorf("%s requires approvalConfigurationJson holding a JSON object", condition.RuleKey)
+			}
 		default:
 			return fmt.Errorf("workflow condition %q is unsupported or incomplete", condition.RuleKey)
 		}
@@ -910,4 +1195,28 @@ func validatePreviousStatusRule(parameters map[string]string, condition bool) er
 		}
 	}
 	return nil
+}
+
+// Jira's status property keys marking whether work items in a status can be
+// edited; issueEditable is the deprecated spelling.
+const (
+	PropertyIssueEditable       = "jira.issue.editable"
+	PropertyIssueEditableLegacy = "issueEditable"
+)
+
+// StatusEditable reports whether work items in the status can be edited: a
+// status is editable unless its workflow properties set jira.issue.editable,
+// or the deprecated issueEditable, to false.
+func (w Workflow) StatusEditable(statusID string) bool {
+	for _, status := range w.Statuses {
+		if status.StatusReference != statusID {
+			continue
+		}
+		for _, key := range []string{PropertyIssueEditable, PropertyIssueEditableLegacy} {
+			if value, ok := status.Properties[key]; ok {
+				return !strings.EqualFold(strings.TrimSpace(value), "false")
+			}
+		}
+	}
+	return true
 }

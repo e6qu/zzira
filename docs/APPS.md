@@ -111,15 +111,20 @@ and Confluence grants. Supported Connect module families are `adminPages`, `gene
 `contentBylineItems`, scalar
 `jiraIssueFields`, `jiraJqlFunctions`, quick-add `jiraIssueContents`, collapsible
 `jiraIssueContexts`, legacy `jiraIssueGlances`, Jira/Confluence navigation
-`webItems`, and `webhooks`.
+`webItems`, `webhooks`, `jiraProjectPermissions`, `jiraGlobalPermissions`,
+`jiraTimeTrackingProviders`, and `jiraEntityProperties`, whose extractions
+make issue property values searchable in JQL (see `docs/JQL.md`).
 The parser rejects unsupported authentication modes, scopes, module families,
 and web-panel locations instead of silently ignoring them.
 
 Connect apps can manage tenant-specific remote issue panels, navigation web
-items, scalar issue fields and keyed Jira webhooks through the
+items, scalar issue fields, keyed Jira webhooks, issue glances, contexts and
+contents, and entity property indexes through the
 standard JWT-signed `GET`, `POST`, and `DELETE`
 `/rest/atlassian-connect/1/app/module/dynamic` resource. `POST` accepts the
-descriptor-shaped `webPanels`, `webItems`, `jiraIssueFields`, and `webhooks` objects and
+descriptor-shaped `webPanels`, `webItems`, `jiraIssueFields`, `webhooks`,
+`jiraIssueGlances`, `jiraIssueContexts`, `jiraIssueContents` and
+`jiraEntityProperties` objects and
 registers the request atomically;
 duplicate static/dynamic keys or any invalid entry reject the whole request.
 `GET` returns the original grouped definitions. `DELETE` accepts repeated
@@ -329,40 +334,56 @@ codes. This provides the storage contract required by issue-context status metad
 bulk issue-property mutations remain a separate API slice.
 
 The runtime is a ZZIRA execution contract for remotely hosted apps. Remaining
-Connect module families, the remaining dynamic module types and webhook
-options, `configurePage`, custom admin-page behavior, project/page-admin, issue-tab and issue-context conditions, dashboard-item
+Connect module families, dynamic webhook options, `configurePage`, custom admin-page behavior, project/page-admin, issue-tab and issue-context conditions, dashboard-item
 configuration/refresh/conditions, workflow modules, select/read-only issue
 fields and option APIs,
 descriptor-driven upgrade migrations, and Atlassian-hosted Forge compute remain
 separate future slices.
 
-## Confluence operation scopes
+## Operation scopes
 
-Atlassian marks every Confluence REST operation with the Connect scope an app
-needs to call it. The app gateway applies those scopes one operation at a time,
-from a table generated out of the pinned specifications
-(`api/conformance/confluence_app_scopes.py`, whose `--check` keeps the table
-current).
+Atlassian marks every Jira, Jira Software, Jira Service Management and
+Confluence REST operation with the Connect scope an app needs to call it. The
+app gateway applies those scopes one operation at a time, from a table
+generated out of the pinned specifications (`api/conformance/app_scopes.py`).
+CI runs its `--check` to keep the table current.
 
-| Connect scope | Granted scope the app must hold |
-| --- | --- |
-| `READ` | `read:confluence-content` |
-| `WRITE` | `write:confluence-content` |
-| `DELETE` | `delete:confluence-content` |
-| `SPACE_ADMIN`, `ADMIN` | `admin:confluence` |
-| `ACCESS_EMAIL_ADDRESSES` | `access:email-addresses` |
-| `NONE` | none |
-| `INACCESSIBLE` | refused to every app |
+| Connect scope | Jira families | Confluence |
+| --- | --- | --- |
+| `READ` | `read:jira-work` | `read:confluence-content` |
+| `WRITE` | `write:jira-work` | `write:confluence-content` |
+| `DELETE` | `delete:jira-work` | `delete:confluence-content` |
+| `PROJECT_ADMIN` | `admin:jira-project` | — |
+| `SPACE_ADMIN`, `ADMIN` | `admin:jira` | `admin:confluence` |
+| `ACT_AS_USER` | `act-as-user:jira` | — |
+| `ACCESS_EMAIL_ADDRESSES` | `access:email-addresses` | `access:email-addresses` |
+| `NONE` | none | none |
+| `INACCESSIBLE` | refused to every app | refused to every app |
 
 The scopes nest the way Connect's levels do:
-- `admin:confluence` includes deleting;
-- `delete:confluence-content` includes writing;
-- `write:confluence-content` includes reading.
+- administering covers deleting (in Jira, site administration also covers
+  project administration, and project administration covers deleting);
+- deleting covers writing;
+- writing covers reading.
 
 A Connect descriptor's scopes are translated to match:
-- `DELETE` grants the delete scope;
-- `SPACE_ADMIN` and `ADMIN` grant the administration scope;
-- `ACCESS_EMAIL_ADDRESSES` grants email address access.
+- `DELETE` grants the delete scopes;
+- `PROJECT_ADMIN` grants project administration;
+- `SPACE_ADMIN` and `ADMIN` grant administration;
+- `ACT_AS_USER` and `ACCESS_EMAIL_ADDRESSES` grant themselves.
 
-A Confluence path that is not a pinned operation falls back to read for `GET`
-and write otherwise.
+The Jira Software DevOps provider APIs are reached with app authentication
+like the other product APIs. A product path that is not a pinned operation
+falls back to read for `GET` and write otherwise.
+
+## DevOps provider rate limits
+
+Each caller may make a limited number of requests per minute to each DevOps
+provider API's bulk submission: development information, builds, deployments,
+feature flags, remote links, security, operations and DevOps components.
+- **Every response** carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and
+  `X-RateLimit-Reset` (ISO 8601).
+- **A spent window** is answered 429 with `Retry-After`, in that API's error
+  shape.
+- **Windows are kept in the database**, so every server shares them. The
+  limit is 1,000 requests a minute unless the handler is configured otherwise.

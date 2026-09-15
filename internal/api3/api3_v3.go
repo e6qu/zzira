@@ -10,6 +10,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -57,6 +58,13 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 		writeJerr(w, e)
 		return
 	}
+	// Changing logged work on a work item that is not editable needs an app's
+	// overrideEditableFlag.
+	ctx, e := h.requestOverrides(r, wsID, userID, "overrideEditableFlag")
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
 	switch {
 	case len(sub) == 0 && r.Method == http.MethodGet:
 		worklogs, err := h.Store.WorklogsByIssue(r.Context(), issue.ID)
@@ -74,15 +82,32 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 	case len(sub) == 0 && r.Method == http.MethodPost:
 		var req struct {
 			TimeSpentSeconds int             `json:"timeSpentSeconds"`
+			TimeSpent        string          `json:"timeSpent"`
 			Comment          json.RawMessage `json:"comment"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TimeSpentSeconds <= 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"timeSpentSeconds": "A positive timeSpentSeconds is required."})
 			return
 		}
-		wl, _, err := h.Commands.AddWorklog(r.Context(), userID, wsID, issue.ID, req.Comment, req.TimeSpentSeconds)
+		cfg, estimate, ok := h.worklogTimeTracking(w, r, wsID)
+		if !ok {
+			return
+		}
+		if req.TimeSpentSeconds <= 0 && strings.TrimSpace(req.TimeSpent) != "" {
+			seconds, parseErr := models.ParseJiraDuration(req.TimeSpent, cfg)
+			if parseErr != nil {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"timeLogged": parseErr.Error()})
+				return
+			}
+			req.TimeSpentSeconds = int(seconds)
+		}
+		if req.TimeSpentSeconds <= 0 {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"timeSpentSeconds": "A positive timeSpentSeconds is required."})
+			return
+		}
+		wl, _, err := h.Commands.AddWorklogWithEstimate(ctx, userID, wsID, issue.ID, req.Comment, req.TimeSpentSeconds, estimate)
 		if err != nil {
-			jiraError(w, http.StatusBadRequest, err.Error())
+			worklogCommandError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, h.worklogBean(wl))
@@ -99,8 +124,12 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			jiraError(w, http.StatusNotFound, "Worklog does not exist.")
 			return
 		}
-		if _, err := h.Commands.DeleteWorklog(r.Context(), userID, wsID, sub[0]); err != nil {
-			jiraError(w, http.StatusBadRequest, err.Error())
+		_, estimate, ok := h.worklogTimeTracking(w, r, wsID)
+		if !ok {
+			return
+		}
+		if _, err := h.Commands.DeleteWorklogWithEstimate(ctx, userID, wsID, wl.ID, estimate); err != nil {
+			worklogCommandError(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -112,14 +141,32 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 		}
 		var request struct {
 			TimeSpentSeconds *int            `json:"timeSpentSeconds"`
+			TimeSpent        string          `json:"timeSpent"`
 			Comment          json.RawMessage `json:"comment"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&request); err != nil {
 			jiraError(w, http.StatusBadRequest, "Invalid request payload.")
 			return
 		}
-		updated, _, err := h.Store.UpdateWorklog(r.Context(), userID, wsID, wl.ID, request.Comment, request.TimeSpentSeconds)
+		cfg, estimate, ok := h.worklogTimeTracking(w, r, wsID)
+		if !ok {
+			return
+		}
+		if request.TimeSpentSeconds == nil && strings.TrimSpace(request.TimeSpent) != "" {
+			seconds, parseErr := models.ParseJiraDuration(request.TimeSpent, cfg)
+			if parseErr != nil {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"timeLogged": parseErr.Error()})
+				return
+			}
+			spent := int(seconds)
+			request.TimeSpentSeconds = &spent
+		}
+		updated, _, err := h.Commands.UpdateWorklog(ctx, userID, wsID, wl.ID, request.Comment, request.TimeSpentSeconds, estimate)
 		if err != nil {
+			if errors.Is(err, commands.ErrWorklogPermission) || errors.Is(err, commands.ErrIssueNotEditable) {
+				worklogCommandError(w, err)
+				return
+			}
 			worklogError(w, err)
 			return
 		}
@@ -131,9 +178,13 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
+		_, estimate, ok := h.worklogTimeTracking(w, r, wsID)
+		if !ok {
+			return
+		}
 		for _, wl := range worklogs {
-			if _, err := h.Commands.DeleteWorklog(r.Context(), userID, wsID, wl.ID); err != nil {
-				jiraError(w, http.StatusBadRequest, err.Error())
+			if _, err := h.Commands.DeleteWorklogWithEstimate(ctx, userID, wsID, wl.ID, estimate); err != nil {
+				worklogCommandError(w, err)
 				return
 			}
 		}
@@ -172,7 +223,11 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			}
 			storedIDs = append(storedIDs, wl.ID)
 		}
-		if err := h.Store.MoveWorklogs(r.Context(), userID, wsID, issue.ID, target.ID, storedIDs); err != nil {
+		if err := h.Commands.MoveWorklogs(ctx, userID, wsID, issue, target, storedIDs); err != nil {
+			if errors.Is(err, commands.ErrWorklogPermission) || errors.Is(err, commands.ErrIssueNotEditable) {
+				worklogCommandError(w, err)
+				return
+			}
 			worklogError(w, err)
 			return
 		}
@@ -340,7 +395,29 @@ func (h *Handler) attachmentSettings(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "Could not load attachment settings.")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"enabled": h.Blobs != nil && configuration.AttachmentsEnabled, "uploadLimit": 32 << 20})
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": h.Blobs != nil && configuration.AttachmentsEnabled, "uploadLimit": configuration.AttachmentUploadLimit})
+}
+
+// attachmentMetadataBean is Jira's AttachmentMetadata: a numeric id, the
+// author's user bean and the attachment's properties.
+func (h *Handler) attachmentMetadataBean(r *http.Request, a *models.Attachment) map[string]any {
+	bean := h.attachmentBean(a)
+	bean["id"] = a.JiraID
+	bean["properties"] = map[string]any{}
+	if author, err := h.Store.UserByID(r.Context(), a.AuthorID); err == nil && author != nil {
+		bean["author"] = h.userBeanFor(r.Context(), author)
+	}
+	return bean
+}
+
+// attachmentRedirect reads the redirect parameter, which defaults to true.
+func attachmentRedirect(r *http.Request) (bool, bool) {
+	raw := r.URL.Query().Get("redirect")
+	if raw == "" {
+		return true, true
+	}
+	redirect, err := strconv.ParseBool(raw)
+	return redirect, err == nil
 }
 
 func (h *Handler) attachmentBean(a *models.Attachment) map[string]any {
@@ -378,12 +455,41 @@ func (h *Handler) uploadAttachments(w http.ResponseWriter, r *http.Request, idOr
 		writeJerr(w, e)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)        // bounded: 32MB max upload
+	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), wsID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if h.Blobs == nil || !configuration.AttachmentsEnabled {
+		jiraError(w, http.StatusForbidden, "Attachments are disabled.")
+		return
+	}
+	// Each of up to 60 files may reach the site's attachment limit.
+	r.Body = http.MaxBytesReader(w, r.Body, min(60*configuration.AttachmentUploadLimit+(1<<20), 2<<30))
 	if err := r.ParseMultipartForm(32 << 20); err != nil { // #nosec G120 -- body capped by MaxBytesReader above
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			jiraError(w, http.StatusRequestEntityTooLarge, "The attachments exceed the maximum attachment size.")
+			return
+		}
 		jiraError(w, http.StatusBadRequest, "multipart/form-data body required")
 		return
 	}
 	defer cleanupMultipart(r)
+	fileCount := 0
+	for _, files := range r.MultipartForm.File {
+		fileCount += len(files)
+		for _, fh := range files {
+			if fh.Size > configuration.AttachmentUploadLimit {
+				jiraError(w, http.StatusRequestEntityTooLarge, "The attachment "+fh.Filename+" exceeds the maximum attachment size.")
+				return
+			}
+		}
+	}
+	if fileCount > 60 {
+		jiraError(w, http.StatusRequestEntityTooLarge, "No more than 60 files can be uploaded at once.")
+		return
+	}
 	beans := []map[string]any{}
 	for _, files := range r.MultipartForm.File {
 		for _, fh := range files {
@@ -395,6 +501,14 @@ func (h *Handler) uploadAttachments(w http.ResponseWriter, r *http.Request, idOr
 			att, _, err := h.Commands.AddAttachment(r.Context(), userID, wsID, issue.ID, fh.Filename, fh.Header.Get("Content-Type"), f)
 			if closeErr := f.Close(); closeErr != nil {
 				log.Printf("attachment close: %v", closeErr)
+			}
+			if errors.Is(err, commands.ErrAttachmentTooLarge) {
+				jiraError(w, http.StatusRequestEntityTooLarge, "The attachment "+fh.Filename+" exceeds the maximum attachment size.")
+				return
+			}
+			if errors.Is(err, commands.ErrAttachmentCreatePermission) {
+				jiraError(w, http.StatusForbidden, "You do not have permission to create attachments for this issue.")
+				return
 			}
 			if err != nil {
 				log.Printf("attachment store: %v", err)
@@ -433,13 +547,13 @@ func (h *Handler) attachmentMeta(w http.ResponseWriter, r *http.Request, id stri
 	}
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, http.StatusOK, h.attachmentBean(att))
+		writeJSON(w, http.StatusOK, h.attachmentMetadataBean(r, att))
 	case http.MethodDelete:
-		if att.AuthorID != userID {
-			jiraError(w, http.StatusForbidden, "Only the author may delete an attachment.")
-			return
-		}
 		if _, err := h.Commands.DeleteAttachment(r.Context(), userID, wsID, id); err != nil {
+			if errors.Is(err, commands.ErrAttachmentDeletePermission) {
+				jiraError(w, http.StatusForbidden, "You do not have permission to delete this attachment.")
+				return
+			}
 			// The command error can contain request-derived identifiers. Keep the
 			// failure observable without allowing forged log lines.
 			log.Print("attachment delete failed after authorization")
@@ -464,11 +578,58 @@ func (h *Handler) attachmentContent(w http.ResponseWriter, r *http.Request, id s
 		writeJerr(w, e)
 		return
 	}
-	if _, e := h.attachmentForUser(r, wsID, userID, id); e != nil {
+	att, e := h.attachmentForUser(r, wsID, userID, id)
+	if e != nil {
 		writeJerr(w, e)
 		return
 	}
-	blobRef, filename, mimeType, err := h.Store.AttachmentBlobRef(r.Context(), wsID, id)
+	redirect, ok := attachmentRedirect(r)
+	if !ok {
+		jiraError(w, http.StatusBadRequest, "redirect must be true or false.")
+		return
+	}
+	if redirect {
+		w.Header().Set("Location", h.BaseURL+"/secure/attachment/"+strconv.FormatInt(att.JiraID, 10)+"/"+url.PathEscape(att.Filename))
+		w.WriteHeader(http.StatusSeeOther)
+		return
+	}
+	h.serveAttachmentBytes(w, r, wsID, att)
+}
+
+// secureAttachmentRoute serves the downloads the attachment operations
+// redirect to: /secure/attachment/{id}/{filename} and
+// /secure/thumbnail/{id}/{filename}.
+func (h *Handler) secureAttachmentRoute(w http.ResponseWriter, r *http.Request, rest string, thumbnail bool) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		jiraError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	id, _, _ := strings.Cut(rest, "/")
+	wsID, userID, e := h.authWorkspace(r)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	att, e := h.attachmentForUser(r, wsID, userID, id)
+	if e != nil {
+		writeJerr(w, e)
+		return
+	}
+	if thumbnail {
+		h.serveAttachmentThumbnail(w, r, wsID, att)
+		return
+	}
+	h.serveAttachmentBytes(w, r, wsID, att)
+}
+
+// serveAttachmentBytes streams an attachment, honouring Range requests.
+func (h *Handler) serveAttachmentBytes(w http.ResponseWriter, r *http.Request, wsID string, att *models.Attachment) {
+	if byteRange := r.Header.Get("Range"); byteRange != "" && !strings.HasPrefix(strings.TrimSpace(byteRange), "bytes=") {
+		jiraError(w, http.StatusBadRequest, "The Range header is malformed.")
+		return
+	}
+	blobRef, filename, mimeType, err := h.Store.AttachmentBlobRef(r.Context(), wsID, strconv.FormatInt(att.JiraID, 10))
 	if err != nil {
 		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
 		return
@@ -483,22 +644,22 @@ func (h *Handler) attachmentContent(w http.ResponseWriter, r *http.Request, id s
 			log.Printf("attachment content close: %v", err)
 		}
 	}()
+	w.Header().Set("Content-Type", mimeType)
+	if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename}); disposition != "" {
+		w.Header().Set("Content-Disposition", disposition)
+	}
+	if seeker, ok := rc.(io.ReadSeeker); ok {
+		http.ServeContent(w, r, filename, time.Time{}, seeker)
+		return
+	}
 	if r.Header.Get("Range") != "" {
 		contents, readErr := io.ReadAll(io.LimitReader(rc, (32<<20)+1))
 		if readErr != nil || len(contents) > 32<<20 {
 			jiraError(w, http.StatusInternalServerError, "Attachment content could not be read.")
 			return
 		}
-		w.Header().Set("Content-Type", mimeType)
-		if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename}); disposition != "" {
-			w.Header().Set("Content-Disposition", disposition)
-		}
 		http.ServeContent(w, r, filename, time.Time{}, bytes.NewReader(contents))
 		return
-	}
-	w.Header().Set("Content-Type", mimeType)
-	if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename}); disposition != "" {
-		w.Header().Set("Content-Disposition", disposition)
 	}
 	if size > 0 {
 		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
@@ -524,32 +685,95 @@ func (h *Handler) attachmentThumbnail(w http.ResponseWriter, r *http.Request, id
 		writeJerr(w, e)
 		return
 	}
-	if !strings.HasPrefix(att.MimeType, "image/") && r.URL.Query().Get("fallbackToDefault") == "false" {
-		jiraError(w, http.StatusNotFound, "Attachment does not have a thumbnail.")
+	redirect, ok := attachmentRedirect(r)
+	if _, _, _, valid := thumbnailOptions(r); !ok || !valid {
+		jiraError(w, http.StatusBadRequest, "redirect, fallbackToDefault, width and height are invalid.")
 		return
 	}
-	blobRef, _, mimeType, err := h.Store.AttachmentBlobRef(r.Context(), wsID, id)
-	if err != nil {
-		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
+	if redirect {
+		query := url.Values{}
+		for _, name := range []string{"width", "height", "fallbackToDefault"} {
+			if value := r.URL.Query().Get(name); value != "" {
+				query.Set(name, value)
+			}
+		}
+		location := h.BaseURL + "/secure/thumbnail/" + strconv.FormatInt(att.JiraID, 10) + "/" + url.PathEscape(att.Filename)
+		if encoded := query.Encode(); encoded != "" {
+			location += "?" + encoded
+		}
+		w.Header().Set("Location", location)
+		w.WriteHeader(http.StatusSeeOther)
 		return
 	}
-	rc, size, err := h.Blobs.Get(r.Context(), blobRef)
-	if err != nil {
-		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
+	h.serveAttachmentThumbnail(w, r, wsID, att)
+}
+
+// thumbnailOptions reads fallbackToDefault, which defaults to true, and the
+// optional positive width and height bounds.
+func thumbnailOptions(r *http.Request) (fallback bool, width, height int, valid bool) {
+	query := r.URL.Query()
+	fallback = true
+	if raw := query.Get("fallbackToDefault"); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			return false, 0, 0, false
+		}
+		fallback = parsed
+	}
+	for name, target := range map[string]*int{"width": &width, "height": &height} {
+		if raw := query.Get(name); raw != "" {
+			parsed, err := strconv.Atoi(raw)
+			if err != nil || parsed < 1 || parsed > 10000 {
+				return false, 0, 0, false
+			}
+			*target = parsed
+		}
+	}
+	return fallback, width, height, true
+}
+
+// serveAttachmentThumbnail renders an image attachment within the requested
+// bounds, or the default thumbnail when there is no image rendition and the
+// request allows it.
+func (h *Handler) serveAttachmentThumbnail(w http.ResponseWriter, r *http.Request, wsID string, att *models.Attachment) {
+	fallback, width, height, valid := thumbnailOptions(r)
+	if !valid {
+		jiraError(w, http.StatusBadRequest, "fallbackToDefault, width and height are invalid.")
 		return
 	}
-	defer func() {
+	var rendition []byte
+	contentType := "image/png"
+	if strings.HasPrefix(att.MimeType, "image/") {
+		blobRef, _, _, err := h.Store.AttachmentBlobRef(r.Context(), wsID, strconv.FormatInt(att.JiraID, 10))
+		if err != nil {
+			jiraError(w, http.StatusNotFound, "Attachment does not exist.")
+			return
+		}
+		rc, _, err := h.Blobs.Get(r.Context(), blobRef)
+		if err != nil {
+			jiraError(w, http.StatusNotFound, "Attachment does not exist.")
+			return
+		}
+		scaled, scaledType, ok := attachmentRendition(io.LimitReader(rc, 64<<20), width, height)
 		if closeErr := rc.Close(); closeErr != nil {
 			log.Printf("attachment thumbnail close: %v", closeErr)
 		}
-	}()
-	w.Header().Set("Content-Type", mimeType)
-	w.Header().Set("Content-Disposition", "inline")
-	if size > 0 {
-		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+		if ok {
+			rendition, contentType = scaled, scaledType
+		}
 	}
-	if _, err := io.Copy(w, rc); err != nil {
-		log.Printf("attachment thumbnail stream: %v", err)
+	if rendition == nil {
+		if !fallback {
+			jiraError(w, http.StatusNotFound, "The thumbnail could not be found.")
+			return
+		}
+		rendition = defaultThumbnail(width, height)
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", "inline")
+	w.Header().Set("Content-Length", strconv.Itoa(len(rendition)))
+	if _, err := w.Write(rendition); err != nil {
+		log.Printf("attachment thumbnail write: %v", err)
 	}
 }
 
@@ -578,23 +802,27 @@ func (h *Handler) attachmentArchive(w http.ResponseWriter, r *http.Request, id, 
 		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
 		return
 	}
-	contents, readErr := io.ReadAll(io.LimitReader(rc, (32<<20)+1))
+	contents, readErr := io.ReadAll(io.LimitReader(rc, (64<<20)+1))
 	closeErr := rc.Close()
-	if readErr != nil || closeErr != nil || len(contents) > 32<<20 {
+	if readErr != nil || closeErr != nil || len(contents) > 64<<20 {
 		jiraError(w, http.StatusInternalServerError, "Attachment archive could not be read.")
+		return
+	}
+	empty := func() {
+		if representation == "human" {
+			writeJSON(w, http.StatusOK, map[string]any{"id": att.JiraID, "name": att.Filename, "mediaType": att.MimeType, "entries": []any{}, "totalEntryCount": 0})
+		} else {
+			writeJSON(w, http.StatusOK, map[string]any{"entries": []any{}, "totalEntryCount": 0})
+		}
+	}
+	if unsupportedArchive(contents) {
+		jiraError(w, http.StatusConflict, "The attachment is an archive in a format other than ZIP.")
 		return
 	}
 	archive, err := zip.NewReader(bytes.NewReader(contents), int64(len(contents)))
 	if err != nil {
-		if strings.EqualFold(filepath.Ext(att.Filename), ".zip") || att.MimeType == "application/zip" {
-			jiraError(w, http.StatusConflict, "Attachment archive is corrupt or unsupported.")
-			return
-		}
-		if representation == "human" {
-			writeJSON(w, http.StatusOK, map[string]any{"id": att.ID, "name": att.Filename, "mediaType": att.MimeType, "entries": []any{}, "totalEntryCount": 0})
-		} else {
-			writeJSON(w, http.StatusOK, map[string]any{"entries": []any{}, "totalEntryCount": 0})
-		}
+		// An empty, corrupt or non-archive attachment has no entries.
+		empty()
 		return
 	}
 	entries := make([]map[string]any, 0, len(archive.File))
@@ -604,16 +832,37 @@ func (h *Handler) attachmentArchive(w http.ResponseWriter, r *http.Request, id, 
 			mediaType = "application/octet-stream"
 		}
 		if representation == "human" {
-			entries = append(entries, map[string]any{"index": index, "label": file.Name, "path": file.Name, "mediaType": mediaType, "size": humanAttachmentSize(file.UncompressedSize64)})
+			entries = append(entries, map[string]any{"index": index, "label": abbreviateArchiveName(file.Name), "path": file.Name, "mediaType": mediaType, "size": humanAttachmentSize(file.UncompressedSize64)})
 		} else {
-			entries = append(entries, map[string]any{"entryIndex": index, "name": file.Name, "mediaType": mediaType, "size": file.UncompressedSize64})
+			entries = append(entries, map[string]any{"entryIndex": index, "name": file.Name, "abbreviatedName": abbreviateArchiveName(file.Name), "mediaType": mediaType, "size": file.UncompressedSize64})
 		}
 	}
 	if representation == "human" {
-		writeJSON(w, http.StatusOK, map[string]any{"id": att.ID, "name": att.Filename, "mediaType": att.MimeType, "entries": entries, "totalEntryCount": len(entries)})
+		writeJSON(w, http.StatusOK, map[string]any{"id": att.JiraID, "name": att.Filename, "mediaType": att.MimeType, "entries": entries, "totalEntryCount": len(entries)})
 	} else {
 		writeJSON(w, http.StatusOK, map[string]any{"entries": entries, "totalEntryCount": len(entries)})
 	}
+}
+
+// unsupportedArchive recognizes archives Jira cannot expand from their magic
+// numbers: TAR, gzip, bzip2, xz, 7-Zip and RAR.
+func unsupportedArchive(contents []byte) bool {
+	for _, magic := range [][]byte{{0x1f, 0x8b}, []byte("BZh"), {0xfd, '7', 'z', 'X', 'Z', 0x00}, {'7', 'z', 0xbc, 0xaf, 0x27, 0x1c}, []byte("Rar!\x1a\x07")} {
+		if bytes.HasPrefix(contents, magic) {
+			return true
+		}
+	}
+	return len(contents) > 262 && bytes.Equal(contents[257:262], []byte("ustar"))
+}
+
+// abbreviateArchiveName shortens a long entry name to 40 characters, keeping
+// its start and its end.
+func abbreviateArchiveName(name string) string {
+	runes := []rune(name)
+	if len(runes) <= 40 {
+		return name
+	}
+	return string(runes[:18]) + "..." + string(runes[len(runes)-19:])
 }
 
 func humanAttachmentSize(size uint64) string {
@@ -629,6 +878,12 @@ func humanAttachmentSize(size uint64) string {
 // attachmentForUser keeps attachment metadata and bytes behind the same
 // workspace and issue-security checks as the issue itself.
 func (h *Handler) attachmentForUser(r *http.Request, workspaceID, userID, attachmentID string) (*models.Attachment, *jerr) {
+	// Jira reports attachments as not found while they are disabled.
+	if configuration, err := h.Store.JiraSiteConfiguration(r.Context(), workspaceID); err != nil {
+		return nil, &jerr{status: http.StatusInternalServerError, message: "internal error"}
+	} else if h.Blobs == nil || !configuration.AttachmentsEnabled {
+		return nil, &jerr{status: http.StatusNotFound, message: "Attachments are disabled."}
+	}
 	att, err := h.Store.AttachmentByID(r.Context(), workspaceID, attachmentID)
 	if err != nil {
 		return nil, &jerr{status: http.StatusNotFound, message: "Attachment does not exist."}
@@ -723,4 +978,52 @@ func (h *Handler) putAssignee(w http.ResponseWriter, r *http.Request, idOrKey st
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// worklogTimeTracking reads the site's time tracking settings and the estimate
+// adjustment a worklog request asks for: adjustEstimate with newEstimate,
+// reduceBy or increaseBy.
+func (h *Handler) worklogTimeTracking(w http.ResponseWriter, r *http.Request, workspaceID string) (models.TimeTrackingConfiguration, store.WorklogEstimate, bool) {
+	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), workspaceID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return models.TimeTrackingConfiguration{}, store.WorklogEstimate{}, false
+	}
+	cfg := configuration.TimeTracking
+	query := r.URL.Query()
+	estimate := store.WorklogEstimate{Mode: strings.ToLower(query.Get("adjustEstimate")), Notify: !strings.EqualFold(query.Get("notifyUsers"), "false")}
+	durations := map[string]*int64{"newEstimate": &estimate.NewSeconds, "reduceBy": &estimate.ReduceBySeconds, "increaseBy": &estimate.IncreaseBySeconds}
+	for name, target := range durations {
+		raw := strings.TrimSpace(query.Get(name))
+		if raw == "" {
+			continue
+		}
+		seconds, parseErr := models.ParseJiraDuration(raw, cfg)
+		if parseErr != nil {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{name: parseErr.Error()})
+			return cfg, estimate, false
+		}
+		*target = seconds
+	}
+	if estimate.Mode == "new" && strings.TrimSpace(query.Get("newEstimate")) == "" {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"newEstimate": "newEstimate is required when adjustEstimate is new."})
+		return cfg, estimate, false
+	}
+	if err = store.ValidateWorklogEstimate(estimate); err != nil {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"adjustEstimate": strings.TrimPrefix(err.Error(), store.ErrWorklogValidation.Error()+": ")})
+		return cfg, estimate, false
+	}
+	return cfg, estimate, true
+}
+
+func worklogCommandError(w http.ResponseWriter, err error) {
+	if errors.Is(err, commands.ErrWorklogPermission) {
+		jiraError(w, http.StatusForbidden, "You do not have permission to change work logged on this work item.")
+		return
+	}
+	if errors.Is(err, commands.ErrIssueNotEditable) {
+		jiraError(w, http.StatusBadRequest, "You cannot change work logged on this work item because it is not editable in its current status.")
+		return
+	}
+	jiraError(w, http.StatusBadRequest, err.Error())
 }

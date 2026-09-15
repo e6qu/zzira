@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -34,6 +35,87 @@ type connectIssueFieldWire struct {
 	Name        connectNameWire `json:"name"`
 	Description connectNameWire `json:"description"`
 	Type        string          `json:"type"`
+}
+
+// connectEntityPropertyWire is a jiraEntityProperties module: the values an
+// app indexes inside entity properties so JQL can search them.
+type connectEntityPropertyWire struct {
+	Key               string          `json:"key"`
+	Name              connectNameWire `json:"name"`
+	EntityType        string          `json:"entityType"`
+	KeyConfigurations []struct {
+		PropertyKey string `json:"propertyKey"`
+		Extractions []struct {
+			ObjectName string `json:"objectName"`
+			Type       string `json:"type"`
+			Alias      string `json:"alias"`
+		} `json:"extractions"`
+	} `json:"keyConfigurations"`
+}
+
+var (
+	entityPropertyObjectPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$`)
+	entityPropertyAliasPattern  = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,254}$`)
+	entityPropertyTypes         = map[string]bool{"issue": true, "comment": true, "project": true, "user": true, "issuetype": true}
+	entityPropertyExtractions   = map[string]bool{"number": true, "string": true, "text": true, "date": true, "user": true}
+)
+
+// translateConnectEntityProperty validates a jiraEntityProperties module and
+// lists its extractions. The entity type defaults to issue; every extraction
+// needs an object path and a supported type, and aliases are unique.
+func translateConnectEntityProperty(module connectEntityPropertyWire) ([]models.AppEntityPropertyIndex, error) {
+	key, name := strings.TrimSpace(module.Key), strings.TrimSpace(module.Name.Value)
+	entityType := strings.ToLower(strings.TrimSpace(module.EntityType))
+	if entityType == "" {
+		entityType = "issue"
+	}
+	if !connectModuleKeyPattern.MatchString(key) || name == "" || len(name) > 255 || !entityPropertyTypes[entityType] || len(module.KeyConfigurations) == 0 {
+		return nil, fmt.Errorf("Connect entity property module %q needs a key, a name, a supported entityType and at least one key configuration", key)
+	}
+	indexes := []models.AppEntityPropertyIndex{}
+	seen, aliases := map[string]bool{}, map[string]bool{}
+	for _, configuration := range module.KeyConfigurations {
+		propertyKey := strings.TrimSpace(configuration.PropertyKey)
+		if propertyKey == "" || len(propertyKey) > 255 || strings.ContainsAny(propertyKey, "[]") || len(configuration.Extractions) == 0 {
+			return nil, fmt.Errorf("Connect entity property module %q needs property keys without brackets and at least one extraction each", key)
+		}
+		for _, extraction := range configuration.Extractions {
+			objectName, extractionType, alias := strings.TrimSpace(extraction.ObjectName), strings.ToLower(strings.TrimSpace(extraction.Type)), strings.TrimSpace(extraction.Alias)
+			if !entityPropertyObjectPattern.MatchString(objectName) || len(objectName) > 255 || !entityPropertyExtractions[extractionType] {
+				return nil, fmt.Errorf("Connect entity property module %q has an extraction without a valid objectName and type", key)
+			}
+			if seen[propertyKey+"\x00"+objectName] {
+				return nil, fmt.Errorf("Connect entity property module %q extracts %s.%s twice", key, propertyKey, objectName)
+			}
+			seen[propertyKey+"\x00"+objectName] = true
+			if alias != "" {
+				if !entityPropertyAliasPattern.MatchString(alias) || aliases[strings.ToLower(alias)] {
+					return nil, fmt.Errorf("Connect entity property module %q has an invalid or repeated alias %q", key, alias)
+				}
+				aliases[strings.ToLower(alias)] = true
+			}
+			indexes = append(indexes, models.AppEntityPropertyIndex{ModuleKey: key, Name: name, EntityType: entityType, PropertyKey: propertyKey, ObjectName: objectName, Type: extractionType, Alias: alias})
+		}
+	}
+	return indexes, nil
+}
+
+// connectTimeTrackingProviderWire is a jiraTimeTrackingProviders module.
+type connectTimeTrackingProviderWire struct {
+	Key          string          `json:"key"`
+	Name         connectNameWire `json:"name"`
+	AdminPageKey string          `json:"adminPageKey"`
+}
+
+// connectPermissionWire is a jiraProjectPermissions or jiraGlobalPermissions
+// module.
+type connectPermissionWire struct {
+	Key              string          `json:"key"`
+	Name             connectNameWire `json:"name"`
+	Description      connectNameWire `json:"description"`
+	Category         string          `json:"category"`
+	AnonymousAllowed *bool           `json:"anonymousAllowed"`
+	DefaultGrants    []string        `json:"defaultGrants"`
 }
 
 type connectRemoteModuleWire struct {
@@ -201,16 +283,27 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		case "WRITE", "DELETE", "PROJECT_ADMIN", "SPACE_ADMIN", "ADMIN":
 			scopes["read:jira-work"], scopes["write:jira-work"] = true, true
 			scopes["read:confluence-content"], scopes["write:confluence-content"] = true, true
-			// Connect's levels nest: deleting includes writing, and
-			// administering includes deleting.
+			// Connect's levels nest: deleting includes writing, a project
+			// administrator can delete, and administering includes both.
+			if scope != "WRITE" {
+				scopes["delete:jira-work"] = true
+			}
 			if scope != "WRITE" && scope != "PROJECT_ADMIN" {
 				scopes["delete:confluence-content"] = true
+			}
+			if scope == "PROJECT_ADMIN" || scope == "ADMIN" {
+				scopes["admin:jira-project"] = true
 			}
 			if scope == "SPACE_ADMIN" || scope == "ADMIN" {
 				scopes["admin:confluence"] = true
 			}
+			if scope == "ADMIN" {
+				scopes["admin:jira"] = true
+			}
 		case "ACCESS_EMAIL_ADDRESSES":
 			scopes["access:email-addresses"] = true
+		case "ACT_AS_USER":
+			scopes["act-as-user:jira"] = true
 		default:
 			return models.AppDescriptor{}, fmt.Errorf("Connect scope %q is not supported", rawScope)
 		}
@@ -219,7 +312,7 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"adminPages": true, "generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "jiraIssueTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "jiraJqlFunctions": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true}
+	supported := map[string]bool{"adminPages": true, "generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "jiraIssueTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "jiraJqlFunctions": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true, "jiraProjectPermissions": true, "jiraGlobalPermissions": true, "jiraTimeTrackingProviders": true, "jiraEntityProperties": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
@@ -362,6 +455,39 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 					return models.AppDescriptor{}, err
 				}
 				wire.Modules = append(wire.Modules, translated)
+			}
+		case "jiraEntityProperties":
+			var modules []connectEntityPropertyWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect jiraEntityProperties: %w", err)
+			}
+			for _, module := range modules {
+				indexes, err := translateConnectEntityProperty(module)
+				if err != nil {
+					return models.AppDescriptor{}, err
+				}
+				wire.EntityPropertyIndexes = append(wire.EntityPropertyIndexes, indexes...)
+			}
+		case "jiraTimeTrackingProviders":
+			var modules []connectTimeTrackingProviderWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect jiraTimeTrackingProviders: %w", err)
+			}
+			for _, module := range modules {
+				wire.TimeTrackingProviders = append(wire.TimeTrackingProviders, models.AppTimeTrackingProvider{Key: module.Key, Name: module.Name.Value, AdminPageKey: module.AdminPageKey})
+			}
+		case "jiraProjectPermissions", "jiraGlobalPermissions":
+			var modules []connectPermissionWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect %s: %w", moduleType, err)
+			}
+			for _, module := range modules {
+				permission := models.AppPermission{Key: module.Key, Name: module.Name.Value, Description: module.Description.Value, Type: "PROJECT", Category: module.Category}
+				if moduleType == "jiraGlobalPermissions" {
+					permission.Type, permission.DefaultGrants = "GLOBAL", module.DefaultGrants
+					permission.AnonymousAllowed = module.AnonymousAllowed == nil || *module.AnonymousAllowed
+				}
+				wire.Permissions = append(wire.Permissions, permission)
 			}
 		case "webhooks":
 			var hooks []connectWebhookWire

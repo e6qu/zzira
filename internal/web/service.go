@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/e6qu/zzira/internal/store"
 	"math"
 	"net/http"
 	"slices"
@@ -94,6 +95,9 @@ type servicePageData struct {
 	FieldValues           map[string]string
 	Transitions           []serviceTransitionView
 	CanAdmin              bool
+	CanSiteAdmin          bool
+	DeploymentGate        *store.ServiceDeploymentGate
+	DeploymentProviders   []*models.AppInstallation
 	CanAgent              bool
 	CanManageParticipants bool
 	CurrentUserID         string
@@ -110,8 +114,8 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	agent, err := h.Store.IsAnyServiceAgent(r.Context(), workspaceID, user.ID)
-	if err != nil || !agent {
+	staff, err := h.Store.IsAnyServiceDeskStaff(r.Context(), workspaceID, user.ID)
+	if err != nil || !staff {
 		http.Error(w, "Service agent access is required.", http.StatusForbidden)
 		return
 	}
@@ -120,26 +124,32 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load service desks.", http.StatusInternalServerError)
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	siteAdmin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
 	if err != nil {
 		http.Error(w, "Could not authorize service administration.", http.StatusInternalServerError)
 		return
 	}
-	data := servicePageData{Desks: desks, CanAdmin: admin, CanAgent: true}
+	data := servicePageData{Desks: desks, CanSiteAdmin: siteAdmin, CanAgent: true}
 	deskID := r.PathValue("desk")
 	if deskID == "" && len(desks) > 0 {
 		deskID = desks[0].ID
 	}
 	if deskID != "" {
-		allowed, err := h.Store.IsServiceAgent(r.Context(), workspaceID, deskID, user.ID)
+		agent, err := h.Store.IsServiceAgent(r.Context(), workspaceID, deskID, user.ID)
 		if err != nil {
 			http.Error(w, "Could not authorize service desk access.", http.StatusInternalServerError)
 			return
 		}
-		if !allowed {
+		deskAdmin, err := h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, deskID, user.ID)
+		if err != nil {
+			http.Error(w, "Could not authorize service desk access.", http.StatusInternalServerError)
+			return
+		}
+		if !agent && !deskAdmin {
 			http.Error(w, "Service agent access is required.", http.StatusForbidden)
 			return
 		}
+		data.CanAdmin = deskAdmin
 		desk, err := h.Store.ServiceDesk(r.Context(), workspaceID, deskID)
 		if err != nil {
 			http.NotFound(w, r)
@@ -170,7 +180,17 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			dependencyNodes[from.ID], dependencyNodes[to.ID] = true, true
 		}
 		data.DependencyNodeCount = len(dependencyNodes)
-		if admin {
+		if deskAdmin {
+			data.DeploymentGate, err = h.Store.ServiceDeploymentGate(r.Context(), workspaceID, deskID)
+			if err != nil {
+				http.Error(w, "Could not load deployment gating.", http.StatusInternalServerError)
+				return
+			}
+			data.DeploymentProviders, err = h.Store.AppInstallations(r.Context(), workspaceID)
+			if err != nil {
+				http.Error(w, "Could not load deployment providers.", http.StatusInternalServerError)
+				return
+			}
 			data.Members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID)
 			if err != nil {
 				http.Error(w, "Could not load workspace members.", http.StatusInternalServerError)
@@ -535,6 +555,16 @@ func (h *Handler) ServiceCustomerSettings(w http.ResponseWriter, r *http.Request
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+	case "feedback":
+		if err := h.Commands.SetServiceDeskFeedbackEnabled(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("enabled") == "true"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	case "attachments":
+		if err := h.Commands.SetServiceDeskAttachmentsEnabled(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("enabled") == "true"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	case "invite":
 		if _, err := h.Commands.InviteServiceDeskCustomer(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("email"), r.PostFormValue("displayName")); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -592,6 +622,20 @@ func (h *Handler) ServiceOrganizationSettings(w http.ResponseWriter, r *http.Req
 	redirectLocal(w, r, "/service/agent/"+deskID+"#organizations")
 }
 
+// ServiceDeploymentGateSettings saves the desk's deployment gating.
+func (h *Handler) ServiceDeploymentGateSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	deskID := r.PathValue("desk")
+	if err := h.Commands.SetServiceDeploymentGate(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("provider"), r.PostForm["environmentType"]); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#deployment-gating")
+}
+
 func (h *Handler) ServiceKnowledgeSettings(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
@@ -613,13 +657,13 @@ func (h *Handler) ServiceQueueSettings(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	admin, err := h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, r.PathValue("desk"), user.ID)
 	if err != nil {
 		http.Error(w, "Could not authorize service administration.", http.StatusInternalServerError)
 		return
 	}
 	if !admin {
-		http.Error(w, "Site administrator access is required.", http.StatusForbidden)
+		http.Error(w, "Service desk administrator access is required.", http.StatusForbidden)
 		return
 	}
 	if !parseForm(w, r) {
@@ -656,13 +700,13 @@ func (h *Handler) ServiceRequestTypeFieldSettings(w http.ResponseWriter, r *http
 	if !ok {
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	admin, err := h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, r.PathValue("desk"), user.ID)
 	if err != nil {
 		http.Error(w, "Could not authorize service administration.", http.StatusInternalServerError)
 		return
 	}
 	if !admin {
-		http.Error(w, "Workspace admin access is required.", http.StatusForbidden)
+		http.Error(w, "Service desk administrator access is required.", http.StatusForbidden)
 		return
 	}
 	if !parseForm(w, r) {
@@ -672,9 +716,23 @@ func (h *Handler) ServiceRequestTypeFieldSettings(w http.ResponseWriter, r *http
 	for _, fieldID := range r.PostForm["requiredFieldId"] {
 		required[fieldID] = true
 	}
+	hidden := make(map[string]bool, len(r.PostForm["hiddenFieldId"]))
+	for _, fieldID := range r.PostForm["hiddenFieldId"] {
+		hidden[fieldID] = true
+	}
 	fields := make([]models.ServiceRequestTypeField, 0, len(r.PostForm["fieldId"]))
 	for _, fieldID := range r.PostForm["fieldId"] {
-		fields = append(fields, models.ServiceRequestTypeField{ID: fieldID, Required: required[fieldID], HelpText: r.PostFormValue("help_" + fieldID)})
+		field := models.ServiceRequestTypeField{ID: fieldID, Required: required[fieldID], HelpText: r.PostFormValue("help_" + fieldID), Hidden: hidden[fieldID]}
+		// A hidden field's preset is typed as the value a customer would give:
+		// JSON when it parses, otherwise text.
+		if preset := strings.TrimSpace(r.PostFormValue("preset_" + fieldID)); preset != "" {
+			if json.Valid([]byte(preset)) {
+				field.PresetValue = json.RawMessage(preset)
+			} else if encoded, err := json.Marshal(preset); err == nil {
+				field.PresetValue = encoded
+			}
+		}
+		fields = append(fields, field)
 	}
 	deskID, requestTypeID := r.PathValue("desk"), r.PathValue("requestType")
 	if err := h.Commands.SetServiceRequestTypeFields(r.Context(), user.ID, workspaceID, deskID, requestTypeID, fields); err != nil {
@@ -770,13 +828,13 @@ func (h *Handler) ServiceSLAGoalSettings(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	admin, err := h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, r.PathValue("desk"), user.ID)
 	if err != nil {
 		http.Error(w, "Could not authorize service administration.", http.StatusInternalServerError)
 		return
 	}
 	if !admin {
-		http.Error(w, "Workspace admin access is required.", http.StatusForbidden)
+		http.Error(w, "Service desk administrator access is required.", http.StatusForbidden)
 		return
 	}
 	if !parseForm(w, r) {
@@ -1019,6 +1077,10 @@ func (h *Handler) servicePageTransitions(r *http.Request, workspaceID, actorID s
 	if err != nil {
 		return nil, err
 	}
+	evaluation.Approvals, err = h.Store.IssueApprovalDecisions(r.Context(), request.Issue.ID)
+	if err != nil {
+		return nil, err
+	}
 	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), workspaceID, request.Issue.ID)
 	if err != nil {
 		return nil, err
@@ -1202,7 +1264,12 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, IncidentUpdates: incidentUpdates, EscalationSteps: escalationSteps, AssetInventory: assetInventory, RequestAssets: requestAssets, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
+	desk, err := h.Store.ServiceDesk(r.Context(), workspaceID, request.ServiceDesk.ID)
+	if err != nil {
+		http.Error(w, "Could not load the service desk.", http.StatusInternalServerError)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Desk: desk, Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, IncidentUpdates: incidentUpdates, EscalationSteps: escalationSteps, AssetInventory: assetInventory, RequestAssets: requestAssets, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: desk.FeedbackEnabled && request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
 }
 
 func (h *Handler) ServiceRequestLink(w http.ResponseWriter, r *http.Request) {

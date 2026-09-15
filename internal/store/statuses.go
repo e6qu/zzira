@@ -102,6 +102,34 @@ func (s *Store) CreateStatus(ctx context.Context, workspaceID, actorID string, s
 	return statuses[0], nil
 }
 
+// ErrAdminForbidden refuses an administrative change the caller may not make.
+var ErrAdminForbidden = errors.New("admin forbidden")
+
+// authorizeStatusScopes requires Administer Jira for global statuses and
+// Administer Projects for statuses a project owns, as Jira does.
+func authorizeStatusScopes(ctx context.Context, tx pgx.Tx, workspaceID, actorID string, statuses []models.Status) error {
+	checked := map[string]bool{}
+	for _, status := range statuses {
+		if checked[status.ProjectID] {
+			continue
+		}
+		checked[status.ProjectID] = true
+		var err error
+		if status.ProjectID == "" {
+			err = projectAdmin(ctx, tx, workspaceID, actorID)
+		} else {
+			err = projectAdministrator(ctx, tx, workspaceID, actorID, status.ProjectID)
+		}
+		if errors.Is(err, ErrProjectPermission) {
+			return fmt.Errorf("%w: you do not have permission to manage these statuses", ErrAdminForbidden)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Store) CreateStatuses(ctx context.Context, workspaceID, actorID string, statuses []models.Status) ([]models.Status, error) {
 	if len(statuses) == 0 {
 		return nil, fmt.Errorf("%w: at least one status is required", ErrAdminValidation)
@@ -136,6 +164,9 @@ func (s *Store) CreateStatuses(ctx context.Context, workspaceID, actorID string,
 		if !validProject {
 			return nil, fmt.Errorf("%w: project scope does not exist in this workspace", ErrAdminValidation)
 		}
+	}
+	if err := authorizeStatusScopes(ctx, tx, workspaceID, actorID, validated); err != nil {
+		return nil, err
 	}
 	if err := lockStatusScopes(ctx, tx, workspaceID, validated); err != nil {
 		return nil, err
@@ -215,6 +246,9 @@ func (s *Store) UpdateStatuses(ctx context.Context, workspaceID, actorID string,
 	}
 	for index := range validated {
 		validated[index].ProjectID = projectsByID[validated[index].ID]
+	}
+	if err := authorizeStatusScopes(ctx, tx, workspaceID, actorID, validated); err != nil {
+		return err
 	}
 	if err := lockStatusScopes(ctx, tx, workspaceID, validated); err != nil {
 		return err
@@ -357,9 +391,10 @@ func (s *Store) DeleteStatuses(ctx context.Context, workspaceID, actorID string,
 	defer func() { _ = tx.Rollback(ctx) }()
 	orderedIDs := append([]string(nil), statusIDs...)
 	sort.Strings(orderedIDs)
+	scopes := make([]models.Status, 0, len(orderedIDs))
 	for _, statusID := range orderedIDs {
-		var owner sql.NullString
-		if err := tx.QueryRow(ctx, `SELECT workspace_id FROM statuses WHERE id=$1 FOR UPDATE`, statusID).Scan(&owner); err != nil {
+		var owner, projectID sql.NullString
+		if err := tx.QueryRow(ctx, `SELECT workspace_id,project_id FROM statuses WHERE id=$1 FOR UPDATE`, statusID).Scan(&owner, &projectID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrAdminNotFound
 			}
@@ -371,6 +406,10 @@ func (s *Store) DeleteStatuses(ctx context.Context, workspaceID, actorID string,
 		if owner.String != workspaceID {
 			return ErrAdminNotFound
 		}
+		scopes = append(scopes, models.Status{ID: statusID, ProjectID: projectID.String})
+	}
+	if err := authorizeStatusScopes(ctx, tx, workspaceID, actorID, scopes); err != nil {
+		return err
 	}
 	usages := make(map[string]StatusUsage, len(statusIDs))
 	for _, statusID := range statusIDs {
@@ -401,38 +440,49 @@ func (s *Store) DeleteStatuses(ctx context.Context, workspaceID, actorID string,
 	return tx.Commit(ctx)
 }
 
+// statusWorkflowContains is the SQL deciding whether a workflow definition,
+// published or draft, reaches the status in $2.
+const statusWorkflowContains = `(EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(%[1]s.def->'transitions','[]'::jsonb)) t WHERE t->>'to'=$2 OR (t->'from') ? $2)
+	OR EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(%[1]s.draft_def->'transitions','[]'::jsonb)) t WHERE t->>'to'=$2 OR (t->'from') ? $2))`
+
+// projectWorkflowIDs lists, for the project aliased p, every workflow its
+// work can use: the workflow scheme's default and type mappings, published
+// and draft, or the project's own workflow.
+const projectWorkflowIDs = `(SELECT COALESCE(p.workflow_id,'wf_default') UNION
+	SELECT ws.default_workflow_id FROM workflow_schemes ws WHERE ws.id=p.workflow_scheme_id UNION
+	SELECT mapping.value FROM workflow_schemes ws, jsonb_each_text(ws.issue_type_mappings) mapping WHERE ws.id=p.workflow_scheme_id UNION
+	SELECT ws.draft_def->>'defaultWorkflowId' FROM workflow_schemes ws WHERE ws.id=p.workflow_scheme_id AND ws.draft_def IS NOT NULL UNION
+	SELECT mapping.value FROM workflow_schemes ws, jsonb_each_text(COALESCE(ws.draft_def->'issueTypeMappings','{}'::jsonb)) mapping WHERE ws.id=p.workflow_scheme_id)`
+
+// StatusProjectUsages lists the projects using a status: through their work,
+// their boards, or a workflow their workflow scheme or project assigns.
 func (s *Store) StatusProjectUsages(ctx context.Context, workspaceID, statusID string) ([]string, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT DISTINCT p.id FROM projects p WHERE p.workspace_id=$1 AND (
 		 EXISTS(SELECT 1 FROM issues i WHERE i.project_id=p.id AND i.status_id=$2)
 		 OR EXISTS(SELECT 1 FROM boards b WHERE b.project_id=p.id AND $2=ANY(b.column_status_ids))
-		 OR EXISTS(SELECT 1 FROM workflows w WHERE w.id=COALESCE(p.workflow_id,'wf_default') AND
-		   EXISTS(SELECT 1 FROM jsonb_array_elements(w.def->'transitions') t WHERE t->>'to'=$2 OR (t->'from') ? $2))
+		 OR EXISTS(SELECT 1 FROM workflows w WHERE w.id IN `+projectWorkflowIDs+` AND `+fmt.Sprintf(statusWorkflowContains, "w")+`)
 		) ORDER BY p.id`, workspaceID, statusID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
+	return collectIDs(rows)
 }
 
+// StatusWorkflowUsages lists every workflow of the site whose published or
+// draft definition reaches the status, whether or not a project uses it.
 func (s *Store) StatusWorkflowUsages(ctx context.Context, workspaceID, statusID string) ([]string, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT DISTINCT w.id FROM workflows w WHERE
-		 EXISTS(SELECT 1 FROM projects p WHERE p.workspace_id=$1 AND COALESCE(p.workflow_id,'wf_default')=w.id)
-		 AND EXISTS(SELECT 1 FROM jsonb_array_elements(w.def->'transitions') t WHERE t->>'to'=$2 OR (t->'from') ? $2)
-		 ORDER BY w.id`, workspaceID, statusID)
+		SELECT DISTINCT w.id FROM workflows w
+		WHERE (w.workspace_id=$1 OR (w.id='wf_default' AND w.workspace_id IS NULL)) AND `+fmt.Sprintf(statusWorkflowContains, "w")+`
+		ORDER BY w.id`, workspaceID, statusID)
 	if err != nil {
 		return nil, err
 	}
+	return collectIDs(rows)
+}
+
+func collectIDs(rows pgx.Rows) ([]string, error) {
 	defer rows.Close()
 	var ids []string
 	for rows.Next() {
@@ -446,20 +496,18 @@ func (s *Store) StatusWorkflowUsages(ctx context.Context, workspaceID, statusID 
 }
 
 func (s *Store) StatusProjectIssueTypeUsages(ctx context.Context, workspaceID, projectID, statusID string) ([]string, error) {
+	// A work type uses the status when work of that type is in it, or when the
+	// workflow the project's scheme assigns the type reaches it.
 	rows, err := s.Pool.Query(ctx, `
-		SELECT DISTINCT i.issuetype_id FROM issues i JOIN projects p ON p.id=i.project_id
-		WHERE p.workspace_id=$1 AND p.id=$2 AND i.status_id=$3 ORDER BY i.issuetype_id`, workspaceID, projectID, statusID)
+		SELECT DISTINCT it.id FROM issue_types it JOIN projects p ON p.id=$3 AND p.workspace_id=$1
+		LEFT JOIN workflow_schemes ws ON ws.id=p.workflow_scheme_id AND ws.workspace_id=p.workspace_id
+		WHERE EXISTS(SELECT 1 FROM issues i WHERE i.project_id=p.id AND i.issuetype_id=it.id AND i.status_id=$2)
+		   OR EXISTS(SELECT 1 FROM workflows w WHERE w.id=COALESCE(ws.issue_type_mappings->>it.id,ws.default_workflow_id,p.workflow_id,'wf_default')
+		      AND `+fmt.Sprintf(statusWorkflowContains, "w")+`
+		      AND (it.workspace_id IS NULL OR it.workspace_id=p.workspace_id))
+		ORDER BY it.id`, workspaceID, statusID, projectID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
+	return collectIDs(rows)
 }

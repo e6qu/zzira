@@ -18,6 +18,34 @@ async function loginAsAna(page: Page) {
   await expect(page).toHaveURL('/');
 }
 
+// useSecurityLevel creates a scheme with one level only the account can see,
+// associates it with the project through Jira's mapping task, and returns the
+// level's id.
+async function useSecurityLevel(request: APIRequestContext, auth: { headers: { Authorization: string } }, projectID: string, name: string, accountID: string): Promise<string> {
+  const created = await request.post('/rest/api/3/issuesecurityschemes', {
+    ...auth,
+    data: { name, levels: [{ name: 'Private', members: [{ type: 'user', parameter: accountID }] }] },
+  });
+  expect(created.status()).toBe(201);
+  const schemeID = String((await created.json()).id);
+  const scheme = await (await request.get(`/rest/api/3/issuesecurityschemes/${schemeID}`, auth)).json();
+  const levelID = String(scheme.levels[0].id);
+  const current = await (await request.get(`/rest/api/3/issuesecurityschemes/project?projectId=${projectID}`, auth)).json();
+  const mappings: { oldLevelId: string; newLevelId: string }[] = [];
+  for (const association of current.values ?? []) {
+    const previous = await (await request.get(`/rest/api/3/issuesecurityschemes/${association.issueSecuritySchemeId}`, auth)).json();
+    for (const level of previous.levels ?? []) mappings.push({ oldLevelId: String(level.id), newLevelId: levelID });
+  }
+  const assigned = await request.put('/rest/api/3/issuesecurityschemes/project', {
+    ...auth,
+    maxRedirects: 0,
+    data: { projectId: projectID, schemeId: schemeID, oldToNewSecurityLevelMappings: mappings },
+  });
+  expect(assigned.status()).toBe(303);
+  await expect.poll(async () => String((await (await request.get(`/rest/api/3/issuesecurityschemes/project?projectId=${projectID}`, auth)).json()).values?.[0]?.issueSecuritySchemeId)).toBe(schemeID);
+  return levelID;
+}
+
 test('V5 done-when: security level hides an issue from ana (404 + tombstone in her sync)', async ({ browser, request }) => {
   const demo = { headers: { Authorization: authFor(DEMO.email) } };
   const anaContext = await browser.newContext();
@@ -58,14 +86,11 @@ test('V5 done-when: security level hides an issue from ana (404 + tombstone in h
   const reconciliationId = visibleIssue.payload.issue.id;
 
   // scheme: level restricted to demo
-  await request.post('/rest/api/3/issuesecurityschemes', {
-    ...demo,
-    data: { id: 'sch_conf', name: 'Confidential Scheme', levels: [{ id: 'lvl_private', name: 'Private', members: [demoId] }] },
-  });
-  await request.put('/rest/api/3/issuesecurityschemes/project/ZZ', { ...demo, data: { id: 'sch_conf' } });
+  const projectID = String((await (await request.get('/rest/api/3/project/ZZ', demo)).json()).id);
+  const levelID = await useSecurityLevel(request, demo, projectID, `Confidential ${Date.now()}`, demoId);
 
   // apply the level
-  await request.put(`/rest/api/3/issue/${key}`, { ...demo, data: { fields: { security: { id: 'lvl_private' } } } });
+  await request.put(`/rest/api/3/issue/${key}`, { ...demo, data: { fields: { security: { id: levelID } } } });
 
   // demo 200, ana 404
   expect((await request.get(`/rest/api/3/issue/${key}`, demo)).status()).toBe(200);

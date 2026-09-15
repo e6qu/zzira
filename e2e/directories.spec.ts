@@ -212,7 +212,7 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.getByLabel('Require every attached form to be submitted').check();
   await page.selectOption('#transition-permission-validator', 'EDIT_ISSUES');
   await page.getByRole('button', { name: 'Add transition' }).click();
-  await expect(page.getByText('Ready for review', { exact: true })).toBeVisible();
+  await expect(page.locator('.workflow-node').getByText('Ready for review', { exact: true })).toBeVisible();
   await expect(page.getByText('to Done · condition, validator, post-function, trigger · screen: labels', { exact: true })).toBeVisible();
   await page.fill('#transition-name', 'Integration reopen');
   await page.selectOption('#transition-from', 'st_done');
@@ -229,8 +229,41 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-separation-from', 'st_todo');
   await page.selectOption('#transition-separation-to', 'st_inprogress');
   await page.getByRole('button', { name: 'Add transition' }).click();
-  await expect(page.getByText('Integration reopen', { exact: true })).toBeVisible();
+  await expect(page.locator('.workflow-node').getByText('Integration reopen', { exact: true })).toBeVisible();
   await expect(page.getByText('to To Do · condition, validator', { exact: true })).toBeVisible();
+  await page.fill('#transition-name', 'Close from anywhere');
+  await page.selectOption('#transition-from', 'any');
+  await page.selectOption('#transition-to', 'st_done');
+  await page.getByRole('button', { name: 'Add transition' }).click();
+  const doneStatus = page.locator('.workflow-node[data-status-id="st_done"]');
+  await doneStatus.getByRole('button', { name: 'Lock editing in Done' }).click();
+  await expect(doneStatus).toContainText('not editable');
+  await doneStatus.getByRole('button', { name: 'Allow editing in Done' }).click();
+  await expect(doneStatus).not.toContainText('not editable');
+
+  // A status can require approval before the approved or declined transition.
+  const approvers = await page.request.post('/rest/api/3/field', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { name: `Approvers ${Date.now()}`, type: 'com.atlassian.jira.plugin.system.customfieldtypes:multiuserpicker' },
+  });
+  expect(approvers.status()).toBe(201);
+  const approversField = await approvers.json();
+  await page.reload();
+  const approvals = page.getByRole('region', { name: 'Status approvals' });
+  const reviewApproval = approvals.locator('form[data-status-id="st_inprogress"]');
+  await reviewApproval.getByLabel('Approvers field').selectOption(approversField.id);
+  await reviewApproval.getByLabel('Required approvals').selectOption('number');
+  await reviewApproval.getByLabel('Number or percentage').fill('2');
+  await reviewApproval.getByLabel('Reporter').check();
+  await reviewApproval.getByLabel('Transition when approved').selectOption({ label: 'Ready for review' });
+  await reviewApproval.getByLabel('Transition when declined').selectOption({ label: 'Ready for review' });
+  await reviewApproval.getByRole('button', { name: 'Save approval for In Progress' }).click();
+  await expect(approvals).toContainText('In Progress needs 2 approvals');
+  await approvals.getByRole('button', { name: 'Remove approval from In Progress' }).click();
+  await expect(approvals).not.toContainText('In Progress needs 2 approvals');
+  const startTransitions = page.getByRole('region', { name: 'Create and global transitions' });
+  await expect(startTransitions).toContainText('Close from anywhere');
+  await expect(startTransitions.getByText('any status to Done', { exact: true })).toBeVisible();
   await expect(page.getByText('Draft changes', { exact: true })).toBeVisible();
   await expect(page.getByText('Draft changes are not active')).toBeVisible();
   await page.getByRole('button', { name: 'Publish workflow' }).click();
@@ -295,12 +328,11 @@ test('workflow schemes publish safely and migrate incompatible project statuses'
   await expect(page.getByRole('heading', { name: schemeName, level: 1 })).toBeVisible();
   await expect(page.getByText('Published', { exact: true })).toBeVisible();
 
+  // A scheme no project uses changes directly.
   await page.fill('#scheme-edit-description', 'Routes every task through the published default.');
   await page.selectOption('#mapping-it_task', 'wf_default');
-  await page.getByRole('button', { name: 'Save draft' }).click();
-  await expect(page.getByText('Draft changes', { exact: true })).toBeVisible();
-  await expect(page.getByText('Draft mappings are not active')).toBeVisible();
-  await page.getByRole('button', { name: 'Publish scheme' }).click();
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('status')).toContainText('Scheme saved');
   await expect(page.getByText('Published', { exact: true })).toBeVisible();
   await expect(page.locator('.workflow-editor-header')).toContainText('Version 2');
 
@@ -310,6 +342,15 @@ test('workflow schemes publish safely and migrate incompatible project statuses'
   await page.getByRole('button', { name: 'Assign scheme' }).click();
   await expect(page.getByRole('status')).toContainText('Project assigned');
   await expect(page.locator('.assigned-projects')).toContainText('ZZIRA Demo');
+
+  // Once a project uses the scheme, changes wait in a draft until published.
+  await page.fill('#scheme-edit-description', 'Routes delivery work through a reviewed draft.');
+  await page.getByRole('button', { name: 'Save draft' }).click();
+  await expect(page.getByRole('status')).toContainText('Draft saved');
+  await expect(page.getByText('Draft changes', { exact: true })).toBeVisible();
+  await expect(page.getByText('Draft mappings are not active')).toBeVisible();
+  await page.getByRole('button', { name: 'Publish scheme' }).click();
+  await expect(page.getByText('Published', { exact: true })).toBeVisible();
 
   await page.goto('/settings/workflows');
   const simpleWorkflowName = `Simple lifecycle ${Date.now()}`;

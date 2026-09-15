@@ -89,7 +89,7 @@ test('issue triage journey: inline fields, labels API, watchers, votes, links, a
   await page.locator('.comment-form button[type=submit]').click();
   await expect(page.locator('[data-activity-kind=comment]', { hasText: 'Unified activity comment' })).toBeVisible();
 
-  await page.fill('#worklog-seconds', '3600');
+  await page.fill('#worklog-time', '1h');
   await page.fill('#worklog-comment', 'Triage verification');
   await page.locator('.worklog-form button[type=submit]').click();
   await expect(page.locator('[data-activity-kind=worklog]', { hasText: 'logged 1h' })).toBeHidden();

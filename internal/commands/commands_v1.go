@@ -41,6 +41,11 @@ type UpdateIssueInput struct {
 	// and generateAppEvents choices.
 	SuppressChangelog bool
 	SuppressEvents    bool
+
+	// OriginalEstimate and RemainingEstimate change time tracking estimates in
+	// seconds: nil leaves one unchanged and store.ClearEstimate removes it.
+	OriginalEstimate  *int64
+	RemainingEstimate *int64
 }
 
 func (s *Service) visibleIssue(ctx context.Context, actorID, workspaceID, issueIDOrKey string) (*models.Issue, error) {
@@ -64,6 +69,9 @@ func (s *Service) visibleIssue(ctx context.Context, actorID, workspaceID, issueI
 func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models.Issue, *models.Action, error) {
 	issue, err := s.visibleIssue(ctx, in.ActorID, in.WorkspaceID, in.IssueIDOrKey)
 	if err != nil {
+		return nil, nil, err
+	}
+	if err = s.requireEditable(ctx, issue); err != nil {
 		return nil, nil, err
 	}
 	configuration, err := s.jiraSiteConfiguration(ctx, in.WorkspaceID)
@@ -164,7 +172,17 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		}
 		in.PriorityID = &priority.ID
 	}
+	if in.OriginalEstimate != nil || in.RemainingEstimate != nil {
+		timeTracking, err := s.jiraSiteConfiguration(ctx, in.WorkspaceID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !timeTracking.TimeTrackingEnabled {
+			return nil, nil, fmt.Errorf("time tracking is disabled for this site")
+		}
+	}
 	update := store.IssueUpdate{
+		OriginalEstimate: in.OriginalEstimate, RemainingEstimate: in.RemainingEstimate,
 		Summary:           in.Summary,
 		Description:       in.Description,
 		PriorityID:        in.PriorityID,
@@ -433,6 +451,10 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	if err != nil {
 		return nil, nil, err
 	}
+	context.Approvals, err = s.Store.IssueApprovalDecisions(ctx, issue.ID)
+	if err != nil {
+		return nil, nil, err
+	}
 	context.Transitions, err = s.Store.IssueTransitionHistory(ctx, workspaceID, issue.ID)
 	if err != nil {
 		return nil, nil, err
@@ -553,6 +575,9 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	if len(triggeredWebhookIDs) > 0 {
 		update.TriggeredWebhookIDs = triggeredWebhookIDs
 	}
+	for _, agent := range t.AgentTriggers() {
+		update.TriggeredAgents = append(update.TriggeredAgents, models.WorkflowAgentTrigger{AgentID: agent.AgentID, Prompt: agent.Prompt})
+	}
 	if update.Summary != nil && (len(*update.Summary) == 0 || len(*update.Summary) > 255) {
 		return nil, nil, fmt.Errorf("workflow summary update must be between 1 and 255 characters")
 	}
@@ -580,11 +605,20 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	} else if !strings.EqualFold(updated.Status.Category, "done") && strings.EqualFold(issue.Status.Category, "done") {
 		eventID, notificationKind, notificationVerb = 8, "issue_reopened", "reopened"
 	}
+	// A transition configured with an event fires that event instead.
+	if custom, parseErr := strconv.ParseInt(t.CustomIssueEventID, 10, 64); parseErr == nil && custom > 0 {
+		eventID, notificationKind = custom, "issue_event"
+	}
 	if err = s.deliverIssueEvent(ctx, workspaceID, actorID, updated, action, eventID, notificationKind, notificationVerb); err != nil {
 		return updated, action, err
 	}
 	if err := s.syncServiceSLAsAfterIssueChange(ctx, actorID, workspaceID, updated, time.Now().UTC()); err != nil {
 		return nil, nil, err
+	}
+	if updated.Status.ID != issue.Status.ID {
+		if err := s.startStatusApproval(ctx, actorID, workspaceID, updated); err != nil {
+			return nil, nil, err
+		}
 	}
 	return updated, action, nil
 }

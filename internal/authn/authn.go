@@ -163,13 +163,47 @@ func WithPrincipal(ctx context.Context, principalID string) context.Context {
 	return context.WithValue(ctx, principalContextKey{}, principalID)
 }
 
+type anonymousContextKey struct{}
+
+// WithAnonymous marks a request that presents no credentials on an operation
+// Jira lets anonymous callers use. Identify resolves such a request to the
+// anonymous user, whose access comes only from permissions granted to anyone.
+func WithAnonymous(ctx context.Context) context.Context {
+	return context.WithValue(ctx, anonymousContextKey{}, true)
+}
+
+// Anonymous reports whether the request is Jira's anonymous user.
+func Anonymous(ctx context.Context) bool {
+	anonymous, _ := ctx.Value(anonymousContextKey{}).(bool)
+	return anonymous
+}
+
+// PresentsCredentials reports whether a request carries any credential: an
+// authenticated app principal, an Authorization header or a session cookie.
+// A request presenting a credential that fails to verify is unauthorized,
+// never anonymous.
+func PresentsCredentials(r *http.Request) bool {
+	if principalID, _ := r.Context().Value(principalContextKey{}).(string); principalID != "" {
+		return true
+	}
+	if r.Header.Get("Authorization") != "" {
+		return true
+	}
+	c, err := r.Cookie(sessionCookie)
+	return err == nil && c.Value != ""
+}
+
 type unauthorized struct{}
 
 func (unauthorized) Error() string { return "unauthorized" }
 
 // Identify resolves the caller from (1) Basic auth email:api-token, or
-// (2) the session cookie. Returns userID or ErrUnauthorized.
+// (2) the session cookie. Returns userID or ErrUnauthorized. An anonymous
+// request resolves to the empty user ID.
 func Identify(ctx context.Context, st *store.Store, r *http.Request) (string, error) {
+	if Anonymous(ctx) {
+		return "", nil
+	}
 	if principalID, _ := ctx.Value(principalContextKey{}).(string); principalID != "" {
 		return principalID, nil
 	}

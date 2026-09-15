@@ -108,7 +108,8 @@ func TestBulkWatchOperationsUseDurableTaskQueue(t *testing.T) {
 			SELECT id,$2 FROM custom_field_contexts WHERE field_id=$1`, fieldID, projectID)
 	}
 	fieldPath := "/rest/api/3/bulk/issues/fields?issueIdsOrKeys=" + strings.Join(issueKeys, "%2C")
-	call(memberID, "GET", fieldPath, "", 403)
+	// Every site member holds Jira's global Bulk change permission.
+	call(memberID, "GET", fieldPath, "", 200)
 	firstFields := call(adminID, "GET", fieldPath, "", 200)
 	var firstPage struct {
 		Fields        []map[string]any `json:"fields"`
@@ -190,7 +191,6 @@ func TestBulkWatchOperationsUseDurableTaskQueue(t *testing.T) {
 	if !strings.Contains(failedProgress.Body.String(), `"failedAccessibleIssues"`) || !strings.Contains(failedProgress.Body.String(), `"invalidOrInaccessibleIssueCount":0`) {
 		t.Fatal(failedProgress.Body.String())
 	}
-	call(memberID, "POST", "/rest/api/3/bulk/issues/watch", payload, 403)
 	call(adminID, "POST", "/rest/api/3/bulk/issues/watch", `{"selectedIssueIdsOrKeys":["`+issueKeys[0]+`","`+issueKeys[0]+`"]}`, 400)
 	submitted := call(adminID, "POST", "/rest/api/3/bulk/issues/watch", payload, 201)
 	var submission struct {

@@ -420,6 +420,17 @@ func projectRoleAdmin(ctx context.Context, tx pgx.Tx, workspaceID, actorID, proj
 	return nil
 }
 
+// projectAdministrator requires Administer Projects on the project, which
+// Administer Jira implies, as Jira requires for project configuration. An
+// unknown project reads as not found.
+func projectAdministrator(ctx context.Context, tx pgx.Tx, workspaceID, actorID, projectIDOrKey string) error {
+	err := projectRoleAdmin(ctx, tx, workspaceID, actorID, projectIDOrKey)
+	if errors.Is(err, ErrPermissionSchemeNotFound) {
+		return pgx.ErrNoRows
+	}
+	return err
+}
+
 func (s *Store) CanAdministerProject(ctx context.Context, workspaceID, actorID, projectID string) (bool, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {

@@ -16,6 +16,15 @@ var ErrWorklogValidation = errors.New("invalid worklog")
 // UpdateWorklog changes a worklog's comment and time, stamping it so the
 // updated feed can report it.
 func (s *Store) UpdateWorklog(ctx context.Context, actorID, workspaceID, worklogID string, comment json.RawMessage, seconds *int) (*models.Worklog, *models.Action, error) {
+	return s.UpdateWorklogWithEstimate(ctx, actorID, workspaceID, worklogID, comment, seconds, WorklogEstimate{})
+}
+
+// UpdateWorklogWithEstimate changes logged work and moves the remaining
+// estimate by the change in time, or as the adjustment says.
+func (s *Store) UpdateWorklogWithEstimate(ctx context.Context, actorID, workspaceID, worklogID string, comment json.RawMessage, seconds *int, estimate WorklogEstimate) (*models.Worklog, *models.Action, error) {
+	if err := ValidateWorklogEstimate(estimate); err != nil {
+		return nil, nil, err
+	}
 	if seconds != nil && *seconds <= 0 {
 		return nil, nil, fmt.Errorf("%w: a positive timeSpentSeconds is required", ErrWorklogValidation)
 	}
@@ -62,6 +71,9 @@ func (s *Store) UpdateWorklog(ctx context.Context, actorID, workspaceID, worklog
 		Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
 	}
 	if err = appendAction(ctx, tx, action); err != nil {
+		return nil, nil, err
+	}
+	if err = adjustRemainingEstimate(ctx, tx, workspaceID, actorID, current.IssueID, int64(spent-current.TimeSpentSeconds), estimate); err != nil {
 		return nil, nil, err
 	}
 	return updated, action, tx.Commit(ctx)

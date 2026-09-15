@@ -97,6 +97,61 @@ func (h *Handler) filterPermissionBean(permission models.FilterSharePermission) 
 	return bean
 }
 
+// filterBeanFor is the filter bean with the sharedUsers and subscriptions
+// lists the request expands; unexpanded, both lists carry no items.
+func (h *Handler) filterBeanFor(r *http.Request, workspaceID string, filter *models.Filter) map[string]any {
+	bean := h.filterBean(filter)
+	expand := r.URL.Query().Get("expand")
+	subscriptions := bean["subscriptions"].(map[string]any)
+	items := subscriptions["items"].([]map[string]any)
+	start, end, expanded := expandedListRange(expand, "subscriptions")
+	if !expanded {
+		start, end = 0, 0
+	}
+	subscriptions["items"], subscriptions["start-index"], subscriptions["end-index"] = sliceRange(items, start, end)
+	subscriptions["max-results"] = 1000
+	sharedUsers := map[string]any{"size": 0, "items": []map[string]any{}, "max-results": 1000, "start-index": 0, "end-index": 0}
+	if start, end, expanded = expandedListRange(expand, "sharedUsers"); expanded {
+		users, err := h.Store.FilterSharedUsers(r.Context(), workspaceID, filter.ID)
+		if err == nil {
+			beans := make([]map[string]any, 0, len(users))
+			for _, user := range users {
+				beans = append(beans, h.userBeanFor(r.Context(), user))
+			}
+			sharedUsers["size"] = len(beans)
+			sharedUsers["items"], sharedUsers["start-index"], sharedUsers["end-index"] = sliceRange(beans, start, end)
+		}
+	}
+	bean["sharedUsers"] = sharedUsers
+	return bean
+}
+
+// expandedListRange reads a list expansion such as sharedUsers or
+// sharedUsers[1001:2000]: the first 1000 items, or the 1-based inclusive
+// range the request names.
+func expandedListRange(expand, name string) (int, int, bool) {
+	for _, token := range strings.Split(expand, ",") {
+		token = strings.TrimSpace(token)
+		if token == name {
+			return 0, 1000, true
+		}
+		if bounds, ok := strings.CutPrefix(token, name+"["); ok && strings.HasSuffix(bounds, "]") {
+			first, last, found := strings.Cut(strings.TrimSuffix(bounds, "]"), ":")
+			from, errFrom := strconv.Atoi(first)
+			to, errTo := strconv.Atoi(last)
+			if found && errFrom == nil && errTo == nil && from >= 1 && to >= from {
+				return from - 1, min(to, from-1+1000), true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+func sliceRange(items []map[string]any, start, end int) ([]map[string]any, int, int) {
+	start, end = min(start, len(items)), min(end, len(items))
+	return items[start:end], start, end
+}
+
 func (h *Handler) filterBean(filter *models.Filter) map[string]any {
 	view, edit := []map[string]any{}, []map[string]any{}
 	for _, permission := range filter.SharePermissions {
@@ -200,7 +255,7 @@ func (h *Handler) createFilter(w http.ResponseWriter, r *http.Request) {
 		writeFilterMutationError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.filterBean(filter))
+	writeJSON(w, http.StatusOK, h.filterBeanFor(r, workspaceID, filter))
 }
 
 func (h *Handler) putFilter(w http.ResponseWriter, r *http.Request, id string) {
@@ -222,7 +277,7 @@ func (h *Handler) putFilter(w http.ResponseWriter, r *http.Request, id string) {
 		writeFilterMutationError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.filterBean(filter))
+	writeJSON(w, http.StatusOK, h.filterBeanFor(r, workspaceID, filter))
 }
 
 func (h *Handler) getFilter(w http.ResponseWriter, r *http.Request, id string) {
@@ -236,7 +291,7 @@ func (h *Handler) getFilter(w http.ResponseWriter, r *http.Request, id string) {
 		jiraError(w, http.StatusBadRequest, "Filter does not exist or you do not have permission to view it.")
 		return
 	}
-	writeJSON(w, http.StatusOK, h.filterBean(filter))
+	writeJSON(w, http.StatusOK, h.filterBeanFor(r, workspaceID, filter))
 }
 
 func (h *Handler) deleteFilter(w http.ResponseWriter, r *http.Request, id string) {
@@ -274,7 +329,7 @@ func (h *Handler) filterCollection(w http.ResponseWriter, r *http.Request, colle
 			collection == "favourite" && filter.Favourite ||
 			collection == "my" && (filter.OwnerID == userID || includeFavourites && filter.Favourite)
 		if include {
-			beans = append(beans, h.filterBean(filter))
+			beans = append(beans, h.filterBeanFor(r, workspaceID, filter))
 		}
 	}
 	writeJSON(w, http.StatusOK, beans)
@@ -346,7 +401,7 @@ func (h *Handler) searchFilters(w http.ResponseWriter, r *http.Request) {
 	end := min(total, start+limit)
 	values := make([]map[string]any, 0, end-start)
 	for _, filter := range filters[start:end] {
-		values = append(values, h.filterBean(filter))
+		values = append(values, h.filterBeanFor(r, workspaceID, filter))
 	}
 	self := h.BaseURL + r.URL.Path
 	if r.URL.RawQuery != "" {
@@ -453,36 +508,55 @@ func (h *Handler) setFilterFavourite(w http.ResponseWriter, r *http.Request, id 
 		jiraError(w, http.StatusBadRequest, "Filter does not exist.")
 		return
 	}
-	writeJSON(w, http.StatusOK, h.filterBean(filter))
+	writeJSON(w, http.StatusOK, h.filterBeanFor(r, workspaceID, filter))
 }
 
+// filterColumns serves a filter's column configuration. Columns are set as
+// HTML form data and must be navigable fields.
 func (h *Handler) filterColumns(w http.ResponseWriter, r *http.Request, id string) {
 	workspaceID, userID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
 	}
+	if _, err := h.Store.FilterByID(r.Context(), workspaceID, userID, id); err != nil {
+		jiraError(w, http.StatusBadRequest, "The filter does not exist or you do not have permission to view it.")
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		columns, err := h.Store.FilterColumns(r.Context(), workspaceID, userID, id)
 		if err != nil {
-			jiraError(w, http.StatusNotFound, "Column configuration was not found.")
+			jiraError(w, http.StatusNotFound, "A column configuration is not set for the filter.")
+			return
+		}
+		labels, err := h.Store.NavigableColumnLabels(r.Context(), workspaceID)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not load the column configuration.")
 			return
 		}
 		values := make([]map[string]string, 0, len(columns))
 		for _, column := range columns {
-			values = append(values, map[string]string{"label": filterColumnLabel(column), "value": column})
+			label := labels[column]
+			if label == "" {
+				label = column
+			}
+			values = append(values, map[string]string{"label": label, "value": column})
 		}
 		writeJSON(w, http.StatusOK, values)
 	case http.MethodPut:
-		var request struct {
-			Columns []string `json:"columns"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&request); err != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		if err := r.ParseForm(); err != nil {
 			jiraError(w, http.StatusBadRequest, "Column configuration is invalid.")
 			return
 		}
-		if err := h.Store.SetFilterColumns(r.Context(), workspaceID, userID, id, request.Columns); err != nil {
+		if strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {
+			if err := r.ParseMultipartForm(1 << 20); err != nil { // #nosec G120 -- MaxBytesReader caps the complete body above.
+				jiraError(w, http.StatusBadRequest, "Column configuration is invalid.")
+				return
+			}
+		}
+		if err := h.Store.SetFilterColumns(r.Context(), workspaceID, userID, id, r.Form["columns"]); err != nil {
 			writeFilterMutationError(w, err)
 			return
 		}
@@ -496,18 +570,6 @@ func (h *Handler) filterColumns(w http.ResponseWriter, r *http.Request, id strin
 	default:
 		jiraError(w, http.StatusNotFound, "No resource found")
 	}
-}
-
-func filterColumnLabel(column string) string {
-	labels := map[string]string{
-		"key": "Key", "summary": "Summary", "issuetype": "Issue Type",
-		"status": "Status", "priority": "Priority", "assignee": "Assignee",
-		"reporter": "Reporter", "created": "Created", "updated": "Updated",
-	}
-	if label := labels[column]; label != "" {
-		return label
-	}
-	return column
 }
 
 func (h *Handler) changeFilterOwner(w http.ResponseWriter, r *http.Request, id string) {

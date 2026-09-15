@@ -14,7 +14,7 @@ import (
 
 var defaultJiraSiteConfiguration = models.JiraSiteConfiguration{
 	Announcement:       models.AnnouncementBanner{Visibility: "public"},
-	AttachmentsEnabled: true, IssueLinkingEnabled: true, SubTasksEnabled: true,
+	AttachmentsEnabled: true, AttachmentUploadLimit: 32 << 20, IssueLinkingEnabled: true, SubTasksEnabled: true,
 	TimeTrackingEnabled: true, UnassignedIssuesAllowed: true, VotingEnabled: true, WatchingEnabled: true,
 	TimeTrackingProvider:  "Jira",
 	TimeTracking:          models.TimeTrackingConfiguration{DefaultUnit: "minute", TimeFormat: "pretty", WorkingDaysPerWeek: 5, WorkingHoursPerDay: 8},
@@ -36,13 +36,14 @@ func (s *Store) JiraSiteConfiguration(ctx context.Context, workspaceID string) (
 		SELECT announcement_message,announcement_enabled,announcement_dismissible,announcement_visibility,
 		 attachments_enabled,issue_linking_enabled,subtasks_enabled,time_tracking_enabled,
 		 unassigned_issues_allowed,voting_enabled,watching_enabled,time_tracking_provider,
-		 working_hours_per_day,working_days_per_week,time_format,default_unit,navigator_columns,application_properties
+		 working_hours_per_day,working_days_per_week,time_format,default_unit,navigator_columns,application_properties,
+		 attachment_upload_limit
 		FROM jira_site_configuration WHERE workspace_id=$1`, workspaceID).Scan(
 		&cfg.Announcement.Message, &cfg.Announcement.IsEnabled, &cfg.Announcement.IsDismissible, &cfg.Announcement.Visibility,
 		&cfg.AttachmentsEnabled, &cfg.IssueLinkingEnabled, &cfg.SubTasksEnabled, &cfg.TimeTrackingEnabled,
 		&cfg.UnassignedIssuesAllowed, &cfg.VotingEnabled, &cfg.WatchingEnabled, &cfg.TimeTrackingProvider,
 		&cfg.TimeTracking.WorkingHoursPerDay, &cfg.TimeTracking.WorkingDaysPerWeek, &cfg.TimeTracking.TimeFormat,
-		&cfg.TimeTracking.DefaultUnit, &cfg.NavigatorColumns, &properties)
+		&cfg.TimeTracking.DefaultUnit, &cfg.NavigatorColumns, &properties, &cfg.AttachmentUploadLimit)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
@@ -60,15 +61,23 @@ func ensureJiraSiteConfiguration(ctx context.Context, tx pgx.Tx, workspaceID str
 	return err
 }
 
+// UpdateGlobalJiraConfiguration saves the site's Jira features. A zero
+// attachment upload limit keeps the current limit.
 func (s *Store) UpdateGlobalJiraConfiguration(ctx context.Context, workspaceID, actorID string, value models.JiraSiteConfiguration) error {
-	detail := map[string]bool{
+	if value.AttachmentUploadLimit < 0 || value.AttachmentUploadLimit > 1<<30 {
+		return fmt.Errorf("%w: the attachment upload limit must be between 1 byte and 1 GiB", ErrAdminValidation)
+	}
+	detail := map[string]any{
 		"attachmentsEnabled": value.AttachmentsEnabled, "issueLinkingEnabled": value.IssueLinkingEnabled,
 		"subTasksEnabled": value.SubTasksEnabled, "timeTrackingEnabled": value.TimeTrackingEnabled,
 		"unassignedIssuesAllowed": value.UnassignedIssuesAllowed, "votingEnabled": value.VotingEnabled,
 		"watchingEnabled": value.WatchingEnabled,
 	}
+	if value.AttachmentUploadLimit > 0 {
+		detail["attachmentUploadLimit"] = value.AttachmentUploadLimit
+	}
 	return s.updateJiraSiteConfiguration(ctx, workspaceID, actorID, "jira.configuration.updated", "globalConfiguration", detail, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `UPDATE jira_site_configuration SET attachments_enabled=$2,issue_linking_enabled=$3,subtasks_enabled=$4,time_tracking_enabled=$5,unassigned_issues_allowed=$6,voting_enabled=$7,watching_enabled=$8,updated_at=now() WHERE workspace_id=$1`, workspaceID, value.AttachmentsEnabled, value.IssueLinkingEnabled, value.SubTasksEnabled, value.TimeTrackingEnabled, value.UnassignedIssuesAllowed, value.VotingEnabled, value.WatchingEnabled)
+		_, err := tx.Exec(ctx, `UPDATE jira_site_configuration SET attachments_enabled=$2,issue_linking_enabled=$3,subtasks_enabled=$4,time_tracking_enabled=$5,unassigned_issues_allowed=$6,voting_enabled=$7,watching_enabled=$8,attachment_upload_limit=COALESCE(NULLIF($9::bigint,0),attachment_upload_limit),updated_at=now() WHERE workspace_id=$1`, workspaceID, value.AttachmentsEnabled, value.IssueLinkingEnabled, value.SubTasksEnabled, value.TimeTrackingEnabled, value.UnassignedIssuesAllowed, value.VotingEnabled, value.WatchingEnabled, value.AttachmentUploadLimit)
 		return err
 	})
 }

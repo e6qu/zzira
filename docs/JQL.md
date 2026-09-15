@@ -104,18 +104,50 @@ issue ID or key is accepted and in the bulk JQL match resource; internal
 ## Reference and query services
 
 ZZIRA exposes the pinned GET/POST reference-data resources and returns only
-fields, operators, and functions supported by its compiler, including typed
-custom fields. Project, status/category, priority, issue-type, user, label,
+fields, operators, and functions supported by its compiler. Each custom field
+carries its `cf[N]` id, its field type's value type, and the operators its
+searcher allows (its field type's operators when it has no searcher). Its
+`value` is the field name while that name is unique, and `cf[N]` otherwise.
+The POST resource keeps only custom fields whose contexts apply to the given
+`projectIds`, ignoring invalid ids and always listing system fields. With
+`includeCollapsedFields`, fields sharing a name and type also get a collapsed
+entry such as `"Component[Dropdown]"`. JQL searches a collapsed name across
+every such field: any may match, and a negative condition must hold for all. Project, status/category, priority, issue-type, user, label,
 component, sprint, resolution, and version suggestions are generated from the
-current workspace. Suggestions derived from work items apply issue visibility
+current workspace, as are custom field values named by `cf[N]`, id, name or
+collapsed name: options, people, groups, projects, versions and labels.
+`predicateName` `by` suggests people, and `from` and `to` suggest the field's
+values, filtered by `predicateValue`. Suggestions derived from work items apply issue visibility
 before collecting distinct values.
 
 The parse resource returns one Jira-shaped structure or error list per input
-query and supports strict, warning, and syntax-only validation. Bulk matching
+query. `strict` lists every clause and ordering error and omits the
+structure. `warn` lists them as warnings beside the structure. `none` only
+parses.
+
+Legacy search follows the same rules through `validateQuery`. `strict` (and
+its legacy synonym `true`) answers 400 with every error. `warn` (and `false`)
+runs the query with failing clauses matching nothing and skips unsortable
+ordering fields, returning each problem in `warningMessages`. `none` does the
+same without reporting. Malformed JQL answers 400 in every mode. Bulk matching
 compiles each query independently and evaluates it only against the requested,
-visible issue IDs. Sanitization returns per-query errors without failing the
-batch. Personal-data migration converts known workspace member email/display
-operands on assignee, reporter, and creator equality clauses to account IDs.
+visible issue IDs.
+
+Sanitization is for administrators. It rewrites each query for its viewer, or
+for the anonymous user when `accountId` is null. Projects, components and
+versions of projects the viewer cannot browse become their IDs. Custom fields
+shown in none of the viewer's projects become `cf[N]`. A name standing for
+several IDs becomes a list, turning `=` into `in`. The rest of the query keeps
+its text, and unparsable queries or unknown accounts report per-query errors.
+
+Personal-data migration converts people named by email address or unique
+display name into account IDs. It covers user fields, user custom fields, `IN`
+lists and `WAS`/`CHANGED` `FROM`, `TO` and `BY` operands. People who cannot be
+found become `unknown`, and those queries are listed under
+`queriesWithUnknownUsers`. A query that does not parse fails the request.
+
+Project clauses match a project by key (any case), numeric ID or name, and
+`cf[N]` names the custom field `customfield_N`.
 
 ## App function precomputations
 
@@ -149,13 +181,37 @@ text as SQL. The same expansion hook is used by REST search and match, the
 browser navigator, boards and quick filters, dashboard gadgets, service queues
 and SLA goals, automation execution, and webhook filtering.
 
+## Entity property search
+
+Issue properties are searchable once an installed app indexes them through a
+Connect `jiraEntityProperties` module, declared in its descriptor or
+registered as a dynamic module. Each extraction names a property key, a path
+inside the property (`objectName`, with dots for nested values) and a type:
+
+| Type | Operators |
+| --- | --- |
+| `number` | `=`, `!=`, `>`, `>=`, `<`, `<=`, `IN`, `NOT IN`, `IS EMPTY`, `IS NOT EMPTY` |
+| `date` | as `number`, with Jira's relative dates and date functions |
+| `string` | `=`, `!=`, `IN`, `NOT IN`, `IS EMPTY`, `IS NOT EMPTY` |
+| `user` | as `string`, and `currentUser()` |
+| `text` | `~`, `!~`, `IS EMPTY`, `IS NOT EMPTY` |
+
+A query names the value as `issue.property[key].path`, or by the extraction's
+`alias`. An alias that matches a system or custom field name is ignored, so it
+never changes what that field means. When the value at the path is an array,
+the clause matches if any element does. Values that are not numbers or dates
+never match number or date clauses and never cause errors. `!=`, `NOT IN` and
+`!~` do not match work items without the value, as for other fields. Indexed
+values can order results. A path no active app indexes is refused as an unknown
+field, and a suspended app's indexes stop answering. JQL reference data lists
+every indexed path and alias with its operators.
+
 ## Current limits
 
 The search and JQL service resources remain assessed as partial. The remaining
-PR 1 work adds the remaining built-in functions and multi-value fields,
-complete personal-data migration for list/history
-operands and unknown-user reporting; project-aware validation warnings; exact
-historical versioned representations and richer rendered values.
+PR 1 work adds the remaining built-in functions and multi-value fields;
+project-aware validation warnings; exact historical versioned representations
+and richer rendered values.
 
 The remaining built-in catalog includes permission-scheme and
 customer/organization functions. Those

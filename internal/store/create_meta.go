@@ -56,6 +56,10 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	if err != nil {
 		return nil, err
 	}
+	siteConfiguration, err := s.JiraSiteConfiguration(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
 
 	projectOptions := make([]models.CreateFieldOption, 0, len(projects))
 	for _, project := range projects {
@@ -120,6 +124,12 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 			{ID: "priority", Name: "Priority", Type: "priority", Section: "details", Options: priorityOptions},
 			{ID: "labels", Name: "Labels", Type: "array", Description: "Separate labels with commas. Spaces are not allowed inside a label.", Section: "details"},
 			{ID: "parent", Name: "Parent", Type: "parent", Description: "Required for sub-tasks. Choose a work item in this project.", Section: "details", Options: parentOptions},
+		}
+		if siteConfiguration.TimeTrackingEnabled {
+			// The original estimate a work item starts with; the remaining
+			// estimate starts from it.
+			fields = append(fields, models.CreateFieldMeta{ID: "timetracking", Name: "Time tracking", Type: "timetracking",
+				Description: "Original estimate, such as 2w 4d 6h 45m.", Section: "details"})
 		}
 
 		versions, err := s.ProjectVersions(ctx, project.ID)

@@ -63,3 +63,9 @@ func (s *Store) CompleteEmailDelivery(ctx context.Context, id int64, sendErr err
 		WHERE id=$1 AND state='delivering'`, id, message)
 	return err
 }
+
+// QueueEmail adds a plain-text message to the delivery outbox.
+func (s *Store) QueueEmail(ctx context.Context, workspaceID, recipient, subject, body string) error {
+	_, err := s.Pool.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body) VALUES($1,$2,$3,$4)`, workspaceID, recipient, subject, body)
+	return err
+}

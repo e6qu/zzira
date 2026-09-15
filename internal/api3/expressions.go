@@ -555,7 +555,7 @@ func (l *expressionLoader) userRecord(user *models.User) jexpr.Value {
 	return &jexpr.Record{
 		Type:   "User",
 		Fields: map[string]jexpr.Value{"accountId": user.ID, "displayName": user.DisplayName, "timeZone": user.TimeZone},
-		Bean:   func(*jexpr.Context) (any, error) { return l.h.userBean(user), nil },
+		Bean:   func(*jexpr.Context) (any, error) { return l.h.userBeanFor(l.ctx, user), nil },
 	}
 }
 

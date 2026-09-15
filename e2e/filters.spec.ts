@@ -47,7 +47,8 @@ test('saved filter owner manages access, columns, favorites, and ownership', asy
   await expect(card.getByRole('button', { name: `Remove ${name} from favorites` })).toHaveAttribute('aria-pressed', 'true');
 
   await card.getByText('Edit details', { exact: true }).click();
-  await card.getByLabel('Description').fill('Release review and evidence');
+  // The column choices also offer a Description column, so name the field.
+  await card.locator(`#filter-description-${filterID}`).fill('Release review and evidence');
   await card.getByRole('button', { name: 'Save filter' }).click();
   await expect(page.getByRole('status')).toContainText('Filter updated.');
   card = page.locator(`#filter-${filterID}`);

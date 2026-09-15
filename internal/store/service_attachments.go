@@ -82,7 +82,7 @@ func (s *Store) FinalizeServiceAttachments(ctx context.Context, actorID, workspa
 }
 
 func (s *Store) ServiceRequestAttachments(ctx context.Context, requestIssueID string, includeInternal bool) ([]models.ServiceRequestAttachment, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT a.id,a.issue_id,a.filename,a.mime_type,a.size,a.author_id,
+	rows, err := s.Pool.Query(ctx, `SELECT a.id,a.jira_id,a.issue_id,a.filename,a.mime_type,a.size,a.author_id,
 		COALESCE(u.display_name,''),to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),sra.comment_id,sra.public
 		FROM attachments a LEFT JOIN users u ON u.id=a.author_id JOIN service_request_attachments sra ON sra.attachment_id=a.id
 		WHERE sra.request_issue_id=$1 AND ($2 OR sra.public) ORDER BY a.created_at,a.id`, requestIssueID, includeInternal)
@@ -93,7 +93,7 @@ func (s *Store) ServiceRequestAttachments(ctx context.Context, requestIssueID st
 	values := make([]models.ServiceRequestAttachment, 0)
 	for rows.Next() {
 		var value models.ServiceRequestAttachment
-		if err := rows.Scan(&value.Attachment.ID, &value.Attachment.IssueID, &value.Attachment.Filename, &value.Attachment.MimeType, &value.Attachment.Size, &value.Attachment.AuthorID, &value.Attachment.AuthorName, &value.Attachment.Created, &value.CommentID, &value.Public); err != nil {
+		if err := rows.Scan(&value.Attachment.ID, &value.Attachment.JiraID, &value.Attachment.IssueID, &value.Attachment.Filename, &value.Attachment.MimeType, &value.Attachment.Size, &value.Attachment.AuthorID, &value.Attachment.AuthorName, &value.Attachment.Created, &value.CommentID, &value.Public); err != nil {
 			return nil, err
 		}
 		values = append(values, value)
@@ -119,11 +119,11 @@ func (s *Store) ServiceCommentAttachments(ctx context.Context, requestIssueID, c
 
 func (s *Store) ServiceRequestAttachment(ctx context.Context, requestIssueID, attachmentID string, includeInternal bool) (*models.ServiceRequestAttachment, error) {
 	value := &models.ServiceRequestAttachment{}
-	err := s.Pool.QueryRow(ctx, `SELECT a.id,a.issue_id,a.filename,a.mime_type,a.size,a.author_id,
+	err := s.Pool.QueryRow(ctx, `SELECT a.id,a.jira_id,a.issue_id,a.filename,a.mime_type,a.size,a.author_id,
 		COALESCE(u.display_name,''),to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),sra.comment_id,sra.public
 		FROM attachments a LEFT JOIN users u ON u.id=a.author_id JOIN service_request_attachments sra ON sra.attachment_id=a.id
-		WHERE sra.request_issue_id=$1 AND a.id=$2 AND ($3 OR sra.public)`, requestIssueID, attachmentID, includeInternal).Scan(
-		&value.Attachment.ID, &value.Attachment.IssueID, &value.Attachment.Filename, &value.Attachment.MimeType, &value.Attachment.Size, &value.Attachment.AuthorID, &value.Attachment.AuthorName, &value.Attachment.Created, &value.CommentID, &value.Public)
+		WHERE sra.request_issue_id=$1 AND (a.id=$2 OR a.jira_id::text=$2) AND ($3 OR sra.public)`, requestIssueID, attachmentID, includeInternal).Scan(
+		&value.Attachment.ID, &value.Attachment.JiraID, &value.Attachment.IssueID, &value.Attachment.Filename, &value.Attachment.MimeType, &value.Attachment.Size, &value.Attachment.AuthorID, &value.Attachment.AuthorName, &value.Attachment.Created, &value.CommentID, &value.Public)
 	return value, err
 }
 

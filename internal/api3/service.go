@@ -3,20 +3,31 @@ package api3
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 	"github.com/e6qu/zzira/internal/workflow"
 )
 
 func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
+	// Jira answers the instance information without credentials.
+	if r.Method == http.MethodGet && strings.Trim(strings.TrimPrefix(r.URL.Path, "/rest/servicedeskapi"), "/") == "info" {
+		writeJSON(w, http.StatusOK, map[string]any{"version": "5.17.0", "platformVersion": "1001.0.0-SNAPSHOT", "buildChangeSet": "zzira", "buildDate": serviceDate(time.Date(2026, time.September, 6, 0, 0, 0, 0, time.UTC)), "isLicensedForUse": true, "_links": map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/info"}})
+		return
+	}
 	workspaceID, actorID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
@@ -78,19 +89,33 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 		h.serviceRequestSLA(w, r, workspaceID, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "request" && parts[2] == "transition" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
 		h.serviceRequestTransition(w, r, workspaceID, parts[1])
-	case len(parts) == 1 && parts[0] == "info" && r.Method == http.MethodGet:
-		writeJSON(w, http.StatusOK, map[string]any{"version": "5.17.0", "platformVersion": "1001.0.0-SNAPSHOT", "buildChangeSet": "zzira", "buildDate": "2026-09-06T00:00:00Z", "isLicensedForUse": true, "_links": map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/info"}})
 	case len(parts) == 1 && parts[0] == "servicedesk" && r.Method == http.MethodGet:
 		desks, err := h.Store.ServiceDesks(r.Context(), workspaceID)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "Could not load service desks.")
 			return
 		}
-		h.writeServicePage(w, r, serviceDeskBeans(h.BaseURL, desks))
+		// Only the service desks the caller has permission to access.
+		accessible := make([]models.ServiceDesk, 0, len(desks))
+		for _, desk := range desks {
+			allowed, accessErr := h.serviceDeskAccess(r, workspaceID, desk.ID, actorID)
+			if accessErr != nil {
+				jiraError(w, http.StatusInternalServerError, "Could not authorize service desk access.")
+				return
+			}
+			if allowed {
+				accessible = append(accessible, desk)
+			}
+		}
+		h.writeServicePage(w, r, serviceDeskBeans(h.BaseURL, accessible))
 	case len(parts) == 2 && parts[0] == "servicedesk" && r.Method == http.MethodGet:
 		desk, err := h.Store.ServiceDesk(r.Context(), workspaceID, parts[1])
 		if err != nil {
 			jiraError(w, http.StatusNotFound, "Service desk was not found.")
+			return
+		}
+		if allowed, accessErr := h.serviceDeskAccess(r, workspaceID, desk.ID, actorID); accessErr != nil || !allowed {
+			jiraError(w, http.StatusForbidden, "You do not have permission to access this service desk.")
 			return
 		}
 		writeJSON(w, http.StatusOK, serviceDeskBean(h.BaseURL, *desk))
@@ -99,8 +124,8 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "requesttype" && r.Method == http.MethodGet:
 		h.listServiceRequestTypes(w, r, workspaceID, parts[1])
 	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "requesttype" && r.Method == http.MethodPost:
-		if _, _, err := h.authWorkspaceAdmin(r); err != nil {
-			writeJerr(w, err)
+		if !h.serviceDeskAdminAccess(r, workspaceID, parts[1], actorID) {
+			jiraError(w, http.StatusForbidden, "Service desk administrator access is required.")
 			return
 		}
 		var input struct{ Name, Description, HelpText, IssueTypeID string }
@@ -118,7 +143,7 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusBadRequest, "Could not create request type.")
 			return
 		}
-		writeJSON(w, http.StatusOK, serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, *requestType)))
+		writeJSON(w, http.StatusOK, h.serviceRequestTypeBean(r, workspaceID, actorID, h.wireServiceRequestType(r.Context(), workspaceID, *requestType)))
 	case len(parts) == 3 && parts[0] == "servicedesk" && parts[2] == "customer" && (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodDelete):
 		h.serviceDeskCustomers(w, r, workspaceID, actorID, parts[1])
 	case len(parts) == 4 && parts[0] == "servicedesk" && parts[2] == "customer" && parts[3] == "invite" && r.Method == http.MethodPost:
@@ -163,19 +188,28 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 				jiraError(w, http.StatusInternalServerError, "Could not load request type fields.")
 				return
 			}
-			writeJSON(w, http.StatusOK, serviceRequestTypeFields(fields))
+			form, err := h.serviceRequestTypeFields(r, workspaceID, actorID, parts[1], fields)
+			if err != nil {
+				jiraError(w, http.StatusInternalServerError, "Could not load request type fields.")
+				return
+			}
+			writeJSON(w, http.StatusOK, form)
 			return
 		}
 		if len(parts) == 4 && r.Method == http.MethodGet {
-			writeJSON(w, http.StatusOK, serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, *requestType)))
+			writeJSON(w, http.StatusOK, h.serviceRequestTypeBean(r, workspaceID, actorID, h.wireServiceRequestType(r.Context(), workspaceID, *requestType)))
 			return
 		}
 		if len(parts) == 4 && r.Method == http.MethodDelete {
-			if _, _, err := h.authWorkspaceAdmin(r); err != nil {
-				writeJerr(w, err)
+			if !h.serviceDeskAdminAccess(r, workspaceID, parts[1], actorID) {
+				jiraError(w, http.StatusForbidden, "Service desk administrator access is required.")
 				return
 			}
-			if err := h.Store.DeleteServiceRequestType(r.Context(), workspaceID, parts[1], parts[3]); err != nil {
+			if err := h.Store.DeleteServiceRequestType(r.Context(), workspaceID, actorID, parts[1], parts[3]); err != nil {
+				if errors.Is(err, store.ErrServiceRequestTypeNotFound) {
+					jiraError(w, http.StatusNotFound, "The service desk or request type does not exist.")
+					return
+				}
 				jiraError(w, http.StatusInternalServerError, "Could not delete request type.")
 				return
 			}
@@ -256,15 +290,15 @@ func (h *Handler) getServiceQueue(w http.ResponseWriter, r *http.Request, worksp
 		writeJSON(w, http.StatusOK, h.serviceQueueBean(*queue, r.URL.Query().Get("includeCount") == "true"))
 		return
 	}
+	// Each request carries only the fields the queue is configured to show.
 	beans := make([]map[string]any, 0, len(requests))
 	for _, request := range requests {
-		fields := map[string]any{"summary": request.Issue.Summary, "issuetype": request.Issue.IssueType, "created": request.CreatedAt.UTC().Format("2006-01-02T15:04:05.000-0700"), "reporter": h.serviceUserBean(request.Customer), "status": request.Issue.Status}
-		if request.Issue.Assignee != nil {
-			fields["assignee"] = h.serviceUserBean(request.Issue.Assignee)
-		} else {
-			fields["assignee"] = nil
+		bean := projectSearchIssue(h.issueBean(request.Issue), queue.Fields, false)
+		if _, projected := bean["fields"]; !projected {
+			full := h.issueBean(request.Issue)
+			bean["key"], bean["self"], bean["fields"] = full["key"], full["self"], map[string]any{}
 		}
-		beans = append(beans, map[string]any{"id": jiraIssueID(request.Issue), "key": request.Issue.Key, "self": h.BaseURL + "/rest/api/3/issue/" + jiraIssueID(request.Issue), "fields": fields})
+		beans = append(beans, bean)
 	}
 	h.writeServicePage(w, r, beans)
 }
@@ -347,6 +381,10 @@ func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string
 	}
 	allowed := make(map[string]models.ServiceRequestTypeField, len(configured))
 	for _, field := range configured {
+		// A hidden field takes its preset value, never a submitted one.
+		if field.Hidden {
+			continue
+		}
 		allowed[field.ID] = field
 		raw, present := input.RequestFieldValues[field.ID]
 		if field.Required {
@@ -440,11 +478,22 @@ func (h *Handler) createServiceRequest(w http.ResponseWriter, r *http.Request, w
 		return
 	}
 	if validateOnly {
-		messages := []string{}
-		for _, message := range fieldErrors {
-			messages = append(messages, message)
+		// Jira's RequestValidationResultDTO: field errors are a list, and the
+		// summary and reason key are null for a valid payload.
+		fields := make([]string, 0, len(fieldErrors))
+		for field := range fieldErrors {
+			fields = append(fields, field)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"valid": len(fieldErrors) == 0, "fieldErrors": fieldErrors, "formErrors": []any{}, "errorMessages": messages, "errorMessage": "", "reasonKey": ""})
+		sort.Strings(fields)
+		errors := make([]map[string]string, 0, len(fields))
+		for _, field := range fields {
+			errors = append(errors, map[string]string{"field": field, "message": fieldErrors[field]})
+		}
+		result := map[string]any{"valid": len(fieldErrors) == 0, "fieldErrors": errors, "formErrors": []any{}, "errorMessages": []string{}, "errorMessage": nil, "reasonKey": nil}
+		if len(fieldErrors) > 0 {
+			result["errorMessage"], result["reasonKey"] = "Request validation failed.", "FIELD_VALIDATION_FAILED"
+		}
+		writeJSON(w, http.StatusOK, result)
 		return
 	}
 	if len(fieldErrors) > 0 {
@@ -473,10 +522,18 @@ func (h *Handler) createServiceRequest(w http.ResponseWriter, r *http.Request, w
 	description, descriptionADF := "", json.RawMessage(nil)
 	customFields := map[string]json.RawMessage{}
 	for _, field := range configuredFields {
-		if field.Custom {
-			if value, ok := input.RequestFieldValues[field.ID]; ok {
-				customFields[field.ID] = value
+		value, ok := input.RequestFieldValues[field.ID]
+		if field.Hidden {
+			value, ok = field.PresetValue, len(field.PresetValue) > 0 && string(field.PresetValue) != "null"
+			if ok && field.ID == "description" {
+				if input.RequestFieldValues == nil {
+					input.RequestFieldValues = map[string]json.RawMessage{}
+				}
+				input.RequestFieldValues["description"] = value
 			}
+		}
+		if field.Custom && ok {
+			customFields[field.ID] = value
 		}
 	}
 	if raw := input.RequestFieldValues["description"]; len(raw) > 0 {
@@ -525,29 +582,104 @@ func (h *Handler) listServiceRequests(w http.ResponseWriter, r *http.Request, wo
 		writeJerr(w, authErr)
 		return
 	}
-	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, actorID)
-	if err != nil {
-		jiraError(w, http.StatusInternalServerError, "Could not load customer requests.")
+	query := r.URL.Query()
+	filter := store.ServiceRequestListFilter{ViewerID: actorID, ServiceDeskID: query.Get("serviceDeskId"), RequestTypeID: query.Get("requestTypeId"), SearchTerm: query.Get("searchTerm")}
+	ownership := []string{}
+	for _, value := range query["requestOwnership"] {
+		for _, part := range strings.Split(value, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				ownership = append(ownership, strings.ToUpper(part))
+			}
+		}
+	}
+	// Without an ownership filter Jira lists owned, participated and
+	// organization requests.
+	if len(ownership) == 0 {
+		ownership = []string{"OWNED_REQUESTS", "PARTICIPATED_REQUESTS", "ALL_ORGANIZATIONS"}
+	}
+	for _, value := range ownership {
+		switch value {
+		case "OWNED_REQUESTS":
+			filter.Owned = true
+		case "PARTICIPATED_REQUESTS":
+			filter.Participated = true
+		case "ORGANIZATION", "ALL_ORGANIZATIONS":
+			filter.Organizations = true
+		case "APPROVER":
+			filter.Approver = true
+		case "ALL_REQUESTS":
+			filter.AllRequests = true
+		default:
+			jiraError(w, http.StatusBadRequest, "requestOwnership must be OWNED_REQUESTS, PARTICIPATED_REQUESTS, ORGANIZATION, ALL_ORGANIZATIONS, APPROVER or ALL_REQUESTS.")
+			return
+		}
+	}
+	if organizationID := query.Get("organizationId"); organizationID != "" {
+		if !slices.Contains(ownership, "ORGANIZATION") {
+			jiraError(w, http.StatusBadRequest, "organizationId is valid only with requestOwnership=ORGANIZATION.")
+			return
+		}
+		filter.OrganizationID = organizationID
+	} else if slices.Contains(ownership, "ORGANIZATION") && !slices.Contains(ownership, "ALL_ORGANIZATIONS") {
+		jiraError(w, http.StatusBadRequest, "requestOwnership=ORGANIZATION needs an organizationId.")
 		return
 	}
-	allRequests := strings.EqualFold(r.URL.Query().Get("requestOwnership"), "ALL_REQUESTS")
-	var requests []*models.ServiceRequest
-	if allRequests && admin {
-		requests, err = h.Store.ServiceRequests(r.Context(), workspaceID, actorID, r.URL.Query().Get("serviceDeskId"), r.URL.Query().Get("requestTypeId"), true)
-	} else if allRequests {
-		agent, accessErr := h.Store.IsAnyServiceAgent(r.Context(), workspaceID, actorID)
-		if accessErr != nil {
-			jiraError(w, http.StatusInternalServerError, "Could not authorize service access.")
+	switch approval := strings.ToUpper(query.Get("approvalStatus")); approval {
+	case "":
+	case "MY_PENDING_APPROVAL", "MY_HISTORY_APPROVAL":
+		if !filter.Approver {
+			jiraError(w, http.StatusBadRequest, "approvalStatus is valid only with requestOwnership=APPROVER.")
 			return
 		}
-		if !agent {
-			jiraError(w, http.StatusForbidden, "Service agent access is required for all requests.")
-			return
-		}
-		requests, err = h.Store.ServiceRequestsForAgent(r.Context(), workspaceID, actorID, r.URL.Query().Get("serviceDeskId"), r.URL.Query().Get("requestTypeId"))
-	} else {
-		requests, err = h.Store.ServiceRequests(r.Context(), workspaceID, actorID, r.URL.Query().Get("serviceDeskId"), r.URL.Query().Get("requestTypeId"), false)
+		filter.ApprovalStatus = approval
+	default:
+		jiraError(w, http.StatusBadRequest, "approvalStatus must be MY_PENDING_APPROVAL or MY_HISTORY_APPROVAL.")
+		return
 	}
+	switch status := strings.ToUpper(query.Get("requestStatus")); status {
+	case "", "ALL_REQUESTS":
+	case "OPEN_REQUESTS", "CLOSED_REQUESTS":
+		filter.RequestStatus = status
+	default:
+		jiraError(w, http.StatusBadRequest, "requestStatus must be OPEN_REQUESTS, CLOSED_REQUESTS or ALL_REQUESTS.")
+		return
+	}
+	if filter.RequestTypeID != "" && filter.ServiceDeskID == "" {
+		jiraError(w, http.StatusBadRequest, "requestTypeId needs the serviceDeskId of its service desk.")
+		return
+	}
+	if filter.ServiceDeskID != "" {
+		if _, err := h.Store.ServiceDesk(r.Context(), workspaceID, filter.ServiceDeskID); err != nil {
+			jiraError(w, http.StatusNotFound, "The service desk does not exist.")
+			return
+		}
+		if filter.RequestTypeID != "" {
+			if _, err := h.Store.ServiceRequestType(r.Context(), workspaceID, filter.ServiceDeskID, filter.RequestTypeID); err != nil {
+				jiraError(w, http.StatusNotFound, "The service desk does not support the request type.")
+				return
+			}
+		}
+	}
+	if filter.AllRequests {
+		admin, err := h.Store.IsAdmin(r.Context(), workspaceID, actorID)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not load customer requests.")
+			return
+		}
+		filter.SiteAdmin = admin
+		if !admin {
+			agent, accessErr := h.Store.IsAnyServiceAgent(r.Context(), workspaceID, actorID)
+			if accessErr != nil {
+				jiraError(w, http.StatusInternalServerError, "Could not authorize service access.")
+				return
+			}
+			if !agent {
+				jiraError(w, http.StatusForbidden, "Service agent access is required for all requests.")
+				return
+			}
+		}
+	}
+	requests, err := h.Store.ServiceRequestList(r.Context(), workspaceID, filter)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not load customer requests.")
 		return
@@ -605,47 +737,219 @@ func (h *Handler) writeServicePage(w http.ResponseWriter, r *http.Request, value
 	if end > len(values) {
 		end = len(values)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"start": start, "limit": limit, "size": end - start, "isLastPage": end == len(values), "values": values[start:end], "_expands": []any{}, "_links": map[string]string{"self": h.BaseURL + r.URL.Path}})
+	writeJSON(w, http.StatusOK, map[string]any{"start": start, "limit": limit, "size": end - start, "isLastPage": end == len(values), "values": values[start:end], "_expands": []any{}, "_links": h.servicePageLinks(r, start, limit, end < len(values))})
+}
+
+// servicePageLinks are Jira Service Management's page links: the API base, the
+// site's context path (empty at the root), the page itself, and the pages
+// before and after it when there are any.
+func (h *Handler) servicePageLinks(r *http.Request, start, limit int, more bool) map[string]string {
+	page := func(from int) string {
+		query := r.URL.Query()
+		query.Set("start", strconv.Itoa(from))
+		query.Set("limit", strconv.Itoa(limit))
+		return h.BaseURL + r.URL.Path + "?" + query.Encode()
+	}
+	self := h.BaseURL + r.URL.Path
+	if r.URL.RawQuery != "" {
+		self += "?" + r.URL.RawQuery
+	}
+	links := map[string]string{"base": h.BaseURL + "/rest/servicedeskapi", "context": "", "self": self}
+	if more {
+		links["next"] = page(start + limit)
+	}
+	if start > 0 {
+		links["prev"] = page(max(0, start-limit))
+	}
+	return links
 }
 
 func (h *Handler) listServiceRequestTypes(w http.ResponseWriter, r *http.Request, workspaceID, serviceDeskID string) {
-	values, err := h.Store.ServiceRequestTypes(r.Context(), workspaceID, serviceDeskID, r.URL.Query().Get("searchQuery"))
+	_, actorID, authErr := h.authWorkspace(r)
+	if authErr != nil {
+		writeJerr(w, authErr)
+		return
+	}
+	query := r.URL.Query()
+	search := query.Get("searchQuery")
+	values, err := h.Store.ServiceRequestTypes(r.Context(), workspaceID, serviceDeskID, search)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not load request types.")
 		return
 	}
+	includeHidden := false
+	if raw := query.Get("includeHiddenRequestTypesInSearch"); raw != "" {
+		if includeHidden, err = strconv.ParseBool(raw); err != nil {
+			jiraError(w, http.StatusBadRequest, "includeHiddenRequestTypesInSearch must be true or false.")
+			return
+		}
+	}
+	restriction := strings.ToUpper(query.Get("restrictionStatus"))
+	if restriction != "" && restriction != "OPEN" && restriction != "RESTRICTED" {
+		jiraError(w, http.StatusBadRequest, "restrictionStatus must be OPEN or RESTRICTED.")
+		return
+	}
+	desks := map[string]bool{}
+	for _, id := range query["serviceDeskId"] {
+		for _, part := range strings.Split(id, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				desks[part] = true
+			}
+		}
+	}
+	groupID := query.Get("groupId")
+	filtered := values[:0]
+	for _, requestType := range values {
+		// A request type in no group is hidden from the portal, and a search
+		// leaves hidden types out unless asked for them. Every zzira request
+		// type is open to the desk's customers.
+		if (search != "" && !includeHidden && len(requestType.GroupIDs) == 0) || restriction == "RESTRICTED" ||
+			(len(desks) > 0 && !desks[requestType.ServiceDeskID]) || (groupID != "" && !slices.Contains(requestType.GroupIDs, groupID)) {
+			continue
+		}
+		filtered = append(filtered, requestType)
+	}
+	values = filtered
 	beans := make([]map[string]any, 0, len(values))
 	for _, requestType := range values {
-		beans = append(beans, serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, requestType)))
+		beans = append(beans, h.serviceRequestTypeBean(r, workspaceID, actorID, h.wireServiceRequestType(r.Context(), workspaceID, requestType)))
 	}
 	h.writeServicePage(w, r, beans)
 }
 
-func serviceRequestTypeBean(baseURL string, requestType models.ServiceRequestType) map[string]any {
-	return map[string]any{"id": requestType.ID, "serviceDeskId": requestType.ServiceDeskID, "portalId": requestType.ServiceDeskID, "name": requestType.Name, "description": requestType.Description, "helpText": requestType.HelpText, "issueTypeId": requestType.IssueTypeID, "groupIds": requestType.GroupIDs, "canCreateRequest": true, "restrictionStatus": "OPEN", "practice": "service_desk", "_expands": []any{}, "_links": map[string]string{"self": baseURL + "/rest/servicedeskapi/servicedesk/" + requestType.ServiceDeskID + "/requesttype/" + requestType.ID}}
+// serviceRequestTypeBean describes a request type to a caller: its headset
+// icon, whether they can raise requests with it, and, when expanded, the
+// form fields a request of the type takes.
+func (h *Handler) serviceRequestTypeBean(r *http.Request, workspaceID, actorID string, requestType models.ServiceRequestType) map[string]any {
+	iconID, _ := store.DefaultSystemAvatar("SD_REQTYPE")
+	icon := strconv.FormatInt(iconID, 10)
+	view := h.BaseURL + "/rest/api/3/universal_avatar/view/type/SD_REQTYPE/avatar/" + icon
+	canCreate, err := h.Store.CanCreateServiceRequest(r.Context(), workspaceID, requestType.ServiceDeskID, actorID)
+	if err != nil {
+		canCreate = false
+	}
+	bean := map[string]any{
+		"id": requestType.ID, "serviceDeskId": requestType.ServiceDeskID, "portalId": requestType.ServiceDeskID, "name": requestType.Name,
+		"description": requestType.Description, "helpText": requestType.HelpText, "issueTypeId": requestType.IssueTypeID, "groupIds": requestType.GroupIDs,
+		"canCreateRequest": canCreate, "restrictionStatus": "OPEN", "practice": "service_desk",
+		"icon": map[string]any{"id": icon, "_links": map[string]any{"iconUrls": map[string]string{
+			"48x48": view + "?size=large", "32x32": view + "?size=medium", "24x24": view + "?size=small", "16x16": view + "?size=xsmall",
+		}}},
+		"_expands": []string{"field"},
+		"_links":   map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/servicedesk/" + requestType.ServiceDeskID + "/requesttype/" + requestType.ID},
+	}
+	expandFields := false
+	for _, value := range r.URL.Query()["expand"] {
+		for _, part := range strings.Split(value, ",") {
+			expandFields = expandFields || strings.TrimSpace(part) == "field"
+		}
+	}
+	if expandFields {
+		if fields, err := h.Store.ServiceRequestTypeFields(r.Context(), workspaceID, requestType.ServiceDeskID, requestType.ID); err == nil {
+			if form, formErr := h.serviceRequestTypeFields(r, workspaceID, actorID, requestType.ServiceDeskID, fields); formErr == nil {
+				bean["fields"] = form
+				bean["_expands"] = []string{}
+			}
+		}
+	}
+	return bean
 }
 
-func serviceRequestTypeFields(fields []models.ServiceRequestTypeField) map[string]any {
+// serviceRequestFieldSchema describes a request type field's value the way
+// Jira's field metadata does.
+func serviceRequestFieldSchema(field models.ServiceRequestTypeField) map[string]any {
+	if !field.Custom {
+		return map[string]any{"type": "string", "system": field.ID}
+	}
+	types := map[string][2]string{
+		models.CustomFieldText: {"string", "textfield"}, models.CustomFieldNumber: {"number", "float"},
+		models.CustomFieldDatetime: {"datetime", "datetime"}, models.CustomFieldDate: {"date", "datepicker"},
+		models.CustomFieldURL: {"string", "url"}, models.CustomFieldSelect: {"option", "select"},
+		models.CustomFieldMultiSelect: {"array", "multiselect"}, models.CustomFieldCascadingSelect: {"option-with-child", "cascadingselect"},
+		models.CustomFieldUser: {"user", "userpicker"}, models.CustomFieldMultiUser: {"array", "multiuserpicker"},
+		models.CustomFieldGroup: {"group", "grouppicker"}, models.CustomFieldMultiGroup: {"array", "multigrouppicker"},
+		models.CustomFieldLabels: {"array", "labels"}, models.CustomFieldProject: {"project", "project"},
+		models.CustomFieldVersion: {"version", "version"}, models.CustomFieldMultiVersion: {"array", "multiversion"},
+	}
+	kind, ok := types[field.Type]
+	if !ok {
+		kind = [2]string{"string", field.Type}
+	}
+	schema := map[string]any{"type": kind[0], "custom": "com.atlassian.jira.plugin.system.customfieldtypes:" + kind[1]}
+	if id, err := strconv.ParseInt(strings.TrimPrefix(field.ID, "customfield_"), 10, 64); err == nil {
+		schema["customId"] = id
+	}
+	switch field.Type {
+	case models.CustomFieldMultiSelect:
+		schema["items"] = "option"
+	case models.CustomFieldMultiUser:
+		schema["items"] = "user"
+	case models.CustomFieldMultiGroup:
+		schema["items"] = "group"
+	case models.CustomFieldLabels:
+		schema["items"] = "string"
+	case models.CustomFieldMultiVersion:
+		schema["items"] = "version"
+	}
+	return schema
+}
+
+// serviceRequestTypeFields describes a request type's form to the caller:
+// agents may raise requests for customers and add participants, customers
+// may not, and only the desk's administrators asking for hiddenFields see hidden fields
+// and their preset values.
+func (h *Handler) serviceRequestTypeFields(r *http.Request, workspaceID, actorID, serviceDeskID string, fields []models.ServiceRequestTypeField) (map[string]any, error) {
+	agent, err := h.Store.IsServiceAgent(r.Context(), workspaceID, serviceDeskID, actorID)
+	if err != nil {
+		return nil, err
+	}
+	admin, err := h.Store.IsServiceDeskAdmin(r.Context(), workspaceID, serviceDeskID, actorID)
+	if err != nil {
+		return nil, err
+	}
+	showHidden := false
+	for _, value := range r.URL.Query()["expand"] {
+		for _, part := range strings.Split(value, ",") {
+			showHidden = showHidden || strings.TrimSpace(part) == "hiddenFields"
+		}
+	}
+	showHidden = showHidden && admin
 	beans := make([]map[string]any, 0, len(fields))
 	for _, field := range fields {
-		schema := map[string]string{"type": "string"}
-		if field.Type == models.CustomFieldNumber {
-			schema["type"] = "number"
-		} else if field.Type == models.CustomFieldDatetime {
-			schema["type"] = "datetime"
-		}
-		if !field.Custom {
-			schema["system"] = field.ID
-		} else {
-			schema["custom"] = field.Type
+		if field.Hidden && !showHidden {
+			continue
 		}
 		description := field.HelpText
 		if description == "" {
 			description = field.Description
 		}
-		beans = append(beans, map[string]any{"fieldId": field.ID, "name": field.Name, "description": description, "required": field.Required, "visible": true, "defaultValues": []any{}, "presetValues": []any{}, "validValues": []any{}, "jiraSchema": schema})
+		validValues := []map[string]any{}
+		if field.Type == models.CustomFieldSelect || field.Type == models.CustomFieldMultiSelect || field.Type == models.CustomFieldCascadingSelect {
+			options, err := h.Store.ServiceRequestFieldOptions(r.Context(), workspaceID, serviceDeskID, field.ID)
+			if err != nil {
+				return nil, err
+			}
+			for _, option := range options {
+				children := []map[string]any{}
+				for _, child := range option.Children {
+					children = append(children, map[string]any{"value": child.ID, "label": child.Value, "children": []any{}})
+				}
+				validValues = append(validValues, map[string]any{"value": option.ID, "label": option.Value, "children": children})
+			}
+		}
+		presetValues := []string{}
+		if field.Hidden && len(field.PresetValue) > 0 {
+			var text string
+			if json.Unmarshal(field.PresetValue, &text) == nil {
+				presetValues = append(presetValues, text)
+			} else {
+				presetValues = append(presetValues, string(field.PresetValue))
+			}
+		}
+		beans = append(beans, map[string]any{"fieldId": field.ID, "name": field.Name, "description": description, "required": field.Required, "visible": !field.Hidden,
+			"defaultValues": []any{}, "presetValues": presetValues, "validValues": validValues, "jiraSchema": serviceRequestFieldSchema(field)})
 	}
-	return map[string]any{"canAddRequestParticipants": true, "canRaiseOnBehalfOf": true, "requestTypeFields": beans}
+	return map[string]any{"canAddRequestParticipants": agent, "canRaiseOnBehalfOf": agent, "requestTypeFields": beans}, nil
 }
 
 func serviceDate(value time.Time) map[string]any {
@@ -666,68 +970,52 @@ func parseServiceDate(value string) time.Time {
 	return parsed
 }
 
+// serviceUserBean is Jira Service Management's UserDTO. The deprecated key and
+// name are not sent, and avatars appear only under its links.
 func (h *Handler) serviceUserBean(user *models.User) map[string]any {
 	if user == nil {
 		return nil
 	}
-	bean := h.userBean(user)
-	bean["_links"] = map[string]string{"jiraRest": h.BaseURL + "/rest/api/3/user?accountId=" + user.ID}
-	return bean
+	self := h.BaseURL + "/rest/api/3/user?accountId=" + url.QueryEscape(user.ID)
+	avatar := h.BaseURL + "/static/img/avatar-default.svg"
+	return map[string]any{
+		"accountId": user.ID, "emailAddress": user.Email, "displayName": user.DisplayName, "active": user.Active, "timeZone": user.TimeZone,
+		"_links": map[string]any{
+			"self": self, "jiraRest": self,
+			"avatarUrls": map[string]string{"48x48": avatar, "24x24": avatar, "16x16": avatar, "32x32": avatar},
+		},
+	}
 }
 
 func (h *Handler) serviceStatusBean(status models.Status, changed string) map[string]any {
-	return map[string]any{
-		"status":         status.Name,
-		"statusCategory": map[string]string{"key": status.Category, "name": status.Category},
-		"statusDate":     serviceDate(parseServiceDate(changed)),
+	return serviceStatusEntryBean(status, parseServiceDate(changed))
+}
+
+// serviceStatusEntryBean is a status a request attained, with Jira's status
+// category key.
+func serviceStatusEntryBean(status models.Status, at time.Time) map[string]any {
+	category := map[string]string{"new": "NEW", "indeterminate": "INDETERMINATE", "done": "DONE"}[strings.ToLower(status.Category)]
+	if category == "" {
+		category = "UNDEFINED"
 	}
+	return map[string]any{"status": status.Name, "statusCategory": category, "statusDate": serviceDate(at)}
+}
+
+// servicePagedValues is Jira Service Management's page of every value.
+func servicePagedValues[T any](values []T) map[string]any {
+	return map[string]any{"start": 0, "limit": len(values), "size": len(values), "isLastPage": true, "values": values, "_expands": []any{}}
 }
 
 func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID string, request *models.ServiceRequest) (map[string]any, error) {
+	expand := map[string]bool{}
+	for _, value := range r.URL.Query()["expand"] {
+		for _, part := range strings.Split(value, ",") {
+			expand[strings.TrimSpace(part)] = true
+		}
+	}
 	canManage, err := h.Store.CanManageServiceRequest(r.Context(), workspaceID, viewerID, request.Issue.ID)
 	if err != nil {
 		return nil, err
-	}
-	comments, err := h.Store.ServiceRequestComments(r.Context(), request.Issue.ID, canManage)
-	if err != nil {
-		return nil, err
-	}
-	commentBeans := make([]map[string]any, 0, len(comments))
-	for _, comment := range comments {
-		attachments, err := h.Store.ServiceCommentAttachments(r.Context(), request.Issue.ID, comment.Comment.ID, canManage)
-		if err != nil {
-			return nil, err
-		}
-		for _, attachment := range attachments {
-			comment.Attachments = append(comment.Attachments, attachment.Attachment)
-		}
-		commentBeans = append(commentBeans, h.serviceCommentBean(request, comment))
-	}
-	attachments, err := h.Store.ServiceRequestAttachments(r.Context(), request.Issue.ID, canManage)
-	if err != nil {
-		return nil, err
-	}
-	attachmentBeans := make([]map[string]any, 0, len(attachments))
-	for _, attachment := range attachments {
-		attachmentBeans = append(attachmentBeans, h.serviceAttachmentBean(request, attachment.Attachment))
-	}
-	participants, err := h.Store.ServiceRequestParticipants(r.Context(), request.Issue.ID)
-	if err != nil {
-		return nil, err
-	}
-	participantBeans := make([]map[string]any, 0, len(participants))
-	for _, participant := range participants {
-		participantBeans = append(participantBeans, h.serviceUserBean(participant))
-	}
-	slaBeans := make([]map[string]any, 0)
-	if canManage {
-		slas, err := h.Store.ServiceSLAs(r.Context(), workspaceID, request.Issue.ID, time.Now().UTC())
-		if err != nil {
-			return nil, err
-		}
-		for _, sla := range slas {
-			slaBeans = append(slaBeans, h.serviceSLABean(request, sla))
-		}
 	}
 	fields := []map[string]any{
 		{"fieldId": "summary", "label": "Summary", "value": request.Issue.Summary, "renderedValue": request.Issue.Summary},
@@ -738,7 +1026,8 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 		return nil, err
 	}
 	for _, field := range configuredFields {
-		if !field.Custom {
+		// Hidden fields are not part of what the request shows.
+		if !field.Custom || field.Hidden {
 			continue
 		}
 		var value any
@@ -749,22 +1038,124 @@ func (h *Handler) serviceRequestBean(r *http.Request, workspaceID, viewerID stri
 		}
 		fields = append(fields, map[string]any{"fieldId": field.ID, "label": field.Name, "value": value, "renderedValue": value})
 	}
-	status := h.serviceStatusBean(request.Issue.Status, request.Issue.UpdatedAt)
-	return map[string]any{
+	bean := map[string]any{
 		"issueId": jiraIssueID(request.Issue), "issueKey": request.Issue.Key, "summary": request.Issue.Summary,
 		"serviceDeskId": request.ServiceDesk.ID, "requestTypeId": request.RequestType.ID,
-		"serviceDesk": serviceDeskBean(h.BaseURL, request.ServiceDesk),
-		"requestType": serviceRequestTypeBean(h.BaseURL, h.wireServiceRequestType(r.Context(), workspaceID, request.RequestType)),
-		"reporter":    h.serviceUserBean(request.Customer), "participants": participantBeans,
-		"requestFieldValues": fields, "currentStatus": status, "status": status,
-		"createdDate": serviceDate(request.CreatedAt), "channel": request.Channel,
-		"comments":    map[string]any{"start": 0, "limit": 50, "size": len(commentBeans), "isLastPage": true, "values": commentBeans},
-		"attachments": map[string]any{"start": 0, "limit": 50, "size": len(attachmentBeans), "isLastPage": true, "values": attachmentBeans}, "sla": slaBeans, "actions": []any{}, "_expands": []string{"serviceDesk", "requestType", "currentStatus"},
+		"reporter": h.serviceUserBean(request.Customer), "requestFieldValues": fields,
+		"currentStatus": h.serviceStatusBean(request.Issue.Status, request.Issue.UpdatedAt),
+		"createdDate":   serviceDate(request.CreatedAt),
 		"_links": map[string]string{
 			"self": h.BaseURL + "/rest/servicedeskapi/request/" + request.Issue.Key,
 			"web":  h.BaseURL + "/service/requests/" + request.Issue.Key,
 		},
-	}, nil
+	}
+	unexpanded := []string{}
+	if expand["serviceDesk"] {
+		bean["serviceDesk"] = serviceDeskBean(h.BaseURL, request.ServiceDesk)
+	} else {
+		unexpanded = append(unexpanded, "serviceDesk")
+	}
+	if expand["requestType"] {
+		bean["requestType"] = h.serviceRequestTypeBean(r, workspaceID, viewerID, h.wireServiceRequestType(r.Context(), workspaceID, request.RequestType))
+	} else {
+		unexpanded = append(unexpanded, "requestType")
+	}
+	participants, err := h.Store.ServiceRequestParticipants(r.Context(), request.Issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	if expand["participant"] {
+		participantBeans := make([]map[string]any, 0, len(participants))
+		for _, participant := range participants {
+			participantBeans = append(participantBeans, h.serviceUserBean(participant))
+		}
+		bean["participants"] = servicePagedValues(participantBeans)
+	} else {
+		unexpanded = append(unexpanded, "participant")
+	}
+	if expand["sla"] {
+		slaBeans := make([]map[string]any, 0)
+		if canManage {
+			slas, err := h.Store.ServiceSLAs(r.Context(), workspaceID, request.Issue.ID, time.Now().UTC())
+			if err != nil {
+				return nil, err
+			}
+			for _, sla := range slas {
+				slaBeans = append(slaBeans, h.serviceSLABean(request, sla))
+			}
+		}
+		bean["sla"] = servicePagedValues(slaBeans)
+	} else {
+		unexpanded = append(unexpanded, "sla")
+	}
+	if expand["status"] {
+		history, err := h.Store.ServiceRequestStatusHistory(r.Context(), workspaceID, request.Issue.ID)
+		if err != nil {
+			return nil, err
+		}
+		statusBeans := make([]map[string]any, 0, len(history))
+		for _, entry := range history {
+			statusBeans = append(statusBeans, serviceStatusEntryBean(entry.Status, entry.At))
+		}
+		bean["status"] = servicePagedValues(statusBeans)
+	} else {
+		unexpanded = append(unexpanded, "status")
+	}
+	if expand["attachment"] {
+		attachments, err := h.Store.ServiceRequestAttachments(r.Context(), request.Issue.ID, canManage)
+		if err != nil {
+			return nil, err
+		}
+		attachmentBeans := make([]map[string]any, 0, len(attachments))
+		for _, attachment := range attachments {
+			attachmentBeans = append(attachmentBeans, h.serviceAttachmentBean(request, attachment.Attachment))
+		}
+		bean["attachments"] = servicePagedValues(attachmentBeans)
+	} else {
+		unexpanded = append(unexpanded, "attachment")
+	}
+	if expand["action"] {
+		// People who can see a request comment on it and attach files; its
+		// reporter and agents manage who participates.
+		reporter := request.Customer != nil && request.Customer.ID == viewerID
+		bean["actions"] = map[string]any{
+			"addAttachment": map[string]bool{"allowed": true}, "addComment": map[string]bool{"allowed": true},
+			"addParticipant": map[string]bool{"allowed": canManage || reporter}, "removeParticipant": map[string]bool{"allowed": canManage || reporter},
+		}
+	} else {
+		unexpanded = append(unexpanded, "action")
+	}
+	if expand["comment"] {
+		comments, err := h.Store.ServiceRequestComments(r.Context(), request.Issue.ID, canManage)
+		if err != nil {
+			return nil, err
+		}
+		commentBeans := make([]map[string]any, 0, len(comments))
+		for _, comment := range comments {
+			if expand["comment.attachment"] {
+				attachments, err := h.Store.ServiceCommentAttachments(r.Context(), request.Issue.ID, comment.Comment.ID, canManage)
+				if err != nil {
+					return nil, err
+				}
+				for _, attachment := range attachments {
+					comment.Attachments = append(comment.Attachments, attachment.Attachment)
+				}
+			}
+			commentBean := h.serviceCommentBean(request, comment)
+			if !expand["comment.attachment"] {
+				delete(commentBean, "attachments")
+			}
+			if !expand["comment.renderedBody"] {
+				delete(commentBean, "renderedBody")
+			}
+			commentBeans = append(commentBeans, commentBean)
+		}
+		bean["comments"] = servicePagedValues(commentBeans)
+	} else {
+		unexpanded = append(unexpanded, "comment")
+	}
+	bean["_expands"] = unexpanded
+	return bean, nil
 }
 
 func (h *Handler) writeServiceParticipants(w http.ResponseWriter, r *http.Request, users []*models.User) {
@@ -829,12 +1220,51 @@ func (h *Handler) serviceCommentBean(request *models.ServiceRequest, comment mod
 	}
 }
 
+// serviceCommentExpansions reads which optional parts of request comments the
+// caller asked for: attachment and renderedBody.
+func serviceCommentExpansions(r *http.Request) map[string]bool {
+	expand := map[string]bool{}
+	for _, value := range r.URL.Query()["expand"] {
+		for _, part := range strings.Split(value, ",") {
+			expand[strings.TrimSpace(part)] = true
+		}
+	}
+	return expand
+}
+
+// expandedServiceComment keeps a comment's attachments and rendered body only
+// when expanded, listing the others in _expands.
+func (h *Handler) expandedServiceComment(r *http.Request, request *models.ServiceRequest, comment models.ServiceRequestComment, expand map[string]bool, canManage bool) (map[string]any, error) {
+	if expand["attachment"] {
+		attachments, err := h.Store.ServiceCommentAttachments(r.Context(), request.Issue.ID, comment.Comment.ID, canManage)
+		if err != nil {
+			return nil, err
+		}
+		for _, attachment := range attachments {
+			comment.Attachments = append(comment.Attachments, attachment.Attachment)
+		}
+	}
+	bean := h.serviceCommentBean(request, comment)
+	unexpanded := []string{}
+	if !expand["attachment"] {
+		delete(bean, "attachments")
+		unexpanded = append(unexpanded, "attachment")
+	}
+	if !expand["renderedBody"] {
+		delete(bean, "renderedBody")
+		unexpanded = append(unexpanded, "renderedBody")
+	}
+	bean["_expands"] = unexpanded
+	return bean, nil
+}
+
 func (h *Handler) serviceRequestComments(w http.ResponseWriter, r *http.Request, workspaceID, issueIDOrKey, commentID string) {
 	request, canManage, actorID, accessErr := h.serviceRequestAccess(r, workspaceID, issueIDOrKey)
 	if accessErr != nil {
 		writeJerr(w, accessErr)
 		return
 	}
+	expand := serviceCommentExpansions(r)
 	if r.Method == http.MethodPost {
 		var input struct {
 			Body   json.RawMessage `json:"body"`
@@ -862,7 +1292,12 @@ func (h *Handler) serviceRequestComments(w http.ResponseWriter, r *http.Request,
 			jiraError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusCreated, h.serviceCommentBean(request, *comment))
+		bean, err := h.expandedServiceComment(r, request, *comment, expand, canManage)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "Could not load the comment.")
+			return
+		}
+		writeJSON(w, http.StatusCreated, bean)
 		return
 	}
 	if commentID != "" {
@@ -871,16 +1306,26 @@ func (h *Handler) serviceRequestComments(w http.ResponseWriter, r *http.Request,
 			jiraError(w, http.StatusNotFound, "Comment does not exist or is not visible.")
 			return
 		}
-		attachments, err := h.Store.ServiceCommentAttachments(r.Context(), request.Issue.ID, comment.Comment.ID, canManage)
+		bean, err := h.expandedServiceComment(r, request, *comment, expand, canManage)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "Could not load comment attachments.")
 			return
 		}
-		for _, attachment := range attachments {
-			comment.Attachments = append(comment.Attachments, attachment.Attachment)
-		}
-		writeJSON(w, http.StatusOK, h.serviceCommentBean(request, *comment))
+		writeJSON(w, http.StatusOK, bean)
 		return
+	}
+	// public and internal each default to true; customers only ever see
+	// public comments.
+	include := map[string]bool{"public": true, "internal": true}
+	for name := range include {
+		if raw := r.URL.Query().Get(name); raw != "" {
+			value, err := strconv.ParseBool(raw)
+			if err != nil {
+				jiraError(w, http.StatusBadRequest, name+" must be true or false.")
+				return
+			}
+			include[name] = value
+		}
 	}
 	comments, err := h.Store.ServiceRequestComments(r.Context(), request.Issue.ID, canManage)
 	if err != nil {
@@ -889,15 +1334,15 @@ func (h *Handler) serviceRequestComments(w http.ResponseWriter, r *http.Request,
 	}
 	beans := make([]map[string]any, 0, len(comments))
 	for _, comment := range comments {
-		attachments, err := h.Store.ServiceCommentAttachments(r.Context(), request.Issue.ID, comment.Comment.ID, canManage)
+		if (comment.Public && !include["public"]) || (!comment.Public && !include["internal"]) {
+			continue
+		}
+		bean, err := h.expandedServiceComment(r, request, comment, expand, canManage)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "Could not load comment attachments.")
 			return
 		}
-		for _, attachment := range attachments {
-			comment.Attachments = append(comment.Attachments, attachment.Attachment)
-		}
-		beans = append(beans, h.serviceCommentBean(request, comment))
+		beans = append(beans, bean)
 	}
 	h.writeServicePage(w, r, beans)
 }
@@ -908,7 +1353,17 @@ func (h *Handler) serviceRequestStatus(w http.ResponseWriter, r *http.Request, w
 		writeJerr(w, accessErr)
 		return
 	}
-	h.writeServicePage(w, r, []map[string]any{h.serviceStatusBean(request.Issue.Status, request.Issue.UpdatedAt)})
+	history, err := h.Store.ServiceRequestStatusHistory(r.Context(), workspaceID, request.Issue.ID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load the request's statuses.")
+		return
+	}
+	// The chronology lists the current status first.
+	beans := make([]map[string]any, 0, len(history))
+	for index := len(history) - 1; index >= 0; index-- {
+		beans = append(beans, serviceStatusEntryBean(history[index].Status, history[index].At))
+	}
+	h.writeServicePage(w, r, beans)
 }
 
 func serviceDuration(millis int64, friendly string) map[string]any {
@@ -990,6 +1445,10 @@ func (h *Handler) availableServiceTransitions(r *http.Request, workspaceID, acto
 	if err != nil {
 		return nil, err
 	}
+	evaluation.Approvals, err = h.Store.IssueApprovalDecisions(r.Context(), request.Issue.ID)
+	if err != nil {
+		return nil, err
+	}
 	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), workspaceID, request.Issue.ID)
 	if err != nil {
 		return nil, err
@@ -1041,6 +1500,12 @@ func (h *Handler) serviceRequestTransition(w http.ResponseWriter, r *http.Reques
 	}
 	if input.AdditionalComment != nil && input.AdditionalComment.Public != nil && !*input.AdditionalComment.Public && !canManage {
 		jiraError(w, http.StatusBadRequest, "Customers may only add public comments.")
+		return
+	}
+	// Everything the comment could be refused for is checked before the
+	// request moves, so a refused comment never leaves a transition behind.
+	if input.AdditionalComment != nil && utf8.RuneCountInString(input.AdditionalComment.Body) > 32767 {
+		jiraError(w, http.StatusBadRequest, "The comment is too long.")
 		return
 	}
 	updated, err := h.Commands.TransitionServiceRequest(r.Context(), actorID, workspaceID, request.Issue.ID, input.ID)

@@ -102,7 +102,8 @@ func TestDashboardLifecyclePrivacyAndGadgets(t *testing.T) {
 		}
 	}
 	call(actor, "POST", "/rest/api/3/dashboard", map[string]any{"name": "Missing permissions"}, 400)
-	call(actor, "POST", "/rest/api/3/dashboard?extendAdminPermissions=true", details("No", empty, empty), 400)
+	call(member, "POST", "/rest/api/3/dashboard?extendAdminPermissions=true", details("No", empty, empty), 403)
+	call(actor, "POST", "/rest/api/3/dashboard?extendAdminPermissions=maybe", details("No", empty, empty), 400)
 	call(actor, "PUT", path, details("Shared", loggedin, empty), 200)
 	if got := call(member, "GET", path, nil, 200); got["isWritable"] != false || got["isFavourite"] != false {
 		t.Fatal(got)
@@ -223,8 +224,11 @@ func TestDashboardLifecyclePrivacyAndGadgets(t *testing.T) {
 	if page["total"] != float64(1) || page["isLast"] != true {
 		t.Fatal(page)
 	}
-	for _, q := range []string{"maxResults=-1", "startAt=-1", "orderBy=bogus", "groupId=unsupported", "status=archived"} {
+	for _, q := range []string{"maxResults=-1", "startAt=-1", "orderBy=bogus", "groupId=1&groupname=admins", "status=archived", "expand=bogus"} {
 		call(member, "GET", "/rest/api/3/dashboard/search?"+q, nil, 400)
+	}
+	if unshared := call(member, "GET", "/rest/api/3/dashboard/search?groupId=unknown&expand=viewUrl,favourite,favouritedCount,isWritable", nil, 200); unshared["total"] != float64(0) {
+		t.Fatal(unshared)
 	}
 	call(member, "DELETE", prop+"/custom", nil, 204)
 	call(member, "GET", prop+"/custom", nil, 404)

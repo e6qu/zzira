@@ -82,6 +82,6 @@ global context by trigger.
 A select custom field's options also belong to its context; see
 [CUSTOM_FIELD_OPTIONS.md](CUSTOM_FIELD_OPTIONS.md).
 
-`expand` and `orderBy` on these
-endpoints, Jira's context-scoped field values on issues, and exact Jira error
-wording also remain.
+The context list filters by `isAnyIssueType` and `isGlobalContext`. Jira's
+context-scoped field values on issues and exact Jira error wording also
+remain.

@@ -62,7 +62,7 @@ test('V3: worklog via UI → listed with rendered time', async ({ page, request 
   const key = await createIssue(page, request, `V3 worklog ${Date.now()}`);
   await login(page);
   await page.goto(`/browse/${key}`);
-  await page.fill('.worklog-seconds', '3600');
+  await page.fill('.worklog-seconds', '1h');
   await page.fill('.worklog-comment', 'e2e worklog body');
   await page.click('.worklog-form button[type=submit]');
   await expect(page.locator('.worklog', { hasText: 'e2e worklog body' })).toBeHidden({ timeout: 10_000 });

@@ -376,21 +376,10 @@ func (s *Store) DeleteUserPreference(ctx context.Context, workspaceID, accountID
 
 var customFieldColumn = regexp.MustCompile(`^customfield_\d+$`)
 
-// systemColumns are the issue table columns Jira offers besides custom fields.
-var systemColumns = map[string]bool{
-	"issuetype": true, "issuekey": true, "summary": true, "assignee": true, "reporter": true,
-	"priority": true, "status": true, "resolution": true, "created": true, "updated": true,
-	"duedate": true, "labels": true, "components": true, "fixVersions": true, "versions": true,
-	"resolutiondate": true, "creator": true, "project": true, "parent": true, "environment": true,
-	"description": true, "security": true, "watches": true, "votes": true, "lastViewed": true,
-	"timeestimate": true, "timeoriginalestimate": true, "timespent": true, "aggregatetimespent": true,
-	"aggregatetimeestimate": true, "aggregatetimeoriginalestimate": true, "aggregateprogress": true,
-	"progress": true, "workratio": true, "subtasks": true, "statuscategorychangedate": true,
-}
-
 // ValidIssueTableColumn reports whether an id names a column the issue table offers.
 func ValidIssueTableColumn(id string) bool {
-	return systemColumns[id] || customFieldColumn.MatchString(id)
+	_, system := navigableColumnLabels[id]
+	return system || customFieldColumn.MatchString(id)
 }
 
 // UserColumns returns the columns a person chose, or the site's default columns

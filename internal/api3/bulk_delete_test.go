@@ -110,7 +110,7 @@ func TestBulkDeleteUsesDurableTaskAndAttachmentCleanup(t *testing.T) {
 	if !strings.Contains(metadata.Body.String(), `"filename":"delete.txt"`) {
 		t.Fatal(metadata.Body.String())
 	}
-	rangeRequest := httptest.NewRequest("GET", "/rest/api/3/attachment/content/"+attachment.ID, nil)
+	rangeRequest := httptest.NewRequest("GET", "/rest/api/3/attachment/content/"+attachment.ID+"?redirect=false", nil)
 	rangeRequest.SetBasicAuth(adminID+"@example.test", adminID)
 	rangeRequest.Header.Set("Range", "bytes=0-5")
 	rangeResponse := httptest.NewRecorder()
@@ -118,7 +118,7 @@ func TestBulkDeleteUsesDurableTaskAndAttachmentCleanup(t *testing.T) {
 	if rangeResponse.Code != 206 || rangeResponse.Body.String() != "delete" {
 		t.Fatalf("range status=%d body=%q", rangeResponse.Code, rangeResponse.Body.String())
 	}
-	call(adminID, "GET", "/rest/api/3/attachment/thumbnail/"+attachment.ID+"?fallbackToDefault=false", "", 404)
+	call(adminID, "GET", "/rest/api/3/attachment/thumbnail/"+attachment.ID+"?fallbackToDefault=false&redirect=false", "", 404)
 	var archive bytes.Buffer
 	writer := zip.NewWriter(&archive)
 	entry, err := writer.Create("evidence/report.txt")
@@ -149,7 +149,6 @@ func TestBulkDeleteUsesDurableTaskAndAttachmentCleanup(t *testing.T) {
 	if _, _, err := blobs.Get(ctx, archiveBlob); !errors.Is(err, attachments.ErrNotFound) {
 		t.Fatalf("deleted archive blob still exists: %v", err)
 	}
-	call(memberID, "POST", "/rest/api/3/bulk/issues/delete", `{"selectedIssueIdsOrKeys":["`+issues[0].Key+`"]}`, 403)
 	call(adminID, "POST", "/rest/api/3/bulk/issues/delete", `{"selectedIssueIdsOrKeys":["`+issues[0].Key+`","`+issues[0].Key+`"]}`, 400)
 	submitted := call(adminID, "POST", "/rest/api/3/bulk/issues/delete", `{"selectedIssueIdsOrKeys":["`+issues[0].Key+`","`+issues[1].Key+`"],"sendBulkNotification":false}`, 201)
 	var submission struct {

@@ -168,6 +168,15 @@ func (h *Handler) canSeeEmail(r *http.Request, workspaceID, actorID, subjectID s
 	return err == nil && admin
 }
 
+// browsesUsers reports whether the caller holds Browse users and groups.
+func (h *Handler) browsesUsers(r *http.Request, workspaceID, actorID string) bool {
+	if allowed, err := h.Store.HasGlobalPermission(r.Context(), workspaceID, actorID, "USER_PICKER"); err == nil && allowed {
+		return true
+	}
+	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, actorID)
+	return err == nil && admin
+}
+
 // requireBrowseUsers checks the Browse users and groups global permission.
 func (h *Handler) requireBrowseUsers(w http.ResponseWriter, r *http.Request, workspaceID, actorID string) bool {
 	allowed, err := h.Store.HasGlobalPermission(r.Context(), workspaceID, actorID, "USER_PICKER")
@@ -596,6 +605,11 @@ func (h *Handler) searchUsers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Anonymous calls and calls without Browse users and groups find nobody.
+	if !h.browsesUsers(r, workspaceID, actorID) {
+		writeJSON(w, http.StatusOK, []map[string]any{})
+		return
+	}
 	users, err := h.Store.SiteUsers(r.Context(), workspaceID)
 	if err != nil {
 		peopleError(w, err)
@@ -794,6 +808,10 @@ func (h *Handler) assignableUsersMultiProject(w http.ResponseWriter, r *http.Req
 			jiraError(w, http.StatusNotFound, "One or more of the projects was not found.")
 			return
 		}
+		if allowed, browseErr := h.canBrowseProject(r, workspaceID, actorID, project.ID); browseErr != nil || !allowed {
+			jiraError(w, http.StatusNotFound, "One or more of the projects was not found.")
+			return
+		}
 		candidates = h.usersWithProjectPermission(r, workspaceID, project.ID, "", "ASSIGNABLE_USER", candidates)
 	}
 	page := pageSlice(candidates, startAt, maxResults)
@@ -823,6 +841,11 @@ func (h *Handler) browseUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	startAt, maxResults, ok := pageParams(w, r, 50)
 	if !ok {
+		return
+	}
+	// Anonymous calls and calls without Browse users and groups find nobody.
+	if !h.browsesUsers(r, workspaceID, actorID) {
+		writeJSON(w, http.StatusOK, []map[string]any{})
 		return
 	}
 	projectID, issueID, issueSecurityLevel := "", "", ""
@@ -891,7 +914,7 @@ func (h *Handler) userPicker(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w)
 		return
 	}
-	workspaceID, _, e := h.authWorkspace(r)
+	workspaceID, actorID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
@@ -916,9 +939,14 @@ func (h *Handler) userPicker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	excludeApps := strings.EqualFold(r.URL.Query().Get("excludeConnectUsers"), "true")
+	// Without Browse users and groups only an exact name matches.
+	browses := h.browsesUsers(r, workspaceID, actorID)
 	matches := []map[string]any{}
 	for _, u := range users {
 		if !u.Active || exclude[u.ID] || !userMatches(u, query) || (excludeApps && u.AccountType == "app") {
+			continue
+		}
+		if !browses && !strings.EqualFold(strings.TrimSpace(query), u.DisplayName) {
 			continue
 		}
 		matches = append(matches, map[string]any{
@@ -1379,9 +1407,12 @@ func (h *Handler) groupUserPicker(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w)
 		return
 	}
-	workspaceID, _, e := h.authWorkspace(r)
+	workspaceID, actorID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
+		return
+	}
+	if !h.requireBrowseUsers(w, r, workspaceID, actorID) {
 		return
 	}
 	q := r.URL.Query()
@@ -1690,7 +1721,7 @@ func (h *Handler) universalAvatarRoute(w http.ResponseWriter, r *http.Request, p
 }
 
 func validUniversalAvatarType(ownerType string) bool {
-	return ownerType == "project" || ownerType == "issuetype" || ownerType == "priority"
+	return ownerType == "project" || ownerType == "issuetype" || ownerType == "priority" || ownerType == "SD_REQTYPE"
 }
 
 func (h *Handler) ownerAvatars(w http.ResponseWriter, r *http.Request, ownerType, ownerID string) {

@@ -2,13 +2,13 @@ package api3
 
 import (
 	"encoding/json"
-	"io"
-	"log"
-	"mime"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/e6qu/zzira/internal/models"
+
+	"github.com/e6qu/zzira/internal/commands"
 )
 
 func (h *Handler) serviceApprovalBean(request *models.ServiceRequest, approval models.ServiceApproval, actorID string) map[string]any {
@@ -113,7 +113,14 @@ func (h *Handler) attachServiceTemporaryFiles(w http.ResponseWriter, r *http.Req
 		value, createErr := h.Commands.CreateServiceTemporaryAttachment(r.Context(), actorID, workspaceID, serviceDeskID, header.Filename, header.Header.Get("Content-Type"), file)
 		closeErr := file.Close()
 		if createErr != nil {
-			jiraError(w, http.StatusBadRequest, createErr.Error())
+			switch {
+			case errors.Is(createErr, commands.ErrServiceDeskNotFound):
+				jiraError(w, http.StatusNotFound, "The service desk does not exist.")
+			case errors.Is(createErr, commands.ErrServiceAttachmentPermission):
+				jiraError(w, http.StatusForbidden, createErr.Error())
+			default:
+				jiraError(w, http.StatusBadRequest, createErr.Error())
+			}
 			return
 		}
 		if closeErr != nil {
@@ -203,7 +210,8 @@ func (h *Handler) serviceRequestAttachmentContent(w http.ResponseWriter, r *http
 		writeJerr(w, accessErr)
 		return
 	}
-	if _, err := h.Store.ServiceRequestAttachment(r.Context(), request.Issue.ID, attachmentID, canManage); err != nil {
+	attachment, err := h.Store.ServiceRequestAttachment(r.Context(), request.Issue.ID, attachmentID, canManage)
+	if err != nil {
 		jiraError(w, http.StatusNotFound, "Attachment does not exist or is not visible.")
 		return
 	}
@@ -211,31 +219,11 @@ func (h *Handler) serviceRequestAttachmentContent(w http.ResponseWriter, r *http
 		jiraError(w, http.StatusNotFound, "Attachment content is unavailable.")
 		return
 	}
-	blobRef, filename, mimeType, err := h.Store.AttachmentBlobRef(r.Context(), workspaceID, attachmentID)
-	if err != nil {
-		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
+	// Request attachments are served as Jira serves attachments: content with
+	// ranges and conditional requests, thumbnails as scaled images.
+	if thumbnail {
+		h.serveAttachmentThumbnail(w, r, workspaceID, &attachment.Attachment)
 		return
 	}
-	reader, size, err := h.Blobs.Get(r.Context(), blobRef)
-	if err != nil {
-		jiraError(w, http.StatusNotFound, "Attachment does not exist.")
-		return
-	}
-	defer func() {
-		if err := reader.Close(); err != nil {
-			log.Printf("service attachment close: %v", err)
-		}
-	}()
-	w.Header().Set("Content-Type", mimeType)
-	if !thumbnail {
-		if disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename}); disposition != "" {
-			w.Header().Set("Content-Disposition", disposition)
-		}
-	}
-	if size > 0 {
-		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-	}
-	if _, err := io.Copy(w, reader); err != nil {
-		log.Printf("service attachment stream: %v", err)
-	}
+	h.serveAttachmentBytes(w, r, workspaceID, &attachment.Attachment)
 }

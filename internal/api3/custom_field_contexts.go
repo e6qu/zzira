@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -111,6 +112,30 @@ func (h *Handler) fieldContextCollection(w http.ResponseWriter, r *http.Request,
 		if err != nil {
 			fieldContextError(w, err)
 			return
+		}
+		for _, flag := range []struct {
+			name  string
+			value func(*models.CustomFieldContext) bool
+		}{
+			{"isAnyIssueType", func(c *models.CustomFieldContext) bool { return c.AllIssueTypes }},
+			{"isGlobalContext", func(c *models.CustomFieldContext) bool { return c.AllProjects }},
+		} {
+			raw := r.URL.Query().Get(flag.name)
+			if raw == "" {
+				continue
+			}
+			want, parseErr := strconv.ParseBool(raw)
+			if parseErr != nil {
+				jiraError(w, http.StatusBadRequest, flag.name+" must be true or false.")
+				return
+			}
+			matching := contexts[:0]
+			for _, found := range contexts {
+				if flag.value(found) == want {
+					matching = append(matching, found)
+				}
+			}
+			contexts = matching
 		}
 		page := pageSlice(contexts, startAt, maxResults)
 		values := make([]map[string]any, 0, len(page))

@@ -156,17 +156,20 @@ func appAPIScope(r *http.Request) (string, bool) {
 	if strings.HasPrefix(r.URL.Path, "/rest/atlassian-connect/1/addons/") || r.URL.Path == "/rest/forge/1/app/properties" || strings.HasPrefix(r.URL.Path, "/rest/forge/1/app/properties/") {
 		return "", true
 	}
+	// A pinned product operation carries its own Connect scope.
+	if product, connectScope, found := appOperationScope(r.Method, r.URL.Path); found {
+		return grantedScopeFor(product, connectScope), true
+	}
 	product := ""
 	switch {
 	case strings.HasPrefix(r.URL.Path, "/rest/api/"), strings.HasPrefix(r.URL.Path, "/rest/agile/"), strings.HasPrefix(r.URL.Path, "/rest/servicedeskapi/"),
+		strings.HasPrefix(r.URL.Path, "/rest/devinfo/"), strings.HasPrefix(r.URL.Path, "/rest/builds/"), strings.HasPrefix(r.URL.Path, "/rest/deployments/"),
+		strings.HasPrefix(r.URL.Path, "/rest/featureflags/"), strings.HasPrefix(r.URL.Path, "/rest/remotelinks/"), strings.HasPrefix(r.URL.Path, "/rest/security/"),
+		strings.HasPrefix(r.URL.Path, "/rest/operations/"), strings.HasPrefix(r.URL.Path, "/rest/devopscomponents/"),
 		strings.HasPrefix(r.URL.Path, "/rest/webhooks/"), strings.HasPrefix(r.URL.Path, "/rest/internal/api/"),
 		strings.HasPrefix(r.URL.Path, "/rest/atlassian-connect/1/migration/"), r.URL.Path == "/rest/atlassian-connect/1/service-registry":
 		product = "jira-work"
 	case strings.HasPrefix(r.URL.Path, "/wiki/api/"), strings.HasPrefix(r.URL.Path, "/wiki/rest/api/"):
-		// A pinned Confluence operation carries its own Connect scope.
-		if connectScope, found := confluenceConnectScope(r.Method, r.URL.Path); found {
-			return confluenceGrantedScope(connectScope), true
-		}
 		product = "confluence-content"
 	default:
 		return "", false
@@ -231,7 +234,7 @@ func appHoldsScope(installation *models.AppInstallation, scope string) bool {
 	if store.AppHasScope(installation, scope) {
 		return true
 	}
-	for broader, included := range confluenceScopeImplies {
+	for broader, included := range appScopeImplies {
 		if store.AppHasScope(installation, broader) && slices.Contains(included, scope) {
 			return true
 		}
@@ -316,10 +319,12 @@ func parseDynamicModules(body []byte, installation *models.AppInstallation) ([]m
 	modules := []models.AppDynamicModule{}
 	keys := map[string]bool{}
 	for moduleType, raw := range groups {
-		if moduleType != "webPanels" && moduleType != "webhooks" && moduleType != "jiraIssueFields" && moduleType != "webItems" {
-			return nil, fmt.Errorf("dynamic module type %q is not supported yet", moduleType)
+		switch moduleType {
+		case "webPanels", "webhooks", "jiraIssueFields", "webItems", "jiraEntityProperties", "jiraIssueGlances", "jiraIssueContexts", "jiraIssueContents":
+		default:
+			return nil, fmt.Errorf("dynamic module type %q is not supported", moduleType)
 		}
-		if (moduleType == "webPanels" || moduleType == "webhooks") && !store.AppHasScope(installation, "read:jira-work") {
+		if (moduleType == "webPanels" || moduleType == "webhooks" || moduleType == "jiraEntityProperties" || moduleType == "jiraIssueGlances" || moduleType == "jiraIssueContexts") && !store.AppHasScope(installation, "read:jira-work") {
 			return nil, fmt.Errorf("dynamic %s require READ scope", moduleType)
 		}
 		var entries []json.RawMessage
@@ -357,6 +362,52 @@ func parseDynamicModules(body []byte, installation *models.AppInstallation) ([]m
 				}
 				keys[field.Key] = true
 				modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: field.Key, Descriptor: entry, IssueField: field})
+				continue
+			}
+			if moduleType == "jiraEntityProperties" {
+				var input connectEntityPropertyWire
+				if err := json.Unmarshal(entry, &input); err != nil {
+					return nil, fmt.Errorf("invalid dynamic entity property module: %w", err)
+				}
+				indexes, err := translateConnectEntityProperty(input)
+				if err != nil {
+					return nil, err
+				}
+				if keys[indexes[0].ModuleKey] {
+					return nil, fmt.Errorf("dynamic module keys must be unique")
+				}
+				keys[indexes[0].ModuleKey] = true
+				modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: indexes[0].ModuleKey, Descriptor: entry, EntityProperties: indexes})
+				continue
+			}
+			if moduleType == "jiraIssueGlances" || moduleType == "jiraIssueContexts" || moduleType == "jiraIssueContents" {
+				var translated moduleWire
+				var err error
+				if moduleType == "jiraIssueContents" {
+					var input connectIssueContentWire
+					if err = json.Unmarshal(entry, &input); err != nil {
+						return nil, fmt.Errorf("invalid dynamic %s: %w", moduleType, err)
+					}
+					translated, err = translateConnectIssueContent(input)
+				} else {
+					var input connectIssueContextWire
+					if err = json.Unmarshal(entry, &input); err != nil {
+						return nil, fmt.Errorf("invalid dynamic %s: %w", moduleType, err)
+					}
+					translatedType := "jira:issueContext"
+					if moduleType == "jiraIssueGlances" {
+						translatedType = "jira:issueGlance"
+					}
+					translated, err = translateConnectIssueViewContext(input, translatedType)
+				}
+				if err != nil {
+					return nil, err
+				}
+				if keys[translated.Key] {
+					return nil, fmt.Errorf("dynamic module keys must be unique")
+				}
+				keys[translated.Key] = true
+				modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: translated.Key, Descriptor: entry, Module: models.AppModule{Key: translated.Key, Type: translated.Type, Location: translated.Location, Title: translated.Title, Body: translated.Body, RemoteURL: translated.URL, Dynamic: true}})
 				continue
 			}
 			if moduleType == "webhooks" {

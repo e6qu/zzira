@@ -57,6 +57,9 @@ func (s *Service) UpdateComment(ctx context.Context, in UpdateCommentInput) (*mo
 	if !allowed {
 		return nil, nil, ErrCommentPermission
 	}
+	if err = s.requireEditable(ctx, issue); err != nil {
+		return nil, nil, err
+	}
 	comment, action, err := s.Store.UpdateComment(ctx, in.ActorID, in.WorkspaceID, c.ID, in.Body, in.SetVisibility, in.Visibility)
 	if err != nil {
 		return nil, nil, err

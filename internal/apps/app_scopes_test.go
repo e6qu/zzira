@@ -23,6 +23,20 @@ func TestConfluenceOperationScopes(t *testing.T) {
 		{"GET", "/wiki/rest/api/user/email", "access:email-addresses"},
 		{"GET", "/wiki/rest/api/audit", appScopeInaccessible},
 		{"GET", "/wiki/api/v2/space-permissions/transition/combinations", "admin:confluence"},
+		{"GET", "/rest/api/3/attachment/meta", "read:jira-work"},
+		{"POST", "/rest/api/3/dashboard", "write:jira-work"},
+		{"POST", "/rest/api/3/component", "admin:jira-project"},
+		{"GET", "/rest/api/3/application-properties", "admin:jira"},
+		{"DELETE", "/rest/api/3/mypreferences", "act-as-user:jira"},
+		{"GET", "/rest/api/3/user/email", "access:email-addresses"},
+		{"GET", "/rest/api/3/field/search", ""},
+		{"GET", "/rest/api/3/announcementBanner", appScopeInaccessible},
+		{"GET", "/rest/agile/1.0/board", "read:jira-work"},
+		{"POST", "/rest/agile/1.0/backlog/issue", "write:jira-work"},
+		{"DELETE", "/rest/devinfo/0.10/bulkByProperties", "delete:jira-work"},
+		{"POST", "/rest/servicedeskapi/request", "write:jira-work"},
+		{"POST", "/rest/servicedeskapi/customer", "admin:jira"},
+		{"GET", "/rest/servicedeskapi/assets/workspace", appScopeInaccessible},
 	} {
 		scope, ok := appAPIScope(httptest.NewRequest(c.method, c.path, nil))
 		if !ok || scope != c.want {
@@ -42,11 +56,20 @@ func TestConfluenceOperationScopes(t *testing.T) {
 		t.Error("write scope implies only reading")
 	}
 
-	// A Connect descriptor keeps its DELETE and ADMIN levels.
+	// A Jira project administrator can delete but not administer the site.
+	projectAdmin := &models.AppInstallation{Scopes: []string{"admin:jira-project"}}
+	if !appHoldsScope(projectAdmin, "delete:jira-work") || !appHoldsScope(projectAdmin, "read:jira-work") || appHoldsScope(projectAdmin, "admin:jira") {
+		t.Error("project administration covers deleting and nothing above it")
+	}
+
+	// A Connect descriptor keeps its DELETE, PROJECT_ADMIN, ADMIN and
+	// ACT_AS_USER levels.
 	for connect, want := range map[string][]string{
-		"DELETE":                 {"delete:confluence-content"},
-		"ADMIN":                  {"admin:confluence", "delete:confluence-content"},
+		"DELETE":                 {"delete:confluence-content", "delete:jira-work"},
+		"PROJECT_ADMIN":          {"admin:jira-project"},
+		"ADMIN":                  {"admin:confluence", "delete:confluence-content", "admin:jira", "admin:jira-project"},
 		"ACCESS_EMAIL_ADDRESSES": {"access:email-addresses"},
+		"ACT_AS_USER":            {"act-as-user:jira"},
 	} {
 		raw, _ := json.Marshal(map[string]any{"key": "scoped-app", "name": "Scoped", "baseUrl": "https://apps.example.test/scoped", "scopes": []string{connect}, "authentication": map[string]string{"type": "jwt"}, "modules": map[string]any{}})
 		descriptor, err := parseConnectDescriptor(raw)
@@ -82,7 +105,17 @@ func TestConfluenceOperationScopes(t *testing.T) {
 			}
 		}
 	}
-	if count != len(confluenceScopeTable) {
-		t.Fatalf("scope table has %d operations, the specifications %d; run api/conformance/confluence_app_scopes.py", len(confluenceScopeTable), count)
+	if count != confluenceRows() {
+		t.Fatalf("scope table has %d Confluence operations, the specifications %d; run api/conformance/app_scopes.py", confluenceRows(), count)
 	}
+}
+
+func confluenceRows() int {
+	count := 0
+	for _, row := range appScopeTable {
+		if row.Product == "confluence" {
+			count++
+		}
+	}
+	return count
 }

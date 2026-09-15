@@ -53,9 +53,30 @@ type IssueUpdate struct {
 	Labels              *[]string       // empty = clear, nil = unchanged
 	Fields              map[string]json.RawMessage
 	TriggeredWebhookIDs []string
-	SuppressChangelog   bool
-	SuppressEvents      bool
-	TaskID              string
+	// TriggeredAgents are agent runs the transition's post functions request.
+	TriggeredAgents   []models.WorkflowAgentTrigger
+	SuppressChangelog bool
+	SuppressEvents    bool
+	TaskID            string
+	// OriginalEstimate and RemainingEstimate change a work item's estimates in
+	// seconds; nil leaves one unchanged and ClearEstimate marks a value to clear.
+	OriginalEstimate  *int64
+	RemainingEstimate *int64
+}
+
+// ClearEstimate is the estimate value that removes an estimate.
+const ClearEstimate int64 = -1
+
+// estimateChange is Jira's changelog item for a time estimate, carrying the
+// seconds as both the value and its text.
+func estimateChange(field string, from, to *int64) models.ChangeItem {
+	text := func(seconds *int64) string {
+		if seconds == nil {
+			return ""
+		}
+		return strconv.FormatInt(*seconds, 10)
+	}
+	return models.ChangeItem{Field: field, FieldType: "jira", From: text(from), FromString: text(from), To: text(to), ToString: text(to)}
 }
 
 func diffItem(field, from, fromString, to, toString string) models.ChangeItem {
@@ -79,6 +100,15 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	}
 	if up.ExpectedUpdatedSeq != nil && current.UpdatedSeq != *up.ExpectedUpdatedSeq {
 		return nil, nil, fmt.Errorf("issue changed while applying transition")
+	}
+	for _, agent := range up.TriggeredAgents {
+		var active bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=$1 AND m.user_id=$2 AND u.active AND u.id LIKE 'app!_%' ESCAPE '!')`, workspaceID, agent.AgentID).Scan(&active); err != nil {
+			return nil, nil, err
+		}
+		if !active {
+			return nil, nil, fmt.Errorf("workflow agent %q is not an active agent account", agent.AgentID)
+		}
 	}
 	for _, webhookID := range up.TriggeredWebhookIDs {
 		var lockedID string
@@ -238,7 +268,24 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 		}
 	}
 
-	if len(sets) == 0 && len(up.TriggeredWebhookIDs) == 0 {
+	estimate := func(field, column string, change *int64, current *int64) {
+		if change == nil {
+			return
+		}
+		var next *int64
+		if *change != ClearEstimate {
+			next = change
+		}
+		if (next == nil) == (current == nil) && (next == nil || *next == *current) {
+			return
+		}
+		diff[field] = estimateChange(field, current, next)
+		sets = append(sets, column+" = "+arg(next))
+	}
+	estimate("timeoriginalestimate", "original_estimate_seconds", up.OriginalEstimate, current.OriginalEstimateSeconds)
+	estimate("timeestimate", "remaining_estimate_seconds", up.RemainingEstimate, current.RemainingEstimateSeconds)
+
+	if len(sets) == 0 && len(up.TriggeredWebhookIDs) == 0 && len(up.TriggeredAgents) == 0 {
 		return current, nil, nil // nothing to do: no action
 	}
 
@@ -261,6 +308,11 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	payload, err := json.Marshal(models.IssueUpdatePayload{Diff: diff, Issue: *updated, TriggeredWebhookIDs: up.TriggeredWebhookIDs, SuppressChangelog: up.SuppressChangelog, SuppressEvents: up.SuppressEvents})
 	if err != nil {
 		return nil, nil, err
+	}
+	for _, agent := range up.TriggeredAgents {
+		if _, err := tx.Exec(ctx, `INSERT INTO workflow_agent_runs(workspace_id,issue_id,action_seq,agent_id,prompt,requested_by) VALUES($1,$2,$3,$4,$5,NULLIF($6,''))`, workspaceID, issueID, seq, agent.AgentID, agent.Prompt, actorID); err != nil {
+			return nil, nil, err
+		}
 	}
 	action := &models.Action{
 		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityIssue, EntityID: issueID,
@@ -287,11 +339,11 @@ func (s *Store) DeleteIssue(ctx context.Context, actorID, workspaceID, issueID, 
 		return nil, nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var projectID string
+	var projectID, issueKey string
 	var securityLevelID *string
 	if err := tx.QueryRow(ctx,
-		`SELECT project_id, security_level_id FROM issues WHERE id=$1 AND workspace_id=$2 FOR UPDATE`,
-		issueID, workspaceID).Scan(&projectID, &securityLevelID); err != nil {
+		`SELECT project_id, key, security_level_id FROM issues WHERE id=$1 AND workspace_id=$2 FOR UPDATE`,
+		issueID, workspaceID).Scan(&projectID, &issueKey, &securityLevelID); err != nil {
 		return nil, nil, err
 	}
 	rows, err := tx.Query(ctx, `SELECT blob_ref FROM attachments WHERE issue_id=$1 ORDER BY id`, issueID)
@@ -329,6 +381,11 @@ func (s *Store) DeleteIssue(ctx context.Context, actorID, workspaceID, issueID, 
 	action := &models.Action{
 		WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityIssue, EntityID: issueID,
 		Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
+	}
+	// The Issue deleted event resolves its recipients while the work item,
+	// its watchers and its security level still exist.
+	if err := deliverIssueNotificationTx(ctx, tx, workspaceID, actorID, issueID, seq, 9, "issue_deleted", "deleted "+issueKey); err != nil {
+		return nil, nil, err
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO deleted_issue_visibility (workspace_id, issue_id, project_id, security_level_id)
@@ -888,11 +945,13 @@ func (s *Store) MarkWebhookDelivery(ctx context.Context, webhookID string, seq i
 	return err
 }
 
-// NextCustomFieldNumber returns the next suffix for customfield_NNNNN ids.
+// NextCustomFieldNumber returns the next suffix for customfield_NNNNN ids,
+// from the sequence app-provided fields also draw on, so the two never share
+// an id.
 func (s *Store) NextCustomFieldNumber(ctx context.Context) (int, error) {
 	var suffix int
 	err := s.Pool.QueryRow(ctx, `SELECT nextval('jira_app_custom_field_id')::INT`).Scan(&suffix)
-	return suffix - 10000, err
+	return suffix, err
 }
 
 // jsonValuesEqual compares two stored field values, treating a missing value

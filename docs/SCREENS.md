@@ -22,8 +22,8 @@ operations:
 | `GET /rest/api/3/screens/{screenId}/availableFields` | Lists catalog fields the screen does not already show. |
 | `POST /rest/api/3/screens/addToDefault/{fieldId}` | Adds one field to the default screen's first tab. |
 | `GET /rest/api/3/field/{fieldId}/screens` | Pages the screens that currently show one field. |
-| `GET /rest/api/3/screens/tabs` | Reads tabs for selected screens, or for every screen when no `screenId` is given. |
-| `GET/POST /rest/api/3/screens/{screenId}/tabs` | Reads a screen's tabs in display order, or appends a tab. |
+| `GET /rest/api/3/screens/tabs` | Reads tabs for selected screens, or for every screen when no `screenId` is given, narrowed by `tabId` and paged with `startAt` and `maxResult` (at most 100). |
+| `GET/POST /rest/api/3/screens/{screenId}/tabs` | Reads a screen's tabs in display order, or appends a tab. With `projectKey`, a project's administrators may read the tabs of a screen that project's issue type screen scheme uses. |
 | `PUT/DELETE /rest/api/3/screens/{screenId}/tabs/{tabId}` | Renames a tab, or removes it with its fields. |
 | `POST /rest/api/3/screens/{screenId}/tabs/{tabId}/move/{pos}` | Moves a tab to an explicit zero-based position. |
 | `GET/POST /rest/api/3/screens/{screenId}/tabs/{tabId}/fields` | Reads a tab's fields in display order, or adds one catalog field. |
@@ -69,6 +69,7 @@ type screen schemes; see [SCREEN_SCHEMES.md](SCREEN_SCHEMES.md) for the
 resolution chain and its boundary. A screen a screen scheme uses cannot be
 deleted, and the default screen carries every system field the forms render.
 Workflow transition screens still carry their own field list rather than
-referencing a screen. Field configurations, per-project field scoping, the
-`expand` and `projectKey` query parameters, and exact Jira error wording also
-remain.
+referencing a screen. The screen list filters by `scope` — every screen on the site is global — and
+orders by name or id, and a field's screens expand the `tab` it is on.
+Field configurations, per-project field scoping, the `projectKey` query
+parameter on tab reads, and exact Jira error wording also remain.

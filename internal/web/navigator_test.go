@@ -18,10 +18,10 @@ func TestCompileNavigatorSearchAlwaysScopesProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(compiled.Where, "pr.key") {
+	if !strings.Contains(compiled.Where, "pr.key = upper(") {
 		t.Fatalf("project predicate missing from %q", compiled.Where)
 	}
-	if len(compiled.Args) != 3 || compiled.Args[0] != "ZZ" || compiled.Args[1] != "OTHER" || compiled.Args[2] != "Done" {
+	if len(compiled.Args) != 3 || compiled.Args[0] != "zz" || compiled.Args[1] != "OTHER" || compiled.Args[2] != "Done" {
 		t.Fatalf("compiled args = %#v", compiled.Args)
 	}
 }

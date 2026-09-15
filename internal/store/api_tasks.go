@@ -98,8 +98,13 @@ type BulkIssueEditOperation struct {
 }
 
 type BulkIssueEditTaskPayload struct {
-	Issues     []BulkIssueTaskItem      `json:"issues"`
-	Operations []BulkIssueEditOperation `json:"operations"`
+	Issues               []BulkIssueTaskItem      `json:"issues"`
+	Operations           []BulkIssueEditOperation `json:"operations"`
+	SendBulkNotification bool                     `json:"sendBulkNotification"`
+	// OverrideScreenSecurity and OverrideEditableFlag are an app's authorized
+	// overrides, applied to every edit the task makes.
+	OverrideScreenSecurity bool `json:"overrideScreenSecurity,omitempty"`
+	OverrideEditableFlag   bool `json:"overrideEditableFlag,omitempty"`
 }
 
 type BulkIssueDeleteTaskPayload struct {
@@ -114,6 +119,26 @@ type BulkIssueMoveTaskItem struct {
 	ParentID            string            `json:"parentId,omitempty"`
 	InferStatusDefaults bool              `json:"inferStatusDefaults"`
 	StatusMappings      map[string]string `json:"statusMappings,omitempty"`
+	// InferClassificationDefaults gives unclassified work the destination
+	// project's default level; otherwise ClassificationMappings maps each
+	// source level to its destination level.
+	InferClassificationDefaults bool              `json:"inferClassificationDefaults"`
+	ClassificationMappings      map[string]string `json:"classificationMappings,omitempty"`
+	// InferFieldDefaults keeps source values for fields the destination
+	// requires; otherwise MandatoryFields supplies them.
+	InferFieldDefaults bool                          `json:"inferFieldDefaults"`
+	MandatoryFields    map[string]MoveMandatoryField `json:"mandatoryFields,omitempty"`
+	// InferSubtaskTypeDefault lets sub-tasks moving with their parent take a
+	// sub-task type the destination offers.
+	InferSubtaskTypeDefault bool `json:"inferSubtaskTypeDefault"`
+}
+
+// MoveMandatoryField is a value Jira's bulk move sets for a field the
+// destination requires: a list of raw values or an ADF document.
+type MoveMandatoryField struct {
+	Retain bool            `json:"retain"`
+	ADF    bool            `json:"adf"`
+	Value  json.RawMessage `json:"value"`
 }
 
 type BulkIssueMoveTaskPayload struct {
@@ -131,8 +156,8 @@ type BulkIssueTransitionTaskPayload struct {
 	SendBulkNotification bool                          `json:"sendBulkNotification"`
 }
 
-func (s *Store) EnqueueBulkEditTask(ctx context.Context, workspaceID, actorID string, issues []BulkIssueTaskItem, operations []BulkIssueEditOperation) (APITask, error) {
-	task, err := queuedAPITask(workspaceID, actorID, "Bulk edit issues", apiTaskBulkEdit, BulkIssueEditTaskPayload{Issues: issues, Operations: operations})
+func (s *Store) EnqueueBulkEditTask(ctx context.Context, workspaceID, actorID string, payload BulkIssueEditTaskPayload) (APITask, error) {
+	task, err := queuedAPITask(workspaceID, actorID, "Bulk edit issues", apiTaskBulkEdit, payload)
 	if err != nil {
 		return APITask{}, err
 	}

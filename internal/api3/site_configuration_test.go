@@ -107,10 +107,22 @@ func TestJiraSiteConfigurationContractJourney(t *testing.T) {
 		t.Fatalf("options = %#v", options)
 	}
 
-	properties := call(adminID, http.MethodGet, "/rest/api/3/application-properties?keyFilter=clone", "", "", http.StatusOK).([]any)
+	// keyFilter is a regular expression the whole key must match.
+	properties := call(adminID, http.MethodGet, "/rest/api/3/application-properties?keyFilter=jira%5C.clone%5C..*", "", "", http.StatusOK).([]any)
 	if len(properties) != 1 {
 		t.Fatalf("filtered properties = %#v", properties)
 	}
+	if partial := call(adminID, http.MethodGet, "/rest/api/3/application-properties?keyFilter=clone", "", "", http.StatusOK).([]any); len(partial) != 0 {
+		t.Fatalf("a partial key matched keyFilter: %#v", partial)
+	}
+	call(adminID, http.MethodGet, "/rest/api/3/application-properties?keyFilter=%5B", "", "", http.StatusBadRequest)
+	if admin := call(adminID, http.MethodGet, "/rest/api/3/application-properties?permissionLevel=ADMIN", "", "", http.StatusOK).([]any); len(admin) == 0 {
+		t.Fatal("no properties at the ADMIN permission level")
+	}
+	if sysadminOnly := call(adminID, http.MethodGet, "/rest/api/3/application-properties?permissionLevel=SYSADMIN_ONLY", "", "", http.StatusOK).([]any); len(sysadminOnly) != 0 {
+		t.Fatalf("properties kept for system administrators alone = %#v", sysadminOnly)
+	}
+	call(adminID, http.MethodGet, "/rest/api/3/application-properties?permissionLevel=OWNER", "", "", http.StatusBadRequest)
 	property := call(adminID, http.MethodPut, "/rest/api/3/application-properties/jira.clone.prefix", `{"id":"jira.clone.prefix","value":"COPY -"}`, "application/json", http.StatusOK).(map[string]any)
 	if property["value"] != "COPY -" {
 		t.Fatalf("updated property = %#v", property)
@@ -127,6 +139,12 @@ func TestJiraSiteConfigurationContractJourney(t *testing.T) {
 	if len(columns) != 3 || columns[2].(map[string]any)["value"] != "status" {
 		t.Fatalf("columns = %#v", columns)
 	}
+	if label := columns[0].(map[string]any)["label"]; label != "Key" {
+		t.Fatalf("column label = %#v", label)
+	}
+	// Only navigable fields can be default columns; others are not found.
+	call(adminID, http.MethodPut, "/rest/api/3/settings/columns", url.Values{"columns": {"summary", "comment"}}.Encode(), "application/x-www-form-urlencoded", http.StatusNotFound)
+	call(adminID, http.MethodPut, "/rest/api/3/settings/columns", url.Values{"columns": {"workratio", "timespent"}}.Encode(), "application/x-www-form-urlencoded", http.StatusOK)
 	call(adminID, http.MethodPut, "/rest/api/3/settings/columns", strings.Repeat("columns=summary&", 70000), "application/x-www-form-urlencoded", http.StatusBadRequest)
 	var oversizedMultipart bytes.Buffer
 	writer := multipart.NewWriter(&oversizedMultipart)
@@ -170,7 +188,7 @@ func TestJiraSiteConfigurationContractJourney(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_type='jira_configuration'`, workspaceID).Scan(&actions); err != nil {
 		t.Fatal(err)
 	}
-	if audits != 7 || actions != audits {
+	if audits != 8 || actions != audits {
 		t.Fatalf("audit/action counts = %d/%d", audits, actions)
 	}
 }

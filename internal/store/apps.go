@@ -147,7 +147,22 @@ func (s *Store) loadAppChildren(ctx context.Context, value *models.AppInstallati
 		trigger.NextRunAt = trigger.NextRunAt.UTC()
 		value.ScheduledTriggers = append(value.ScheduledTriggers, trigger)
 	}
-	return scheduleRows.Err()
+	if err = scheduleRows.Err(); err != nil {
+		return err
+	}
+	permissionRows, err := s.Pool.Query(ctx, `SELECT module_key,permission_type,name,description,category,anonymous_allowed,default_grants FROM app_permission_modules WHERE installation_id=$1 ORDER BY module_key`, value.ID)
+	if err != nil {
+		return err
+	}
+	defer permissionRows.Close()
+	for permissionRows.Next() {
+		var permission models.AppPermission
+		if err := permissionRows.Scan(&permission.Key, &permission.Type, &permission.Name, &permission.Description, &permission.Category, &permission.AnonymousAllowed, &permission.DefaultGrants); err != nil {
+			return err
+		}
+		value.Permissions = append(value.Permissions, permission)
+	}
+	return permissionRows.Err()
 }
 
 func (s *Store) AppInstallations(ctx context.Context, workspaceID string) ([]*models.AppInstallation, error) {
@@ -217,6 +232,23 @@ func writeAppChildren(ctx context.Context, tx pgx.Tx, installationID string, des
 			return err
 		}
 	}
+	for _, permission := range descriptor.Permissions {
+		grants := permission.DefaultGrants
+		if grants == nil {
+			grants = []string{}
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO app_permission_modules(installation_id,module_key,permission_type,name,description,category,anonymous_allowed,default_grants) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, installationID, permission.Key, permission.Type, permission.Name, permission.Description, permission.Category, permission.AnonymousAllowed, grants); err != nil {
+			return err
+		}
+	}
+	if err := writeEntityPropertyIndexes(ctx, tx, installationID, descriptor.EntityPropertyIndexes, false); err != nil {
+		return err
+	}
+	for _, provider := range descriptor.TimeTrackingProviders {
+		if _, err := tx.Exec(ctx, `INSERT INTO app_time_tracking_providers(installation_id,module_key,name,admin_page_key) VALUES($1,$2,$3,$4)`, installationID, provider.Key, provider.Name, provider.AdminPageKey); err != nil {
+			return err
+		}
+	}
 	for event, path := range descriptor.Lifecycle {
 		if _, err := tx.Exec(ctx, `INSERT INTO app_lifecycle_callbacks(installation_id,event,path) VALUES($1,$2,$3)`, installationID, event, path); err != nil {
 			return err
@@ -259,8 +291,10 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 	}
 	var installationID, principalID, currentStatus string
 	err = tx.QueryRow(ctx, `SELECT id,principal_id,status FROM app_installations WHERE workspace_id=$1 AND app_key=$2 FOR UPDATE`, workspaceID, descriptor.Key).Scan(&installationID, &principalID, &currentStatus)
+	firstInstall := false
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
+		firstInstall = true
 		if err := tx.QueryRow(ctx, `SELECT nextval('jira_app_installation_id')::text`).Scan(&installationID); err != nil {
 			return nil, err
 		}
@@ -295,6 +329,16 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 	if _, err := tx.Exec(ctx, `DELETE FROM app_jql_function_modules WHERE installation_id=$1`, installationID); err != nil {
 		return nil, err
 	}
+	if _, err := tx.Exec(ctx, `DELETE FROM app_time_tracking_providers WHERE installation_id=$1`, installationID); err != nil {
+		return nil, err
+	}
+	// Dynamic indexes are restored with the other dynamic modules below.
+	if _, err := tx.Exec(ctx, `DELETE FROM app_entity_property_indexes WHERE installation_id=$1`, installationID); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM app_permission_modules WHERE installation_id=$1`, installationID); err != nil {
+		return nil, err
+	}
 	if _, err := tx.Exec(ctx, `DELETE FROM jql_function_precomputations WHERE installation_id=$1`, installationID); err != nil {
 		return nil, err
 	}
@@ -317,6 +361,19 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 	if err := writeAppChildren(ctx, tx, installationID, descriptor); err != nil {
 		return nil, err
 	}
+	if firstInstall {
+		// Global permissions granted to all users on an app's first installation.
+		for _, permission := range descriptor.Permissions {
+			for _, grant := range permission.DefaultGrants {
+				if permission.Type != "GLOBAL" || grant != "ALL" {
+					continue
+				}
+				if _, err := tx.Exec(ctx, `INSERT INTO global_permission_grants(workspace_id,permission_key,product_key) VALUES($1,$2,'jira-software') ON CONFLICT DO NOTHING`, workspaceID, descriptor.Key+"__"+permission.Key); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
 	staticModuleKeys := make([]string, 0, len(descriptor.Modules))
 	for _, module := range descriptor.Modules {
 		staticModuleKeys = append(staticModuleKeys, module.Key)
@@ -329,6 +386,9 @@ func (s *Store) InstallApp(ctx context.Context, workspaceID, actorID string, des
 	}
 	for _, function := range descriptor.JQLFunctions {
 		staticModuleKeys = append(staticModuleKeys, function.Key)
+	}
+	for _, permission := range descriptor.Permissions {
+		staticModuleKeys = append(staticModuleKeys, permission.Key)
 	}
 	if err := restoreDynamicAppModules(ctx, tx, installationID, staticModuleKeys); err != nil {
 		return nil, err
