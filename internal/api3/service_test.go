@@ -374,7 +374,7 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if _, err := handler.Commands.CreateServiceIncidentUpdate(ctx, customerID, workspaceID, issue.ID, "public", "Unauthorized update"); err == nil {
 		t.Fatal("customer published a major incident update")
 	}
-	if _, err := handler.Commands.CreateServiceIncidentUpdate(ctx, actorID, workspaceID, issue.ID, "stakeholders", "Invalid audience"); err == nil {
+	if _, err := handler.Commands.CreateServiceIncidentUpdate(ctx, actorID, workspaceID, issue.ID, "everyone", "Invalid audience"); err == nil {
 		t.Fatal("invalid incident update audience succeeded")
 	}
 	var incidentUpdateAudits int
@@ -384,6 +384,81 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	var customerIncidentNotifications int
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND entity_id=$3 AND kind='service_incident_update'`, workspaceID, customerID, issue.Key).Scan(&customerIncidentNotifications); err != nil || customerIncidentNotifications != 1 {
 		t.Fatalf("customer incident notifications = %d, %v", customerIncidentNotifications, err)
+	}
+	// The response team takes incident roles, and stakeholders follow
+	// stakeholder updates by email.
+	if err := handler.Commands.SetServiceIncidentRole(ctx, actorID, workspaceID, issue.Key, "commander", actorID); err != nil {
+		t.Fatalf("assign incident commander: %v", err)
+	}
+	for name, attempt := range map[string]func() error{
+		"customer holder": func() error {
+			return handler.Commands.SetServiceIncidentRole(ctx, actorID, workspaceID, issue.Key, "communications", customerID)
+		},
+		"unknown role": func() error {
+			return handler.Commands.SetServiceIncidentRole(ctx, actorID, workspaceID, issue.Key, "scribe", actorID)
+		},
+		"customer assigner": func() error {
+			return handler.Commands.SetServiceIncidentRole(ctx, customerID, workspaceID, issue.Key, "technical", actorID)
+		},
+		"invalid email": func() error {
+			return handler.Commands.AddServiceIncidentStakeholder(ctx, actorID, workspaceID, issue.Key, "", "not an address")
+		},
+		"person and email": func() error {
+			return handler.Commands.AddServiceIncidentStakeholder(ctx, actorID, workspaceID, issue.Key, customerID, "both@example.test")
+		},
+		"customer adder": func() error {
+			return handler.Commands.AddServiceIncidentStakeholder(ctx, customerID, workspaceID, issue.Key, "", "late@example.test")
+		},
+	} {
+		if err := attempt(); err == nil {
+			t.Fatalf("%s: incident team change succeeded", name)
+		}
+	}
+	roles, err := st.ServiceIncidentRoles(ctx, workspaceID, actorID, issue.ID)
+	if err != nil || len(roles) != 3 || roles[0].Role != "commander" || roles[0].UserID != actorID || roles[0].AssignedAt == nil || roles[1].UserID != "" || roles[2].Name != "Technical lead" {
+		t.Fatalf("incident roles = %+v, %v", roles, err)
+	}
+	if _, err := st.ServiceIncidentRoles(ctx, workspaceID, customerID, issue.ID); err == nil {
+		t.Fatal("customer read incident roles")
+	}
+	var roleNotifications int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND kind='service_incident_role' AND entity_id=$2`, workspaceID, issue.Key).Scan(&roleNotifications); err != nil || roleNotifications != 0 {
+		t.Fatalf("self-assigned role notifications = %d, %v", roleNotifications, err)
+	}
+	for _, stakeholder := range [][2]string{{customerID, ""}, {"", "Exec.Sponsor@example.test"}, {"", "Exec.Sponsor@example.test"}} {
+		if err := handler.Commands.AddServiceIncidentStakeholder(ctx, actorID, workspaceID, issue.Key, stakeholder[0], stakeholder[1]); err != nil {
+			t.Fatalf("add stakeholder %v: %v", stakeholder, err)
+		}
+	}
+	stakeholders, err := st.ServiceIncidentStakeholders(ctx, workspaceID, actorID, issue.ID)
+	if err != nil || len(stakeholders) != 2 || stakeholders[0].UserID != customerID || stakeholders[1].Email != "Exec.Sponsor@example.test" {
+		t.Fatalf("stakeholders = %+v, %v", stakeholders, err)
+	}
+	if _, err := handler.Commands.CreateServiceIncidentUpdate(ctx, actorID, workspaceID, issue.ID, "stakeholders", "Checkout recovers for most customers."); err != nil {
+		t.Fatalf("publish stakeholder update: %v", err)
+	}
+	var customerEmail string
+	if err := st.Pool.QueryRow(ctx, `SELECT email FROM users WHERE id=$1`, customerID).Scan(&customerEmail); err != nil {
+		t.Fatal(err)
+	}
+	for _, recipient := range []string{"exec.sponsor@example.test", strings.ToLower(customerEmail)} {
+		var sent int
+		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM email_outbox WHERE workspace_id=$1 AND lower(recipient)=$2 AND subject LIKE '%Stakeholder update%' AND body LIKE '%Checkout recovers for most customers.%'`, workspaceID, recipient).Scan(&sent); err != nil || sent != 1 {
+			t.Fatalf("stakeholder emails to %s = %d, %v", recipient, sent, err)
+		}
+	}
+	if updates, err := st.ServiceIncidentUpdates(ctx, workspaceID, customerID, issue.ID); err != nil || len(updates) != 1 {
+		t.Fatalf("customer saw a stakeholder update: %+v, %v", updates, err)
+	}
+	if err := handler.Commands.RemoveServiceIncidentStakeholder(ctx, actorID, workspaceID, issue.Key, stakeholders[1].ID); err != nil {
+		t.Fatalf("remove stakeholder: %v", err)
+	}
+	if remaining, err := st.ServiceIncidentStakeholders(ctx, workspaceID, actorID, issue.ID); err != nil || len(remaining) != 1 {
+		t.Fatalf("stakeholders after removal = %+v, %v", remaining, err)
+	}
+	var teamAudits int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE target_id=$1 AND action IN ('service_major_incident_role_assigned','service_major_incident_stakeholder_added','service_major_incident_stakeholder_removed')`, issue.ID).Scan(&teamAudits); err != nil || teamAudits != 4 {
+		t.Fatalf("incident team audits = %d, %v", teamAudits, err)
 	}
 	incidentEscalationNow := time.Now().UTC().Truncate(time.Second)
 	if _, err := st.Pool.Exec(ctx, `UPDATE service_request_operations SET major_incident_declared_at=$2 WHERE request_issue_id=$1`, issue.ID, incidentEscalationNow.Add(-6*time.Minute)); err != nil {

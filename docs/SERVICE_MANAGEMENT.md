@@ -155,6 +155,15 @@ Subscribers receive notifications through the same audience boundary. Every
 publication records its audience in the organization audit log. Declassifying
 the incident preserves its timeline and closes it to new publications.
 
+During a major incident, desk agents give the Incident commander,
+Communications lead and Technical lead roles to agents of the desk; each
+assignment notifies its new holder. Agents also keep a list of stakeholders,
+site members or email addresses outside the site, and can publish stakeholder
+updates, a third audience. Stakeholder updates stay with the response team on
+the request, off the customer timeline, and are emailed once to every
+stakeholder address without adding stakeholders to the request. Role and
+stakeholder changes are recorded in the organization audit log.
+
 Service managers configure each desk's CAB threshold, approver roster, incident
 review deadline, bounded on-call shifts, and ordered major-incident escalation
 steps. Each escalation step selects an active workspace responder and a delay

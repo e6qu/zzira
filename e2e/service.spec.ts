@@ -134,6 +134,18 @@ test('admin creates a service project with Jira Service Management request types
   await incidentUpdates.getByLabel('Update').fill('Checkout is unavailable. The response team is investigating.');
   await incidentUpdates.getByRole('button', { name: 'Publish status update' }).click();
   await expect(page.locator('#incident-updates')).toContainText('Checkout is unavailable. The response team is investigating.');
+  // The response team takes incident roles and stakeholders follow stakeholder updates.
+  await page.locator('#incident-team').getByLabel('Incident commander').selectOption({ label: 'Demo User' });
+  await page.locator('#incident-team').getByRole('button', { name: 'Save Incident commander' }).click();
+  await expect(page.locator('#incident-team').getByLabel('Incident commander')).not.toHaveValue('');
+  await page.locator('#incident-team').getByLabel('Or email address').fill('exec.sponsor@example.test');
+  await page.locator('#incident-team').getByRole('button', { name: 'Add stakeholder' }).click();
+  await expect(page.locator('#incident-team')).toContainText('exec.sponsor@example.test');
+  await page.locator('#incident-updates').getByLabel('Audience').selectOption('stakeholders');
+  await page.locator('#incident-updates').getByLabel('Update').fill('Checkout recovers for most customers.');
+  await page.locator('#incident-updates').getByRole('button', { name: 'Publish status update' }).click();
+  await expect(page.locator('#incident-updates')).toContainText('Checkout recovers for most customers.');
+  await expect(page.locator('#incident-updates').locator('.lozenge').filter({ hasText: 'stakeholders' })).toHaveCount(1);
   await expect(page.getByText('Customers receive an error when completing checkout.')).toBeVisible();
   await page.goto(`/service/portals/${desk.id}`);
   await expect(page.getByRole('link', { name: /Investigate a problem/ })).toBeVisible();

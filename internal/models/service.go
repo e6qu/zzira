@@ -246,3 +246,26 @@ func (p ServiceOperationsProfile) RiskLevel() string {
 		return "Low"
 	}
 }
+
+// ServiceIncidentRoleDefinition is a role in a major incident's response team.
+type ServiceIncidentRoleDefinition struct{ Key, Name string }
+
+// ServiceIncidentRoleDefinitions are the major incident roles, in the order
+// people see them.
+var ServiceIncidentRoleDefinitions = []ServiceIncidentRoleDefinition{
+	{"commander", "Incident commander"}, {"communications", "Communications lead"}, {"technical", "Technical lead"},
+}
+
+// ServiceIncidentRole is who holds an incident role; UserID is empty while
+// nobody does.
+type ServiceIncidentRole struct {
+	Role, Name, UserID, UserName string
+	AssignedAt                   *time.Time
+}
+
+// ServiceIncidentStakeholder follows a major incident's stakeholder updates:
+// a site member or an email address.
+type ServiceIncidentStakeholder struct {
+	ID, UserID, Name, Email string
+	AddedAt                 time.Time
+}

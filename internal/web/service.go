@@ -50,57 +50,61 @@ type servicePageData struct {
 	// BulkStatuses are the statuses selected queue requests can move to,
 	// DeskAgents the people requests can be assigned to, and BulkNotice and
 	// BulkProblem what the last bulk action did.
-	BulkStatuses          []string
-	DeskAgents            []*models.User
-	BulkNotice            string
-	BulkProblem           string
-	ReportActions         reportActions
-	ReportCompare         bool
-	ReportComparison      map[string]string
-	Desks                 []models.ServiceDesk
-	Desk                  *models.ServiceDesk
-	RequestTypes          []models.ServiceRequestType
-	RequestType           *models.ServiceRequestType
-	Requests              []*models.ServiceRequest
-	Request               *models.ServiceRequest
-	Queues                []models.ServiceQueue
-	Queue                 *models.ServiceQueue
-	Comments              []models.ServiceRequestComment
-	Attachments           []models.ServiceRequestAttachment
-	Links                 []models.IssueLinkView
-	LinkTypes             []models.LinkType
-	Approvals             []models.ServiceApproval
-	Feedback              *models.ServiceRequestFeedback
-	Participants          []*models.User
-	Members               []*models.User
-	Agents                map[string]bool
-	Calendar              *models.ServiceCalendar
-	CalendarHolidays      []serviceCalendarHolidayView
-	Report                *models.ServiceReport
-	ReportDays            []serviceReportDayView
-	ReportFilter          models.ServiceReportFilter
-	ReportChannels        []string
-	SLAMetrics            []models.ServiceSLAMetric
-	SLAGoals              map[string][]models.ServiceSLAGoal
-	SLAs                  []models.ServiceSLA
-	Customers             []*models.User
-	Organizations         []models.ServiceOrganization
-	DeskOrganizations     map[string]bool
-	OrganizationUsers     map[string][]*models.User
-	KnowledgeArticles     []models.ServiceKnowledgeArticle
-	KnowledgeSpaces       []*models.WikiSpace
-	KnowledgeSpaceLinks   map[string]bool
-	RequestTypeForms      []serviceRequestTypeFormView
-	RequestTypeFields     []models.ServiceRequestTypeField
-	RequestFieldValues    []serviceRequestFieldValueView
-	OperationsSettings    *models.ServiceOperationsSettings
-	OperationsProfile     *models.ServiceOperationsProfile
-	ChangeWindows         []models.ServiceChangeWindow
-	ChangeConflicts       []models.ServiceChangeWindow
-	DependencyEdges       []models.ServiceDependencyEdge
-	DependencyNodeCount   int
-	IncidentUpdates       []models.ServiceIncidentUpdate
-	EscalationSteps       []models.ServiceEscalationStep
+	BulkStatuses        []string
+	DeskAgents          []*models.User
+	BulkNotice          string
+	BulkProblem         string
+	ReportActions       reportActions
+	ReportCompare       bool
+	ReportComparison    map[string]string
+	Desks               []models.ServiceDesk
+	Desk                *models.ServiceDesk
+	RequestTypes        []models.ServiceRequestType
+	RequestType         *models.ServiceRequestType
+	Requests            []*models.ServiceRequest
+	Request             *models.ServiceRequest
+	Queues              []models.ServiceQueue
+	Queue               *models.ServiceQueue
+	Comments            []models.ServiceRequestComment
+	Attachments         []models.ServiceRequestAttachment
+	Links               []models.IssueLinkView
+	LinkTypes           []models.LinkType
+	Approvals           []models.ServiceApproval
+	Feedback            *models.ServiceRequestFeedback
+	Participants        []*models.User
+	Members             []*models.User
+	Agents              map[string]bool
+	Calendar            *models.ServiceCalendar
+	CalendarHolidays    []serviceCalendarHolidayView
+	Report              *models.ServiceReport
+	ReportDays          []serviceReportDayView
+	ReportFilter        models.ServiceReportFilter
+	ReportChannels      []string
+	SLAMetrics          []models.ServiceSLAMetric
+	SLAGoals            map[string][]models.ServiceSLAGoal
+	SLAs                []models.ServiceSLA
+	Customers           []*models.User
+	Organizations       []models.ServiceOrganization
+	DeskOrganizations   map[string]bool
+	OrganizationUsers   map[string][]*models.User
+	KnowledgeArticles   []models.ServiceKnowledgeArticle
+	KnowledgeSpaces     []*models.WikiSpace
+	KnowledgeSpaceLinks map[string]bool
+	RequestTypeForms    []serviceRequestTypeFormView
+	RequestTypeFields   []models.ServiceRequestTypeField
+	RequestFieldValues  []serviceRequestFieldValueView
+	OperationsSettings  *models.ServiceOperationsSettings
+	OperationsProfile   *models.ServiceOperationsProfile
+	ChangeWindows       []models.ServiceChangeWindow
+	ChangeConflicts     []models.ServiceChangeWindow
+	DependencyEdges     []models.ServiceDependencyEdge
+	DependencyNodeCount int
+	IncidentUpdates     []models.ServiceIncidentUpdate
+	EscalationSteps     []models.ServiceEscalationStep
+	// IncidentRoles and IncidentStakeholders are a major incident's response
+	// team and the people who follow its stakeholder updates.
+	IncidentRoles         []models.ServiceIncidentRole
+	IncidentStakeholders  []models.ServiceIncidentStakeholder
 	AssetInventory        *models.ServiceAssetInventory
 	RequestAssets         []models.ServiceRequestAsset
 	FieldValues           map[string]string
@@ -1250,6 +1254,9 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 	}
 	incidentUpdates := []models.ServiceIncidentUpdate{}
 	escalationSteps := []models.ServiceEscalationStep{}
+	incidentRoles := []models.ServiceIncidentRole{}
+	incidentStakeholders := []models.ServiceIncidentStakeholder{}
+	incidentAgents := []*models.User{}
 	if operations != nil && operations.Kind == "incident" {
 		incidentUpdates, err = h.Store.ServiceIncidentUpdates(r.Context(), workspaceID, user.ID, request.Issue.ID)
 		if err != nil {
@@ -1260,6 +1267,17 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 			escalationSteps, err = h.Store.ServiceIncidentEscalationStatus(r.Context(), workspaceID, user.ID, request.Issue.ID)
 			if err != nil {
 				http.Error(w, "Could not load incident escalation status.", http.StatusInternalServerError)
+				return
+			}
+			if incidentRoles, err = h.Store.ServiceIncidentRoles(r.Context(), workspaceID, user.ID, request.Issue.ID); err == nil {
+				if incidentStakeholders, err = h.Store.ServiceIncidentStakeholders(r.Context(), workspaceID, user.ID, request.Issue.ID); err == nil {
+					// Incident roles go to anyone who can manage the request: its
+					// desk's agents and site administrators.
+					incidentAgents, err = h.incidentRoleCandidates(r, workspaceID, request.Issue.ID)
+				}
+			}
+			if err != nil {
+				http.Error(w, "Could not load the incident team.", http.StatusInternalServerError)
 				return
 			}
 		}
@@ -1340,7 +1358,7 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load the service desk.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Desk: desk, Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, IncidentUpdates: incidentUpdates, EscalationSteps: escalationSteps, AssetInventory: assetInventory, RequestAssets: requestAssets, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: desk.FeedbackEnabled && request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Desk: desk, Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, IncidentUpdates: incidentUpdates, EscalationSteps: escalationSteps, IncidentRoles: incidentRoles, IncidentStakeholders: incidentStakeholders, DeskAgents: incidentAgents, AssetInventory: assetInventory, RequestAssets: requestAssets, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: desk.FeedbackEnabled && request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
 }
 
 func (h *Handler) ServiceRequestLink(w http.ResponseWriter, r *http.Request) {
@@ -1549,6 +1567,59 @@ func (h *Handler) ServiceIncidentUpdate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+r.PathValue("key")+"#incident-updates")
+}
+
+// incidentRoleCandidates lists the members who may hold a request's major
+// incident roles.
+func (h *Handler) incidentRoleCandidates(r *http.Request, workspaceID, issueID string) ([]*models.User, error) {
+	members, err := h.Store.MembersByWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	candidates := []*models.User{}
+	for _, member := range members {
+		canManage, err := h.Store.CanManageServiceRequest(r.Context(), workspaceID, member.ID, issueID)
+		if err != nil {
+			return nil, err
+		}
+		if canManage {
+			candidates = append(candidates, member)
+		}
+	}
+	return candidates, nil
+}
+
+// ServiceIncidentRole gives a major incident role to an agent or clears it.
+func (h *Handler) ServiceIncidentRole(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if err := h.Commands.SetServiceIncidentRole(r.Context(), user.ID, workspaceID, r.PathValue("key"), r.PostFormValue("role"), r.PostFormValue("user_id")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/requests/"+r.PathValue("key")+"#incident-team")
+}
+
+// ServiceIncidentStakeholder adds or removes a major incident's stakeholder.
+func (h *Handler) ServiceIncidentStakeholder(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	key := r.PathValue("key")
+	var err error
+	if r.PostFormValue("action") == "remove" {
+		err = h.Commands.RemoveServiceIncidentStakeholder(r.Context(), user.ID, workspaceID, key, r.PostFormValue("stakeholder_id"))
+	} else {
+		err = h.Commands.AddServiceIncidentStakeholder(r.Context(), user.ID, workspaceID, key, r.PostFormValue("user_id"), r.PostFormValue("email"))
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/requests/"+key+"#incident-team")
 }
 
 func (h *Handler) ServiceRequestNotification(w http.ResponseWriter, r *http.Request) {
