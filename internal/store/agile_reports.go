@@ -102,7 +102,8 @@ func (h *sprintIssueHistory) joinedAt(start, end time.Time) (time.Time, bool) {
 }
 
 func decodeEstimate(raw []byte) *float64 {
-	if len(raw) == 0 {
+	// A cleared estimate is stored as null, which is no estimate, not zero.
+	if len(raw) == 0 || string(raw) == "null" {
 		return nil
 	}
 	var value float64

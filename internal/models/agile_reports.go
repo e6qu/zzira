@@ -97,3 +97,29 @@ type ControlChart struct {
 	AverageSeconds int64
 	MedianSeconds  int64
 }
+
+// ProgressPoint is how much of a body of work existed and was done at the end
+// of a day.
+type ProgressPoint struct {
+	Date      string
+	Total     float64
+	Completed float64
+}
+
+// ProgressReport is Jira's epic or version report: the work's estimate over
+// time, what is done and what remains.
+type ProgressReport struct {
+	Statistic string
+	Start     string
+	End       string
+	Points    []ProgressPoint
+
+	Completed  []SprintReportIssue
+	Incomplete []SprintReportIssue
+
+	TotalEstimate     float64
+	CompletedEstimate float64
+	// Unestimated counts work without an estimate in the statistic.
+	Unestimated int
+	Progress    VersionProgress
+}

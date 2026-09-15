@@ -94,3 +94,18 @@ func TestBurnupAndFlowChartsLayOutTheirSeries(t *testing.T) {
 		t.Fatal("cycle durations")
 	}
 }
+
+func TestProgressReportDrawsTotalAndCompletedByDay(t *testing.T) {
+	view := newProgressReportView(models.ProgressReport{
+		Statistic: "Story point estimate",
+		Points:    []models.ProgressPoint{{Date: "2026-09-01", Total: 3}, {Date: "2026-09-02", Total: 8, Completed: 3}, {Date: "2026-09-03", Total: 8, Completed: 8}},
+		Completed: []models.SprintReportIssue{{Key: "ZZ-1"}}, Incomplete: []models.SprintReportIssue{{Key: "ZZ-2"}},
+		TotalEstimate: 8, CompletedEstimate: 3, Progress: models.VersionProgress{Done: 1, ToDo: 1},
+	}, "02/Jan/06")
+	if view.Chart.Total != "48,143.5 336,16 624,16" || view.Chart.Completed != "48,220 336,143.5 624,16" {
+		t.Fatalf("chart = %+v", view.Chart)
+	}
+	if view.Percent != 50 || view.RemainingText != "5" || len(view.Sections) != 2 || view.Chart.StartLabel != "01/Sep/26" {
+		t.Fatalf("view = %+v", view)
+	}
+}

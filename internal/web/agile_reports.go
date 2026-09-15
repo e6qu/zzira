@@ -668,3 +668,155 @@ func (h *Handler) flowReport(w http.ResponseWriter, r *http.Request, page string
 	}
 	h.writeWorkspacePage(w, r, page, user, workspaceID, data, "reports", boards.Project.ID)
 }
+
+// progressChart is the SVG geometry of an epic or version report.
+type progressChart struct {
+	Width, Height, Left, Right, Bottom, TickX float64
+	Total, Completed                          string
+	Ticks                                     []chartTick
+	StartLabel, EndLabel                      string
+}
+
+type progressReportView struct {
+	models.ProgressReport
+	Chart                                   progressChart
+	Percent                                 int
+	TotalText, CompletedText, RemainingText string
+	Sections                                []sprintReportSection
+}
+
+// newProgressReportView draws the total and completed estimate as daily
+// lines and splits the work into what is done and what remains.
+func newProgressReportView(report models.ProgressReport, layout string) *progressReportView {
+	const top = 16.0
+	view := &progressReportView{ProgressReport: report, Percent: report.Progress.Percent(),
+		TotalText: chartNumber(report.TotalEstimate), CompletedText: chartNumber(report.CompletedEstimate),
+		RemainingText: chartNumber(report.TotalEstimate - report.CompletedEstimate)}
+	view.Chart = progressChart{Width: 640, Height: 260, Left: 48, Right: 624, Bottom: 220, TickX: 40}
+	view.Sections = []sprintReportSection{
+		{ID: "done-work", Title: "Completed work items", Empty: "No work is done yet.", Issues: report.Completed},
+		{ID: "remaining-work", Title: "Incomplete work items", Empty: "All the work is done.", Issues: report.Incomplete},
+	}
+	if len(report.Points) == 0 {
+		return view
+	}
+	maximum := 0.0
+	for _, point := range report.Points {
+		maximum = math.Max(maximum, point.Total)
+	}
+	maximum = chartScale(maximum)
+	step := (view.Chart.Right - view.Chart.Left) / math.Max(float64(len(report.Points)-1), 1)
+	x := func(index int) float64 { return math.Round((view.Chart.Left+float64(index)*step)*10) / 10 }
+	y := func(value float64) float64 {
+		return math.Round((view.Chart.Bottom-value/maximum*(view.Chart.Bottom-top))*10) / 10
+	}
+	total, completed := make([]string, 0, len(report.Points)), make([]string, 0, len(report.Points))
+	for index, point := range report.Points {
+		total = append(total, fmt.Sprintf("%g,%g", x(index), y(point.Total)))
+		completed = append(completed, fmt.Sprintf("%g,%g", x(index), y(point.Completed)))
+	}
+	view.Chart.Total, view.Chart.Completed = strings.Join(total, " "), strings.Join(completed, " ")
+	view.Chart.Ticks = chartTicks(maximum, top, view.Chart.Bottom)
+	view.Chart.StartLabel = displayDay(report.Points[0].Date, layout)
+	view.Chart.EndLabel = displayDay(report.Points[len(report.Points)-1].Date, layout)
+	return view
+}
+
+type progressChoice struct {
+	Value, Name string
+}
+
+type progressReportData struct {
+	agileReportBoards
+	Kind, Title, Parameter, Empty string
+	Choices                       []progressChoice
+	Selected                      string
+	Report                        *progressReportView
+}
+
+// EpicReport renders the progress of the work in an epic.
+func (h *Handler) EpicReport(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, boards, ok := h.boardReportContext(w, r, false)
+	if !ok {
+		return
+	}
+	data := progressReportData{agileReportBoards: boards, Kind: "epic", Title: "Epic report", Parameter: "epic", Empty: "Create an epic to follow its progress."}
+	epics, err := h.Store.EpicsInProjects(r.Context(), workspaceID, user.ID, []string{boards.Project.ID})
+	if err != nil {
+		http.Error(w, "Could not load epics.", http.StatusInternalServerError)
+		return
+	}
+	wanted := r.URL.Query().Get("epic")
+	var epic *models.Issue
+	for _, candidate := range epics {
+		data.Choices = append(data.Choices, progressChoice{Value: candidate.Key, Name: candidate.Key + " " + candidate.Summary})
+		if epic == nil && (wanted == "" || strings.EqualFold(candidate.Key, wanted)) {
+			epic = candidate
+		}
+	}
+	if wanted != "" && epic == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if boards.Board != nil && epic != nil {
+		data.Selected = epic.Key
+		children, err := h.Store.EpicChildren(r.Context(), workspaceID, user.ID, []string{epic.ID})
+		if err != nil {
+			http.Error(w, "Could not load the work in the epic.", http.StatusInternalServerError)
+			return
+		}
+		start, _ := time.Parse(time.RFC3339, epic.CreatedAt)
+		report, err := h.Store.ProgressReport(r.Context(), workspaceID, boards.Board, children, start, time.Now())
+		if err != nil {
+			http.Error(w, "Could not calculate the epic report.", http.StatusInternalServerError)
+			return
+		}
+		data.Report = newProgressReportView(report, h.siteLook(r, workspaceID).DateDay)
+	}
+	h.writeWorkspacePage(w, r, "page_progress_report", user, workspaceID, data, "reports", boards.Project.ID)
+}
+
+// VersionReport renders the progress of the work fixed in a version.
+func (h *Handler) VersionReport(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, boards, ok := h.boardReportContext(w, r, false)
+	if !ok {
+		return
+	}
+	data := progressReportData{agileReportBoards: boards, Kind: "version", Title: "Version report", Parameter: "version", Empty: "Create a version to follow its progress."}
+	versions, err := h.Store.ProjectVersions(r.Context(), boards.Project.ID)
+	if err != nil {
+		http.Error(w, "Could not load versions.", http.StatusInternalServerError)
+		return
+	}
+	wanted := r.URL.Query().Get("version")
+	var version *models.Version
+	for _, candidate := range versions {
+		if candidate.Archived {
+			continue
+		}
+		data.Choices = append(data.Choices, progressChoice{Value: candidate.ID, Name: candidate.Name + " (" + candidate.State() + ")"})
+		if version == nil && (wanted == "" || candidate.ID == wanted) {
+			version = candidate
+		}
+	}
+	if wanted != "" && version == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if boards.Board != nil && version != nil {
+		data.Selected = version.ID
+		issues, err := h.Store.VersionIssues(r.Context(), workspaceID, user.ID, boards.Project.ID, version.ID, "fixVersions")
+		if err != nil {
+			http.Error(w, "Could not load the work in the version.", http.StatusInternalServerError)
+			return
+		}
+		start, _ := time.Parse("2006-01-02", version.StartDate)
+		report, err := h.Store.ProgressReport(r.Context(), workspaceID, boards.Board, issues, start, time.Now())
+		if err != nil {
+			http.Error(w, "Could not calculate the version report.", http.StatusInternalServerError)
+			return
+		}
+		data.Report = newProgressReportView(report, h.siteLook(r, workspaceID).DateDay)
+	}
+	h.writeWorkspacePage(w, r, "page_progress_report", user, workspaceID, data, "reports", boards.Project.ID)
+}

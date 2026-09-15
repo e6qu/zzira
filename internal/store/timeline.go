@@ -46,25 +46,15 @@ func (s *Store) ProjectTimeline(ctx context.Context, workspaceID, userID, projec
 	for _, epic := range epics {
 		epicIDs = append(epicIDs, epic.ID)
 	}
-	rows, err := s.Pool.Query(ctx, searchSelect+" "+searchJoin+`
-		WHERE i.workspace_id=$1 AND i.parent_id=ANY($2) AND NOT it.subtask AND `+VisibleIssuePredicate("i", "$3")+`
-		ORDER BY i.rank, i.key`, workspaceID, epicIDs, userID)
+	work, err := s.EpicChildren(ctx, workspaceID, userID, epicIDs)
 	if err != nil {
 		return timeline, err
 	}
-	defer rows.Close()
 	children := map[string][]models.TimelineItem{}
-	for rows.Next() {
-		child, err := scanIssue(rows)
-		if err != nil {
-			return timeline, err
-		}
+	for _, child := range work {
 		if child.Parent != nil {
 			children[child.Parent.ID] = append(children[child.Parent.ID], item(child))
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return timeline, err
 	}
 	for _, epic := range epics {
 		scheduled := item(epic)
@@ -72,4 +62,25 @@ func (s *Store) ProjectTimeline(ctx context.Context, workspaceID, userID, projec
 		timeline.Epics = append(timeline.Epics, scheduled)
 	}
 	return timeline, nil
+}
+
+// EpicChildren lists the standard work under the given epics the user can
+// browse, in rank order; sub-tasks stay with their parents.
+func (s *Store) EpicChildren(ctx context.Context, workspaceID, userID string, epicIDs []string) ([]*models.Issue, error) {
+	rows, err := s.Pool.Query(ctx, searchSelect+" "+searchJoin+`
+		WHERE i.workspace_id=$1 AND i.parent_id=ANY($2) AND NOT it.subtask AND `+VisibleIssuePredicate("i", "$3")+`
+		ORDER BY i.rank, i.key`, workspaceID, epicIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*models.Issue{}
+	for rows.Next() {
+		issue, err := scanIssue(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, issue)
+	}
+	return out, rows.Err()
 }
