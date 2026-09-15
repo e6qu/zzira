@@ -1242,6 +1242,12 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `SELECT started_at FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2 AND stopped_at IS NULL`, issue.ID, customSLA.ID).Scan(&transitionedAt); err != nil {
 		t.Fatal(err)
 	}
+	// A pause condition that asks only about status is replayed with the
+	// history, so the rebuilt cycle is paused from the moment the request
+	// entered that status rather than from the recalculation.
+	if err := handler.Commands.UpdateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, lateSLA.ID, `status = "In Progress"`, time.Hour.Milliseconds()); err != nil {
+		t.Fatal(err)
+	}
 	if err := handler.Commands.UpdateServiceSLAConditions(ctx, actorID, workspaceID, serviceDeskID, lateSLA.ID, []string{inProgress}, []string{models.SLAConditionResolutionSet}); err != nil {
 		t.Fatal(err)
 	}
@@ -1252,6 +1258,18 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if recalculatedStart.Sub(transitionedAt).Abs() > 2*time.Second {
 		t.Fatalf("recalculated cycle started at %s, the request entered In Progress at %s", recalculatedStart, transitionedAt)
 	}
+	var replayedPauses int
+	var pauseStart, pauseStop *time.Time
+	if err := st.Pool.QueryRow(ctx, `
+		SELECT count(*),min(pause.started_at),max(pause.stopped_at)
+		FROM service_sla_cycle_pauses pause JOIN service_sla_cycles cycle ON cycle.id=pause.cycle_id
+		WHERE cycle.request_issue_id=$1 AND cycle.metric_id=$2`, issue.ID, lateSLA.ID).Scan(&replayedPauses, &pauseStart, &pauseStop); err != nil {
+		t.Fatalf("replayed pauses: %v", err)
+	}
+	if replayedPauses != 1 || pauseStart == nil || pauseStop != nil || pauseStart.Sub(transitionedAt).Abs() > 2*time.Second {
+		t.Fatalf("replayed pauses = %d starting %v, the request entered In Progress at %s", replayedPauses, pauseStart, transitionedAt)
+	}
+	searchTotalAs(customerID, `key = `+issueKey+` AND "Time since planning" = paused()`, 1)
 	if err := handler.Commands.DeleteServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, lateSLA.ID); err != nil {
 		t.Fatal(err)
 	}

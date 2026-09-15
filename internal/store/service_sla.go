@@ -330,6 +330,79 @@ func (s *Store) DeleteServiceSLAMetric(ctx context.Context, workspaceID, actorID
 	return tx.Commit(ctx)
 }
 
+// ServiceSLACyclePause is one replayed pause: when the SLA's pause condition
+// started to hold and, unless it still holds, when it stopped.
+type ServiceSLACyclePause struct {
+	Start  time.Time
+	Stop   *time.Time
+	Reason string
+}
+
+// ReplaceServiceSLAPauses rewrites the pauses of one metric's cycles on a
+// request from a replayed history. Each pause is clipped to the cycle it
+// overlaps, so a pause that outlives a cycle ends with it and one that spans
+// two cycles is written to both.
+func (s *Store) ReplaceServiceSLAPauses(ctx context.Context, workspaceID, serviceDeskID, metricID, requestIssueID string, pauses []ServiceSLACyclePause) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	rows, err := tx.Query(ctx, `
+		SELECT cycle.id,cycle.started_at,cycle.stopped_at
+		FROM service_sla_cycles cycle
+		JOIN service_requests sr ON sr.issue_id=cycle.request_issue_id
+		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND sr.issue_id=$3 AND cycle.metric_id=$4
+		ORDER BY cycle.cycle_number`, workspaceID, serviceDeskID, requestIssueID, metricID)
+	if err != nil {
+		return err
+	}
+	type cycle struct {
+		id    string
+		start time.Time
+		stop  *time.Time
+	}
+	cycles := make([]cycle, 0)
+	for rows.Next() {
+		var value cycle
+		if err := rows.Scan(&value.id, &value.start, &value.stop); err != nil {
+			rows.Close()
+			return err
+		}
+		cycles = append(cycles, value)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, value := range cycles {
+		if _, err := tx.Exec(ctx, `DELETE FROM service_sla_cycle_pauses WHERE cycle_id=$1`, value.id); err != nil {
+			return err
+		}
+		for _, pause := range pauses {
+			start, stop := pause.Start, pause.Stop
+			if start.Before(value.start) {
+				start = value.start
+			}
+			if value.stop != nil && (stop == nil || stop.After(*value.stop)) {
+				stop = value.stop
+			}
+			if stop != nil && !stop.After(start) {
+				continue
+			}
+			if value.stop != nil && !start.Before(*value.stop) {
+				continue
+			}
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO service_sla_cycle_pauses(cycle_id,started_at,stopped_at,reason)
+				VALUES($1,$2,$3,$4)`, value.id, start, stop, pause.Reason); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit(ctx)
+}
+
 // ServiceSLACycleSpan is one recalculated cycle: when it started and, unless
 // it is still running, when it stopped.
 type ServiceSLACycleSpan struct {

@@ -290,6 +290,124 @@ func serviceSLAEvents(before, after *models.Issue) []string {
 
 // serviceSLAFieldEvents lists the SLA condition events one field's change
 // meets, from the value it had to the value it has.
+// serviceSLAStatusPredicate reads a pause condition that asks only about
+// status, so it can be replayed over a request's history. Jira pauses an SLA
+// while a request waits in a status such as "Waiting for customer"; a
+// condition about anything else is only known for the request as it stands.
+func serviceSLAStatusPredicate(query string) (func(status string) bool, bool) {
+	parsed, err := jql.Parse(query)
+	if err != nil || parsed.OrderBy != nil || len(parsed.Orders) > 0 {
+		return nil, false
+	}
+	return serviceSLAStatusNode(parsed.Root)
+}
+
+func serviceSLAStatusNode(node jql.Node) (func(status string) bool, bool) {
+	switch value := node.(type) {
+	case jql.And:
+		terms, ok := serviceSLAStatusTerms(value.Terms)
+		if !ok {
+			return nil, false
+		}
+		return func(status string) bool {
+			for _, term := range terms {
+				if !term(status) {
+					return false
+				}
+			}
+			return true
+		}, true
+	case jql.Or:
+		terms, ok := serviceSLAStatusTerms(value.Terms)
+		if !ok {
+			return nil, false
+		}
+		return func(status string) bool {
+			for _, term := range terms {
+				if term(status) {
+					return true
+				}
+			}
+			return false
+		}, true
+	case jql.Not:
+		inner, ok := serviceSLAStatusNode(value.Inner)
+		if !ok {
+			return nil, false
+		}
+		return func(status string) bool { return !inner(status) }, true
+	case jql.Clause:
+		if !strings.EqualFold(value.Field, "status") || len(value.Values) == 0 {
+			return nil, false
+		}
+		names := make([]string, 0, len(value.Values))
+		for _, raw := range value.Values {
+			name := strings.Trim(strings.TrimSpace(raw), "\"'")
+			if name == "" {
+				return nil, false
+			}
+			names = append(names, name)
+		}
+		listed := func(status string) bool {
+			return slices.ContainsFunc(names, func(name string) bool { return strings.EqualFold(name, status) })
+		}
+		switch strings.ToLower(strings.Join(strings.Fields(value.Op), " ")) {
+		case "=", "in":
+			return listed, true
+		case "!=", "not in", "notin":
+			return func(status string) bool { return !listed(status) }, true
+		}
+	}
+	return nil, false
+}
+
+func serviceSLAStatusTerms(nodes []jql.Node) ([]func(string) bool, bool) {
+	terms := make([]func(string) bool, 0, len(nodes))
+	for _, node := range nodes {
+		term, ok := serviceSLAStatusNode(node)
+		if !ok {
+			return nil, false
+		}
+		terms = append(terms, term)
+	}
+	return terms, true
+}
+
+// serviceSLAPauseIntervals replays a status pause condition over a request's
+// history: the clock pauses when the request enters a status the condition
+// names and runs again when it leaves. An interval left open is one the
+// request is still waiting in.
+func serviceSLAPauseIntervals(paused func(string) bool, changes []serviceSLAChange, reason string) []store.ServiceSLACyclePause {
+	intervals := []store.ServiceSLACyclePause{}
+	for _, change := range changes {
+		open := len(intervals) > 0 && intervals[len(intervals)-1].Stop == nil
+		switch holds := paused(change.Status); {
+		case holds && !open:
+			intervals = append(intervals, store.ServiceSLACyclePause{Start: change.At, Reason: reason})
+		case !holds && open:
+			at := change.At
+			intervals[len(intervals)-1].Stop = &at
+		}
+	}
+	return intervals
+}
+
+// replayServiceSLAPauses rebuilds a request's pauses for one metric, so a
+// recalculated SLA keeps the time the request spent waiting rather than
+// counting it against the goal. A condition that cannot be replayed is left to
+// the live reconciliation, which knows only the request as it stands.
+func (s *Service) replayServiceSLAPauses(ctx context.Context, workspaceID, serviceDeskID string, metric models.ServiceSLAMetric, requestID string, changes []serviceSLAChange) error {
+	if strings.TrimSpace(metric.PauseJQL) == "" {
+		return s.Store.ReplaceServiceSLAPauses(ctx, workspaceID, serviceDeskID, metric.ID, requestID, nil)
+	}
+	paused, ok := serviceSLAStatusPredicate(metric.PauseJQL)
+	if !ok {
+		return nil
+	}
+	intervals := serviceSLAPauseIntervals(paused, changes, "Matched pause condition for "+metric.Name)
+	return s.Store.ReplaceServiceSLAPauses(ctx, workspaceID, serviceDeskID, metric.ID, requestID, intervals)
+}
+
 func serviceSLAFieldEvents(field, from, to string) []string {
 	if from == to {
 		return []string{}
@@ -327,6 +445,9 @@ func serviceSLAFieldEvents(field, from, to string) []string {
 type serviceSLAChange struct {
 	At     time.Time
 	Events []string
+	// Status is the request's status once the change has been applied, so a
+	// pause condition about status can be replayed over the history.
+	Status string
 }
 
 // serviceSLASpans replays a request's history against an SLA's conditions the
@@ -361,14 +482,27 @@ func serviceSLASpans(start, stop []string, changes []serviceSLAChange) []store.S
 // A comment counts as for customers when its author manages the request now.
 func (s *Service) serviceRequestSLAHistory(ctx context.Context, workspaceID, issueID string) ([]serviceSLAChange, error) {
 	var created time.Time
-	if err := s.Store.Pool.QueryRow(ctx, `SELECT created_at FROM service_requests WHERE workspace_id=$1 AND issue_id=$2`, workspaceID, issueID).Scan(&created); err != nil {
+	var status string
+	if err := s.Store.Pool.QueryRow(ctx, `
+		SELECT sr.created_at,COALESCE(st.name,'')
+		FROM service_requests sr JOIN issues i ON i.id=sr.issue_id
+		LEFT JOIN statuses st ON st.id=i.status_id
+		WHERE sr.workspace_id=$1 AND sr.issue_id=$2`, workspaceID, issueID).Scan(&created, &status); err != nil {
 		return nil, err
 	}
-	changes := []serviceSLAChange{{At: created, Events: []string{models.SLAConditionIssueCreated}}}
 	entries, err := s.Store.IssueChangelog(ctx, workspaceID, issueID)
 	if err != nil {
 		return nil, err
 	}
+	// The status a request was created in is the one the first status change
+	// moved away from; without such a change it is the status it is in now.
+	for _, entry := range entries {
+		if index := slices.IndexFunc(entry.Items, func(item models.ChangeItem) bool { return item.Field == "status" }); index >= 0 {
+			status = entry.Items[index].From
+			break
+		}
+	}
+	changes := []serviceSLAChange{{At: created, Events: []string{models.SLAConditionIssueCreated}, Status: status}}
 	for _, entry := range entries {
 		at, parseErr := time.Parse(time.RFC3339, entry.Created)
 		if parseErr != nil {
@@ -377,6 +511,9 @@ func (s *Service) serviceRequestSLAHistory(ctx context.Context, workspaceID, iss
 		change := serviceSLAChange{At: at}
 		for _, item := range entry.Items {
 			change.Events = append(change.Events, serviceSLAFieldEvents(item.Field, item.From, item.To)...)
+			if item.Field == "status" && item.From != item.To {
+				change.Status = item.To
+			}
 		}
 		if len(change.Events) > 0 {
 			changes = append(changes, change)
@@ -402,6 +539,13 @@ func (s *Service) serviceRequestSLAHistory(ctx context.Context, workspaceID, iss
 		changes = append(changes, serviceSLAChange{At: comment.At, Events: []string{event}})
 	}
 	slices.SortStableFunc(changes, func(a, b serviceSLAChange) int { return a.At.Compare(b.At) })
+	// Changes that are not status changes, such as comments, happen in the
+	// status the request was left in.
+	for index := range changes {
+		if changes[index].Status == "" && index > 0 {
+			changes[index].Status = changes[index-1].Status
+		}
+	}
 	return changes, nil
 }
 
@@ -432,6 +576,9 @@ func (s *Service) recalculateServiceSLA(ctx context.Context, actorID, workspaceI
 			return err
 		}
 		if err := s.Store.ApplyServiceSLAGoals(ctx, workspaceID, actorID, serviceDeskID, requestID); err != nil {
+			return err
+		}
+		if err := s.replayServiceSLAPauses(ctx, workspaceID, serviceDeskID, metrics[index], requestID, history); err != nil {
 			return err
 		}
 		if err := s.Store.ReconcileServiceSLAPauses(ctx, workspaceID, actorID, requestID, now); err != nil {
@@ -580,8 +727,22 @@ func (s *Service) UpdateServiceSLAMetric(ctx context.Context, actorID, workspace
 	if err != nil {
 		return err
 	}
+	metrics, err := s.Store.ServiceSLAMetrics(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		return err
+	}
+	index := slices.IndexFunc(metrics, func(metric models.ServiceSLAMetric) bool { return metric.ID == metricID })
 	now := time.Now().UTC()
 	for _, requestID := range requestIDs {
+		if index >= 0 {
+			history, err := s.serviceRequestSLAHistory(ctx, workspaceID, requestID)
+			if err != nil {
+				return err
+			}
+			if err := s.replayServiceSLAPauses(ctx, workspaceID, serviceDeskID, metrics[index], requestID, history); err != nil {
+				return err
+			}
+		}
 		if err := s.Store.ReconcileServiceSLAPauses(ctx, workspaceID, actorID, requestID, now); err != nil {
 			return err
 		}

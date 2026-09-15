@@ -318,8 +318,11 @@ public comments are replayed in order against the conditions, and the SLA's
 cycles are rebuilt with their historical start and stop times on its default
 goal before goals and pauses are settled again. A comment counts as for
 customers when its author manages the request now. Completed requests keep
-their cycles, and pause conditions apply from the recalculation onwards
-because they are evaluated against the request's current state.
+their cycles. A pause condition that asks only about status is replayed with
+the history, so a rebuilt cycle keeps the time the request spent waiting in
+that status; a condition that asks about anything else applies from the
+recalculation onwards, because it is evaluated against the request as it
+stands.
 
 Administrators add, rename, or remove dated holidays in the same calendar
 workspace. Changes are scoped to the selected service desk and audited. SLA
@@ -485,6 +488,6 @@ The implemented operations are assessed as partial. JQL support follows the
 documented ZZIRA search subset, including array-aware label matching;
 Assets-backed portal pickers,
 customer notification email templates and Organization added notifications, CSAT configuration,
-SLA goal distributions, complete public Assets object/schema/import API parity, historical pause replay for recalculated SLAs, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
+SLA goal distributions, complete public Assets object/schema/import API parity, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
 remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.
