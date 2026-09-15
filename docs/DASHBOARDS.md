@@ -43,12 +43,25 @@ The built-in catalog contains:
 - `com.zzira:resolution-time`
 - `com.zzira:velocity`
 - `com.zzira:sprint-burndown`
+- `com.zzira:two-dimensional-statistics`
+- `com.zzira:heat-map`
+- `com.zzira:watched-issues`
+- `com.zzira:voted-issues`
+- `com.zzira:in-progress`
 
 Gadgets accept direct JQL or a saved filter through the reserved
-`zzira.config` item property. Lists return up to 50 results. Statistics and pie
-charts calculate their full permission-filtered total and group by status,
-priority, work type or assignee. Pie charts include an equivalent data table.
+`zzira.config` item property. Lists return up to 50 results. Statistics, pie
+charts and heat maps calculate their full permission-filtered total and group
+by status, priority, work type, assignee, reporter, resolution, project or
+label. Work with several labels counts once under each label, while the total
+counts each work item once. Pie charts include an equivalent data table, and
+heat maps size each value by its share. Two dimensional filter statistics count
+the same work by one grouping across its columns and another down its rows,
+with row and column totals, showing the largest rows up to the result limit.
 Assigned-to-me adds `assignee = currentUser()` when each viewer loads it.
+Watched work items, Voted work items and Work in progress likewise add
+`issue in watchedIssues()`, `issue in votedIssues()` and
+`assignee = currentUser() AND statusCategory = indeterminate`.
 Report gadgets draw the matching report instead of a query. Created vs.
 resolved and Resolution time keep a `projectKey`, a `days` window of 7, 30 or
 90 and, for created vs. resolved, `cumulative` running totals; Velocity and

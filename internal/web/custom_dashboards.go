@@ -17,8 +17,10 @@ import (
 )
 
 type dashboardSlice struct {
-	Name, Color  string
-	Count        int
+	Name, Color string
+	Count       int
+	// Weight sizes a heat map value from 1 to 5 by its count.
+	Weight       int
 	Percent      float64
 	Dash, Offset string
 }
@@ -50,6 +52,7 @@ type customDashboardsData struct {
 	CurrentUserID                     string
 	ReportWindows                     []int
 	Catalog                           []models.GadgetDefinition
+	Groupings                         []models.GadgetGrouping
 	Columns                           [][]dashboardTile
 	ColumnOptions                     []int
 	Editing, Adding, Owner, AppGadget bool
@@ -176,7 +179,7 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msg, status)
 		return
 	}
-	data := customDashboardsData{Dashboard: d, Details: store.DashboardDetails{Name: d.Name, Description: d.Description, SharePermissions: d.SharePermissions, EditPermissions: d.EditPermissions}, Owner: d.OwnerID == user.ID, Editing: r.URL.Query().Get("edit") == "1", Adding: r.URL.Query().Get("add") == "1", Catalog: models.GadgetCatalog()}
+	data := customDashboardsData{Dashboard: d, Details: store.DashboardDetails{Name: d.Name, Description: d.Description, SharePermissions: d.SharePermissions, EditPermissions: d.EditPermissions}, Owner: d.OwnerID == user.ID, Editing: r.URL.Query().Get("edit") == "1", Adding: r.URL.Query().Get("add") == "1", Catalog: models.GadgetCatalog(), Groupings: models.GadgetGroupings}
 	appGadgets, err := h.Store.AppModulesByLocation(r.Context(), ws, "jira.dashboard")
 	if err != nil {
 		http.Error(w, "Could not load app gadgets.", 500)
@@ -414,7 +417,7 @@ func (d customDashboardsData) ShareSelected(kind, id string) bool {
 // or board, window and running totals.
 func gadgetConfigForm(r *http.Request) (models.GadgetConfig, error) {
 	c := models.GadgetConfig{
-		JQL: r.PostFormValue("jql"), FilterID: r.PostFormValue("filterId"), GroupBy: r.PostFormValue("groupBy"),
+		JQL: r.PostFormValue("jql"), FilterID: r.PostFormValue("filterId"), GroupBy: r.PostFormValue("groupBy"), YGroupBy: r.PostFormValue("yGroupBy"),
 		ProjectKey: strings.TrimSpace(r.PostFormValue("projectKey")), BoardID: strings.TrimSpace(r.PostFormValue("boardId")),
 		Cumulative: r.PostFormValue("cumulative") == "true",
 	}
@@ -546,10 +549,13 @@ func (h *Handler) dashboardTiles(r *http.Request, ws, userID, id string, gadgets
 			} else if g.ReportGadget() {
 				tile.Report, tile.Error = h.gadgetReport(r, ws, userID, g.ModuleKey, tile.Results.Config)
 			} else {
-				offset := 0.0
+				offset, largest := 0.0, 1
+				for _, c := range tile.Results.Counts {
+					largest = max(largest, c.Count)
+				}
 				for i, c := range tile.Results.Counts {
 					percent := float64(c.Count) * 100 / float64(tile.Results.Total)
-					tile.Slices = append(tile.Slices, dashboardSlice{Name: c.Name, Count: c.Count, Color: colors[i%len(colors)], Percent: percent, Dash: fmt.Sprintf("%.4f %.4f", percent, 100-percent), Offset: fmt.Sprintf("%.4f", -offset)})
+					tile.Slices = append(tile.Slices, dashboardSlice{Name: c.Name, Count: c.Count, Weight: 1 + 4*c.Count/largest, Color: colors[i%len(colors)], Percent: percent, Dash: fmt.Sprintf("%.4f %.4f", percent, 100-percent), Offset: fmt.Sprintf("%.4f", -offset)})
 					offset += percent
 				}
 			}

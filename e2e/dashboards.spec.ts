@@ -204,3 +204,54 @@ test('a team shows dashboards as a wallboard and a slide show', async ({ page })
   await expect(page).toHaveURL('/dashboards');
   for (const id of [first, second]) expect((await page.request.delete(`/rest/api/3/dashboard/${id}`, { headers: auth })).status()).toBe(204);
 });
+
+test('chart gadgets count work across two groupings, by weight and for each viewer', async ({ page }) => {
+  await login(page);
+  const auth = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const [wide, narrow] = [`chart-wide-${stamp}`, `chart-narrow-${stamp}`];
+  const keys: string[] = [];
+  for (const labels of [[wide, narrow], [wide]]) {
+    const created = await page.request.post('/rest/api/3/issue', { headers: auth, data: { fields: { project: { key: 'ZZ' }, summary: `Chart ${labels.join(' ')}`, issuetype: { name: 'Task' }, labels } } });
+    expect(created.status()).toBe(201);
+    keys.push((await created.json()).key);
+  }
+  const me = await (await page.request.get('/rest/api/3/myself', { headers: auth })).json();
+  const board = await page.request.post('/rest/api/3/dashboard', { headers: auth, data: { name: `Charts ${stamp}`, sharePermissions: [], editPermissions: [] } });
+  expect(board.status()).toBe(200);
+  const id = (await board.json()).id as string;
+  const jql = `labels in (${wide}, ${narrow})`;
+  const gadget = async (moduleKey: string, column: number, config: object) => {
+    const added = await page.request.post(`/rest/api/3/dashboard/${id}/gadget`, { headers: auth, data: { moduleKey, position: { column, row: 0 } } });
+    expect(added.status()).toBe(200);
+    const gid = (await added.json()).id;
+    expect((await page.request.put(`/rest/api/3/dashboard/${id}/items/${gid}/properties/zzira.config`, { headers: auth, data: config })).status()).toBe(201);
+  };
+  await gadget('com.zzira:two-dimensional-statistics', 0, { jql, groupBy: 'labels', yGroupBy: 'issuetype', limit: 5 });
+  await gadget('com.zzira:heat-map', 1, { jql, groupBy: 'labels', limit: 5 });
+  await gadget('com.zzira:watched-issues', 1, { jql, limit: 5 });
+  // Only the first work item is watched by the viewer.
+  for (const key of keys) await page.request.delete(`/rest/api/3/issue/${key}/watchers?accountId=${me.accountId}`, { headers: auth });
+  expect((await page.request.post(`/rest/api/3/issue/${keys[0]}/watchers`, { headers: auth, data: JSON.stringify(me.accountId) })).status()).toBe(204);
+
+  await page.goto(`/dashboards/${id}`);
+  const grid = page.getByRole('region', { name: 'Two dimensional filter statistics table', exact: true });
+  await expect(grid.getByRole('columnheader')).toHaveText(['Work type', wide, narrow, 'Total']);
+  await expect(grid.getByRole('row', { name: /^Task/ })).toHaveText(/Task\s*2\s*1\s*3/);
+  const heat = page.getByRole('list', { name: 'Work items by Labels', exact: true });
+  await expect(heat.getByRole('listitem')).toHaveText([new RegExp(`${wide}\\s*2 · 100%`), new RegExp(`${narrow}\\s*1 · 50%`)]);
+  await expect(heat.locator('.heat-5')).toContainText(wide);
+  const watched = page.getByRole('region', { name: 'Watched work items', exact: true });
+  await expect(watched.locator('.gadget-issues li')).toHaveCount(1);
+  await expect(watched).toContainText(keys[0]);
+  await accessible(page);
+
+  await page.getByRole('link', { name: 'Configure Two dimensional filter statistics', exact: true }).click();
+  await expect(page.getByLabel('Columns', { exact: true })).toHaveValue('labels');
+  await page.getByLabel('Rows', { exact: true }).selectOption('priority');
+  await page.getByRole('button', { name: 'Save gadget query' }).click();
+  await expect(grid.getByRole('columnheader').first()).toHaveText('Priority');
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect((await page.request.delete(`/rest/api/3/dashboard/${id}`, { headers: auth })).status()).toBe(204);
+});

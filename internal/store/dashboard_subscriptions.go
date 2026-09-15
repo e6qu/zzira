@@ -207,7 +207,7 @@ func (r *DashboardSubscriptionRunner) gadgetSummary(ctx context.Context, ws, rec
 	}
 	config := results.Config
 	switch gadget.ModuleKey {
-	case "com.zzira:filter-results", "com.zzira:assigned-to-me":
+	case "com.zzira:filter-results", "com.zzira:assigned-to-me", "com.zzira:watched-issues", "com.zzira:voted-issues", "com.zzira:in-progress":
 		lines := []string{fmt.Sprintf("%s: %d work items", title, results.Total)}
 		for index, issue := range results.Issues {
 			if index == 5 {
@@ -216,7 +216,20 @@ func (r *DashboardSubscriptionRunner) gadgetSummary(ctx context.Context, ws, rec
 			lines = append(lines, "  "+issue.Key+"  "+issue.Summary+"  "+base+"/browse/"+issue.Key)
 		}
 		return lines
-	case "com.zzira:issue-statistics", "com.zzira:pie-chart":
+	case "com.zzira:two-dimensional-statistics":
+		rows, columns := strings.ToLower(config.YGroupLabel()), strings.ToLower(config.GroupLabel())
+		if results.Grid == nil || len(results.Grid.Rows) == 0 {
+			return []string{fmt.Sprintf("%s: no work items by %s and %s", title, rows, columns)}
+		}
+		parts := []string{}
+		for index, row := range results.Grid.Rows {
+			if index == 5 {
+				break
+			}
+			parts = append(parts, fmt.Sprintf("%s %d", row.Name, row.Total))
+		}
+		return []string{fmt.Sprintf("%s: %d work items by %s and %s — %s", title, results.Total, rows, columns, strings.Join(parts, ", "))}
+	case "com.zzira:issue-statistics", "com.zzira:pie-chart", "com.zzira:heat-map":
 		parts := []string{}
 		for index, count := range results.Counts {
 			if index == 5 {
@@ -224,7 +237,7 @@ func (r *DashboardSubscriptionRunner) gadgetSummary(ctx context.Context, ws, rec
 			}
 			parts = append(parts, fmt.Sprintf("%s %d", count.Name, count.Count))
 		}
-		return []string{fmt.Sprintf("%s: %d work items by %s — %s", title, results.Total, config.GroupBy, strings.Join(parts, ", "))}
+		return []string{fmt.Sprintf("%s: %d work items by %s — %s", title, results.Total, strings.ToLower(config.GroupLabel()), strings.Join(parts, ", "))}
 	}
 	reportsOn := func(projectID string) bool {
 		enabled, err := r.Store.ProjectFeatureEnabled(ctx, projectID, "jsw.classic.reports")

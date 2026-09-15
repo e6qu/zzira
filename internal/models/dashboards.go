@@ -118,7 +118,60 @@ func GadgetCatalog() []GadgetDefinition {
 		{"com.zzira:resolution-time", "Resolution time", "How long a project's work takes from creation to resolution.", ""},
 		{"com.zzira:velocity", "Velocity chart", "Commitment against completed work for a scrum board's recent sprints.", ""},
 		{"com.zzira:sprint-burndown", "Sprint burndown", "Remaining work in a scrum board's active sprint.", ""},
+		{"com.zzira:two-dimensional-statistics", "Two dimensional filter statistics", "Count work across two groupings, such as status by assignee.", ""},
+		{"com.zzira:heat-map", "Heat map", "See which values carry the most work, sized by their share.", ""},
+		{"com.zzira:watched-issues", "Watched work items", "The work each viewer watches.", ""},
+		{"com.zzira:voted-issues", "Voted work items", "The work each viewer voted for.", ""},
+		{"com.zzira:in-progress", "Work in progress", "Each viewer's assigned work that is in progress.", ""},
 	}
+}
+
+// GadgetGrouping is a field that chart gadgets count work by.
+type GadgetGrouping struct {
+	Key, Name string
+}
+
+// GadgetGroupings are the fields chart gadgets can group work by.
+var GadgetGroupings = []GadgetGrouping{
+	{"status", "Status"}, {"priority", "Priority"}, {"issuetype", "Work type"}, {"assignee", "Assignee"},
+	{"reporter", "Reporter"}, {"resolution", "Resolution"}, {"project", "Project"}, {"labels", "Labels"},
+}
+
+// GadgetGroupingName names a grouping for people, or "" when it is unknown.
+func GadgetGroupingName(key string) string {
+	for _, grouping := range GadgetGroupings {
+		if grouping.Key == key {
+			return grouping.Name
+		}
+	}
+	return ""
+}
+
+// GadgetScopeJQL is the JQL a list gadget adds for whoever views it, such as
+// the viewer's own assignments.
+func GadgetScopeJQL(moduleKey string) string {
+	switch moduleKey {
+	case "com.zzira:assigned-to-me":
+		return "assignee = currentUser()"
+	case "com.zzira:watched-issues":
+		return "issue in watchedIssues()"
+	case "com.zzira:voted-issues":
+		return "issue in votedIssues()"
+	case "com.zzira:in-progress":
+		return "assignee = currentUser() AND statusCategory = indeterminate"
+	}
+	return ""
+}
+
+// ListGadget reports whether a gadget lists work items rather than counting
+// them.
+func ListGadget(moduleKey string) bool {
+	return moduleKey == "com.zzira:filter-results" || GadgetScopeJQL(moduleKey) != ""
+}
+
+// ListGadget reports whether the gadget lists work items.
+func (g DashboardGadget) ListGadget() bool {
+	return ListGadget(g.ModuleKey)
 }
 
 // ReportGadget reports whether a gadget draws a project or board report
@@ -139,12 +192,21 @@ func (g DashboardGadget) ReportGadget() bool {
 // GadgetConfig is a gadget's settings: a work item query for list and chart
 // gadgets, or the project or board and time window a report gadget draws.
 type GadgetConfig struct {
-	JQL        string `json:"jql"`
-	FilterID   string `json:"filterId"`
-	GroupBy    string `json:"groupBy"`
+	JQL      string `json:"jql"`
+	FilterID string `json:"filterId"`
+	GroupBy  string `json:"groupBy"`
+	// YGroupBy is the second grouping of two dimensional statistics, counted
+	// down its rows.
+	YGroupBy   string `json:"yGroupBy,omitempty"`
 	Limit      int    `json:"limit"`
 	ProjectKey string `json:"projectKey,omitempty"`
 	BoardID    string `json:"boardId,omitempty"`
 	Days       int    `json:"days,omitempty"`
 	Cumulative bool   `json:"cumulative,omitempty"`
 }
+
+// GroupLabel names the chart grouping for people.
+func (c GadgetConfig) GroupLabel() string { return GadgetGroupingName(c.GroupBy) }
+
+// YGroupLabel names the second grouping for people.
+func (c GadgetConfig) YGroupLabel() string { return GadgetGroupingName(c.YGroupBy) }

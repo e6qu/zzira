@@ -132,8 +132,10 @@ func TestDashboardLifecyclePrivacyAndGadgets(t *testing.T) {
 	call(member, "PUT", prop+"/zzira.config", nil, 400)
 	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "groupBy": "status", "limit": 1}, 201)
 	call(actor, "POST", "/rest/api/3/project", map[string]any{"key": "DG", "name": "Dashboard project", "projectTypeKey": "software", "leadAccountId": actor}, 201)
+	chartIssues := []string{}
 	for i := 0; i < 3; i++ {
 		issue := call(actor, "POST", "/rest/api/3/issue", map[string]any{"fields": map[string]any{"project": map[string]string{"key": "DG"}, "summary": fmt.Sprintf("Chart work %d", i), "issuetype": map[string]string{"name": "Task"}, "assignee": map[string]string{"accountId": member}}}, 201)
+		chartIssues = append(chartIssues, fmt.Sprint(issue["id"]))
 		if i == 2 {
 			exec(`UPDATE issues SET security_level_id='private-test' WHERE jira_id::text=$1`, issue["id"])
 		}
@@ -159,6 +161,57 @@ func TestDashboardLifecyclePrivacyAndGadgets(t *testing.T) {
 	result, err = st.DashboardGadgetResults(ctx, ws, actor, id, models.DashboardGadget{ID: gid, ModuleKey: "com.zzira:assigned-to-me"})
 	if err != nil || result.Total != 0 {
 		t.Fatalf("owner assignment leaked into viewer: %+v, %v", result, err)
+	}
+	// Labels count once under each label, while totals count each work item once.
+	for index, labels := range []string{"{alpha,beta}", "{alpha}", "{beta}"} {
+		exec(`UPDATE issues SET labels=$1::text[] WHERE jira_id::text=$2`, labels, chartIssues[index])
+	}
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "groupBy": "labels", "yGroupBy": "fixVersion", "limit": 1}, 400)
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "groupBy": "labels", "limit": 1}, 200)
+	counts := func(viewer string) map[string]int {
+		t.Helper()
+		result, err := st.DashboardGadgetResults(ctx, ws, viewer, id, models.DashboardGadget{ID: gid, ModuleKey: "com.zzira:heat-map"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]int{"total": result.Total}
+		for _, count := range result.Counts {
+			out[count.Name] = count.Count
+		}
+		return out
+	}
+	if got := counts(member); fmt.Sprint(got) != fmt.Sprint(map[string]int{"alpha": 2, "beta": 1, "total": 2}) {
+		t.Fatalf("member label counts = %v", got)
+	}
+	if got := counts(actor); fmt.Sprint(got) != fmt.Sprint(map[string]int{"alpha": 2, "beta": 2, "total": 3}) {
+		t.Fatalf("owner label counts = %v", got)
+	}
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "groupBy": "status", "yGroupBy": "labels", "limit": 1}, 200)
+	result, err = st.DashboardGadgetResults(ctx, ws, actor, id, models.DashboardGadget{ID: gid, ModuleKey: "com.zzira:two-dimensional-statistics"})
+	if err != nil || result.Grid == nil || len(result.Grid.Columns) != 1 || len(result.Grid.Rows) != 1 || result.Grid.Rows[0].Name != "alpha" || fmt.Sprint(result.Grid.Rows[0].Counts) != "[2]" || result.Grid.HiddenRows != 1 || fmt.Sprint(result.Grid.ColumnTotals) != "[4]" || result.Grid.Total != 4 || result.Total != 3 {
+		t.Fatalf("two dimensional statistics = %+v %+v, %v", result, result.Grid, err)
+	}
+	result, err = st.DashboardGadgetResults(ctx, ws, member, id, models.DashboardGadget{ID: gid, ModuleKey: "com.zzira:two-dimensional-statistics"})
+	if err != nil || result.Grid == nil || len(result.Grid.Rows) != 1 || result.Grid.Rows[0].Name != "alpha" || result.Grid.HiddenRows != 1 || result.Grid.Total != 3 {
+		t.Fatalf("member two dimensional statistics = %+v %+v, %v", result, result.Grid, err)
+	}
+	// Watched, voted and in-progress lists are evaluated for each viewer.
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "limit": 5}, 200)
+	exec(`DELETE FROM watchers WHERE issue_id IN (SELECT id FROM issues WHERE project_id=(SELECT id FROM projects WHERE workspace_id=$1 AND key='DG'))`, ws)
+	exec(`INSERT INTO watchers(issue_id,user_id) SELECT id,$1 FROM issues WHERE jira_id::text=$2`, member, chartIssues[0])
+	exec(`INSERT INTO issue_votes(issue_id,user_id) SELECT id,$1 FROM issues WHERE jira_id::text=$2`, member, chartIssues[1])
+	exec(`UPDATE issues SET status_id=(SELECT id FROM statuses WHERE category='indeterminate' ORDER BY id LIMIT 1) WHERE jira_id::text=$1`, chartIssues[1])
+	for moduleKey, want := range map[string]map[string]int{
+		"com.zzira:watched-issues": {member: 1, actor: 0},
+		"com.zzira:voted-issues":   {member: 1, actor: 0},
+		"com.zzira:in-progress":    {member: 1, actor: 0},
+	} {
+		for viewer, total := range want {
+			result, err := st.DashboardGadgetResults(ctx, ws, viewer, id, models.DashboardGadget{ID: gid, ModuleKey: moduleKey})
+			if err != nil || result.Total != total || len(result.Issues) != total {
+				t.Fatalf("%s for %s = %+v, %v", moduleKey, viewer, result, err)
+			}
+		}
 	}
 	call(member, "PUT", gp, map[string]any{"color": "purple", "title": "Team delivery", "position": map[string]int{"column": 1, "row": 999}}, 204)
 	// Concurrent inserts at the same location must produce unique contiguous rows.
