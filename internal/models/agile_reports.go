@@ -63,3 +63,37 @@ type VelocityReport struct {
 	Statistic string
 	Sprints   []VelocitySprint
 }
+
+// FlowColumn is one board column in the cumulative flow diagram.
+type FlowColumn struct {
+	StatusID string
+	Name     string
+}
+
+// FlowDay counts the board's work in each column at the end of a day, in
+// column order.
+type FlowDay struct {
+	Date   string
+	Counts []int
+}
+
+// CumulativeFlow is how a board's work was spread across its columns each day.
+type CumulativeFlow struct {
+	Columns []FlowColumn
+	Days    []FlowDay
+}
+
+// CycleSample is one work item's trip from starting to done.
+type CycleSample struct {
+	Key          string
+	Summary      string
+	CompletedAt  string
+	CycleSeconds int64
+}
+
+// ControlChart is the cycle time of the board's work completed in a window.
+type ControlChart struct {
+	Samples        []CycleSample
+	AverageSeconds int64
+	MedianSeconds  int64
+}

@@ -414,6 +414,8 @@ func main() {
 	mux.HandleFunc("GET /projects/{key}/timeline", webHandler.ProjectTimeline)
 	mux.HandleFunc("POST /projects/{key}/timeline", webHandler.ScheduleTimelineItem)
 	mux.HandleFunc("GET /projects/{key}/reports/velocity", webHandler.VelocityReport)
+	mux.HandleFunc("GET /projects/{key}/reports/cumulative-flow", webHandler.CumulativeFlowReport)
+	mux.HandleFunc("GET /projects/{key}/reports/control-chart", webHandler.ControlChartReport)
 	mux.HandleFunc("GET /projects/new", webHandler.NewProject)
 	mux.HandleFunc("POST /projects/new", webHandler.NewProject)
 	mux.HandleFunc("GET /projects/{key}/settings", webHandler.ProjectSettings)

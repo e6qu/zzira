@@ -62,6 +62,8 @@ type sprintReportSection struct {
 }
 
 type sprintReportView struct {
+	// Burnup draws scope and completed work over the same window.
+	Burnup burnupChart
 	models.SprintReport
 	Sections                                     []sprintReportSection
 	StartDisplay, EndDisplay, PlannedEndDisplay  string
@@ -116,6 +118,68 @@ func chartTicks(maximum, top, bottom float64) []chartTick {
 		ticks = append(ticks, chartTick{Y: bottom - share*(bottom-top), Label: chartNumber(maximum * share)})
 	}
 	return ticks
+}
+
+// burnupChart is the SVG geometry of a sprint burnup.
+type burnupChart struct {
+	Width, Height, Left, Right, Bottom, TickX float64
+	Scope, Completed                          string
+	Ticks                                     []chartTick
+	StartLabel, EndLabel                      string
+}
+
+// newBurnupChart lays out the sprint's scope and the work completed within it
+// as step lines over the sprint.
+func newBurnupChart(report models.SprintReport, layout string) burnupChart {
+	chart := burnupChart{Width: 640, Height: 260, Left: 48, Right: 624, Bottom: 220, TickX: 40}
+	const top = 16.0
+	start, err := time.Parse(time.RFC3339, report.Start)
+	if err != nil || len(report.Burndown) == 0 {
+		return chart
+	}
+	end, err := time.Parse(time.RFC3339, report.End)
+	if err != nil {
+		end = start
+	}
+	finish := end
+	if planned, plannedErr := time.Parse(time.RFC3339, report.Sprint.EndDate); plannedErr == nil && planned.After(finish) {
+		finish = planned
+	}
+	span := finish.Sub(start).Seconds()
+	if span <= 0 {
+		span = 1
+	}
+	maximum := 0.0
+	for _, event := range report.Burndown {
+		maximum = math.Max(maximum, event.Scope)
+	}
+	maximum = chartScale(maximum)
+	x := func(at time.Time) float64 {
+		offset := math.Min(math.Max(at.Sub(start).Seconds(), 0), span)
+		return math.Round((chart.Left+offset/span*(chart.Right-chart.Left))*10) / 10
+	}
+	y := func(value float64) float64 {
+		return math.Round((chart.Bottom-value/maximum*(chart.Bottom-top))*10) / 10
+	}
+	step := func(value func(models.SprintBurndownEvent) float64) string {
+		previous := value(report.Burndown[0])
+		points := []string{fmt.Sprintf("%g,%g", x(start), y(previous))}
+		for _, event := range report.Burndown[1:] {
+			at, err := time.Parse(time.RFC3339, event.At)
+			if err != nil {
+				continue
+			}
+			points = append(points, fmt.Sprintf("%g,%g", x(at), y(previous)), fmt.Sprintf("%g,%g", x(at), y(value(event))))
+			previous = value(event)
+		}
+		points = append(points, fmt.Sprintf("%g,%g", x(end), y(previous)))
+		return strings.Join(points, " ")
+	}
+	chart.Scope = step(func(event models.SprintBurndownEvent) float64 { return event.Scope })
+	chart.Completed = step(func(event models.SprintBurndownEvent) float64 { return event.Scope - event.Remaining })
+	chart.Ticks = chartTicks(maximum, top, chart.Bottom)
+	chart.StartLabel, chart.EndLabel = start.Format(layout), finish.Format(layout)
+	return chart
 }
 
 // newBurndownChart lays out remaining work as a step line against the
@@ -192,6 +256,7 @@ func newSprintReportView(report models.SprintReport, look siteDateLayouts) *spri
 		CompletedText:     chartNumber(report.CompletedTotal), NotCompletedText: chartNumber(report.NotCompletedTotal),
 		RemovedText: chartNumber(report.RemovedTotal),
 		Chart:       newBurndownChart(report, look.day),
+		Burnup:      newBurnupChart(report, look.day),
 	}
 	view.Sections = []sprintReportSection{
 		{ID: "completed-work", Title: "Completed work items", Empty: "No work was completed in this sprint.", Issues: report.Completed},
@@ -284,6 +349,12 @@ func sprintMatches(sprint *models.Sprint, wanted string) bool {
 // agileReportContext loads the project's scrum boards and the board the
 // request names, or the first one.
 func (h *Handler) agileReportContext(w http.ResponseWriter, r *http.Request) (*models.User, string, agileReportBoards, bool) {
+	return h.boardReportContext(w, r, true)
+}
+
+// boardReportContext loads the project's boards, only scrum boards when
+// scrumOnly, and the board the request names, or the first one.
+func (h *Handler) boardReportContext(w http.ResponseWriter, r *http.Request, scrumOnly bool) (*models.User, string, agileReportBoards, bool) {
 	user, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
 		return nil, "", agileReportBoards{}, false
@@ -299,7 +370,7 @@ func (h *Handler) agileReportContext(w http.ResponseWriter, r *http.Request) (*m
 	}
 	data := agileReportBoards{Project: project}
 	for _, board := range boards {
-		if board.Type == "scrum" {
+		if board.Type == "scrum" || !scrumOnly {
 			data.Boards = append(data.Boards, board)
 		}
 	}
@@ -382,4 +453,218 @@ func (h *Handler) VelocityReport(w http.ResponseWriter, r *http.Request) {
 		data.Report = newVelocityReportView(report)
 	}
 	h.writeWorkspacePage(w, r, "page_velocity_report", user, workspaceID, data, "reports", boards.Project.ID)
+}
+
+// flowWindows are the day ranges the flow reports offer.
+var flowWindows = []int{14, 30, 90}
+
+func reportWindow(r *http.Request) (int, bool) {
+	value := r.URL.Query().Get("days")
+	if value == "" {
+		return 30, true
+	}
+	for _, days := range flowWindows {
+		if strconv.Itoa(days) == value {
+			return days, true
+		}
+	}
+	return 0, false
+}
+
+type flowBand struct {
+	Name, Class, Points string
+}
+
+type flowRow struct {
+	Date   string
+	Counts []int
+}
+
+// cumulativeFlowView stacks each column's count, first column on top, as
+// Jira draws the diagram.
+type cumulativeFlowView struct {
+	models.CumulativeFlow
+	Width, Height, Left, Right, Bottom, TickX float64
+	Bands                                     []flowBand
+	Ticks                                     []chartTick
+	Rows                                      []flowRow
+	StartLabel, EndLabel                      string
+}
+
+func newCumulativeFlowView(flow models.CumulativeFlow, layout string) *cumulativeFlowView {
+	const top = 16.0
+	view := &cumulativeFlowView{CumulativeFlow: flow, Width: 640, Height: 260, Left: 48, Right: 624, Bottom: 220, TickX: 40}
+	if len(flow.Days) == 0 || len(flow.Columns) == 0 {
+		return view
+	}
+	maximum := 0.0
+	for _, day := range flow.Days {
+		total := 0
+		for _, count := range day.Counts {
+			total += count
+		}
+		maximum = math.Max(maximum, float64(total))
+	}
+	maximum = chartScale(maximum)
+	step := (view.Right - view.Left) / math.Max(float64(len(flow.Days)-1), 1)
+	x := func(index int) float64 { return math.Round((view.Left+float64(index)*step)*10) / 10 }
+	y := func(value float64) float64 { return math.Round((view.Bottom-value/maximum*(view.Bottom-top))*10) / 10 }
+	// The last column sits at the bottom; each band spans from the total of
+	// the columns after it to that total plus its own count.
+	for column := range flow.Columns {
+		lower := make([]float64, len(flow.Days))
+		upper := make([]float64, len(flow.Days))
+		for index, day := range flow.Days {
+			below := 0
+			for later := column + 1; later < len(flow.Columns); later++ {
+				below += day.Counts[later]
+			}
+			lower[index], upper[index] = float64(below), float64(below+day.Counts[column])
+		}
+		points := make([]string, 0, len(flow.Days)*2)
+		for index := range flow.Days {
+			points = append(points, fmt.Sprintf("%g,%g", x(index), y(upper[index])))
+		}
+		for index := len(flow.Days) - 1; index >= 0; index-- {
+			points = append(points, fmt.Sprintf("%g,%g", x(index), y(lower[index])))
+		}
+		view.Bands = append(view.Bands, flowBand{Name: flow.Columns[column].Name, Class: fmt.Sprintf("flow-band-%d", column%6), Points: strings.Join(points, " ")})
+	}
+	view.Ticks = chartTicks(maximum, top, view.Bottom)
+	for _, day := range flow.Days {
+		view.Rows = append(view.Rows, flowRow{Date: displayDay(day.Date, layout), Counts: day.Counts})
+	}
+	view.StartLabel, view.EndLabel = view.Rows[0].Date, view.Rows[len(view.Rows)-1].Date
+	return view
+}
+
+func displayDay(value, layout string) string {
+	day, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		return value
+	}
+	return day.Format(layout)
+}
+
+type cyclePoint struct {
+	models.CycleSample
+	X, Y          float64
+	Completed     string
+	CycleDuration string
+}
+
+// controlChartView scatters each completed item by completion time and cycle
+// time, with the average as a line.
+type controlChartView struct {
+	models.ControlChart
+	Width, Height, Left, Right, Bottom, TickX float64
+	Points                                    []cyclePoint
+	Ticks                                     []chartTick
+	AverageY                                  float64
+	Average, Median                           string
+	StartLabel, EndLabel                      string
+}
+
+// cycleDuration writes a cycle time in days and hours, as Jira's chart does.
+func cycleDuration(seconds int64) string {
+	hours := seconds / 3600
+	days, rest := hours/24, hours%24
+	switch {
+	case days > 0 && rest > 0:
+		return fmt.Sprintf("%dd %dh", days, rest)
+	case days > 0:
+		return fmt.Sprintf("%dd", days)
+	case hours > 0:
+		return fmt.Sprintf("%dh", hours)
+	}
+	return fmt.Sprintf("%dm", seconds/60)
+}
+
+func newControlChartView(chart models.ControlChart, days int, now time.Time, layout, complete string) *controlChartView {
+	const top = 16.0
+	view := &controlChartView{ControlChart: chart, Width: 640, Height: 260, Left: 56, Right: 624, Bottom: 220, TickX: 48}
+	now = now.UTC()
+	since := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -(days - 1))
+	span := now.Sub(since).Seconds()
+	maximumHours := 1.0
+	for _, sample := range chart.Samples {
+		maximumHours = math.Max(maximumHours, float64(sample.CycleSeconds)/3600)
+	}
+	maximumHours = chartScale(maximumHours)
+	x := func(at time.Time) float64 {
+		offset := math.Min(math.Max(at.Sub(since).Seconds(), 0), span)
+		return math.Round((view.Left+offset/span*(view.Right-view.Left))*10) / 10
+	}
+	y := func(seconds int64) float64 {
+		return math.Round((view.Bottom-float64(seconds)/3600/maximumHours*(view.Bottom-top))*10) / 10
+	}
+	for _, sample := range chart.Samples {
+		completed, err := time.Parse(time.RFC3339, sample.CompletedAt)
+		if err != nil {
+			continue
+		}
+		view.Points = append(view.Points, cyclePoint{CycleSample: sample, X: x(completed), Y: y(sample.CycleSeconds), Completed: completed.Format(complete), CycleDuration: cycleDuration(sample.CycleSeconds)})
+	}
+	view.Ticks = []chartTick{}
+	for _, tick := range chartTicks(maximumHours, top, view.Bottom) {
+		hours, _ := strconv.ParseFloat(tick.Label, 64)
+		view.Ticks = append(view.Ticks, chartTick{Y: tick.Y, Label: cycleDuration(int64(hours * 3600))})
+	}
+	if len(chart.Samples) > 0 {
+		view.AverageY = y(chart.AverageSeconds)
+		view.Average, view.Median = cycleDuration(chart.AverageSeconds), cycleDuration(chart.MedianSeconds)
+	}
+	view.StartLabel, view.EndLabel = since.Format(layout), now.Format(layout)
+	return view
+}
+
+type flowReportData struct {
+	agileReportBoards
+	Days    int
+	Windows []int
+	Flow    *cumulativeFlowView
+	Control *controlChartView
+}
+
+// CumulativeFlowReport renders the cumulative flow diagram for a board.
+func (h *Handler) CumulativeFlowReport(w http.ResponseWriter, r *http.Request) {
+	h.flowReport(w, r, "page_cumulative_flow_report")
+}
+
+// ControlChartReport renders the control chart for a board.
+func (h *Handler) ControlChartReport(w http.ResponseWriter, r *http.Request) {
+	h.flowReport(w, r, "page_control_chart_report")
+}
+
+func (h *Handler) flowReport(w http.ResponseWriter, r *http.Request, page string) {
+	user, workspaceID, boards, ok := h.boardReportContext(w, r, false)
+	if !ok {
+		return
+	}
+	days, ok := reportWindow(r)
+	if !ok {
+		http.Error(w, "Choose a 14, 30, or 90 day window.", http.StatusBadRequest)
+		return
+	}
+	data := flowReportData{agileReportBoards: boards, Days: days, Windows: flowWindows}
+	if boards.Board != nil {
+		look := h.siteLook(r, workspaceID)
+		now := time.Now()
+		if page == "page_cumulative_flow_report" {
+			flow, err := h.Store.CumulativeFlow(r.Context(), boards.Board, user.ID, days, now)
+			if err != nil {
+				http.Error(w, "Could not calculate cumulative flow.", http.StatusInternalServerError)
+				return
+			}
+			data.Flow = newCumulativeFlowView(flow, look.DateDay)
+		} else {
+			chart, err := h.Store.ControlChart(r.Context(), boards.Board, user.ID, days, now)
+			if err != nil {
+				http.Error(w, "Could not calculate the control chart.", http.StatusInternalServerError)
+				return
+			}
+			data.Control = newControlChartView(chart, days, now, look.DateDay, look.DateComplete)
+		}
+	}
+	h.writeWorkspacePage(w, r, page, user, workspaceID, data, "reports", boards.Project.ID)
 }
