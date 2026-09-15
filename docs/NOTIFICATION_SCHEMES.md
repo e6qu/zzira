@@ -98,8 +98,12 @@ alternative (`multipart/alternative`, quoted-printable, RFC 2047 subjects).
 The HTML names who did what, the project, the linked key and summary, the
 status, a *View work item* button and a link to notification preferences.
 The outbox stores site-relative links, and the mailer makes them absolute with
-`BASE_URL` when it sends. The assessment remains partial while notification
-diagnostics remain. The `user`, `group`, `projectRole`, `field`
+`BASE_URL` when it sends. Administrators check a decision with the notification helper
+(`/admin/notification-helper`, linked from the Events section of
+administration). Given a person, a work item and an event, it names the
+project's scheme, the rules that name the person, whether a Current user rule
+also notifies whoever makes the change, and whether the person is an active
+member, can browse the project and can see the work item's security level. The `user`, `group`, `projectRole`, `field`
 and `all` expansions add each recipient's details. Jira's deprecated
 direct email-address recipient is stored and delivered, but it does not create
 an in-app identity. Exact self links on every paged response and all Jira error

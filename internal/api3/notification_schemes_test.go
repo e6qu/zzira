@@ -3,6 +3,7 @@ package api3
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -197,6 +198,25 @@ func TestNotificationSchemeContractAndDelivery(t *testing.T) {
 	}
 	if notificationCount != 1 || emailCount != 1 {
 		t.Fatalf("restricted delivery leaked: inbox=%d email=%d", notificationCount, emailCount)
+	}
+
+	// The notification helper explains the same decisions.
+	diagnosis, err := st.DiagnoseIssueNotification(ctx, workspaceID, recipientID, issueID, 1)
+	if err != nil || !diagnosis.Notified() || diagnosis.SchemeName != "Delivery notifications" || diagnosis.EventName != "Issue created" || len(diagnosis.Rules) != 1 || diagnosis.Rules[0].NotificationType != "User" {
+		t.Fatalf("created diagnosis = %+v err=%v", diagnosis, err)
+	}
+	if diagnosis, err = st.DiagnoseIssueNotification(ctx, workspaceID, recipientID, issueID, 6); err != nil || diagnosis.Notified() || len(diagnosis.Rules) != 0 || !diagnosis.CanBrowse {
+		t.Fatalf("commented diagnosis = %+v err=%v", diagnosis, err)
+	}
+	var privateIssueID string
+	if err = st.Pool.QueryRow(ctx, `SELECT id FROM issues WHERE workspace_id=$1 AND summary='Private notification'`, workspaceID).Scan(&privateIssueID); err != nil {
+		t.Fatal(err)
+	}
+	if diagnosis, err = st.DiagnoseIssueNotification(ctx, workspaceID, recipientID, privateIssueID, 1); err != nil || diagnosis.Notified() || len(diagnosis.Rules) != 1 || diagnosis.CanSeeSecurityLevel {
+		t.Fatalf("restricted diagnosis = %+v err=%v", diagnosis, err)
+	}
+	if _, err = st.DiagnoseIssueNotification(ctx, workspaceID, recipientID, issueID, 999); !errors.Is(err, store.ErrNotificationSchemeValidation) {
+		t.Fatalf("unknown event err = %v", err)
 	}
 
 	// The reporter's own changes stay silent until they choose "Notify me".

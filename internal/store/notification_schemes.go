@@ -513,124 +513,13 @@ func deliverIssueNotificationTx(ctx context.Context, tx pgx.Tx, workspaceID, act
 	if err != nil {
 		return err
 	}
-	rows, err := tx.Query(ctx, `SELECT nse.notification_type,COALESCE(nse.recipient,''),COALESCE(nse.parameter,'') FROM notification_scheme_entries nse JOIN project_notification_schemes pns ON pns.workspace_id=nse.workspace_id AND pns.scheme_id=nse.scheme_id WHERE pns.project_id=$1 AND nse.workspace_id=$2 AND nse.event_id=$3 ORDER BY nse.id`, projectID, workspaceID, eventID)
+	recipients, err := issueEventRecipientsTx(ctx, tx, workspaceID, actorID, issueRecipientContext{
+		ProjectID: projectID, IssueID: issueID, AssigneeID: assigneeID, ReporterID: reporterID, ProjectLeadID: projectLeadID, Fields: fields,
+	}, eventID)
 	if err != nil {
 		return err
 	}
-	type recipientRule struct{ kind, recipient, parameter string }
-	rules := []recipientRule{}
-	for rows.Next() {
-		var rule recipientRule
-		if err = rows.Scan(&rule.kind, &rule.recipient, &rule.parameter); err != nil {
-			rows.Close()
-			return err
-		}
-		rules = append(rules, rule)
-	}
-	rows.Close()
-	// The value records an explicit CurrentUser match. Implicit roles skip the
-	// actor's own changes unless they chose to be notified of them, as Jira's
-	// personal "My changes" setting does.
-	users := map[string]bool{}
-	addUser := func(id string, currentUser bool) {
-		if id == "" {
-			return
-		}
-		users[id] = users[id] || currentUser
-	}
-	externalEmails := map[string]bool{}
-	var issueFields map[string]any
-	_ = json.Unmarshal(fields, &issueFields)
-	addGroup := func(group string) error {
-		groupRows, queryErr := tx.Query(ctx, `SELECT gm.user_id FROM group_members gm JOIN groups g ON g.id=gm.group_id JOIN directories d ON d.id=g.directory_id JOIN sites si ON si.organization_id=d.organization_id WHERE si.workspace_id=$1 AND d.active AND (g.id::text=$2 OR lower(g.name)=lower($2))`, workspaceID, group)
-		if queryErr != nil {
-			return queryErr
-		}
-		defer groupRows.Close()
-		for groupRows.Next() {
-			var id string
-			if queryErr = groupRows.Scan(&id); queryErr != nil {
-				return queryErr
-			}
-			addUser(id, false)
-		}
-		return groupRows.Err()
-	}
-	for _, rule := range rules {
-		switch rule.kind {
-		case "CurrentAssignee":
-			addUser(assigneeID, false)
-		case "Reporter":
-			addUser(reporterID, false)
-		case "CurrentUser":
-			addUser(actorID, true)
-		case "ProjectLead":
-			addUser(projectLeadID, false)
-		case "User":
-			addUser(rule.recipient, true)
-		case "AllWatchers":
-			watchRows, queryErr := tx.Query(ctx, `SELECT user_id FROM watchers WHERE issue_id=$1`, issueID)
-			if queryErr != nil {
-				return queryErr
-			}
-			for watchRows.Next() {
-				var id string
-				if queryErr = watchRows.Scan(&id); queryErr != nil {
-					watchRows.Close()
-					return queryErr
-				}
-				addUser(id, false)
-			}
-			watchRows.Close()
-		case "Group":
-			if err = addGroup(rule.recipient); err != nil {
-				return err
-			}
-		case "ProjectRole":
-			roleRows, queryErr := tx.Query(ctx, `SELECT DISTINCT CASE WHEN rb.principal_type='user' THEN rb.principal_id ELSE gm.user_id END FROM role_bindings rb LEFT JOIN group_members gm ON rb.principal_type='group' AND gm.group_id::text=rb.principal_id WHERE rb.scope_type='project' AND rb.scope_id=$1 AND rb.role_key=$2`, projectID, rule.recipient)
-			if queryErr != nil {
-				return queryErr
-			}
-			for roleRows.Next() {
-				var id *string
-				if queryErr = roleRows.Scan(&id); queryErr != nil {
-					roleRows.Close()
-					return queryErr
-				}
-				if id != nil {
-					addUser(*id, false)
-				}
-			}
-			roleRows.Close()
-		case "ComponentLead":
-			componentRows, queryErr := tx.Query(ctx, `SELECT DISTINCT c.lead_account_id FROM project_components c WHERE c.project_id=$1 AND c.lead_account_id IS NOT NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN $2::jsonb->'components' IS NOT NULL AND jsonb_typeof($2::jsonb->'components')='array' THEN $2::jsonb->'components' ELSE '[]'::jsonb END) item WHERE item->>'id'=c.id)`, projectID, fields)
-			if queryErr != nil {
-				return queryErr
-			}
-			for componentRows.Next() {
-				var id string
-				if queryErr = componentRows.Scan(&id); queryErr != nil {
-					componentRows.Close()
-					return queryErr
-				}
-				addUser(id, false)
-			}
-			componentRows.Close()
-		case "UserCustomField":
-			for _, id := range stringValues(issueFields[rule.recipient]) {
-				addUser(id, false)
-			}
-		case "GroupCustomField":
-			for _, group := range stringValues(issueFields[rule.recipient]) {
-				if err = addGroup(group); err != nil {
-					return err
-				}
-			}
-		case "EmailAddress":
-			externalEmails[rule.recipient] = rule.recipient != ""
-		}
-	}
-	delete(users, "")
+	users, externalEmails := recipients.explicit, recipients.emails
 	var actorName string
 	_ = tx.QueryRow(ctx, `SELECT display_name FROM users WHERE id=$1`, actorID).Scan(&actorName)
 	userIDs := make([]string, 0, len(users))
@@ -793,4 +682,216 @@ func issueNotificationHTML(actorName, message, issueKey, summary, projectName, s
 	b.WriteString(`<p style="margin:0"><a href="` + link + `" style="display:inline-block;padding:8px 12px;border-radius:4px;background:#0c66e4;color:#ffffff;text-decoration:none;font-weight:600">View work item</a></p>`)
 	b.WriteString(`</td></tr></table><p style="max-width:600px;margin:16px auto 0;font-size:12px;color:#626f86">You are receiving this because of your notification settings. <a href="/profile" style="color:#0c66e4">Manage notification preferences</a></p></body></html>`)
 	return b.String()
+}
+
+// issueRecipientContext is what a notification scheme's recipient rules read
+// from a work item.
+type issueRecipientContext struct {
+	ProjectID, IssueID, AssigneeID, ReporterID, ProjectLeadID string
+	Fields                                                    []byte
+}
+
+type recipientRule struct{ kind, recipient, parameter string }
+
+// issueRecipients is who a work item event's scheme rules name. explicit
+// records whether a person was named outright (CurrentUser or a named user),
+// which lets them hear about their own changes; rules lists the rules that
+// matched each person; emails holds direct email-address recipients.
+type issueRecipients struct {
+	explicit map[string]bool
+	rules    map[string][]models.NotificationSchemeEntry
+	emails   map[string]bool
+}
+
+// issueEventRecipientsTx resolves the recipients the project's notification
+// scheme names for an event on a work item. actorID is who made the change;
+// it is empty when nobody did, so CurrentUser rules match no one.
+func issueEventRecipientsTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID string, work issueRecipientContext, eventID int64) (issueRecipients, error) {
+	recipients := issueRecipients{explicit: map[string]bool{}, rules: map[string][]models.NotificationSchemeEntry{}, emails: map[string]bool{}}
+	rows, err := tx.Query(ctx, `SELECT nse.notification_type,COALESCE(nse.recipient,''),COALESCE(nse.parameter,'') FROM notification_scheme_entries nse JOIN project_notification_schemes pns ON pns.workspace_id=nse.workspace_id AND pns.scheme_id=nse.scheme_id WHERE pns.project_id=$1 AND nse.workspace_id=$2 AND nse.event_id=$3 ORDER BY nse.id`, work.ProjectID, workspaceID, eventID)
+	if err != nil {
+		return recipients, err
+	}
+	rules := []recipientRule{}
+	for rows.Next() {
+		var rule recipientRule
+		if err = rows.Scan(&rule.kind, &rule.recipient, &rule.parameter); err != nil {
+			rows.Close()
+			return recipients, err
+		}
+		rules = append(rules, rule)
+	}
+	rows.Close()
+	users, matched, externalEmails := recipients.explicit, recipients.rules, recipients.emails
+	var rule recipientRule
+	addUser := func(id string, currentUser bool) {
+		if id == "" {
+			return
+		}
+		users[id] = users[id] || currentUser
+		matched[id] = append(matched[id], models.NotificationSchemeEntry{NotificationType: rule.kind, Parameter: rule.parameter, Recipient: rule.recipient})
+	}
+	var issueFields map[string]any
+	_ = json.Unmarshal(work.Fields, &issueFields)
+	addGroup := func(group string) error {
+		groupRows, queryErr := tx.Query(ctx, `SELECT gm.user_id FROM group_members gm JOIN groups g ON g.id=gm.group_id JOIN directories d ON d.id=g.directory_id JOIN sites si ON si.organization_id=d.organization_id WHERE si.workspace_id=$1 AND d.active AND (g.id::text=$2 OR lower(g.name)=lower($2))`, workspaceID, group)
+		if queryErr != nil {
+			return queryErr
+		}
+		defer groupRows.Close()
+		for groupRows.Next() {
+			var id string
+			if queryErr = groupRows.Scan(&id); queryErr != nil {
+				return queryErr
+			}
+			addUser(id, false)
+		}
+		return groupRows.Err()
+	}
+	for _, rule = range rules {
+		switch rule.kind {
+		case "CurrentAssignee":
+			addUser(work.AssigneeID, false)
+		case "Reporter":
+			addUser(work.ReporterID, false)
+		case "CurrentUser":
+			addUser(actorID, true)
+		case "ProjectLead":
+			addUser(work.ProjectLeadID, false)
+		case "User":
+			addUser(rule.recipient, true)
+		case "AllWatchers":
+			watchRows, queryErr := tx.Query(ctx, `SELECT user_id FROM watchers WHERE issue_id=$1`, work.IssueID)
+			if queryErr != nil {
+				return recipients, queryErr
+			}
+			for watchRows.Next() {
+				var id string
+				if queryErr = watchRows.Scan(&id); queryErr != nil {
+					watchRows.Close()
+					return recipients, queryErr
+				}
+				addUser(id, false)
+			}
+			watchRows.Close()
+		case "Group":
+			if err = addGroup(rule.recipient); err != nil {
+				return recipients, err
+			}
+		case "ProjectRole":
+			roleRows, queryErr := tx.Query(ctx, `SELECT DISTINCT CASE WHEN rb.principal_type='user' THEN rb.principal_id ELSE gm.user_id END FROM role_bindings rb LEFT JOIN group_members gm ON rb.principal_type='group' AND gm.group_id::text=rb.principal_id WHERE rb.scope_type='project' AND rb.scope_id=$1 AND rb.role_key=$2`, work.ProjectID, rule.recipient)
+			if queryErr != nil {
+				return recipients, queryErr
+			}
+			for roleRows.Next() {
+				var id *string
+				if queryErr = roleRows.Scan(&id); queryErr != nil {
+					roleRows.Close()
+					return recipients, queryErr
+				}
+				if id != nil {
+					addUser(*id, false)
+				}
+			}
+			roleRows.Close()
+		case "ComponentLead":
+			componentRows, queryErr := tx.Query(ctx, `SELECT DISTINCT c.lead_account_id FROM project_components c WHERE c.project_id=$1 AND c.lead_account_id IS NOT NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN $2::jsonb->'components' IS NOT NULL AND jsonb_typeof($2::jsonb->'components')='array' THEN $2::jsonb->'components' ELSE '[]'::jsonb END) item WHERE item->>'id'=c.id)`, work.ProjectID, work.Fields)
+			if queryErr != nil {
+				return recipients, queryErr
+			}
+			for componentRows.Next() {
+				var id string
+				if queryErr = componentRows.Scan(&id); queryErr != nil {
+					componentRows.Close()
+					return recipients, queryErr
+				}
+				addUser(id, false)
+			}
+			componentRows.Close()
+		case "UserCustomField":
+			for _, id := range stringValues(issueFields[rule.recipient]) {
+				addUser(id, false)
+			}
+		case "GroupCustomField":
+			for _, group := range stringValues(issueFields[rule.recipient]) {
+				if err = addGroup(group); err != nil {
+					return recipients, err
+				}
+			}
+		case "EmailAddress":
+			externalEmails[rule.recipient] = rule.recipient != ""
+		}
+	}
+	delete(users, "")
+	return recipients, nil
+}
+
+// NotificationDiagnosis explains whether a person would be notified of an
+// event on a work item when someone else makes the change, as Jira's
+// notification helper does.
+type NotificationDiagnosis struct {
+	SchemeName string
+	EventName  string
+	// Rules are the scheme's rules for the event that name the person.
+	Rules []models.NotificationSchemeEntry
+	// CurrentUserRule reports a rule that notifies whoever makes the change.
+	CurrentUserRule     bool
+	Active              bool
+	CanBrowse           bool
+	CanSeeSecurityLevel bool
+}
+
+// Notified reports whether a rule names the person and nothing stops the
+// notification reaching them.
+func (d NotificationDiagnosis) Notified() bool {
+	return len(d.Rules) > 0 && d.Active && d.CanBrowse && d.CanSeeSecurityLevel
+}
+
+// DiagnoseIssueNotification works out why a person would or would not be
+// notified of an event on a work item under its project's notification scheme.
+func (s *Store) DiagnoseIssueNotification(ctx context.Context, workspaceID, userID, issueID string, eventID int64) (NotificationDiagnosis, error) {
+	var diagnosis NotificationDiagnosis
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return diagnosis, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	event, ok, err := issueEvent(ctx, tx, workspaceID, eventID)
+	if err != nil {
+		return diagnosis, err
+	}
+	if !ok {
+		return diagnosis, fmt.Errorf("%w: event type with ID %d was not found", ErrNotificationSchemeValidation, eventID)
+	}
+	diagnosis.EventName = event.Name
+	work := issueRecipientContext{IssueID: issueID}
+	var securityLevelID string
+	if err = tx.QueryRow(ctx, `SELECT i.project_id,COALESCE(i.assignee_id,''),COALESCE(i.reporter_id,''),COALESCE(p.lead_account_id,''),i.fields,COALESCE(i.security_level_id,''),COALESCE(ns.name,'')
+		FROM issues i JOIN projects p ON p.id=i.project_id
+		LEFT JOIN project_notification_schemes pns ON pns.project_id=p.id
+		LEFT JOIN notification_schemes ns ON ns.workspace_id=pns.workspace_id AND ns.id=pns.scheme_id
+		WHERE i.workspace_id=$1 AND i.id=$2`, workspaceID, issueID).Scan(&work.ProjectID, &work.AssigneeID, &work.ReporterID, &work.ProjectLeadID, &work.Fields, &securityLevelID, &diagnosis.SchemeName); err != nil {
+		return diagnosis, err
+	}
+	recipients, err := issueEventRecipientsTx(ctx, tx, workspaceID, "", work, eventID)
+	if err != nil {
+		return diagnosis, err
+	}
+	diagnosis.Rules = recipients.rules[userID]
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM notification_scheme_entries nse JOIN project_notification_schemes pns ON pns.workspace_id=nse.workspace_id AND pns.scheme_id=nse.scheme_id WHERE pns.project_id=$1 AND nse.event_id=$2 AND nse.notification_type='CurrentUser')`, work.ProjectID, eventID).Scan(&diagnosis.CurrentUserRule); err != nil {
+		return diagnosis, err
+	}
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.workspace_id=$1 AND u.id=$2 AND u.active)`, workspaceID, userID).Scan(&diagnosis.Active); err != nil {
+		return diagnosis, err
+	}
+	if diagnosis.CanBrowse, _, err = hasProjectPermissionTx(ctx, tx, workspaceID, userID, work.ProjectID, issueID, "BROWSE_PROJECTS"); err != nil {
+		return diagnosis, err
+	}
+	diagnosis.CanSeeSecurityLevel = true
+	if securityLevelID != "" {
+		if err = tx.QueryRow(ctx, `SELECT jira_issue_security_visible($1,$2,$3,$4,$5)`, workspaceID, work.ProjectID, issueID, userID, securityLevelID).Scan(&diagnosis.CanSeeSecurityLevel); err != nil {
+			return diagnosis, err
+		}
+	}
+	return diagnosis, nil
 }
