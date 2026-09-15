@@ -1427,6 +1427,22 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if desk, err := st.ServiceDesk(ctx, workspaceID, serviceDeskID); err != nil || desk.CustomerNotificationEnabled(models.CustomerNotificationInvited) || !desk.CustomerNotificationEnabled(models.CustomerNotificationPublicComment) {
 		t.Fatalf("desk customer notifications = %+v, %v", desk, err)
 	}
+	// Desk administrators name the portal and give it an introduction and logo.
+	if err := handler.Commands.UpdateServiceDeskPortal(ctx, customerID, workspaceID, serviceDeskID, "Help desk", "", ""); err == nil {
+		t.Fatal("a customer changed the portal")
+	}
+	if err := handler.Commands.UpdateServiceDeskPortal(ctx, actorID, workspaceID, serviceDeskID, "Help desk", "", "javascript:alert(1)"); err == nil {
+		t.Fatal("a script URL was accepted as the portal logo")
+	}
+	if err := handler.Commands.UpdateServiceDeskPortal(ctx, actorID, workspaceID, serviceDeskID, "  ", "", ""); err == nil {
+		t.Fatal("a blank portal name was accepted")
+	}
+	if err := handler.Commands.UpdateServiceDeskPortal(ctx, actorID, workspaceID, serviceDeskID, " Workplace help ", " Laptops, access and moves. ", "/static/img/avatar-default.svg"); err != nil {
+		t.Fatal(err)
+	}
+	if desk, err := st.ServiceDesk(ctx, workspaceID, serviceDeskID); err != nil || desk.PortalName != "Workplace help" || desk.PortalDescription != "Laptops, access and moves." || desk.PortalLogoURL != "/static/img/avatar-default.svg" {
+		t.Fatalf("portal = %+v, %v", desk, err)
+	}
 	regularAgentComments := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/comment", "", 200)
 	if !strings.Contains(regularAgentComments.Body.String(), "Agent-only investigation detail") {
 		t.Fatal(regularAgentComments.Body.String())

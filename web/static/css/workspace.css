@@ -789,3 +789,5 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 .service-customer-notifications ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
 .service-customer-notifications li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--ds-border); }
 .service-customer-notifications li small { display: block; color: var(--ds-text-subtle); }
+.service-portal-logo { flex: none; object-fit: contain; border-radius: var(--ds-radius); }
+.service-hero.compact:has(.service-portal-logo) { display: flex; align-items: center; gap: 16px; }

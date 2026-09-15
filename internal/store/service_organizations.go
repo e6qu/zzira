@@ -289,6 +289,29 @@ func (s *Store) SetServiceDeskAttachmentsEnabled(ctx context.Context, workspaceI
 	return err
 }
 
+// UpdateServiceDeskPortal changes a portal's name, introduction text and logo.
+func (s *Store) UpdateServiceDeskPortal(ctx context.Context, workspaceID, actorID, serviceDeskID, name, description, logoURL string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	result, err := tx.Exec(ctx, `UPDATE service_desks SET portal_name=$3,portal_description=$4,portal_logo_url=$5 WHERE workspace_id=$1 AND id=$2`, workspaceID, serviceDeskID, name, description, logoURL)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("service desk does not exist")
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT si.organization_id,$2,'service.portal.updated','service_desk',$3,jsonb_build_object('portalName',$4::text,'logoUrl',$5::text)
+		FROM sites si WHERE si.workspace_id=$1`, workspaceID, actorID, serviceDeskID, name, logoURL); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // SetServiceDeskCustomerNotification turns one of Jira's customer
 // notifications on or off for a service desk.
 func (s *Store) SetServiceDeskCustomerNotification(ctx context.Context, workspaceID, serviceDeskID, key string, enabled bool) error {

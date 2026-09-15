@@ -442,6 +442,19 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.getByRole('region', { name: 'Customer notifications' }).getByRole('listitem').filter({ hasText: 'Public comment added' })).toContainText('Turned off.');
   await page.getByRole('region', { name: 'Customer notifications' }).getByRole('button', { name: 'Turn on Public comment added' }).click();
   await expect(page.getByRole('region', { name: 'Customer notifications' }).getByRole('button', { name: 'Turn off Public comment added' })).toBeVisible();
+  // The portal introduces itself with the text its administrators write.
+  const portalSettings = page.getByRole('region', { name: 'Portal' });
+  const portalName = await portalSettings.getByLabel('Portal name').inputValue();
+  await portalSettings.getByLabel('Introduction text').fill('Laptops, access and office moves.');
+  await portalSettings.getByLabel('Logo URL').fill('/static/img/avatar-default.svg');
+  await portalSettings.getByRole('button', { name: 'Save portal' }).click();
+  await expect(page.getByRole('region', { name: 'Portal' }).getByLabel('Introduction text')).toHaveValue('Laptops, access and office moves.');
+  await page.goto(`/service/portals/${desk.id}`);
+  await expect(page.getByRole('heading', { name: portalName, level: 1 })).toBeVisible();
+  await expect(page.locator('.service-hero')).toContainText('Laptops, access and office moves.');
+  await expect(page.locator('.service-hero img.service-portal-logo')).toHaveAttribute('src', '/static/img/avatar-default.svg');
+  await accessible(page);
+  await page.goto(`/service/agent/${desk.id}`);
   const organizationName = `Customer organization ${Date.now()}`;
   const organizationSettings = page.locator('#organizations');
   await organizationSettings.getByPlaceholder('Organization name').fill(organizationName);

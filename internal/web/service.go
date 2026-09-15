@@ -686,6 +686,23 @@ type serviceCustomerNotificationView struct {
 	Enabled bool
 }
 
+// ServicePortalSettings saves a portal's name, introduction text and logo.
+func (h *Handler) ServicePortalSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	deskID := r.PathValue("desk")
+	if err := h.Commands.UpdateServiceDeskPortal(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("name"), r.PostFormValue("description"), r.PostFormValue("logoUrl")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#portal-settings")
+}
+
 func (h *Handler) ServiceCustomerSettings(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.pageContext(w, r)
 	if !ok {

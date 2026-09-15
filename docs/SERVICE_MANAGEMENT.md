@@ -440,6 +440,17 @@ fallback. Managers also configure per-metric pause JQL in this workspace.
 Recursive SLA-dependent pause conditions are rejected. Failed metadata association is
 compensated by a logged issue deletion, so no orphaned ticket remains.
 
+## Portal settings
+
+A desk's administrators set its portal name, introduction text and logo from
+the Portal section of the agent workspace, as Jira's portal settings do. The
+portal page shows the logo and introduction under its name, and the help
+center lists the portal with its logo and introduction. The name is one line
+of up to 255 characters, the introduction up to 1000, and the logo a site path
+or an http or https address; changes are audited. Help center branding (its
+name, announcements, and banner, button and link colours) is not yet
+configurable.
+
 ## Customer notifications
 
 Service desk administrators choose which of Jira's customer notifications the

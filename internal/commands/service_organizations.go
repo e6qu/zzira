@@ -194,6 +194,26 @@ func (s *Service) SetServiceDeskAttachmentsEnabled(ctx context.Context, actorID,
 	return s.Store.SetServiceDeskAttachmentsEnabled(ctx, workspaceID, serviceDeskID, enabled)
 }
 
+// UpdateServiceDeskPortal changes a portal's name, introduction text and logo,
+// as Jira's portal settings do, for the desk's administrators. The logo is a
+// site path or an http(s) address, like the site's own logo.
+func (s *Service) UpdateServiceDeskPortal(ctx context.Context, actorID, workspaceID, serviceDeskID, name, description, logoURL string) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	name, description, logoURL = strings.TrimSpace(name), strings.TrimSpace(description), strings.TrimSpace(logoURL)
+	if name == "" || len(name) > 255 || strings.ContainsAny(name, "\r\n") {
+		return fmt.Errorf("the portal name must be 1 to 255 characters on one line")
+	}
+	if len(description) > 1000 {
+		return fmt.Errorf("the introduction text accepts at most 1000 characters")
+	}
+	if logoURL != "" && !lookAndFeelURL(logoURL) {
+		return fmt.Errorf("the logo must be a site path or an http or https URL")
+	}
+	return s.Store.UpdateServiceDeskPortal(ctx, workspaceID, actorID, serviceDeskID, name, description, logoURL)
+}
+
 // SetServiceDeskCustomerNotification turns one of Jira's customer notifications
 // on or off for a service desk.
 func (s *Service) SetServiceDeskCustomerNotification(ctx context.Context, actorID, workspaceID, serviceDeskID, key string, enabled bool) error {

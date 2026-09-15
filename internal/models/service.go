@@ -9,16 +9,19 @@ import (
 
 // ServiceDesk is the Jira Service Management portal attached to a service project.
 type ServiceDesk struct {
-	ID                 string
-	WorkspaceID        string
-	ProjectID          string
-	ProjectKey         string
-	ProjectName        string
-	ProjectTypeKey     string
-	PortalName         string
-	CustomerAccessOpen bool
-	AttachmentsEnabled bool
-	FeedbackEnabled    bool
+	ID             string
+	WorkspaceID    string
+	ProjectID      string
+	ProjectKey     string
+	ProjectName    string
+	ProjectTypeKey string
+	PortalName     string
+	// PortalDescription is the portal's introduction text and PortalLogoURL
+	// its logo, both shown on the portal and the help center.
+	PortalDescription, PortalLogoURL string
+	CustomerAccessOpen               bool
+	AttachmentsEnabled               bool
+	FeedbackEnabled                  bool
 	// DisabledCustomerNotifications are the customer notifications the desk
 	// does not send.
 	DisabledCustomerNotifications []string
