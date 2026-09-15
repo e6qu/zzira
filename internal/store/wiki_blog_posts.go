@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -71,6 +70,7 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 	if err := tx.QueryRow(ctx, `SELECT s.id::text,s.default_classification_level FROM wiki_spaces s WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+spacePermission+` AND s.id::text=$3 FOR UPDATE`, ws, actor, input.SpaceID).Scan(&spaceID, &defaultClassification); err != nil {
 		return nil, err
 	}
+	previousBody, wasPublished := "", false
 	if !isNew {
 		old, err := scanWikiBlogPost(tx.QueryRow(ctx, wikiBlogPostSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+spacePermission+` AND `+wikiBlogPostVisible+` AND `+wikiBlogPostAuthorWritable+` AND b.id::text=$3 FOR UPDATE OF b`, ws, actor, input.ID))
 		if err != nil {
@@ -85,10 +85,14 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 		if input.Status == "draft" && old.Published {
 			return nil, fmt.Errorf("%w: a published blog post cannot be converted to a draft", ErrWikiValidation)
 		}
-		if old.Status == "trashed" && input.Status == "current" {
+		if (old.Status == "trashed" || old.Status == "deleted") && input.Status == "current" {
 			input.Title, input.Body = old.Title, old.Body
 		}
 		input.AuthorID, input.Private, input.CreatedAt = old.AuthorID, old.Private, old.CreatedAt
+		wasPublished = old.Published
+		if old.Status == "current" {
+			previousBody = old.Body.Value
+		}
 	} else {
 		input.Version.Number, input.AuthorID = 1, actor
 		input.ClassificationLevel = defaultClassification
@@ -112,6 +116,20 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 	if _, err := tx.Exec(ctx, `INSERT INTO wiki_blog_post_versions(blog_post_id,version,title,body,status,author_id,message,minor_edit) VALUES($1::bigint,$2,$3,$4,$5,$6,$7,$8)`, input.ID, input.Version.Number, input.Title, input.Body.Value, input.Status, actor, input.Version.Message, input.Version.MinorEdit); err != nil {
 		return nil, err
 	}
+	if err := wikiBodyChanged(ctx, tx, ws, actor, "blogpost", input.ID, input.Body.Value); err != nil {
+		return nil, err
+	}
+	if input.Status == "current" {
+		if err := notifyWikiMentions(ctx, tx, ws, actor, "wiki_blogpost", input.ID, input.Title, wikiBlogPostReadableBy, input.ID, previousBody, input.Body.Value); err != nil {
+			return nil, err
+		}
+	}
+	// Publishing replaces the draft that was waiting beside the blog post.
+	if input.Status == "current" {
+		if _, err := tx.Exec(ctx, `DELETE FROM wiki_content_drafts WHERE content_type='blogpost' AND content_id::text=$1`, input.ID); err != nil {
+			return nil, err
+		}
+	}
 	blog, err := scanWikiBlogPost(tx.QueryRow(ctx, wikiBlogPostSelect+` WHERE b.id::text=$1`, input.ID))
 	if err != nil {
 		return nil, err
@@ -119,37 +137,15 @@ func (s *Store) SaveWikiBlogPost(ctx context.Context, ws, actor string, input mo
 	if err := wikiAction(ctx, tx, ws, actor, "wiki_blogpost", blog.ID, blog.SpaceID, blog); err != nil {
 		return nil, err
 	}
+	if blog.Status == "current" && !input.Version.MinorEdit {
+		if err := wikiBlogWatchNotifications(ctx, tx, ws, actor, blog, !wasPublished); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return blog, nil
-}
-
-func (s *Store) PurgeWikiBlogPost(ctx context.Context, ws, actor, id string) error {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	blog, err := scanWikiBlogPost(tx.QueryRow(ctx, wikiBlogPostSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanDeleteBlogPost+` AND `+wikiBlogPostVisible+` AND `+wikiBlogPostAuthorWritable+` AND b.id::text=$3 AND b.status='trashed' FOR UPDATE OF b`, ws, actor, id))
-	if err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM wiki_blog_posts WHERE id::text=$1`, id); err != nil {
-		return err
-	}
-	seq, err := nextSeq(ctx, tx, ws)
-	if err != nil {
-		return err
-	}
-	payload, err := json.Marshal(map[string]any{"wikiSpaceId": blog.SpaceID, "wiki_blogpost": blog})
-	if err != nil {
-		return err
-	}
-	if err := appendAction(ctx, tx, &models.Action{WorkspaceID: ws, Seq: seq, EntityType: "wiki_blogpost", EntityID: id, Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actor}); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
 }
 
 func (s *Store) WikiBlogPostVersions(ctx context.Context, ws, actor, id, order string) ([]models.WikiVersion, error) {

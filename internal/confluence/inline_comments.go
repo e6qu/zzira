@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -61,39 +60,6 @@ func (h *Handler) inlineCommentBean(comment *models.WikiFooterComment, body bool
 	return bean
 }
 
-func inlineCommentQuery(w http.ResponseWriter, r *http.Request, pageScoped bool) bool {
-	allowed := []string{"body-format", "sort", "cursor", "limit"}
-	if pageScoped {
-		allowed = append(allowed, "status", "resolution-status")
-	}
-	if !supportedQuery(w, r, allowed...) || !storageFormat(w, r) {
-		return false
-	}
-	if order := r.URL.Query().Get("sort"); order != "" && order != "created-date" && order != "-created-date" && order != "modified-date" && order != "-modified-date" {
-		failure(w, 400, "Unsupported comment sort order.")
-		return false
-	}
-	if pageScoped {
-		for _, raw := range r.URL.Query()["status"] {
-			for _, status := range strings.Split(raw, ",") {
-				if status != "" && status != "current" {
-					failure(w, 400, "Only current inline comments are supported.")
-					return false
-				}
-			}
-		}
-		for _, raw := range r.URL.Query()["resolution-status"] {
-			for _, status := range strings.Split(raw, ",") {
-				if status != "" && status != "open" && status != "reopened" && status != "resolved" && status != "dangling" {
-					failure(w, 400, "Unsupported resolution status.")
-					return false
-				}
-			}
-		}
-	}
-	return true
-}
-
 func (h *Handler) inlineComments(w http.ResponseWriter, r *http.Request, ws, actor, pageID, parentID string) {
 	if !inlineCommentQuery(w, r, pageID != "") {
 		return
@@ -118,10 +84,13 @@ func (h *Handler) inlineComments(w http.ResponseWriter, r *http.Request, ws, act
 		}
 		comments = filtered
 	}
+	if !commentStatusesAllowCurrent(r) {
+		comments = nil
+	}
 	sortFooterComments(comments, r.URL.Query().Get("sort"))
 	values := make([]any, 0, len(comments))
 	for _, comment := range comments {
-		values = append(values, h.inlineCommentBean(comment, r.URL.Query().Get("body-format") != ""))
+		values = append(values, h.inlineCommentBeanFormat(comment, r.URL.Query().Get("body-format")))
 	}
 	h.list(w, r, values)
 }
@@ -144,7 +113,7 @@ func (h *Handler) blogInlineComments(w http.ResponseWriter, r *http.Request, ws,
 	sortFooterComments(filtered, r.URL.Query().Get("sort"))
 	values := make([]any, 0, len(filtered))
 	for _, comment := range filtered {
-		values = append(values, h.inlineCommentBean(comment, r.URL.Query().Get("body-format") != ""))
+		values = append(values, h.inlineCommentBeanFormat(comment, r.URL.Query().Get("body-format")))
 	}
 	h.list(w, r, values)
 }
@@ -182,71 +151,6 @@ func queryBool(w http.ResponseWriter, r *http.Request, name string) (bool, bool)
 		return false, false
 	}
 	return value, true
-}
-
-func (h *Handler) inlineComment(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !supportedQuery(w, r, "body-format", "version", "include-properties", "include-operations", "include-likes", "include-versions", "include-version") || !storageFormat(w, r) {
-		return
-	}
-	comment, err := h.Store.WikiInlineComment(r.Context(), ws, actor, id)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if raw := r.URL.Query().Get("version"); raw != "" {
-		number, parseErr := strconv.Atoi(raw)
-		if parseErr != nil || number < 1 {
-			failure(w, 400, "Version number must be positive.")
-			return
-		}
-		version, versionErr := h.Store.WikiInlineCommentVersion(r.Context(), ws, actor, id, number)
-		if versionErr != nil {
-			writeError(w, versionErr)
-			return
-		}
-		comment.Body, comment.Version = version.Body, version.WikiVersion
-	}
-	bean := h.inlineCommentBean(comment, r.URL.Query().Get("body-format") != "")
-	if value, ok := queryBool(w, r, "include-operations"); !ok {
-		return
-	} else if value {
-		canUpdate, operationErr := h.Store.CanUpdateWikiComment(r.Context(), ws, actor, id, "inline")
-		if operationErr != nil {
-			writeError(w, operationErr)
-			return
-		}
-		canDelete, operationErr := h.Store.CanDeleteWikiComment(r.Context(), ws, actor, id, "inline")
-		if operationErr != nil {
-			writeError(w, operationErr)
-			return
-		}
-		bean["operations"] = map[string]any{"results": commentOperations(canUpdate, canDelete)}
-	}
-	if value, ok := queryBool(w, r, "include-likes"); !ok {
-		return
-	} else if value {
-		likes, likeErr := h.Store.WikiInlineCommentLikes(r.Context(), ws, actor, id)
-		if likeErr != nil {
-			writeError(w, likeErr)
-			return
-		}
-		results := make([]any, 0, len(likes))
-		for _, accountID := range likes {
-			results = append(results, map[string]string{"accountId": accountID})
-		}
-		bean["likes"] = map[string]any{"results": results}
-	}
-	if value, ok := queryBool(w, r, "include-versions"); !ok {
-		return
-	} else if value {
-		versions, versionErr := h.Store.WikiInlineCommentVersions(r.Context(), ws, actor, id)
-		if versionErr != nil {
-			writeError(w, versionErr)
-			return
-		}
-		bean["versions"] = map[string]any{"results": versions}
-	}
-	respond(w, 200, bean)
 }
 
 func (h *Handler) updateInlineComment(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
@@ -298,7 +202,7 @@ func (h *Handler) deleteInlineComment(w http.ResponseWriter, r *http.Request, ws
 }
 
 func (h *Handler) inlineCommentVersions(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !supportedQuery(w, r, "body-format", "cursor", "limit", "sort") || !storageFormat(w, r) {
+	if !supportedQuery(w, r, "body-format", "cursor", "limit", "sort") || !commentFormat(w, r, false) {
 		return
 	}
 	order := r.URL.Query().Get("sort")
@@ -316,7 +220,7 @@ func (h *Handler) inlineCommentVersions(w http.ResponseWriter, r *http.Request, 
 	}
 	values := make([]any, 0, len(versions))
 	for _, version := range versions {
-		values = append(values, footerCommentVersionBean(id, version, r.URL.Query().Get("body-format") != ""))
+		values = append(values, footerCommentVersionBean(id, version, r.URL.Query().Get("body-format")))
 	}
 	h.list(w, r, values)
 }

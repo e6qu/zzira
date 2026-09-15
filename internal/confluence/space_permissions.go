@@ -2,9 +2,6 @@ package confluence
 
 import (
 	"net/http"
-	"strconv"
-
-	"github.com/e6qu/zzira/internal/models"
 )
 
 func spacePermission(id, principalType, principalID, operation, targetType string) any {
@@ -15,36 +12,29 @@ func spacePermission(id, principalType, principalID, operation, targetType strin
 	}
 }
 
-func spacePermissionValues(space *models.WikiSpace) []any {
-	principalType, principalID := "role", "workspace-member"
-	if space.Private {
-		principalType, principalID = "user", space.AuthorID
+// spacePermissionValues reports a space's permissions as they are held: the
+// permissions of each role assigned in the space, for the principal it is
+// assigned to, and each direct grant.
+func (h *Handler) spacePermissionValues(r *http.Request, ws, actor, spaceID string) ([]any, error) {
+	assignments, err := h.Store.WikiSpacePermissionAssignments(r.Context(), ws, actor, spaceID)
+	if err != nil {
+		return nil, err
 	}
-	values := []any{}
-	sequence := 0
-	add := func(operation, target string) {
-		sequence++
-		values = append(values, spacePermission(space.ID+"-"+strconv.Itoa(sequence), principalType, principalID, operation, target))
+	values := make([]any, 0, len(assignments))
+	for _, assignment := range assignments {
+		values = append(values, spacePermission(assignment.ID, assignment.PrincipalType, assignment.PrincipalID, assignment.Operation, assignment.Target))
 	}
-	add("read", "space")
-	for _, target := range []string{"page", "blogpost", "comment", "attachment", "folder", "embed", "database", "whiteboard"} {
-		add("create", target)
-		add("read", target)
-		add("update", target)
-		add("delete", target)
-	}
-	values = append(values, spacePermission(space.ID+"-admin", "role", "workspace-admin", "administer", "space"))
-	return values
+	return values, nil
 }
 
 func (h *Handler) spacePermissions(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
 	if !validPageID(w, id) || !supportedQuery(w, r, "cursor", "limit") {
 		return
 	}
-	space, err := h.Store.WikiSpace(r.Context(), ws, actor, id)
+	values, err := h.spacePermissionValues(r, ws, actor, id)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	h.list(w, r, spacePermissionValues(space))
+	h.list(w, r, values)
 }

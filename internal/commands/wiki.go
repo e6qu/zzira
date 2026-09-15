@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -45,11 +46,75 @@ func (s *Service) CreateWikiSpace(ctx context.Context, ws, actor, key, name, des
 	return s.Store.CreateWikiSpace(ctx, ws, actor, key, name, description, private)
 }
 
+// spaceAliasPattern is what a space alias may be: up to 255 letters and digits.
+var spaceAliasPattern = regexp.MustCompile(`^[A-Za-z0-9]{1,255}$`)
+
+// CreateWikiSpaceWithAccess creates a space through the v2 API, where a space
+// named only by an alias takes its key from the alias.
+func (s *Service) CreateWikiSpaceWithAccess(ctx context.Context, ws, actor string, req store.CreateWikiSpaceRequest) (*models.WikiSpace, error) {
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Alias != "" && !spaceAliasPattern.MatchString(req.Alias) {
+		return nil, fmt.Errorf("%w: space alias must contain 1–255 letters or numbers", store.ErrWikiValidation)
+	}
+	if req.Key == "" {
+		req.Key = strings.ToUpper(req.Alias)
+	}
+	if !spaceKeyPattern.MatchString(req.Key) {
+		return nil, fmt.Errorf("%w: space key must contain 1–255 letters or numbers", store.ErrWikiValidation)
+	}
+	if req.Name == "" || utf8.RuneCountInString(req.Name) > 255 {
+		return nil, fmt.Errorf("%w: space name is required (max 255 characters)", store.ErrWikiValidation)
+	}
+	if len(req.Description) > 1<<20 {
+		return nil, fmt.Errorf("%w: space description must be at most 1 MiB", store.ErrWikiValidation)
+	}
+	return s.Store.CreateWikiSpaceWithAccess(ctx, ws, actor, req)
+}
+
+// assignableClassification checks a level can be given to a space or content:
+// none clears it, and otherwise it must be one of the organization's published
+// levels.
+func (s *Service) assignableClassification(ctx context.Context, ws, levelID string) error {
+	if levelID == "" {
+		return nil
+	}
+	return s.Store.PublishedDataClassificationLevel(ctx, ws, levelID)
+}
+
 func (s *Service) SetWikiSpaceDefaultClassification(ctx context.Context, ws, actor, id, levelID string) (*models.WikiSpace, error) {
-	if !stringSet("", "public", "internal", "confidential", "restricted")[levelID] {
-		return nil, fmt.Errorf("%w: choose a supported classification level", store.ErrWikiValidation)
+	if err := s.assignableClassification(ctx, ws, levelID); err != nil {
+		return nil, err
 	}
 	return s.Store.SetWikiSpaceDefaultClassification(ctx, ws, actor, id, levelID)
+}
+
+// wikiSpaceRoleDependencies checks a role's permissions hold what they depend
+// on, as Confluence requires: every permission needs to see the space, and
+// creating, editing or deleting a kind of content needs to see that content.
+func wikiSpaceRoleDependencies(permissions []string) error {
+	held := map[string]bool{}
+	for _, permission := range permissions {
+		held[permission] = true
+	}
+	missing := []string{}
+	need := func(permission string) {
+		if !held[permission] && !slices.Contains(missing, permission) {
+			missing = append(missing, permission)
+		}
+	}
+	for _, permission := range permissions {
+		operation, target, _ := strings.Cut(permission, "/")
+		if permission != "read/space" {
+			need("read/space")
+		}
+		if (operation == "create" || operation == "update" || operation == "delete") && target != "space" {
+			need("read/" + target)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("%w: the role's permissions also need %s", store.ErrWikiValidation, strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 func validateWikiSpaceRole(name, description string, permissions []string) error {
@@ -66,24 +131,30 @@ func validateWikiSpaceRole(name, description string, permissions []string) error
 	return nil
 }
 
+func (s *Service) UpdateWikiSpaceRole(ctx context.Context, ws, actor, id, name, description string, permissions []string, anonymousRoleID, guestRoleID string) (*models.WikiSpaceRole, store.APITask, error) {
+	name = strings.TrimSpace(name)
+	if err := validateWikiSpaceRole(name, description, permissions); err != nil {
+		return nil, store.APITask{}, err
+	}
+	if err := wikiSpaceRoleDependencies(permissions); err != nil {
+		return nil, store.APITask{}, err
+	}
+	return s.Store.UpdateWikiSpaceRole(ctx, ws, actor, id, name, description, permissions, anonymousRoleID, guestRoleID)
+}
+
+func (s *Service) DeleteWikiSpaceRole(ctx context.Context, ws, actor, id string) (store.APITask, error) {
+	return s.Store.DeleteWikiSpaceRole(ctx, ws, actor, id)
+}
+
 func (s *Service) CreateWikiSpaceRole(ctx context.Context, ws, actor, name, description string, permissions []string) (*models.WikiSpaceRole, error) {
 	name = strings.TrimSpace(name)
 	if err := validateWikiSpaceRole(name, description, permissions); err != nil {
 		return nil, err
 	}
-	return s.Store.CreateWikiSpaceRole(ctx, ws, actor, name, description, permissions)
-}
-
-func (s *Service) UpdateWikiSpaceRole(ctx context.Context, ws, actor, id, name, description string, permissions []string) (*models.WikiSpaceRole, error) {
-	name = strings.TrimSpace(name)
-	if err := validateWikiSpaceRole(name, description, permissions); err != nil {
+	if err := wikiSpaceRoleDependencies(permissions); err != nil {
 		return nil, err
 	}
-	return s.Store.UpdateWikiSpaceRole(ctx, ws, actor, id, name, description, permissions)
-}
-
-func (s *Service) DeleteWikiSpaceRole(ctx context.Context, ws, actor, id string) error {
-	return s.Store.DeleteWikiSpaceRole(ctx, ws, actor, id)
+	return s.Store.CreateWikiSpaceRole(ctx, ws, actor, name, description, permissions)
 }
 
 func (s *Service) SetWikiSpaceRoleAssignments(ctx context.Context, ws, actor, spaceID string, assignments []models.WikiSpaceRoleAssignment) error {
@@ -183,6 +254,30 @@ func (s *Service) TransferWikiPageOwnership(ctx context.Context, ws, actor, page
 	return s.Store.TransferWikiPageOwnership(ctx, ws, actor, pageID, ownerID)
 }
 
+// SaveWikiContentDraft, DiscardWikiContentDraft, DeleteUnpublishedWikiDraft
+// and PurgeWikiPage are the draft and deletion lifecycle of pages and blog
+// posts.
+func (s *Service) SaveWikiContentDraft(ctx context.Context, ws, actor, contentType, id, title string, body models.WikiBody) (*store.WikiContentDraft, error) {
+	return s.Store.SaveWikiContentDraft(ctx, ws, actor, contentType, id, title, body)
+}
+
+func (s *Service) DiscardWikiContentDraft(ctx context.Context, ws, actor, contentType, id string) error {
+	return s.Store.DiscardWikiContentDraft(ctx, ws, actor, contentType, id)
+}
+
+func (s *Service) DeleteUnpublishedWikiDraft(ctx context.Context, ws, actor, contentType, id string) error {
+	return s.Store.DeleteUnpublishedWikiDraft(ctx, ws, actor, contentType, id)
+}
+
+func (s *Service) PurgeWikiPage(ctx context.Context, ws, actor, id string) error {
+	return s.Store.PurgeWikiPage(ctx, ws, actor, id)
+}
+
+// SetWikiBlogPostFavourite stars or unstars a blog post for the reader.
+func (s *Service) SetWikiBlogPostFavourite(ctx context.Context, ws, actor, id string, favourite bool) error {
+	return s.Store.SetWikiBlogPostFavourite(ctx, ws, actor, id, favourite)
+}
+
 func (s *Service) SaveWikiBlogPost(ctx context.Context, ws, actor string, post models.WikiBlogPost) (*models.WikiBlogPost, error) {
 	post.Title = strings.TrimSpace(post.Title)
 	if post.Status == "" && post.ID == "" {
@@ -262,10 +357,8 @@ func (s *Service) DeleteWikiContent(ctx context.Context, ws, actor, id, contentT
 }
 
 func (s *Service) SetWikiContentClassification(ctx context.Context, ws, actor, id, contentType, levelID string) (*models.WikiContent, error) {
-	switch levelID {
-	case "", "public", "internal", "confidential", "restricted":
-	default:
-		return nil, fmt.Errorf("%w: choose a supported classification level", store.ErrWikiValidation)
+	if err := s.assignableClassification(ctx, ws, levelID); err != nil {
+		return nil, err
 	}
 	return s.Store.SetWikiContentClassification(ctx, ws, actor, id, contentType, levelID)
 }
@@ -275,13 +368,13 @@ func (s *Service) CreateWikiFooterComment(ctx context.Context, ws, actor string,
 		return nil, err
 	}
 	targets := 0
-	for _, id := range []string{comment.PageID, comment.BlogPostID, comment.AttachmentID, comment.ParentCommentID} {
+	for _, id := range []string{comment.PageID, comment.BlogPostID, comment.AttachmentID, comment.CustomContentID, comment.ParentCommentID} {
 		if id != "" {
 			targets++
 		}
 	}
 	if targets != 1 {
-		return nil, fmt.Errorf("%w: choose exactly one of pageId, blogPostId, attachmentId, or parentCommentId", store.ErrWikiValidation)
+		return nil, fmt.Errorf("%w: choose exactly one of pageId, blogPostId, attachmentId, customContentId, or parentCommentId", store.ErrWikiValidation)
 	}
 	return s.Store.CreateWikiFooterComment(ctx, ws, actor, comment)
 }
@@ -614,17 +707,26 @@ func (s *Service) DeleteWikiBlogPostProperty(ctx context.Context, ws, actor, blo
 }
 
 func (s *Service) SetWikiBlogPostClassification(ctx context.Context, ws, actor, id, levelID string) (*models.WikiBlogPost, error) {
-	if levelID != "" && levelID != "public" && levelID != "internal" && levelID != "confidential" && levelID != "restricted" {
-		return nil, fmt.Errorf("%w: choose a supported classification level", store.ErrWikiValidation)
+	if err := s.assignableClassification(ctx, ws, levelID); err != nil {
+		return nil, err
 	}
 	return s.Store.SetWikiBlogPostClassification(ctx, ws, actor, id, levelID)
 }
 
 func (s *Service) SetWikiPageClassification(ctx context.Context, ws, actor, id, levelID string) (*models.WikiPage, error) {
-	if levelID != "" && levelID != "public" && levelID != "internal" && levelID != "confidential" && levelID != "restricted" {
-		return nil, fmt.Errorf("%w: choose a supported classification level", store.ErrWikiValidation)
+	if err := s.assignableClassification(ctx, ws, levelID); err != nil {
+		return nil, err
 	}
 	return s.Store.SetWikiPageClassification(ctx, ws, actor, id, levelID)
+}
+
+// RestoreWikiRedaction puts back what a redaction of a page or blog post
+// removed.
+func (s *Service) RestoreWikiRedaction(ctx context.Context, ws, actor, kind, id, redactionID string) error {
+	if id == "" || redactionID == "" {
+		return fmt.Errorf("%w: a redaction is required", store.ErrWikiValidation)
+	}
+	return s.Store.RestoreWikiRedaction(ctx, ws, actor, kind, id, redactionID)
 }
 
 func (s *Service) RedactWikiPage(ctx context.Context, ws, actor, id, createdAt string, version int, cleanHistory bool, title, body []models.WikiRedactionPointer) (*models.WikiPage, []models.WikiRedactionResult, []models.WikiRedactionResult, error) {

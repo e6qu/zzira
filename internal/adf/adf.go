@@ -10,11 +10,14 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Node is a generic ADF node.
 type Node struct {
-	Type    string         `json:"type"`
+	Type string `json:"type"`
+	// Version is set on the document node alone.
+	Version int            `json:"version,omitempty"`
 	Attrs   map[string]any `json:"attrs,omitempty"`
 	Content []Node         `json:"content,omitempty"`
 	Text    string         `json:"text,omitempty"`
@@ -29,6 +32,17 @@ type Mark struct {
 // ToHTML renders the supported subset. Unknown nodes degrade to their text
 // content — rendering never fails, it only degrades.
 func ToHTML(raw json.RawMessage) string {
+	return render(raw, false)
+}
+
+// ToStorage renders a document as Confluence storage format: the markup
+// ToHTML produces where the two agree, and Confluence's own elements for
+// mentions, task lists and dates, with no presentation attributes.
+func ToStorage(raw json.RawMessage) string {
+	return render(raw, true)
+}
+
+func render(raw json.RawMessage, storage bool) string {
 	if len(raw) == 0 {
 		return ""
 	}
@@ -37,21 +51,21 @@ func ToHTML(raw json.RawMessage) string {
 		return ""
 	}
 	var b strings.Builder
-	renderNodes(&b, doc.Content, map[string]bool{})
+	renderNodes(&b, doc.Content, map[string]bool{}, storage)
 	return b.String()
 }
 
-func renderNodes(b *strings.Builder, nodes []Node, marks map[string]bool) {
+func renderNodes(b *strings.Builder, nodes []Node, marks map[string]bool, storage bool) {
 	for _, n := range nodes {
-		renderNode(b, n, marks)
+		renderNode(b, n, marks, storage)
 	}
 }
 
-func renderNode(b *strings.Builder, n Node, marks map[string]bool) {
+func renderNode(b *strings.Builder, n Node, marks map[string]bool, storage bool) {
 	switch n.Type {
 	case "paragraph":
 		b.WriteString("<p>")
-		renderInline(b, n.Content, marks)
+		renderInline(b, n.Content, marks, storage)
 		b.WriteString("</p>")
 	case "heading":
 		level := 1
@@ -60,19 +74,19 @@ func renderNode(b *strings.Builder, n Node, marks map[string]bool) {
 		}
 		tag := "h" + itoa(level)
 		b.WriteString("<" + tag + ">")
-		renderInline(b, n.Content, marks)
+		renderInline(b, n.Content, marks, storage)
 		b.WriteString("</" + tag + ">")
 	case "bulletList":
 		b.WriteString("<ul>")
-		renderNodes(b, n.Content, marks)
+		renderNodes(b, n.Content, marks, storage)
 		b.WriteString("</ul>")
 	case "orderedList":
 		b.WriteString("<ol>")
-		renderNodes(b, n.Content, marks)
+		renderNodes(b, n.Content, marks, storage)
 		b.WriteString("</ol>")
 	case "listItem":
 		b.WriteString("<li>")
-		renderNodes(b, n.Content, marks)
+		renderNodes(b, n.Content, marks, storage)
 		b.WriteString("</li>")
 	case "codeBlock":
 		b.WriteString("<pre><code>")
@@ -80,33 +94,117 @@ func renderNode(b *strings.Builder, n Node, marks map[string]bool) {
 		b.WriteString("</code></pre>")
 	case "blockquote":
 		b.WriteString("<blockquote>")
-		renderNodes(b, n.Content, marks)
+		renderNodes(b, n.Content, marks, storage)
 		b.WriteString("</blockquote>")
 	case "hardBreak":
-		b.WriteString("<br>")
+		if storage {
+			b.WriteString("<br/>")
+		} else {
+			b.WriteString("<br>")
+		}
+	case "rule":
+		if storage {
+			b.WriteString("<hr/>")
+		} else {
+			b.WriteString("<hr>")
+		}
 	case "table":
-		b.WriteString(`<table class="adf-table">`)
-		renderNodes(b, n.Content, marks)
+		if storage {
+			b.WriteString("<table>")
+		} else {
+			b.WriteString(`<table class="adf-table">`)
+		}
+		renderNodes(b, n.Content, marks, storage)
 		b.WriteString("</table>")
 	case "tableRow":
 		b.WriteString("<tr>")
-		renderNodes(b, n.Content, marks)
+		renderNodes(b, n.Content, marks, storage)
 		b.WriteString("</tr>")
 	case "tableHeader":
 		b.WriteString("<th>")
-		renderNodes(b, n.Content, marks)
+		renderNodes(b, n.Content, marks, storage)
 		b.WriteString("</th>")
 	case "tableCell":
 		b.WriteString("<td>")
-		renderNodes(b, n.Content, marks)
+		renderNodes(b, n.Content, marks, storage)
 		b.WriteString("</td>")
 	case "mention":
 		name, _ := n.Attrs["text"].(string)
+		name = strings.TrimPrefix(name, "@")
 		id, _ := n.Attrs["id"].(string)
+		if storage {
+			b.WriteString(`<ac:link><ri:user ri:account-id="` + html.EscapeString(id) + `" />`)
+			if name != "" {
+				b.WriteString(`<ac:plain-text-link-body>` + html.EscapeString(name) + `</ac:plain-text-link-body>`)
+			}
+			b.WriteString(`</ac:link>`)
+			break
+		}
 		if name == "" {
 			name = id
 		}
 		b.WriteString(`<span class="mention" data-account-id="` + html.EscapeString(id) + `">@` + html.EscapeString(name) + `</span>`)
+	case "taskList":
+		open, closing := `<ul class="adf-task-list">`, "</ul>"
+		if storage {
+			open, closing = "<ac:task-list>", "</ac:task-list>"
+		}
+		b.WriteString(open)
+		for i, item := range n.Content {
+			// Storage names every task; an item without a local id is named
+			// by its place in the list.
+			if id, _ := item.Attrs["localId"].(string); item.Type == "taskItem" && id == "" {
+				attrs := map[string]any{"localId": strconv.Itoa(i + 1)}
+				for key, value := range item.Attrs {
+					if key != "localId" {
+						attrs[key] = value
+					}
+				}
+				item.Attrs = attrs
+			}
+			renderNode(b, item, marks, storage)
+		}
+		b.WriteString(closing)
+	case "taskItem":
+		id, _ := n.Attrs["localId"].(string)
+		done := n.Attrs["state"] == "DONE"
+		if storage {
+			status := "incomplete"
+			if done {
+				status = "complete"
+			}
+			b.WriteString("<ac:task><ac:task-id>" + html.EscapeString(id) + "</ac:task-id><ac:task-status>" + status + "</ac:task-status><ac:task-body>")
+			renderInline(b, n.Content, marks, storage)
+			b.WriteString("</ac:task-body></ac:task>")
+			break
+		}
+		box := "☐ "
+		if done {
+			box = "☑ "
+		}
+		b.WriteString("<li>" + box)
+		renderInline(b, n.Content, marks, storage)
+		b.WriteString("</li>")
+	case "date":
+		var millis int64
+		switch value := n.Attrs["timestamp"].(type) {
+		case string:
+			parsed, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				return
+			}
+			millis = parsed
+		case float64:
+			millis = int64(value)
+		default:
+			return
+		}
+		day := time.UnixMilli(millis).UTC().Format("2006-01-02")
+		if storage {
+			b.WriteString(`<time datetime="` + day + `" />`)
+		} else {
+			b.WriteString(`<time datetime="` + day + `">` + day + `</time>`)
+		}
 	case "emoji":
 		short := ""
 		if v, ok := n.Attrs["shortcode"].(string); ok {
@@ -118,21 +216,25 @@ func renderNode(b *strings.Builder, n Node, marks map[string]bool) {
 			b.WriteString(":" + html.EscapeString(short) + ":")
 		}
 	case "mediaSingle", "media":
-		b.WriteString(`<span class="adf-media">[attachment]</span>`)
+		if storage {
+			b.WriteString("[attachment]")
+		} else {
+			b.WriteString(`<span class="adf-media">[attachment]</span>`)
+		}
 	case "text":
-		renderText(b, n, marks)
+		renderText(b, n, marks, storage)
 	default:
-		renderInline(b, n.Content, marks)
+		renderInline(b, n.Content, marks, storage)
 	}
 }
 
-func renderInline(b *strings.Builder, nodes []Node, marks map[string]bool) {
+func renderInline(b *strings.Builder, nodes []Node, marks map[string]bool, storage bool) {
 	for _, n := range nodes {
-		renderNode(b, n, marks)
+		renderNode(b, n, marks, storage)
 	}
 }
 
-func renderText(b *strings.Builder, n Node, marks map[string]bool) {
+func renderText(b *strings.Builder, n Node, marks map[string]bool, storage bool) {
 	text := html.EscapeString(n.Text)
 	link := ""
 	active := map[string]bool{}
@@ -150,7 +252,9 @@ func renderText(b *strings.Builder, n Node, marks map[string]bool) {
 			}
 		}
 	}
-	if link != "" {
+	if link != "" && storage {
+		text = `<a href="` + html.EscapeString(link) + `">` + text + `</a>`
+	} else if link != "" {
 		text = `<a href="` + html.EscapeString(link) + `" rel="noopener noreferrer">` + text + `</a>`
 	}
 	if active["code"] {
@@ -231,7 +335,7 @@ func HardBreak() Node { return Node{Type: "hardBreak"} }
 
 // Doc builds a document from blocks.
 func Doc(blocks ...Node) json.RawMessage {
-	raw, _ := json.Marshal(Node{Type: "doc", Attrs: map[string]any{"version": 1}, Content: blocks})
+	raw, _ := json.Marshal(Node{Type: "doc", Version: 1, Content: blocks})
 	return raw
 }
 
@@ -268,7 +372,7 @@ func supportedNode(t string) bool {
 	switch t {
 	case "doc", "paragraph", "heading", "bulletList", "orderedList", "listItem",
 		"codeBlock", "blockquote", "hardBreak", "table", "tableRow",
-		"tableHeader", "tableCell", "mention", "emoji", "text":
+		"tableHeader", "tableCell", "mention", "emoji", "text", "taskList", "taskItem", "date", "rule":
 		return true
 	}
 	return false

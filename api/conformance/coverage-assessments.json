@@ -339,7 +339,7 @@
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/user/watch/content/{contentId}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -349,13 +349,18 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/user/watch/label/{labelName}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -365,13 +370,18 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/user/watch/space/{spaceKey}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -381,7 +391,12 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
@@ -488,7 +503,7 @@
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/child/attachment/{attachmentId}/download",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails. Pages and blog posts are both containers; beans name the container type and collectionName.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -499,7 +514,8 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/page_formats_test.go",
-        "docs/PAGE_WRITING.md"
+        "docs/PAGE_WRITING.md",
+        "internal/confluence/v1_blog_attachments_test.go"
       ]
     },
     {
@@ -568,7 +584,7 @@
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/notification/child-created",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -578,13 +594,18 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/notification/created",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -594,7 +615,12 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
@@ -723,9 +749,10 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/groups_test.go",
-        "docs/WIKI_GROUPS.md"
+        "docs/WIKI_GROUPS.md",
+        "internal/confluence/users_groups_test.go"
       ],
-      "notes": "Listing groups is tested, including that someone outside the workspace is refused and that no total is reported unless asked. The accessType filter remains."
+      "notes": "Listing groups is tested, including that someone outside the workspace is refused, that no total is reported unless asked, that only the site organization's groups appear, and the accessType filter (user, admin, site-admin) read from product and site role bindings."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/group/by-id",
@@ -750,14 +777,15 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/groups_test.go",
-        "docs/WIKI_GROUPS.md"
+        "docs/WIKI_GROUPS.md",
+        "internal/confluence/users_groups_test.go"
       ],
-      "notes": "The people in a group are tested, and agree with what /user/memberof reports after one write. expand remains."
+      "notes": "The people in a group are tested, and agree with what /user/memberof reports after one write; expand supports operations (site permissions), personalSpace and isExternalCollaborator with _expandable for the rest, and refuses unknown expansions."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/label",
       "status": "partial",
-      "notes": "Returns a visible label and its associated current page content; non-page content types remain.",
+      "notes": "Returns a visible label and its associated current page content; pages, blog posts and attachments are listed, with the type filter; page templates carry no labels.",
       "evidence": [
         "internal/confluence/http.go",
         "internal/confluence/v1.go",
@@ -767,7 +795,9 @@
         "migrations/075_wiki_labels.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ]
     },
     {
@@ -840,9 +870,10 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/users_test.go",
-        "docs/WIKI_USERS.md"
+        "docs/WIKI_USERS.md",
+        "internal/confluence/users_groups_test.go"
       ],
-      "notes": "The user search is tested for a match and a miss; a CQL query naming a field this does not filter on is refused rather than matching everyone. sitePermissionTypeFilter remains."
+      "notes": "The user search is tested for a match and a miss; a CQL query naming a field this does not filter on is refused rather than matching everyone; sitePermissionTypeFilter selects licensed users (none), guests (externalCollaborator) or everyone (all), with start/limit paging, totalSize and user expansions."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/settings/lookandfeel",
@@ -928,18 +959,22 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/content_states_test.go",
-        "docs/CONTENT_STATES.md"
+        "docs/CONTENT_STATES.md",
+        "internal/confluence/space_roles_states_test.go",
+        "docs/CONFLUENCE_SPACE_ROLES.md"
       ],
-      "notes": "The content in a state is tested, including paging bounds, the required state-id, and that a page leaves the listing when its state changes; the expand parameter remains."
+      "notes": "Lists pages in a content state with start/limit paging and v1 content expansions; body.export_view and body.styled_view expansions cap the page at 25."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/state/settings",
       "status": "partial",
       "evidence": [
         "internal/confluence/content_states_test.go",
-        "docs/CONTENT_STATES.md"
+        "docs/CONTENT_STATES.md",
+        "internal/confluence/space_roles_states_test.go",
+        "docs/CONFLUENCE_SPACE_ROLES.md"
       ],
-      "notes": "The space's state settings are tested and agree with the suggested set; restricting which states a space allows remains."
+      "notes": "Space administrators read whether content states are allowed and whether space-suggested and custom states are, with the suggested states listed only when allowed; administrators change the settings on the space page and state writes enforce them."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/theme",
@@ -953,7 +988,7 @@
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/space/{spaceKey}/watch",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -963,7 +998,12 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
@@ -1059,7 +1099,7 @@
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user/watch/content/{contentId}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -1069,13 +1109,18 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user/watch/label/{labelName}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -1085,13 +1130,18 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/user/watch/space/{spaceKey}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -1101,7 +1151,12 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
@@ -1163,7 +1218,7 @@
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/child/attachment",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails. Pages and blog posts are both containers; beans name the container type and collectionName.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -1174,13 +1229,14 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/page_formats_test.go",
-        "docs/PAGE_WRITING.md"
+        "docs/PAGE_WRITING.md",
+        "internal/confluence/v1_blog_attachments_test.go"
       ]
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/content/{id}/child/attachment/{attachmentId}/data",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails. Pages and blog posts are both containers; beans name the container type and collectionName.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -1191,7 +1247,8 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/page_formats_test.go",
-        "docs/PAGE_WRITING.md"
+        "docs/PAGE_WRITING.md",
+        "internal/confluence/v1_blog_attachments_test.go"
       ]
     },
     {
@@ -1378,7 +1435,7 @@
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/user/watch/content/{contentId}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -1388,13 +1445,18 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/user/watch/label/{labelName}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -1404,13 +1466,18 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
       "operationId": "confluence-v1:POST:/wiki/rest/api/user/watch/space/{spaceKey}",
       "status": "partial",
-      "notes": "Durable page-content, space, and label watches support current-user and administrator-targeted status/mutation, XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; other content types, Confluence space-admin roles, and email delivery remain.",
+      "notes": "Durable watches on pages, blog posts, whiteboards, databases, folders, Smart Links, custom content, spaces and labels support current-user, site-administrator and space-administrator targeted status/mutation (label watches for others stay with site administrators; comments and attachments are refused as watch targets), XSRF headers, legacy watcher beans, pagination, private sync actions, visibility-checked deduplicated inbox delivery, minor-edit suppression, and UI controls; watchers hear about page creation and updates, blog post publication and updates, and new comments once per change (mentions take precedence), and every Confluence notification is also emailed through the outbox with a link to the content.",
       "evidence": [
         "internal/confluence/v1_watches.go",
         "internal/confluence/http_test.go",
@@ -1420,7 +1487,12 @@
         "migrations/080_wiki_watches.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/watches_test.go",
+        "internal/store/wiki_notification_email.go",
+        "migrations/178_wiki_notification_email.sql",
+        "docs/CONFLUENCE_NOTIFICATIONS.md",
+        "e2e/wiki_watches.spec.ts"
       ]
     },
     {
@@ -1462,7 +1534,7 @@
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{id}/child/attachment",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails. Pages and blog posts are both containers; beans name the container type and collectionName.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -1473,13 +1545,14 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/page_formats_test.go",
-        "docs/PAGE_WRITING.md"
+        "docs/PAGE_WRITING.md",
+        "internal/confluence/v1_blog_attachments_test.go"
       ]
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/content/{id}/child/attachment/{attachmentId}",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
+      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails. Updates the filename, media type and comment, and moves the attachment to another page or blog post the caller may add attachments to, each as a new version holding the same file with optimistic version checks.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -1490,7 +1563,8 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/page_formats_test.go",
-        "docs/PAGE_WRITING.md"
+        "docs/PAGE_WRITING.md",
+        "internal/confluence/v1_blog_attachments_test.go"
       ]
     },
     {
@@ -1662,7 +1736,7 @@
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/attachments/{attachment-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion. Every content kind Confluence gives properties \u2014 pages, blog posts, attachments, comments, custom content, folders, whiteboards, databases, Smart Links and spaces \u2014 has its own property routes here.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -1700,9 +1774,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; classification uses the organization's levels with space-default inheritance; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/blogposts/{id}",
@@ -1715,9 +1791,12 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md",
+        "e2e/wiki_drafts_purge.spec.ts"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; drafts of published blog posts are saved at version 1 beside the published version, read with get-draft, discarded with draft=true and replaced by publishing; purge moves trashed posts to the deleted state that space administrators see and restore."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/comments/{comment-id}/properties/{property-id}",
@@ -1752,7 +1831,7 @@
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/databases/{database-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
@@ -1786,7 +1865,7 @@
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/embeds/{embed-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/embeds.go",
         "internal/confluence/folders.go",
@@ -1820,7 +1899,7 @@
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/folders/{folder-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources remain.",
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/folders.go",
         "internal/confluence/http_test.go",
@@ -1865,7 +1944,7 @@
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/inline-comments/{comment-id}",
       "status": "partial",
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag.",
       "evidence": [
         "internal/confluence/inline_comments.go",
         "internal/confluence/http_test.go",
@@ -1874,7 +1953,9 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
@@ -1887,9 +1968,12 @@
         "internal/store/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md",
+        "e2e/wiki_drafts_purge.spec.ts"
       ],
-      "notes": "Moves a writable childless current page to trash through the canonical optimistic page command while preserving history and enforcing heterogeneous-child safety; an archived page can still be trashed; draft deletion, permanent purge and the deleted state remain."
+      "notes": "Moves a writable childless current page to trash through the canonical optimistic page command while preserving history and enforcing heterogeneous-child safety; an archived page can still be trashed; draft=true discards drafts and never-published pages, purge=true moves a trashed page to the deleted state with space administration, and deleted pages are visible to and restorable by space administrators."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/pages/{page-id}/properties/{property-id}",
@@ -1902,9 +1986,11 @@
         "migrations/093_wiki_page_properties.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Deletes an exact property from a writable current page atomically and emits a permission-filtered tombstone action; restore and app scope enforcement remain."
+      "notes": "Deletes an exact property from a writable current page atomically and emits a permission-filtered tombstone action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/space-roles/{id}",
@@ -1914,9 +2000,11 @@
         "internal/confluence/http_test.go",
         "internal/commands/wiki.go",
         "internal/store/wiki_space_roles.go",
-        "migrations/096_wiki_space_roles.sql"
+        "migrations/096_wiki_space_roles.sql",
+        "internal/confluence/space_roles_states_test.go",
+        "docs/CONFLUENCE_SPACE_ROLES.md"
       ],
-      "notes": "Workspace administrators delete custom roles and their assignments atomically while protected system roles reject deletion; reassignment workflows remain."
+      "notes": "Site administrators delete a custom role and its assignments in every space, answered 202 with a finished long task; system roles cannot be deleted."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/spaces/{id}/classification-level/default",
@@ -1929,9 +2017,13 @@
         "migrations/094_wiki_space_classification.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Workspace administrators can clear a visible space's default built-in classification; new page and blog post writes then stop inheriting a level. Organization-defined levels remain."
+      "notes": "Space administrators clear a visible space's default; content without its own level then has no classification."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/spaces/{space-id}/properties/{property-id}",
@@ -1943,9 +2035,11 @@
         "internal/store/wiki_space_properties.go",
         "migrations/095_wiki_space_properties.sql",
         "internal/web/wiki.go",
-        "internal/render/templates/wiki.gohtml"
+        "internal/render/templates/wiki.gohtml",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Workspace administrators delete an exact property from its space with an atomic delete sync action; app scope enforcement remains."
+      "notes": "Workspace administrators delete an exact property from its space with an atomic delete sync action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/whiteboards/{id}",
@@ -1971,7 +2065,7 @@
     {
       "operationId": "confluence-v2:DELETE:/wiki/api/v2/whiteboards/{whiteboard-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",
@@ -2042,7 +2136,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{attachment-id}/properties",
       "status": "partial",
-      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion. Every content kind Confluence gives properties \u2014 pages, blog posts, attachments, comments, custom content, folders, whiteboards, databases, Smart Links and spaces \u2014 has its own property routes here.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -2054,7 +2148,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{attachment-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion. Every content kind Confluence gives properties \u2014 pages, blog posts, attachments, comments, custom content, folders, whiteboards, databases, Smart Links and spaces \u2014 has its own property routes here.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -2100,7 +2194,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/footer-comments",
       "status": "partial",
-      "notes": "Returns version-validated, permission-scoped top-level attachment comments with storage bodies, documented sorts and cursor pagination; other body representations remain.",
+      "notes": "Returns version-validated, permission-scoped top-level attachment comments with storage bodies, documented sorts and cursor pagination; collections read in storage or the document format.",
       "evidence": [
         "internal/confluence/http.go",
         "internal/confluence/http_test.go",
@@ -2108,7 +2202,9 @@
         "migrations/079_wiki_attachment_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
@@ -2126,7 +2222,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/attachments/{id}/operations",
       "status": "partial",
-      "notes": "Versioned, permission-scoped page attachment metadata and file lifecycle is implemented; attachments carry Confluence's media type description (PDF Document, PNG Image) in v2 and in the v1 extensions, include-collaborators lists every uploader of a version, and images have generated thumbnails.",
+      "notes": "Returns read, update, delete and, for space administrators, purge for a visible attachment.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -2137,7 +2233,11 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts",
         "internal/confluence/page_formats_test.go",
-        "docs/PAGE_WRITING.md"
+        "docs/PAGE_WRITING.md",
+        "internal/confluence/operations.go",
+        "internal/confluence/operations_test.go",
+        "internal/store/wiki_space_held.go",
+        "docs/CONFLUENCE_OPERATIONS.md"
       ]
     },
     {
@@ -2178,9 +2278,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; drafts of published blog posts are saved at version 1 beside the published version, read with get-draft, discarded with draft=true and replaced by publishing; purge moves trashed posts to the deleted state that space administrators see and restore."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{blogpost-id}/properties",
@@ -2194,9 +2296,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; classification uses the organization's levels with space-default inheritance; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{blogpost-id}/properties/{property-id}",
@@ -2210,9 +2314,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; classification uses the organization's levels with space-default inheritance; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{blogpost-id}/versions/{version-number}",
@@ -2225,9 +2331,12 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md",
+        "internal/confluence/content_versions.go"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; drafts of published blog posts are saved at version 1 beside the published version, read with get-draft, discarded with draft=true and replaced by publishing; purge moves trashed posts to the deleted state that space administrators see and restore. With body-format each version carries the blog post's title and body at that version, and a single version names its author as collaborator."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}",
@@ -2240,9 +2349,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; drafts of published blog posts are saved at version 1 beside the published version, read with get-draft, discarded with draft=true and replaced by publishing; purge moves trashed posts to the deleted state that space administrators see and restore."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/attachments",
@@ -2258,7 +2369,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Blog posts share the permission-filtered, versioned attachment media model with pages. The v2 collection supports multi-value status (current and archived by default), media type and filename filters plus cursor paging; attachment detail, versions, operations, thumbnail and authenticated download routes recognize the blog parent, and the UI supports upload, replacement and deletion. V1 blog attachment upload compatibility, attachment metadata mutations and richer media processing remain."
+      "notes": "Blog posts share the permission-filtered, versioned attachment media model with pages. The v2 collection supports multi-value status (current and archived by default), media type and filename filters plus cursor paging; attachment detail, versions, operations, thumbnail and authenticated download routes recognize the blog parent, and the UI supports upload, replacement and deletion. The v1 attachment routes work on blog posts (upload, new versions by name or id, download) and v1 metadata updates rename, retype, comment and move attachments between pages and blog posts as new versions; image attachments have generated thumbnails."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/classification-level",
@@ -2272,9 +2383,15 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, organization-level classification set (published levels only)/reset with space-default inheritance, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/custom-content",
@@ -2303,9 +2420,12 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/store/wiki_presence.go",
+        "internal/confluence/presence_test.go",
+        "docs/CONFLUENCE_LIVE.md"
       ],
-      "notes": "Blog posts share the threaded, versioned footer-comment lifecycle with pages. Collections support body format, status, sort and cursor paging; create, reply, update, delete, versions, likes and operations use the common comment APIs, public/private visibility shapes reads and sync, and the UI supports authoring and replies. Rich editor mentions and live collaboration remain."
+      "notes": "Blog posts share the threaded, versioned footer-comment lifecycle with pages. Collections support body format, status, sort and cursor paging; create, reply, update, delete, versions, likes and operations use the common comment APIs, public/private visibility shapes reads and sync, and the UI supports authoring and replies. Mentions notify the people they name and the editor offers a mention picker; open posts show who else is reading or editing and announce new comments and versions live."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/inline-comments",
@@ -2318,9 +2438,14 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md",
+        "internal/store/wiki_presence.go",
+        "internal/confluence/presence_test.go",
+        "docs/CONFLUENCE_LIVE.md"
       ],
-      "notes": "Blog posts share exact-passage inline threads with pages, including replies, optimistic versions, resolve/reopen state, likes and operations. Collections support body format, status, resolution status, sort and cursor paging; public/private visibility shapes reads and sync, and the UI supports authoring and resolution. Rich anchor relocation after edits and live collaboration remain."
+      "notes": "Blog posts share exact-passage inline threads with pages, including replies, optimistic versions, resolve/reopen state, likes and operations. Collections support body format, status, resolution status, sort and cursor paging; public/private visibility shapes reads and sync, and the UI supports authoring and resolution. Anchors follow edits, versions and redactions, dangling when their passage is gone; open posts show who else is reading or editing and announce new comments and versions live."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/labels",
@@ -2334,9 +2459,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; classification uses the organization's levels with space-default inheritance; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/likes/count",
@@ -2350,9 +2477,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; classification uses the organization's levels with space-default inheritance; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/likes/users",
@@ -2366,9 +2495,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; classification uses the organization's levels with space-default inheritance; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/operations",
@@ -2382,9 +2513,15 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md",
+        "internal/confluence/operations.go",
+        "internal/confluence/operations_test.go",
+        "internal/store/wiki_space_held.go",
+        "docs/CONFLUENCE_OPERATIONS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Returns read, export, update, delete, copy, purge, purge_version and create comment/attachment for a visible blog post from held space permissions and space administration."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/blogposts/{id}/versions",
@@ -2397,9 +2534,12 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md",
+        "internal/confluence/content_versions.go"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; drafts of published blog posts are saved at version 1 beside the published version, read with get-draft, discarded with draft=true and replaced by publishing; purge moves trashed posts to the deleted state that space administrators see and restore. With body-format each version carries the blog post's title and body at that version, and a single version names its author as collaborator."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/classification-levels",
@@ -2409,9 +2549,13 @@
         "internal/confluence/http_test.go",
         "internal/confluence/databases.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Returns the four ordered built-in published classification levels used consistently by page, blog-post, database and whiteboard APIs and author controls; organization-defined level administration and edition entitlements remain."
+      "notes": "Returns the organization's published and archived classification levels in order, each with id, status, order, name, description, guideline and color; site administrators create draft levels, edit, publish, archive, restore and reorder them in site administration, and the same levels serve Jira."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/comments/{comment-id}/properties",
@@ -2514,9 +2658,11 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/custom_content_test.go",
-        "docs/CUSTOM_CONTENT.md"
+        "docs/CUSTOM_CONTENT.md",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ],
-      "notes": "The read is tested; it answers an empty page because custom content cannot be commented on yet."
+      "notes": "Footer comments on custom content are listed in the page comment formats and sorts, with replies inheriting the custom content, visibility following the custom content and privacy-shaped sync."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/custom-content/{id}/labels",
@@ -2532,9 +2678,13 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/custom_content_test.go",
-        "docs/CUSTOM_CONTENT.md"
+        "docs/CUSTOM_CONTENT.md",
+        "internal/confluence/operations.go",
+        "internal/confluence/operations_test.go",
+        "internal/store/wiki_space_held.go",
+        "docs/CONFLUENCE_OPERATIONS.md"
       ],
-      "notes": "The operation read is tested."
+      "notes": "Returns read, update, delete, copy, move, purge and create comment for custom content from held space permissions, content restrictions and space administration."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/data-policies/metadata",
@@ -2558,7 +2708,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{database-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
@@ -2614,7 +2764,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{id}/classification-level",
       "status": "partial",
-      "notes": "Database classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain.",
+      "notes": "Database classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
@@ -2624,7 +2774,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ]
     },
     {
@@ -2670,20 +2824,24 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{id}/operations",
       "status": "partial",
-      "notes": "The database operation resource reports read and permission-shaped update/delete capabilities; the broader Confluence operation catalog and app-derived permissions remain.",
+      "notes": "Returns read, export, update, delete, copy, move and purge for a database from held space permissions, content restrictions and space administration.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
         "internal/store/wiki_content.go",
         "migrations/083_wiki_hierarchical_content.sql",
         "migrations/084_wiki_content_classification.sql",
-        "internal/commands/wiki.go"
+        "internal/commands/wiki.go",
+        "internal/confluence/operations.go",
+        "internal/confluence/operations_test.go",
+        "internal/store/wiki_space_held.go",
+        "docs/CONFLUENCE_OPERATIONS.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/databases/{id}/properties",
       "status": "partial",
-      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
@@ -2697,7 +2855,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/embeds/{embed-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/embeds.go",
         "internal/confluence/folders.go",
@@ -2785,19 +2943,23 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/embeds/{id}/operations",
       "status": "partial",
-      "notes": "The Smart Link operation resource reports read and permission-shaped update/delete capabilities; the broader Confluence operation catalog and app-derived permissions remain.",
+      "notes": "Returns read, update, delete, copy, move and purge for a Smart Link from held space permissions, content restrictions and space administration.",
       "evidence": [
         "internal/confluence/embeds.go",
         "internal/confluence/folders.go",
         "internal/confluence/http_test.go",
         "internal/store/wiki_content.go",
-        "migrations/083_wiki_hierarchical_content.sql"
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/confluence/operations.go",
+        "internal/confluence/operations_test.go",
+        "internal/store/wiki_space_held.go",
+        "docs/CONFLUENCE_OPERATIONS.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/embeds/{id}/properties",
       "status": "partial",
-      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/embeds.go",
         "internal/confluence/folders.go",
@@ -2811,7 +2973,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/folders/{folder-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources remain.",
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/folders.go",
         "internal/confluence/http_test.go",
@@ -2892,18 +3054,22 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/folders/{id}/operations",
       "status": "partial",
-      "notes": "The operation resource reports read and permission-shaped update/delete capabilities; the broader Confluence operation catalog and app-derived permissions remain.",
+      "notes": "Returns read, update, delete, copy, move and purge for a folder from held space permissions, content restrictions and space administration.",
       "evidence": [
         "internal/confluence/folders.go",
         "internal/confluence/http_test.go",
         "internal/store/wiki_content.go",
-        "migrations/083_wiki_hierarchical_content.sql"
+        "migrations/083_wiki_hierarchical_content.sql",
+        "internal/confluence/operations.go",
+        "internal/confluence/operations_test.go",
+        "internal/store/wiki_space_held.go",
+        "docs/CONFLUENCE_OPERATIONS.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/folders/{id}/properties",
       "status": "partial",
-      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources remain.",
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/folders.go",
         "internal/confluence/http_test.go",
@@ -2916,7 +3082,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments",
       "status": "partial",
-      "notes": "Lists all visible page and attachment footer comments with cursor pagination, storage bodies and four documented sort orders; other content targets and body formats remain.",
+      "notes": "Lists all visible page and attachment footer comments with cursor pagination, storage bodies and four documented sort orders; custom content takes footer comments too, and bodies are written and read in the page body forms and formats.",
       "evidence": [
         "internal/confluence/http.go",
         "internal/confluence/http_test.go",
@@ -2925,13 +3091,15 @@
         "migrations/073_wiki_footer_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/footer-comments/{comment-id}",
       "status": "partial",
-      "notes": "Returns a visible page or attachment footer comment and optional storage body; broader expansions remain.",
+      "notes": "Returns a visible page or attachment footer comment and optional storage body; a single footer comment read takes include-properties, include-operations, include-likes, include-versions and include-version.",
       "evidence": [
         "internal/confluence/http.go",
         "internal/confluence/http_test.go",
@@ -2940,7 +3108,9 @@
         "migrations/073_wiki_footer_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
@@ -3036,7 +3206,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments",
       "status": "partial",
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag.",
       "evidence": [
         "internal/confluence/inline_comments.go",
         "internal/confluence/http_test.go",
@@ -3045,13 +3215,15 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{comment-id}",
       "status": "partial",
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag.",
       "evidence": [
         "internal/confluence/inline_comments.go",
         "internal/confluence/http_test.go",
@@ -3060,13 +3232,15 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/children",
       "status": "partial",
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag.",
       "evidence": [
         "internal/confluence/inline_comments.go",
         "internal/confluence/http_test.go",
@@ -3075,13 +3249,15 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/likes/count",
       "status": "partial",
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag.",
       "evidence": [
         "internal/confluence/inline_comments.go",
         "internal/confluence/http_test.go",
@@ -3090,13 +3266,15 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/likes/users",
       "status": "partial",
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag.",
       "evidence": [
         "internal/confluence/inline_comments.go",
         "internal/confluence/http_test.go",
@@ -3105,13 +3283,15 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/operations",
       "status": "partial",
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag.",
       "evidence": [
         "internal/confluence/inline_comments.go",
         "internal/confluence/http_test.go",
@@ -3120,13 +3300,15 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/versions",
       "status": "partial",
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag.",
       "evidence": [
         "internal/confluence/inline_comments.go",
         "internal/confluence/http_test.go",
@@ -3135,13 +3317,15 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/inline-comments/{id}/versions/{version-number}",
       "status": "partial",
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag.",
       "evidence": [
         "internal/confluence/inline_comments.go",
         "internal/confluence/http_test.go",
@@ -3150,7 +3334,9 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
@@ -3193,9 +3379,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; classification uses the organization's levels with space-default inheritance; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/labels/{id}/pages",
@@ -3242,7 +3430,10 @@
         "internal/confluence/page_lifecycle_test.go",
         "internal/store/wiki_content_tree.go",
         "internal/confluence/page_formats_test.go",
-        "docs/PAGE_WRITING.md"
+        "docs/PAGE_WRITING.md",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md",
+        "e2e/wiki_drafts_purge.spec.ts"
       ],
       "notes": "Returns a permission-scoped current or historical page with storage body and optional labels, properties, operations, likes, versions, favorite status, collaborators, direct children and version omission; an archived page reads back with status=archived, an earlier version reports historical, and an unknown status is refused; every primary body format reads back, include-webresources names the stylesheets and script that render page content, include-collaborators lists the page's version authors, and the favourite flag reports the reader's star."
     },
@@ -3310,9 +3501,13 @@
         "migrations/092_wiki_page_governance.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Permission-scoped page classification supports reads for matching page status and durable published-level state through the REST API and author UI; archived pages, organization-defined levels and entitlement semantics remain."
+      "notes": "Page classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/custom-content",
@@ -3381,7 +3576,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/inline-comments",
       "status": "partial",
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag.",
       "evidence": [
         "internal/confluence/inline_comments.go",
         "internal/confluence/http_test.go",
@@ -3390,7 +3585,9 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
@@ -3435,7 +3632,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Returns cursor-paginated account IDs for active users who like a visible current page, while durable UI mutations emit permission-filtered sync actions; advanced user expansions remain."
+      "notes": "Returns cursor-paginated account IDs for active users who like a visible current page, while durable UI mutations emit permission-filtered sync actions."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/operations",
@@ -3444,9 +3641,13 @@
         "internal/confluence/page_governance.go",
         "internal/confluence/http_test.go",
         "internal/store/wiki_restrictions.go",
-        "migrations/076_wiki_page_restrictions.sql"
+        "migrations/076_wiki_page_restrictions.sql",
+        "internal/confluence/operations.go",
+        "internal/confluence/operations_test.go",
+        "internal/store/wiki_space_held.go",
+        "docs/CONFLUENCE_OPERATIONS.md"
       ],
-      "notes": "Returns read plus update and delete operations according to current page visibility and direct-user/group edit restrictions; the complete Confluence permission-operation vocabulary remains."
+      "notes": "Returns the page's permitted operations from held space permissions, page restrictions and space administration: read, export, update, archive, delete, copy, move, restrict_content, purge, purge_version, and create comment/attachment; the same list backs include-operations and the v1 operations expansion."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{id}/versions",
@@ -3457,9 +3658,11 @@
         "internal/store/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "internal/confluence/content_versions.go"
       ],
-      "notes": "Lists permission-scoped page versions with documented modified-date ordering and cursor pagination while excluding another user's draft history; body-format is validated but version bodies and remaining expansion semantics remain."
+      "notes": "Lists permission-scoped page versions with documented modified-date ordering and cursor pagination while excluding another user's draft history; with body-format each version carries the page's title and body at that version, in storage or the document format."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{page-id}/properties",
@@ -3474,7 +3677,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Lists permission-scoped versioned JSON properties for a visible current page with key filtering, documented key sort directions and cursor pagination; expansion flags remain."
+      "notes": "Lists permission-scoped versioned JSON properties for a visible current page with key filtering, documented key sort directions and cursor pagination. The pinned read takes key, sort, cursor and limit and nothing else, and all four are honoured."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{page-id}/properties/{property-id}",
@@ -3489,7 +3692,7 @@
         "internal/render/templates/wiki.gohtml",
         "e2e/wiki.spec.ts"
       ],
-      "notes": "Returns an exact versioned JSON property only through its visible current parent page; expansion flags remain."
+      "notes": "Returns an exact versioned JSON property only through its visible current parent page. The pinned read takes key, sort, cursor and limit and nothing else, and all four are honoured."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/pages/{page-id}/versions/{version-number}",
@@ -3497,9 +3700,11 @@
       "evidence": [
         "internal/confluence/page_governance.go",
         "internal/confluence/http_test.go",
-        "internal/store/wiki.go"
+        "internal/store/wiki.go",
+        "internal/confluence/content_drafts_test.go",
+        "internal/confluence/content_versions.go"
       ],
-      "notes": "Returns exact permission-scoped page version metadata with author, message, minor-edit state, stable previous/next links, collaborator shape and content-type flag; historical body retrieval and expansions remain."
+      "notes": "Returns exact permission-scoped page version metadata with author, message, minor-edit state, stable previous/next links, collaborator shape and content-type flag; collaborators name the version's author, and the body at that version reads through GET /pages/{id}?version, which the pinned single-version schema leaves out."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-permissions",
@@ -3515,9 +3720,11 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/permission_transition_test.go",
-        "docs/SPACE_PERMISSION_TRANSITION.md"
+        "docs/SPACE_PERMISSION_TRANSITION.md",
+        "internal/confluence/space_roles_states_test.go",
+        "docs/CONFLUENCE_SPACE_ROLES.md"
       ],
-      "notes": "The combinations are tested: two sets told apart, the principal and space counts (one person in two spaces is one principal), and that a set already matching a role is left out. Cursor paging remains."
+      "notes": "Site administrators list unassigned permission combinations sorted by principal count, paged by limit (1-250) and an opaque body cursor, with generatedAt from the last scan."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-permissions/transition/tasks/{taskId}",
@@ -3548,9 +3755,11 @@
         "migrations/096_wiki_space_roles.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/space_roles_states_test.go",
+        "docs/CONFLUENCE_SPACE_ROLES.md"
       ],
-      "notes": "Lists built-in and custom roles with type, space and paired principal filters plus cursor pagination; tenant-wide principal filtering and Atlassian-managed role catalogs remain."
+      "notes": "Lists system and custom roles filtered by role type, space and principal; principal filtering spans every visible space (with default assignments) when no space is named; cursor paging."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/space-roles/{id}",
@@ -3559,9 +3768,11 @@
         "internal/confluence/space_roles.go",
         "internal/confluence/http_test.go",
         "internal/store/wiki_space_roles.go",
-        "migrations/096_wiki_space_roles.sql"
+        "migrations/096_wiki_space_roles.sql",
+        "internal/confluence/space_roles_states_test.go",
+        "docs/CONFLUENCE_SPACE_ROLES.md"
       ],
-      "notes": "Returns an exact built-in or workspace custom role to an active member; Atlassian-managed role metadata remains."
+      "notes": "Reads a system (Atlassian-managed, immutable) or custom role with its type, name, description and permissions."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces",
@@ -3574,9 +3785,14 @@
         "web/static/img/space-default.svg",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/spaces_test.go",
+        "internal/store/wiki_space_create.go",
+        "internal/store/wiki_space_access.go",
+        "migrations/180_wiki_space_types_states.sql",
+        "docs/CONFLUENCE_SPACES.md"
       ],
-      "notes": "Lists membership-visible public and creator-private current global spaces with ID, key and all-label filters, documented ID/key/name sorts, plain or escaped view descriptions, optional icons and cursor pagination; archived/personal/system spaces and favorite filters remain explicit capability gaps."
+      "notes": "Lists visible spaces with ids/keys/labels filters, every documented type (global, collaboration, knowledge_base, personal, system, onboarding, xflow_sample_space) and status (current, archived, trashed) with 400 for unknown values, favorited-by/not-favorited-by read from favourite relations, id/key/name sorting, plain/view descriptions, icons and cursor paging."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}",
@@ -3587,9 +3803,11 @@
         "internal/confluence/http_test.go",
         "internal/store/wiki.go",
         "internal/store/wiki_labels.go",
-        "web/static/img/space-default.svg"
+        "web/static/img/space-default.svg",
+        "internal/confluence/spaces_test.go",
+        "docs/CONFLUENCE_SPACES.md"
       ],
-      "notes": "Returns an exact visible current global space with plain or escaped view description, optional default icon, role-shaped operations and labels; properties, granular permissions, role assignments, homepage identity and other space types/states remain."
+      "notes": "Returns an exact visible current global space with plain or escaped view description, optional default icon, role-shaped operations and labels; every include flag (icon, operations, properties, permissions from real role assignments and grants, role assignments, labels), homepage identity and every space type and status are reported."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/blogposts",
@@ -3602,9 +3820,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; drafts of published blog posts are saved at version 1 beside the published version, read with get-draft, discarded with draft=true and replaced by publishing; purge moves trashed posts to the deleted state that space administrators see and restore."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/classification-level/default",
@@ -3617,9 +3837,13 @@
         "migrations/094_wiki_space_classification.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Returns the built-in default classification for a visible space and reports no default as not found. Organization-defined levels remain."
+      "notes": "Returns a visible space's default level from the organization's levels, including an archived default, and 404 when the space has none."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/content/labels",
@@ -3668,9 +3892,13 @@
       "evidence": [
         "internal/confluence/space_governance.go",
         "internal/confluence/http_test.go",
-        "internal/store/wiki.go"
+        "internal/store/wiki.go",
+        "internal/confluence/operations.go",
+        "internal/confluence/operations_test.go",
+        "internal/store/wiki_space_held.go",
+        "docs/CONFLUENCE_OPERATIONS.md"
       ],
-      "notes": "Returns read for visible spaces and exposes update/delete only to workspace administrators; Confluence-specific space roles and granular permissions remain."
+      "notes": "Returns read and export, create for every content kind the caller holds permission to create (from role assignments, groups, access classes and direct grants), and update, archive, delete, restrict_content and administer for space administrators."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/pages",
@@ -3694,9 +3922,14 @@
         "internal/confluence/http_test.go",
         "internal/store/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/spaces_test.go",
+        "internal/store/wiki_space_create.go",
+        "internal/store/wiki_space_access.go",
+        "migrations/180_wiki_space_types_states.sql",
+        "docs/CONFLUENCE_SPACES.md"
       ],
-      "notes": "Projects enforced public-space content access and creator-only private-space access into cursor-paged Confluence permission assignments, with workspace administration shown separately and exact-space expansion; granular Confluence roles, group/user overrides and mutation remain."
+      "notes": "Reports the space's real permissions: every permission of every assigned role for its principal (user, group, or role for an access class, including the default member/admin roles) plus direct grants, each once with stable ids, behind space visibility with cursor paging."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{id}/role-assignments",
@@ -3709,9 +3942,11 @@
         "migrations/096_wiki_space_roles.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/space_roles_states_test.go",
+        "docs/CONFLUENCE_SPACE_ROLES.md"
       ],
-      "notes": "Lists explicit or effective default user/access-class assignments in a visible space with role/type/principal filters and cursor pagination; assignment-driven runtime access enforcement and group expansion remain."
+      "notes": "Lists a visible space's role assignments (explicit, or the default member/admin or private-owner assignments), filtered by role, role type and principal; assignments drive access for users, their groups and access classes."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{space-id}/properties",
@@ -3723,9 +3958,11 @@
         "migrations/095_wiki_space_properties.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Lists versioned JSON properties on a visible space with key filtering, key sorting and cursor pagination; app scope enforcement remains."
+      "notes": "Lists versioned JSON properties on a visible space with key filtering, key sorting and cursor pagination; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/spaces/{space-id}/properties/{property-id}",
@@ -3734,14 +3971,16 @@
         "internal/confluence/space_properties.go",
         "internal/confluence/http_test.go",
         "internal/store/wiki_space_properties.go",
-        "migrations/095_wiki_space_properties.sql"
+        "migrations/095_wiki_space_properties.sql",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Returns an exact current versioned JSON property from a visible space; app scope enforcement and historical property reads remain."
+      "notes": "Returns an exact current versioned JSON property from a visible space; apps need the operation's Connect scope, enforced per operation from the pinned specification; the pinned API publishes no historical property read."
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/tasks",
       "status": "partial",
-      "notes": "Durable page tasks support accessible list/item reads, all documented identity/content/status/date filters, blank-task selection, storage bodies, cursor pagination, edit-permission status changes, completion actor/time, private sync filtering, and page UI assignment/due-date/completion; extraction and reconciliation from Confluence storage task macros, blog-post tasks, ADF bodies, and full task authoring semantics remain.",
+      "notes": "Tasks live in page and blog post bodies as Confluence task lists (storage ac:task-list and atlas_doc_format taskList/taskItem with mention and date nodes); every body change (publish, edit, version restore, redaction) reconciles the task store, deriving assignee from the first mention of a site member and due date from the first date. Reads cover accessible page and blog post tasks with all documented identity/content/status/date filters (page-id and blogpost-id select either), blank-task selection, storage and atlas_doc_format bodies, pageId/blogPostId beans and cursor pagination; PUT changes status with edit permission, ticking the task in the body in place with completion actor/time; private sync filtering covers blog post tasks; the web UI adds page tasks as body edits and completes page and blog post tasks.",
       "evidence": [
         "internal/confluence/tasks.go",
         "internal/confluence/http_test.go",
@@ -3750,13 +3989,18 @@
         "migrations/082_wiki_tasks.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/tasks_body_test.go",
+        "internal/wikimarkup/tasks.go",
+        "internal/adf/fromhtml.go",
+        "migrations/179_wiki_body_tasks.sql",
+        "docs/CONFLUENCE_TASKS.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/tasks/{id}",
       "status": "partial",
-      "notes": "Durable page tasks support accessible list/item reads, all documented identity/content/status/date filters, blank-task selection, storage bodies, cursor pagination, edit-permission status changes, completion actor/time, private sync filtering, and page UI assignment/due-date/completion; extraction and reconciliation from Confluence storage task macros, blog-post tasks, ADF bodies, and full task authoring semantics remain.",
+      "notes": "Tasks live in page and blog post bodies as Confluence task lists (storage ac:task-list and atlas_doc_format taskList/taskItem with mention and date nodes); every body change (publish, edit, version restore, redaction) reconciles the task store, deriving assignee from the first mention of a site member and due date from the first date. Reads cover accessible page and blog post tasks with all documented identity/content/status/date filters (page-id and blogpost-id select either), blank-task selection, storage and atlas_doc_format bodies, pageId/blogPostId beans and cursor pagination; PUT changes status with edit permission, ticking the task in the body in place with completion actor/time; private sync filtering covers blog post tasks; the web UI adds page tasks as body edits and completes page and blog post tasks.",
       "evidence": [
         "internal/confluence/tasks.go",
         "internal/confluence/http_test.go",
@@ -3765,7 +4009,12 @@
         "migrations/082_wiki_tasks.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/tasks_body_test.go",
+        "internal/wikimarkup/tasks.go",
+        "internal/adf/fromhtml.go",
+        "migrations/179_wiki_body_tasks.sql",
+        "docs/CONFLUENCE_TASKS.md"
       ]
     },
     {
@@ -3815,7 +4064,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{id}/classification-level",
       "status": "partial",
-      "notes": "Whiteboard classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain.",
+      "notes": "Whiteboard classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",
@@ -3826,7 +4075,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ]
     },
     {
@@ -3874,7 +4127,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{id}/operations",
       "status": "partial",
-      "notes": "The whiteboard operation resource reports read and permission-shaped update/delete capabilities; the broader Confluence operation catalog and app-derived permissions remain.",
+      "notes": "Returns read, export, update, delete, copy, move and purge for a whiteboard from held space permissions, content restrictions and space administration.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",
@@ -3882,13 +4135,17 @@
         "migrations/083_wiki_hierarchical_content.sql",
         "migrations/084_wiki_content_classification.sql",
         "migrations/085_wiki_whiteboard_templates.sql",
-        "internal/commands/wiki.go"
+        "internal/commands/wiki.go",
+        "internal/confluence/operations.go",
+        "internal/confluence/operations_test.go",
+        "internal/store/wiki_space_held.go",
+        "docs/CONFLUENCE_OPERATIONS.md"
       ]
     },
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{id}/properties",
       "status": "partial",
-      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",
@@ -3903,7 +4160,7 @@
     {
       "operationId": "confluence-v2:GET:/wiki/api/v2/whiteboards/{whiteboard-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",
@@ -3931,7 +4188,7 @@
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/attachments/{attachment-id}/properties",
       "status": "partial",
-      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion. Every content kind Confluence gives properties \u2014 pages, blog posts, attachments, comments, custom content, folders, whiteboards, databases, Smart Links and spaces \u2014 has its own property routes here.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -3951,9 +4208,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; drafts of published blog posts are saved at version 1 beside the published version, read with get-draft, discarded with draft=true and replaced by publishing; purge moves trashed posts to the deleted state that space administrators see and restore."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/blogposts/{blogpost-id}/properties",
@@ -3967,9 +4226,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; classification uses the organization's levels with space-default inheritance; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/blogposts/{id}/classification-level/reset",
@@ -3983,9 +4244,15 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, organization-level classification set (published levels only)/reset with space-default inheritance, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/blogposts/{id}/redact",
@@ -3998,9 +4265,13 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/store/wiki_redaction.go",
+        "internal/confluence/redaction_test.go",
+        "migrations/182_restorable_redactions.sql",
+        "docs/CONFLUENCE_REDACTION.md"
       ],
-      "notes": "Blog redaction supports current-version timestamp/version guards, validated and overlap-merged Unicode ranges, title/body markers, optional prior-version scrubbing, privacy-shaped sync and organization audit without retaining removed text. Registered plugin content types support permission-filtered, sorted and paged blog collections. A restoration route, arbitrary ADF node pointers, historical-version-only redaction, and custom-content mutation/install lifecycle remain."
+      "notes": "Blog posts redact exactly as pages do: current or earlier-version redaction against createdAt, stored-text ranges or document-format pointers, restorable macro and title markers with UUIDs, unrestorable code-block markers without ids, cleanHistory scrubbing, audit and privacy-shaped sync, and restoration by space administrators from the blog post. Registered plugin content types support permission-filtered, sorted and paged blog collections."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/comments/{comment-id}/properties",
@@ -4067,7 +4338,7 @@
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/databases/{id}/classification-level/reset",
       "status": "partial",
-      "notes": "Database classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain.",
+      "notes": "Database classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
@@ -4077,13 +4348,17 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ]
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/databases/{id}/properties",
       "status": "partial",
-      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
@@ -4117,7 +4392,7 @@
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/embeds/{id}/properties",
       "status": "partial",
-      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/embeds.go",
         "internal/confluence/folders.go",
@@ -4148,7 +4423,7 @@
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/folders/{id}/properties",
       "status": "partial",
-      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources remain.",
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/folders.go",
         "internal/confluence/http_test.go",
@@ -4161,7 +4436,7 @@
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/footer-comments",
       "status": "partial",
-      "notes": "Creates page and attachment comments plus threaded replies from flat or representation-keyed storage bodies, returning the documented 201 and Location header; other content targets and body formats remain.",
+      "notes": "Creates page and attachment comments plus threaded replies from flat or representation-keyed storage bodies, returning the documented 201 and Location header; custom content takes footer comments too, and bodies are written and read in the page body forms and formats.",
       "evidence": [
         "internal/confluence/http.go",
         "internal/confluence/http_test.go",
@@ -4170,13 +4445,15 @@
         "migrations/073_wiki_footer_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/inline-comments",
       "status": "partial",
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag.",
       "evidence": [
         "internal/confluence/inline_comments.go",
         "internal/confluence/http_test.go",
@@ -4185,7 +4462,9 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
@@ -4217,9 +4496,13 @@
         "migrations/092_wiki_page_governance.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Writable current pages can atomically reset classification state with validated request semantics and permission-filtered sync; space-default inheritance and edition entitlements remain."
+      "notes": "Page classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/pages/{id}/redact",
@@ -4232,9 +4515,13 @@
         "migrations/092_wiki_page_governance.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/store/wiki_redaction.go",
+        "internal/confluence/redaction_test.go",
+        "migrations/182_restorable_redactions.sql",
+        "docs/CONFLUENCE_REDACTION.md"
       ],
-      "notes": "Guarded current-page redaction validates optimistic timestamps and versions, JSON-pointer rune ranges, non-overlap normalization and rendered markup, creates immutable redaction IDs and a new page version, optionally scrubs matching historical text, records an organization audit event, emits permission-filtered sync and supports exact-text author workflows; restoration and code-block-specific semantics remain."
+      "notes": "Redacts current or, with versionNumber, one earlier page version against its createdAt, from stored-text rune ranges or JSON pointers into the document-format body resolved to the stored text; overlapping ranges merge and results keep input order. Body markers are redaction macros carrying the redaction UUID and title markers plain text, both restorable by space administrators from the page (a new version, or in the redacted earlier version); code-block text takes an unrestorable plain marker with no redactionId. cleanHistory scrubs other versions; redactions and restorations are audited and emit permission-filtered sync."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/pages/{page-id}/properties",
@@ -4247,9 +4534,11 @@
         "migrations/093_wiki_page_properties.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Creates validated uniquely keyed JSON properties on writable current pages atomically with version one and a permission-filtered sync action; app scope enforcement remains."
+      "notes": "Creates validated uniquely keyed JSON properties on writable current pages atomically with version one and a permission-filtered sync action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/space-permissions/transition/access-removals",
@@ -4289,9 +4578,11 @@
         "migrations/096_wiki_space_roles.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/space_roles_states_test.go",
+        "docs/CONFLUENCE_SPACE_ROLES.md"
       ],
-      "notes": "Workspace administrators create uniquely named custom roles from validated supported permission IDs through REST or the space manager UI; advanced permission dependencies remain."
+      "notes": "Site administrators create custom roles from validated catalogue permissions whose dependencies are satisfied (every permission needs read/space; create/update/delete of content needs reading it), refusing missing dependencies with 400."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/spaces",
@@ -4303,9 +4594,14 @@
         "internal/store/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/spaces_test.go",
+        "internal/store/wiki_space_create.go",
+        "internal/store/wiki_space_access.go",
+        "migrations/180_wiki_space_types_states.sql",
+        "docs/CONFLUENCE_SPACES.md"
       ],
-      "notes": "Workspace administrators create validated public or creator-private global spaces with key/alias and plain descriptions through REST or the accessible UI; templates, copied access and Confluence-specific role assignments remain explicit capability gaps."
+      "notes": "Creates spaces from a key or an alias (alias-only derives the key), with exactly one access choice: default roles, createPrivateSpace, roleAssignments (validated roles and principals, at least one administering role, creator-only admin makes the space private) or copySpaceAccessConfiguration (copies role assignments, direct grants and privacy from a space the caller administers); templateKey selects a space template that sets the space type and writes its homepage."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/spaces/{id}/role-assignments",
@@ -4318,9 +4614,11 @@
         "migrations/096_wiki_space_roles.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/space_roles_states_test.go",
+        "docs/CONFLUENCE_SPACE_ROLES.md"
       ],
-      "notes": "Workspace administrators atomically replace a space's validated user, group or supported access-class role assignments through REST or the manager UI; assignment-driven runtime access enforcement remains."
+      "notes": "Space administrators replace a space's role assignments with validated roles, users, groups and access classes; the assignments decide access at request time for users, their groups and access classes."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/spaces/{space-id}/properties",
@@ -4333,9 +4631,11 @@
         "migrations/095_wiki_space_properties.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Workspace administrators create uniquely keyed, validated JSON space properties through REST or the accessible UI with immutable version one and an atomic sync action; app scope enforcement remains."
+      "notes": "Workspace administrators create uniquely keyed, validated JSON space properties through REST or the accessible UI with immutable version one and an atomic sync action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/user/access/check-access-by-email",
@@ -4364,9 +4664,10 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/users_test.go",
-        "docs/WIKI_USERS.md"
+        "docs/WIKI_USERS.md",
+        "internal/confluence/users_groups_test.go"
       ],
-      "notes": "The v2 bulk read is tested, including the empty id list and that someone outside the workspace cannot enumerate its people; cursor paging remains."
+      "notes": "The v2 bulk read is tested, including the empty id list, the 250-id limit from the pinned API, guest flags, and that someone outside the workspace cannot enumerate its people."
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/whiteboards",
@@ -4392,7 +4693,7 @@
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/whiteboards/{id}/classification-level/reset",
       "status": "partial",
-      "notes": "Whiteboard classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain.",
+      "notes": "Whiteboard classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",
@@ -4403,13 +4704,17 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ]
     },
     {
       "operationId": "confluence-v2:POST:/wiki/api/v2/whiteboards/{id}/properties",
       "status": "partial",
-      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",
@@ -4437,7 +4742,7 @@
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/attachments/{attachment-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion; broader content-property targets remain separate.",
+      "notes": "Permission-scoped attachment properties support JSON values, key filtering, cursor pagination, immutable optimistic versions, expansion, conflict handling and deletion. Every content kind Confluence gives properties \u2014 pages, blog posts, attachments, comments, custom content, folders, whiteboards, databases, Smart Links and spaces \u2014 has its own property routes here.",
       "evidence": [
         "internal/confluence/attachments.go",
         "internal/confluence/http_test.go",
@@ -4458,9 +4763,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; classification uses the organization's levels with space-default inheritance; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/blogposts/{id}",
@@ -4473,9 +4780,11 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md"
       ],
-      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; full draft semantics remain."
+      "notes": "Blog posts support public or creator-private current/draft creation, permission-filtered global and space collections, exact reads, optimistic updates, immutable version history/detail, trash, restore, purge, privacy-shaped actions and an accessible author UI; attachments, footer and inline comments, labels, likes, properties, classification and redaction share the page routes; drafts of published blog posts are saved at version 1 beside the published version, read with get-draft, discarded with draft=true and replaced by publishing; purge moves trashed posts to the deleted state that space administrators see and restore."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/blogposts/{id}/classification-level",
@@ -4489,9 +4798,15 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, built-in classification set/reset, privacy-shaped synchronized actions, and an accessible author UI; write-compatible label and like REST operations, organization-defined classification levels remain; blog attachment, comment, custom-content and redaction routes are implemented."
+      "notes": "Blog metadata supports permission-filtered labels and label discovery, member likes, permission-shaped operations, optimistic versioned JSON properties, organization-level classification set (published levels only)/reset with space-default inheritance, privacy-shaped synchronized actions, and an accessible author UI; v1 label writes act on blog posts, and the pinned v2 API has no label or like writes; blog attachment, comment, custom-content and redaction routes are implemented."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/comments/{comment-id}/properties/{property-id}",
@@ -4526,7 +4841,7 @@
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/databases/{database-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Database JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with database privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
@@ -4540,7 +4855,7 @@
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/databases/{id}/classification-level",
       "status": "partial",
-      "notes": "Database classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain.",
+      "notes": "Database classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels.",
       "evidence": [
         "internal/confluence/databases.go",
         "internal/confluence/http_test.go",
@@ -4550,13 +4865,17 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ]
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/embeds/{embed-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Smart Link JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/embeds.go",
         "internal/confluence/folders.go",
@@ -4570,7 +4889,7 @@
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/folders/{folder-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records; property version-history resources remain.",
+      "notes": "Folder JSON properties support filtered and cursor-paged reads, create, exact-id reads, optimistic version updates, duplicate-key rejection, deletion, inherited visibility, and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/folders.go",
         "internal/confluence/http_test.go",
@@ -4583,7 +4902,7 @@
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/footer-comments/{comment-id}",
       "status": "partial",
-      "notes": "Updates an author-owned or administrator-moderated page or attachment comment with strict next-version concurrency and immutable version persistence; other body formats remain.",
+      "notes": "Updates an author-owned or administrator-moderated page or attachment comment with strict next-version concurrency and immutable version persistence; bodies are written as storage, the document format or wiki markup.",
       "evidence": [
         "internal/confluence/http.go",
         "internal/confluence/http_test.go",
@@ -4592,13 +4911,15 @@
         "migrations/073_wiki_footer_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/inline-comments/{comment-id}",
       "status": "partial",
-      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog-post comments, ADF bodies, rich anchor relocation/dangling detection, and the remaining expansion semantics remain.",
+      "notes": "Durable page inline-comment threads support exact storage-text anchors, replies, open/resolved/reopened state, optimistic versions, documented page/global/item/child collections, operations and like reads, cursor pagination, permission-filtered private sync actions, and an accessible author UI; blog posts take the same threads; bodies are written as storage, the document format or wiki markup and read in every primary format; anchors follow page and blog edits, versions and redactions, dangling when the passage is gone and reattaching when it returns; single reads take every include flag.",
       "evidence": [
         "internal/confluence/inline_comments.go",
         "internal/confluence/http_test.go",
@@ -4607,7 +4928,9 @@
         "migrations/081_wiki_inline_comments.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/comment_lifecycle_test.go",
+        "docs/CONFLUENCE_COMMENTS.md"
       ]
     },
     {
@@ -4625,7 +4948,10 @@
         "internal/confluence/content_tree_test.go",
         "docs/CONTENT_TREE.md",
         "internal/confluence/page_formats_test.go",
-        "docs/PAGE_WRITING.md"
+        "docs/PAGE_WRITING.md",
+        "internal/confluence/content_drafts_test.go",
+        "docs/CONTENT_DRAFTS.md",
+        "e2e/wiki_drafts_purge.spec.ts"
       ],
       "notes": "Updates writable pages with optimistic versions, rendered storage validation, same-space parent moves beneath pages or other content with cycle checks across the whole content tree, draft/published/restore rules, immutable history, notifications and atomic sync; an archived page is refused until it is restored; ownerId hands the page to another member and the page reports lastOwnerId, nested and converted bodies are accepted, and a live doc cannot become a draft."
     },
@@ -4640,9 +4966,13 @@
         "migrations/092_wiki_page_governance.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Writable current pages accept validated built-in classification assignments atomically, publish a permission-filtered sync action and expose the state in the author UI; organization-defined levels and entitlement semantics remain."
+      "notes": "Page classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/pages/{id}/title",
@@ -4668,9 +4998,11 @@
         "migrations/093_wiki_page_properties.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Updates a writable page property with exact key continuity, optimistic next-version checks, immutable version history and a permission-filtered sync action; app scope enforcement remains."
+      "notes": "Updates a writable page property with exact key continuity, optimistic next-version checks, immutable version history and a permission-filtered sync action; apps need the operation's Connect scope, enforced per operation from the pinned specification."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/space-roles/{id}",
@@ -4680,9 +5012,11 @@
         "internal/confluence/http_test.go",
         "internal/commands/wiki.go",
         "internal/store/wiki_space_roles.go",
-        "migrations/096_wiki_space_roles.sql"
+        "migrations/096_wiki_space_roles.sql",
+        "internal/confluence/space_roles_states_test.go",
+        "docs/CONFLUENCE_SPACE_ROLES.md"
       ],
-      "notes": "Workspace administrators update custom role names, descriptions and validated permission bundles while system roles remain immutable; anonymous and guest reassignment migrations remain."
+      "notes": "Site administrators update custom role names, descriptions and dependency-checked permission bundles, optionally moving anonymous-access and guest assignments to another existing role in every space; answered 202 with a finished long task. System roles remain immutable."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/spaces/{id}/classification-level/default",
@@ -4695,9 +5029,13 @@
         "migrations/094_wiki_space_classification.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Workspace administrators can select a validated built-in space default through REST or the accessible UI; new pages and blog posts inherit it. Organization-defined levels remain."
+      "notes": "Space administrators set a published organization level as the space default through REST or the UI; content without its own level reads it."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/spaces/{space-id}/properties/{property-id}",
@@ -4709,14 +5047,16 @@
         "internal/store/wiki_space_properties.go",
         "migrations/095_wiki_space_properties.sql",
         "internal/web/wiki.go",
-        "internal/render/templates/wiki.gohtml"
+        "internal/render/templates/wiki.gohtml",
+        "internal/apps/confluence_scopes.go",
+        "internal/apps/confluence_scopes_test.go"
       ],
-      "notes": "Workspace administrators update exact-key JSON properties with optimistic next-version checks, immutable metadata and atomic sync; app scope enforcement and historical property reads remain."
+      "notes": "Workspace administrators update exact-key JSON properties with optimistic next-version checks, immutable metadata and atomic sync; apps need the operation's Connect scope, enforced per operation from the pinned specification; the pinned API publishes no historical property read."
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/tasks/{id}",
       "status": "partial",
-      "notes": "Durable page tasks support accessible list/item reads, all documented identity/content/status/date filters, blank-task selection, storage bodies, cursor pagination, edit-permission status changes, completion actor/time, private sync filtering, and page UI assignment/due-date/completion; extraction and reconciliation from Confluence storage task macros, blog-post tasks, ADF bodies, and full task authoring semantics remain.",
+      "notes": "Tasks live in page and blog post bodies as Confluence task lists (storage ac:task-list and atlas_doc_format taskList/taskItem with mention and date nodes); every body change (publish, edit, version restore, redaction) reconciles the task store, deriving assignee from the first mention of a site member and due date from the first date. Reads cover accessible page and blog post tasks with all documented identity/content/status/date filters (page-id and blogpost-id select either), blank-task selection, storage and atlas_doc_format bodies, pageId/blogPostId beans and cursor pagination; PUT changes status with edit permission, ticking the task in the body in place with completion actor/time; private sync filtering covers blog post tasks; the web UI adds page tasks as body edits and completes page and blog post tasks.",
       "evidence": [
         "internal/confluence/tasks.go",
         "internal/confluence/http_test.go",
@@ -4725,13 +5065,18 @@
         "migrations/082_wiki_tasks.sql",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/tasks_body_test.go",
+        "internal/wikimarkup/tasks.go",
+        "internal/adf/fromhtml.go",
+        "migrations/179_wiki_body_tasks.sql",
+        "docs/CONFLUENCE_TASKS.md"
       ]
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/whiteboards/{id}/classification-level",
       "status": "partial",
-      "notes": "Whiteboard classification supports read, set and reset against four durable built-in published levels through the REST API and UI with validation, permission checks and atomic actions; organization-defined level administration and entitlement semantics remain.",
+      "notes": "Whiteboard classification reads return the item's own level or its space's default, with each level's status, name, description, guideline, color and order from the organization's levels; set accepts only published levels and reset clears the item's own level so it inherits the space default, behind view and edit permission with atomic, permission-filtered sync actions and author UI pickers listing published levels.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",
@@ -4742,13 +5087,17 @@
         "internal/commands/wiki.go",
         "internal/web/wiki.go",
         "internal/render/templates/wiki.gohtml",
-        "e2e/wiki.spec.ts"
+        "e2e/wiki.spec.ts",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ]
     },
     {
       "operationId": "confluence-v2:PUT:/wiki/api/v2/whiteboards/{whiteboard-id}/properties/{property-id}",
       "status": "partial",
-      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records; property history resources remain.",
+      "notes": "Whiteboard JSON properties support filtered cursor-paged reads, create, exact-id reads, optimistic version updates and deletion with creator privacy, inherited visibility and atomic action records. Every change keeps an immutable version row; the pinned API publishes no property history read, so none is served.",
       "evidence": [
         "internal/confluence/whiteboards.go",
         "internal/confluence/http_test.go",
@@ -12898,9 +13247,13 @@
       "status": "partial",
       "evidence": [
         "internal/api3/jira_platform_test.go",
-        "docs/JIRA_PLATFORM.md"
+        "docs/JIRA_PLATFORM.md",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Jira's four levels filtered by status and ordered by rank; levels are fixed rather than administered per organization."
+      "notes": "The organization's levels, as defined and managed by site administrators and shared with Confluence, filtered by status and ordered by rank."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/data-policy",
@@ -12961,9 +13314,13 @@
       "status": "partial",
       "evidence": [
         "internal/api3/jira_platform_test.go",
-        "docs/JIRA_PLATFORM.md"
+        "docs/JIRA_PLATFORM.md",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Permitted levels, project default and container override; no organization default."
+      "notes": "Permitted published organization levels, the project default (including an archived one) and container override; no organization default."
     },
     {
       "operationId": "jira-v3:DELETE:/rest/api/3/project/{projectIdOrKey}/classification-level/default",
@@ -12979,18 +13336,26 @@
       "status": "partial",
       "evidence": [
         "internal/api3/jira_platform_test.go",
-        "docs/JIRA_PLATFORM.md"
+        "docs/JIRA_PLATFORM.md",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "The project default level or an empty object."
+      "notes": "The project default level from the organization's levels, or an empty object."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/classification-level/default",
       "status": "partial",
       "evidence": [
         "internal/api3/jira_platform_test.go",
-        "docs/JIRA_PLATFORM.md"
+        "docs/JIRA_PLATFORM.md",
+        "internal/confluence/classification_test.go",
+        "internal/store/data_classification.go",
+        "migrations/181_data_classification_levels.sql",
+        "docs/CLASSIFICATION_LEVELS.md"
       ],
-      "notes": "Sets a published level; requires Administer projects, otherwise 401."
+      "notes": "Sets a published organization level; requires Administer projects, otherwise 401."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/statuses",

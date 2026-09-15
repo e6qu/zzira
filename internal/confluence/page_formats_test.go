@@ -68,7 +68,7 @@ func TestPageFormatsOwnersAndLiveDocs(t *testing.T) {
 			`DELETE FROM wiki_footer_comment_versions WHERE comment_id IN (SELECT c.id FROM wiki_footer_comments c JOIN wiki_pages p ON p.id=c.page_id JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`,
 			`UPDATE wiki_footer_comments SET parent_id=NULL WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`,
 			`DELETE FROM wiki_footer_comments WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`,
-			`DELETE FROM wiki_favourites WHERE workspace_id=$1`,
+			`DELETE FROM wiki_relations WHERE workspace_id=$1`,
 			`UPDATE wiki_pages SET parent_content_id=NULL WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`,
 			`DELETE FROM wiki_content WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`,
 			`UPDATE wiki_spaces SET homepage_id=NULL WHERE workspace_id=$1`,

@@ -67,18 +67,28 @@ type wikiData struct {
 	CanRestrict                           bool
 	Editing                               bool
 	SourceMode                            bool
+	MentionPeople                         []*models.User
+	ClassificationLevels                  []models.DataClassificationLevel
+	ClassificationNames                   map[string]string
+	PublishedClassification               map[string]bool
+	Redactions                            []store.WikiRedaction
+	ContentStateSettings                  store.WikiContentStateSettings
+	CanRestoreRedactions                  bool
 	Query                                 string
 	Status                                string
 	SpaceName, SpaceKey, SpaceDescription string
 	Private                               bool
 	WatchingSpace                         bool
 	WatchingPage                          bool
+	WatchingBlogPost                      bool
 	WatchedLabels                         map[string]bool
 	MoveTargets                           []wikiMoveGroup
 	Starred                               []*models.WikiPage
 	PageFavourite                         bool
 	PageOwnerName                         string
 	OwnerChoices                          []*models.User
+	Draft                                 *store.WikiContentDraft
+	CanPurge                              bool
 	ChildPageCount                        int
 	ArchivedChildCount                    int
 }
@@ -403,7 +413,42 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 	for _, group := range roleGroups {
 		principalNames[group.ID] = group.Name
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames}, "wiki", "")
+	classLevels, classNames, classPublished, err := h.classificationChoices(r, ws)
+	if err != nil {
+		http.Error(w, "Could not load classification levels.", 500)
+		return
+	}
+	var stateSettings store.WikiContentStateSettings
+	if canManageSpace {
+		if stateSettings, err = h.Store.WikiContentStateSettings(r.Context(), ws, user.ID, space.Key); err != nil {
+			http.Error(w, "Could not load content state settings.", 500)
+			return
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{ContentStateSettings: stateSettings, Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "")
+}
+
+// WikiSpaceContentStateSettings saves whether the space's pages carry content
+// states, and which kinds.
+func (h *Handler) WikiSpaceContentStateSettings(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err == nil {
+		err = h.Store.SetWikiContentStateSettings(r.Context(), ws, user.ID, space.Key, store.WikiContentStateSettings{
+			ContentStatesAllowed:       r.PostFormValue("contentStatesAllowed") == "true",
+			CustomContentStatesAllowed: r.PostFormValue("customContentStatesAllowed") == "true",
+			SpaceContentStatesAllowed:  r.PostFormValue("spaceContentStatesAllowed") == "true",
+		})
+	}
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"#wiki-content-state-settings")
 }
 
 func (h *Handler) WikiSpaceClassification(w http.ResponseWriter, r *http.Request) {
@@ -580,7 +625,8 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 	properties := []models.WikiContentProperty{}
 	attachments := []*models.WikiAttachment{}
 	blogComments, blogInlineComments := []wikiCommentNode{}, []wikiCommentNode{}
-	likeCount, liked := 0, false
+	likeCount, liked, watching := 0, false, false
+	blogTasks := []*models.WikiTask{}
 	if post.ID != "" {
 		versions, err = h.Store.WikiBlogPostVersions(r.Context(), ws, user.ID, post.ID, "-modified-date")
 		if err != nil {
@@ -643,6 +689,16 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 				return
 			}
 			likeCount = len(likes)
+			watching, err = h.Store.WikiWatchStatus(r.Context(), ws, user.ID, user.ID, "content", post.ID)
+			if err != nil {
+				http.Error(w, "Could not load blog post watch.", 500)
+				return
+			}
+			blogTasks, err = h.Store.WikiTasks(r.Context(), ws, user.ID, store.WikiTaskFilter{BlogPostIDs: []string{post.ID}, IncludeBlank: true})
+			if err != nil {
+				http.Error(w, "Could not load blog post tasks.", 500)
+				return
+			}
 			for _, accountID := range likes {
 				if accountID == user.ID {
 					liked = true
@@ -654,7 +710,29 @@ func (h *Handler) wikiBlogPost(w http.ResponseWriter, r *http.Request, creating 
 	if !editing && r.Method == http.MethodGet && post.ID != "" && post.Status == "current" {
 		h.recordWikiView(r, ws, user.ID, "blogpost", post.ID)
 	}
-	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Comments: blogComments, InlineComments: blogInlineComments, Editing: editing, CanEdit: true, Error: errorMessage}, "wiki", "", pageStatus)
+	people, err := h.wikiMentions(r, ws, &post.Body, blogComments, blogInlineComments)
+	if err != nil {
+		http.Error(w, "Could not load people to mention.", 500)
+		return
+	}
+	classLevels, classNames, classPublished, err := h.classificationChoices(r, ws)
+	if err != nil {
+		http.Error(w, "Could not load classification levels.", 500)
+		return
+	}
+	var redactions []store.WikiRedaction
+	canRestoreRedactions := false
+	if post.ID != "" && post.Status == "current" {
+		redactions, err = h.Store.WikiRedactions(r.Context(), ws, user.ID, "blogpost", post.ID)
+		if err == nil {
+			canRestoreRedactions, err = h.Store.CanAdministerWikiSpace(r.Context(), ws, user.ID, space.ID)
+		}
+		if err != nil {
+			http.Error(w, "Could not load redactions.", 500)
+			return
+		}
+	}
+	h.writeWorkspacePageStatus(w, r, "page_wiki_blogpost", user, ws, wikiData{Space: space, BlogPost: post, Versions: versions, Labels: labels, BlogProperties: properties, BlogLikeCount: likeCount, BlogLiked: liked, Attachments: attachments, Comments: blogComments, InlineComments: blogInlineComments, Editing: editing, CanEdit: true, Error: errorMessage, MentionPeople: people, WatchingBlogPost: watching, Tasks: blogTasks, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished, Redactions: redactions, CanRestoreRedactions: canRestoreRedactions}, "wiki", "", pageStatus)
 }
 
 func (h *Handler) wikiBlogForDiscussion(w http.ResponseWriter, r *http.Request, ws, userID string) (*models.WikiBlogPost, bool) {
@@ -816,6 +894,20 @@ func (h *Handler) WikiBlogPostMetadata(w http.ResponseWriter, r *http.Request) {
 		} else {
 			err = h.Store.SetWikiBlogPostLike(r.Context(), ws, user.ID, post.ID, liked)
 		}
+	case "task-status":
+		task, taskErr := h.Store.WikiTask(r.Context(), ws, user.ID, r.PostFormValue("task"))
+		if taskErr != nil || task.BlogPostID != post.ID {
+			http.NotFound(w, r)
+			return
+		}
+		_, err = h.Commands.UpdateWikiTask(r.Context(), ws, user.ID, task.ID, r.PostFormValue("status"))
+	case "watch":
+		watching, parseErr := strconv.ParseBool(r.PostFormValue("watching"))
+		if parseErr != nil {
+			err = fmt.Errorf("%w: watching must be true or false", store.ErrWikiValidation)
+		} else {
+			err = h.Commands.SetWikiWatch(r.Context(), ws, user.ID, user.ID, "content", post.ID, watching)
+		}
 	case "add-label":
 		_, err = h.Commands.AddWikiBlogPostLabels(r.Context(), ws, user.ID, post.ID, []models.WikiLabel{{Name: r.PostFormValue("label"), Prefix: "global"}})
 	case "remove-label":
@@ -833,6 +925,8 @@ func (h *Handler) WikiBlogPostMetadata(w http.ResponseWriter, r *http.Request) {
 		}
 	case "delete-property":
 		err = h.Commands.DeleteWikiBlogPostProperty(r.Context(), ws, user.ID, post.ID, r.PostFormValue("propertyId"))
+	case "restore-redaction":
+		err = h.Commands.RestoreWikiRedaction(r.Context(), ws, user.ID, "blogpost", post.ID, r.PostFormValue("redaction"))
 	case "redact":
 		section, target := r.PostFormValue("section"), r.PostFormValue("text")
 		value := post.Body.Value
@@ -1154,6 +1248,66 @@ func (h *Handler) WikiPageRedirect(w http.ResponseWriter, r *http.Request) {
 	redirectLocal(w, r, wikiPageURL(page))
 }
 
+// WikiBlogPostRedirect resolves a blog post id, the destination of blog post
+// notifications, to the post in its space.
+func (h *Handler) WikiBlogPostRedirect(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	post, err := h.Store.WikiBlogPost(r.Context(), ws, user.ID, r.PathValue("blogpost"))
+	if err != nil || post.Status != "current" {
+		http.NotFound(w, r)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+post.SpaceID+"/blogposts/"+post.ID)
+}
+
+// classificationChoices loads the organization's classification levels for a
+// page: the published ones to choose from, every level's name, and which are
+// published, so content keeping an archived level still shows it.
+func (h *Handler) classificationChoices(r *http.Request, ws string) ([]models.DataClassificationLevel, map[string]string, map[string]bool, error) {
+	levels, err := h.Store.DataClassificationLevels(r.Context(), ws)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	choices := []models.DataClassificationLevel{}
+	names, published := map[string]string{}, map[string]bool{}
+	for _, level := range levels {
+		names[level.ID] = level.Name
+		if level.Status == "PUBLISHED" {
+			choices = append(choices, level)
+			published[level.ID] = true
+		}
+	}
+	return choices, names, published, nil
+}
+
+// wikiMentions loads the people who can be mentioned and names the mentions
+// in a body and its comments that carry no label of their own.
+func (h *Handler) wikiMentions(r *http.Request, ws string, body *models.WikiBody, threads ...[]wikiCommentNode) ([]*models.User, error) {
+	people, err := h.Store.MembersByWorkspace(r.Context(), ws)
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[string]string, len(people))
+	for _, person := range people {
+		names[person.ID] = person.DisplayName
+	}
+	body.Value = wikimarkup.LabelMentions(body.Value, names)
+	var label func([]wikiCommentNode)
+	label = func(nodes []wikiCommentNode) {
+		for _, node := range nodes {
+			node.Comment.Body.Value = wikimarkup.LabelMentions(node.Comment.Body.Value, names)
+			label(node.Replies)
+		}
+	}
+	for _, thread := range threads {
+		label(thread)
+	}
+	return people, nil
+}
+
 func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 	user, ws, ok := h.pageContext(w, r)
 	if !ok {
@@ -1212,12 +1366,42 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			return
 		}
 		page.Version.Number = version
-		saved, err := h.Commands.SaveWikiPage(r.Context(), ws, user.ID, *page)
-		if err == nil {
-			redirectLocal(w, r, "/wiki/spaces/"+space.ID+"/pages/"+saved.ID)
+		if r.PostFormValue("saveAs") == "draft" && page.ID != "" && page.Published {
+			// A published page saved as a draft keeps its published version.
+			if _, draftErr := h.Commands.SaveWikiContentDraft(r.Context(), ws, user.ID, "page", page.ID, page.Title, page.Body); draftErr != nil {
+				status, data.Error = wikiWebError(draftErr)
+			} else {
+				redirectLocal(w, r, "/wiki/spaces/"+space.ID+"/pages/"+page.ID)
+				return
+			}
+		} else {
+			saved, err := h.Commands.SaveWikiPage(r.Context(), ws, user.ID, *page)
+			if err == nil {
+				redirectLocal(w, r, "/wiki/spaces/"+space.ID+"/pages/"+saved.ID)
+				return
+			}
+			status, data.Error = wikiWebError(err)
+		}
+	}
+	if page.ID != "" && page.Status == "current" && canEdit {
+		draft, draftErr := h.Store.WikiContentDraft(r.Context(), ws, user.ID, "page", page.ID)
+		switch {
+		case draftErr == nil:
+			data.Draft = draft
+			// Editing a page with a waiting draft picks up the draft.
+			if edit && r.Method != "POST" {
+				page.Title, page.Body = draft.Title, draft.Body
+			}
+		case !errors.Is(draftErr, pgx.ErrNoRows):
+			http.Error(w, "Could not load the page draft.", 500)
 			return
 		}
-		status, data.Error = wikiWebError(err)
+	}
+	if page.ID != "" && page.Status == "trashed" {
+		if data.CanPurge, err = h.Store.CanAdministerWikiSpace(r.Context(), ws, user.ID, space.ID); err != nil {
+			http.Error(w, "Could not load space permissions.", 500)
+			return
+		}
 	}
 	if edit {
 		data.Pages, err = h.Store.WikiPages(r.Context(), ws, user.ID, space.ID, "current", "")
@@ -1235,8 +1419,7 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 				data.ParentContent = append(data.ParentContent, wikiMoveTarget{ID: content.ID, Label: content.Title + " · " + wikiContentTypeName(content.Type)})
 			}
 		}
-		_, err = wikimarkup.Render(page.Body.Value)
-		data.SourceMode = err != nil
+		data.SourceMode = !wikimarkup.RichEditable(page.Body.Value)
 	} else {
 		data.Restrictions, err = h.Store.WikiPageRestrictions(r.Context(), ws, user.ID, page.ID)
 		if err != nil {
@@ -1452,6 +1635,26 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 	if !edit && r.Method == http.MethodGet && page.ID != "" && page.Status == "current" {
 		h.recordWikiView(r, ws, user.ID, "page", page.ID)
 	}
+	data.MentionPeople, err = h.wikiMentions(r, ws, &page.Body, data.Comments, data.InlineComments)
+	if err != nil {
+		http.Error(w, "Could not load people to mention.", 500)
+		return
+	}
+	data.ClassificationLevels, data.ClassificationNames, data.PublishedClassification, err = h.classificationChoices(r, ws)
+	if err != nil {
+		http.Error(w, "Could not load classification levels.", 500)
+		return
+	}
+	if page.ID != "" && page.Status == "current" {
+		data.Redactions, err = h.Store.WikiRedactions(r.Context(), ws, user.ID, "page", page.ID)
+		if err == nil {
+			data.CanRestoreRedactions, err = h.Store.CanAdministerWikiSpace(r.Context(), ws, user.ID, space.ID)
+		}
+		if err != nil {
+			http.Error(w, "Could not load redactions.", 500)
+			return
+		}
+	}
 	h.writeWorkspacePageStatus(w, r, "page_wiki_page", user, ws, data, "wiki", "", status)
 }
 
@@ -1486,6 +1689,8 @@ func (h *Handler) WikiPageMetadata(w http.ResponseWriter, r *http.Request) {
 		}
 	case "delete-property":
 		err = h.Commands.DeleteWikiPageProperty(r.Context(), ws, user.ID, page.ID, r.PostFormValue("propertyId"))
+	case "restore-redaction":
+		err = h.Commands.RestoreWikiRedaction(r.Context(), ws, user.ID, "page", page.ID, r.PostFormValue("redaction"))
 	case "redact":
 		section, target := r.PostFormValue("section"), r.PostFormValue("text")
 		value := page.Body.Value
@@ -2201,6 +2406,26 @@ func (h *Handler) WikiPageMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, "/wiki/spaces/"+moved.SpaceID+"/pages/"+moved.ID)
+}
+
+// WikiPageDraftDiscard throws away the draft waiting beside a published page.
+func (h *Handler) WikiPageDraftDiscard(w http.ResponseWriter, r *http.Request) {
+	page, userID, ws, ok := h.wikiPageAction(w, r)
+	if !ok {
+		return
+	}
+	err := h.Commands.DiscardWikiContentDraft(r.Context(), ws, userID, "page", page.ID)
+	h.finishWikiTreeAction(w, r, err, "/wiki/spaces/"+page.SpaceID+"/pages/"+page.ID)
+}
+
+// WikiPagePurge takes a trashed page out of the trash.
+func (h *Handler) WikiPagePurge(w http.ResponseWriter, r *http.Request) {
+	page, userID, ws, ok := h.wikiPageAction(w, r)
+	if !ok {
+		return
+	}
+	err := h.Commands.PurgeWikiPage(r.Context(), ws, userID, page.ID)
+	h.finishWikiTreeAction(w, r, err, "/wiki/spaces/"+page.SpaceID+"?status=trashed")
 }
 
 func (h *Handler) WikiTrash(w http.ResponseWriter, r *http.Request) {

@@ -153,7 +153,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 2 && parts[0] == "space-roles" && r.Method == "DELETE":
 		h.deleteSpaceRole(w, r, ws, actor, parts[1])
 	case len(parts) == 1 && parts[0] == "classification-levels" && r.Method == "GET":
-		h.classificationLevels(w, r)
+		h.classificationLevels(w, r, ws)
 	case len(parts) == 1 && parts[0] == "spaces" && r.Method == "GET":
 		h.spaces(w, r, ws, actor)
 	case len(parts) == 1 && parts[0] == "spaces" && r.Method == "POST":
@@ -214,7 +214,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			bean["properties"] = map[string]any{"results": values, "meta": map[string]any{"hasMore": false}, "_links": map[string]any{}}
 		}
 		if flags["include-permissions"] {
-			bean["permissions"] = map[string]any{"results": spacePermissionValues(space), "meta": map[string]any{"hasMore": false}, "_links": map[string]any{}}
+			permissions, permissionErr := h.spacePermissionValues(r, ws, actor, space.ID)
+			if permissionErr != nil {
+				writeError(w, permissionErr)
+				return
+			}
+			bean["permissions"] = map[string]any{"results": permissions, "meta": map[string]any{"hasMore": false}, "_links": map[string]any{}}
 		}
 		if flags["include-role-assignments"] {
 			assignments, assignmentErr := h.Store.WikiSpaceRoleAssignments(r.Context(), ws, actor, space.ID)
@@ -318,40 +323,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 2 && parts[0] == "pages" && r.Method == "GET":
 		h.pageByID(w, r, ws, actor, parts[1])
 	case len(parts) == 2 && parts[0] == "pages" && r.Method == "DELETE":
-		if !supportedQuery(w, r) {
-			return
-		}
-		page, err := h.Store.WikiPage(r.Context(), ws, actor, parts[1])
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if page.Status == "trashed" {
-			failure(w, 400, "Permanent deletion is not implemented.")
-			return
-		}
-		page.Status = "trashed"
-		page.Version.Number++
-		page.Version.Message = "Moved to trash"
-		if _, err := h.Commands.SaveWikiPage(r.Context(), ws, actor, *page); err != nil {
-			writeError(w, err)
-			return
-		}
-		w.WriteHeader(204)
+		h.deletePage(w, r, ws, actor, parts[1])
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "versions" && r.Method == "GET":
-		if !supportedQuery(w, r, "limit", "cursor", "sort", "body-format") || !storageFormat(w, r) {
-			return
-		}
-		versions, err := h.Store.WikiVersionsSorted(r.Context(), ws, actor, parts[1], r.URL.Query().Get("sort"))
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		values := make([]any, 0, len(versions))
-		for _, v := range versions {
-			values = append(values, v)
-		}
-		h.list(w, r, values)
+		h.contentVersions(w, r, ws, actor, "page", parts[1])
 	case len(parts) == 4 && parts[0] == "pages" && parts[2] == "versions" && r.Method == "GET":
 		h.pageVersion(w, r, ws, actor, parts[1], parts[3])
 	case len(parts) == 3 && parts[0] == "pages" && parts[2] == "title" && r.Method == "PUT":
@@ -702,38 +676,13 @@ type footerCommentUpdate struct {
 	} `json:"version"`
 }
 
-func decodeCommentBody(raw json.RawMessage) (models.WikiBody, error) {
-	if len(raw) == 0 || string(raw) == "null" {
-		return models.WikiBody{}, fmt.Errorf("comment body is required")
-	}
-	var flat models.WikiBody
-	if err := json.Unmarshal(raw, &flat); err == nil && flat.Representation != "" {
-		return flat, nil
-	}
-	var nested map[string]models.WikiBody
-	if err := json.Unmarshal(raw, &nested); err != nil {
-		return models.WikiBody{}, fmt.Errorf("invalid comment body")
-	}
-	if len(nested) != 1 {
-		return models.WikiBody{}, fmt.Errorf("comment body must contain one representation")
-	}
-	body, ok := nested["storage"]
-	if !ok {
-		return models.WikiBody{}, fmt.Errorf("only the storage comment representation is currently supported")
-	}
-	if body.Representation == "" {
-		body.Representation = "storage"
-	}
-	if body.Representation != "storage" {
-		return models.WikiBody{}, fmt.Errorf("the nested representation must match storage")
-	}
-	return body, nil
-}
-
 func (h *Handler) footerCommentBean(comment *models.WikiFooterComment, body bool) map[string]any {
 	parentType, parentID := "pages", comment.PageID
 	if comment.BlogPostID != "" {
 		parentType, parentID = "blogposts", comment.BlogPostID
+	}
+	if comment.CustomContentID != "" {
+		parentType, parentID = "custom-content", comment.CustomContentID
 	}
 	bean := map[string]any{
 		"id": comment.ID, "status": "current", "title": "",
@@ -742,6 +691,8 @@ func (h *Handler) footerCommentBean(comment *models.WikiFooterComment, body bool
 	}
 	if comment.AttachmentID != "" {
 		bean["attachmentId"] = comment.AttachmentID
+	} else if comment.CustomContentID != "" {
+		bean["customContentId"] = comment.CustomContentID
 	} else if comment.BlogPostID != "" {
 		bean["blogPostId"] = comment.BlogPostID
 	} else {
@@ -757,7 +708,7 @@ func (h *Handler) footerCommentBean(comment *models.WikiFooterComment, body bool
 }
 
 func (h *Handler) attachmentFooterComments(w http.ResponseWriter, r *http.Request, ws, actor, attachmentID string) {
-	if !supportedQuery(w, r, "body-format", "sort", "cursor", "limit", "version") || !storageFormat(w, r) {
+	if !supportedQuery(w, r, "body-format", "sort", "cursor", "limit", "version") || !commentFormat(w, r, false) {
 		return
 	}
 	if order := r.URL.Query().Get("sort"); order != "" && order != "created-date" && order != "-created-date" && order != "modified-date" && order != "-modified-date" {
@@ -780,38 +731,15 @@ func (h *Handler) attachmentFooterComments(w http.ResponseWriter, r *http.Reques
 		writeError(w, err)
 		return
 	}
+	if !commentStatusesAllowCurrent(r) {
+		comments = nil
+	}
 	sortFooterComments(comments, r.URL.Query().Get("sort"))
 	values := make([]any, len(comments))
 	for i, comment := range comments {
-		values[i] = h.footerCommentBean(comment, r.URL.Query().Get("body-format") != "")
+		values[i] = h.footerCommentBeanFormat(comment, r.URL.Query().Get("body-format"))
 	}
 	h.list(w, r, values)
-}
-
-func commentQuery(w http.ResponseWriter, r *http.Request, status bool) bool {
-	allowed := []string{"body-format", "sort", "cursor", "limit"}
-	if status {
-		allowed = append(allowed, "status")
-	}
-	if !supportedQuery(w, r, allowed...) || !storageFormat(w, r) {
-		return false
-	}
-	order := r.URL.Query().Get("sort")
-	if order != "" && order != "created-date" && order != "-created-date" && order != "modified-date" && order != "-modified-date" {
-		failure(w, 400, "Unsupported comment sort order.")
-		return false
-	}
-	if status {
-		for _, raw := range r.URL.Query()["status"] {
-			for _, value := range strings.Split(raw, ",") {
-				if value != "" && value != "current" {
-					failure(w, 400, "Only current footer comments are supported.")
-					return false
-				}
-			}
-		}
-	}
-	return true
 }
 
 func sortFooterComments(comments []*models.WikiFooterComment, order string) {
@@ -869,10 +797,13 @@ func (h *Handler) footerComments(w http.ResponseWriter, r *http.Request, ws, act
 		writeError(w, err)
 		return
 	}
+	if !commentStatusesAllowCurrent(r) {
+		comments = nil
+	}
 	sortFooterComments(comments, r.URL.Query().Get("sort"))
 	values := make([]any, 0, len(comments))
 	for _, comment := range comments {
-		values = append(values, h.footerCommentBean(comment, r.URL.Query().Get("body-format") != ""))
+		values = append(values, h.footerCommentBeanFormat(comment, r.URL.Query().Get("body-format")))
 	}
 	h.list(w, r, values)
 }
@@ -886,56 +817,27 @@ func (h *Handler) blogFooterComments(w http.ResponseWriter, r *http.Request, ws,
 		writeError(w, err)
 		return
 	}
+	if !commentStatusesAllowCurrent(r) {
+		comments = nil
+	}
 	sortFooterComments(comments, r.URL.Query().Get("sort"))
 	values := make([]any, 0, len(comments))
 	for _, comment := range comments {
-		values = append(values, h.footerCommentBean(comment, r.URL.Query().Get("body-format") != ""))
+		values = append(values, h.footerCommentBeanFormat(comment, r.URL.Query().Get("body-format")))
 	}
 	h.list(w, r, values)
 }
 
-func (h *Handler) footerComment(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !supportedQuery(w, r, "body-format", "version", "include-properties", "include-operations", "include-likes", "include-versions", "include-version") || !storageFormat(w, r) {
-		return
-	}
-	for _, key := range []string{"include-properties", "include-operations", "include-likes", "include-versions", "include-version"} {
-		if r.URL.Query().Get(key) != "" {
-			failure(w, 400, key+" is not yet supported for footer comments.")
-			return
-		}
-	}
-	comment, err := h.Store.WikiFooterComment(r.Context(), ws, actor, id)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if rawVersion := r.URL.Query().Get("version"); rawVersion != "" {
-		number, parseErr := strconv.Atoi(rawVersion)
-		if parseErr != nil || number < 1 {
-			failure(w, 400, "Version number must be a positive integer.")
-			return
-		}
-		version, versionErr := h.Store.WikiFooterCommentVersion(r.Context(), ws, actor, id, number)
-		if versionErr != nil {
-			writeError(w, versionErr)
-			return
-		}
-		comment.Body = version.Body
-		comment.Version = version.WikiVersion
-	}
-	respond(w, 200, h.footerCommentBean(comment, r.URL.Query().Get("body-format") != ""))
-}
-
-func footerCommentVersionBean(id string, version models.WikiFooterCommentVersion, body bool) map[string]any {
+func footerCommentVersionBean(id string, version models.WikiFooterCommentVersion, format string) map[string]any {
 	comment := map[string]any{"id": id, "title": ""}
-	if body {
-		comment["body"] = map[string]any{"storage": version.Body}
+	if format != "" {
+		comment["body"] = map[string]any{format: commentBodyIn(version.Body, format)}
 	}
 	return map[string]any{"number": version.Number, "message": version.Message, "minorEdit": version.MinorEdit, "authorId": version.AuthorID, "createdAt": version.CreatedAt, "comment": comment}
 }
 
 func (h *Handler) footerCommentVersions(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !supportedQuery(w, r, "body-format", "cursor", "limit", "sort") || !storageFormat(w, r) {
+	if !supportedQuery(w, r, "body-format", "cursor", "limit", "sort") || !commentFormat(w, r, false) {
 		return
 	}
 	order := r.URL.Query().Get("sort")
@@ -953,7 +855,7 @@ func (h *Handler) footerCommentVersions(w http.ResponseWriter, r *http.Request, 
 	}
 	values := make([]any, 0, len(versions))
 	for _, version := range versions {
-		values = append(values, footerCommentVersionBean(id, version, r.URL.Query().Get("body-format") != ""))
+		values = append(values, footerCommentVersionBean(id, version, r.URL.Query().Get("body-format")))
 	}
 	h.list(w, r, values)
 }
@@ -1221,10 +1123,6 @@ func (h *Handler) labelPages(w http.ResponseWriter, r *http.Request, ws, actor, 
 	h.list(w, r, values)
 }
 
-func unsupportedCommentTarget(in footerCommentWrite) bool {
-	return in.CustomContentID != ""
-}
-
 func (h *Handler) createFooterComment(w http.ResponseWriter, r *http.Request, ws, actor string) {
 	if !supportedQuery(w, r) {
 		return
@@ -1233,16 +1131,12 @@ func (h *Handler) createFooterComment(w http.ResponseWriter, r *http.Request, ws
 	if !decode(w, r, &in) {
 		return
 	}
-	if unsupportedCommentTarget(in) {
-		failure(w, 400, "Custom-content footer comments are not currently supported.")
-		return
-	}
 	body, err := decodeCommentBody(in.Body)
 	if err != nil {
 		failure(w, 400, err.Error())
 		return
 	}
-	comment, err := h.Commands.CreateWikiFooterComment(r.Context(), ws, actor, models.WikiFooterComment{PageID: in.PageID, BlogPostID: in.BlogPostID, AttachmentID: in.AttachmentID, ParentCommentID: in.ParentCommentID, Body: body})
+	comment, err := h.Commands.CreateWikiFooterComment(r.Context(), ws, actor, models.WikiFooterComment{PageID: in.PageID, BlogPostID: in.BlogPostID, AttachmentID: in.AttachmentID, CustomContentID: in.CustomContentID, ParentCommentID: in.ParentCommentID, Body: body})
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1359,31 +1253,38 @@ func (h *Handler) createSpace(w http.ResponseWriter, r *http.Request, ws, actor 
 		return
 	}
 	var in struct {
-		Name, Key, Alias             string
-		Description                  models.WikiBody
-		CreatePrivateSpace           bool
-		RoleAssignments              []json.RawMessage
+		Name, Key, Alias   string
+		Description        models.WikiBody
+		CreatePrivateSpace bool
+		RoleAssignments    []struct {
+			RoleID    string `json:"roleId"`
+			Principal struct {
+				Type string `json:"principalType"`
+				ID   string `json:"principalId"`
+			} `json:"principal"`
+		}
 		CopySpaceAccessConfiguration *int64
 		TemplateKey                  string
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.Key == "" {
-		in.Key = in.Alias
-	} else if in.Alias != "" && in.Key != in.Alias {
-		failure(w, 400, "Separate space aliases are not supported.")
+	if in.Key == "" && in.Alias == "" {
+		failure(w, 400, "Give the space a key or an alias.")
 		return
 	}
 	if in.Description.Representation != "" && in.Description.Representation != "plain" {
 		failure(w, 400, "Space description must use plain representation.")
 		return
 	}
-	if len(in.RoleAssignments) > 0 || in.CopySpaceAccessConfiguration != nil || in.TemplateKey != "" {
-		failure(w, 400, "Space role assignments, copied access and templates are not yet supported.")
-		return
+	req := store.CreateWikiSpaceRequest{Key: in.Key, Alias: in.Alias, Name: in.Name, Description: in.Description.Value, Private: in.CreatePrivateSpace, TemplateKey: in.TemplateKey}
+	if in.CopySpaceAccessConfiguration != nil {
+		req.CopyFrom = strconv.FormatInt(*in.CopySpaceAccessConfiguration, 10)
 	}
-	s, err := h.Commands.CreateWikiSpace(r.Context(), ws, actor, in.Key, in.Name, in.Description.Value, in.CreatePrivateSpace)
+	for _, assignment := range in.RoleAssignments {
+		req.RoleAssignments = append(req.RoleAssignments, models.WikiSpaceRoleAssignment{RoleID: assignment.RoleID, PrincipalType: assignment.Principal.Type, PrincipalID: assignment.Principal.ID})
+	}
+	s, err := h.Commands.CreateWikiSpaceWithAccess(r.Context(), ws, actor, req)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -1405,17 +1306,29 @@ func (h *Handler) spaces(w http.ResponseWriter, r *http.Request, ws, actor strin
 	if !ok {
 		return
 	}
-	if q.Get("favorited-by") != "" || q.Get("not-favorited-by") != "" {
-		failure(w, 400, "Space favorite filters are not yet supported.")
+	kind, spaceState := q.Get("type"), q.Get("status")
+	if kind != "" && !store.WikiSpaceTypeKnown(kind) {
+		failure(w, 400, "type must be global, collaboration, knowledge_base, personal, system, onboarding or xflow_sample_space.")
 		return
 	}
-	if kind := q.Get("type"); kind != "" && kind != "global" {
-		failure(w, 400, "Only global spaces are supported.")
+	if spaceState != "" && !store.WikiSpaceStatusKnown(spaceState) {
+		failure(w, 400, "status must be current, archived or trashed.")
 		return
 	}
-	if status := q.Get("status"); status != "" && status != "current" {
-		failure(w, 400, "Only current spaces are supported.")
-		return
+	// Stars are favourite relations from a person to a space.
+	var favourites, notFavourites map[string]bool
+	for _, filter := range []struct {
+		param  string
+		target *map[string]bool
+	}{{"favorited-by", &favourites}, {"not-favorited-by", &notFavourites}} {
+		if accountID := q.Get(filter.param); accountID != "" {
+			keys, favouriteErr := h.Store.WikiSpaceFavouriteKeys(r.Context(), ws, actor, accountID)
+			if favouriteErr != nil {
+				writeError(w, favouriteErr)
+				return
+			}
+			*filter.target = keys
+		}
 	}
 	items, err := h.Store.WikiSpaces(r.Context(), ws, actor)
 	if err != nil {
@@ -1425,6 +1338,17 @@ func (h *Handler) spaces(w http.ResponseWriter, r *http.Request, ws, actor strin
 	filtered := make([]*models.WikiSpace, 0, len(items))
 	for _, s := range items {
 		if !queryContains(r, "keys", s.Key) || !queryContains(r, "ids", s.ID) {
+			continue
+		}
+		spaceType, currentState := s.Type, s.Status
+		if spaceType == "" {
+			spaceType = "global"
+		}
+		if currentState == "" {
+			currentState = "current"
+		}
+		if kind != "" && spaceType != kind || spaceState != "" && currentState != spaceState ||
+			favourites != nil && !favourites[s.Key] || notFavourites != nil && notFavourites[s.Key] {
 			continue
 		}
 		matchesLabels := true
@@ -1562,8 +1486,12 @@ func (h *Handler) pages(w http.ResponseWriter, r *http.Request, ws, actor, space
 		failure(w, 400, "Unsupported page sort order.")
 		return
 	}
+	adminSpaces := map[string]bool{}
 	values := []any{}
 	for _, p := range pages {
+		if p.Status == "deleted" && !h.canSeeDeleted(r, ws, actor, p.SpaceID, adminSpaces) {
+			continue
+		}
 		if q.Get("depth") == "root" && p.ParentID != "" {
 			continue
 		}
@@ -1648,6 +1576,25 @@ func (h *Handler) savePage(w http.ResponseWriter, r *http.Request, ws, actor, id
 		old, err := h.Store.WikiPage(r.Context(), ws, actor, id)
 		if err != nil {
 			writeError(w, err)
+			return
+		}
+		// Saving a published page as a draft keeps the published version and
+		// replaces any draft already waiting beside it.
+		if in.Status == "draft" && old.Status == "current" {
+			if in.Version.Number != 1 {
+				failure(w, 400, "A draft of a published page is saved at version 1.")
+				return
+			}
+			title := in.Title
+			if title == "" {
+				title = old.Title
+			}
+			draft, err := h.Commands.SaveWikiContentDraft(r.Context(), ws, actor, "page", id, title, body)
+			if err != nil {
+				writeError(w, err)
+				return
+			}
+			respond(w, 200, h.pageBean(draftAsPage(old, draft), true))
 			return
 		}
 		if page.SpaceID == "" {

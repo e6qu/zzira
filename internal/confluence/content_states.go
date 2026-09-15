@@ -185,14 +185,22 @@ func (h *V1Handler) v1SpaceContentStateSettings(w http.ResponseWriter, r *http.R
 	if !supportedQuery(w, r) {
 		return
 	}
-	states, err := h.Store.SpaceContentStates(r.Context(), ws, actor, spaceKey)
+	settings, err := h.Store.WikiContentStateSettings(r.Context(), ws, actor, spaceKey)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
+	// The suggested states are listed only when the space lets writers use them.
+	states := []models.WikiContentState{}
+	if settings.ContentStatesAllowed && settings.SpaceContentStatesAllowed {
+		if states, err = h.Store.SpaceContentStates(r.Context(), ws, actor, spaceKey); err != nil {
+			writeError(w, err)
+			return
+		}
+	}
 	respond(w, 200, map[string]any{
-		"contentStatesAllowed": true, "customContentStatesAllowed": true,
-		"spaceContentStatesAllowed": true, "spaceContentStates": contentStateBeans(states),
+		"contentStatesAllowed": settings.ContentStatesAllowed, "customContentStatesAllowed": settings.CustomContentStatesAllowed,
+		"spaceContentStatesAllowed": settings.SpaceContentStatesAllowed, "spaceContentStates": contentStateBeans(states),
 	})
 }
 
@@ -203,6 +211,10 @@ func (h *V1Handler) v1SpaceContentStateContent(w http.ResponseWriter, r *http.Re
 	stateID := strings.TrimSpace(r.URL.Query().Get("state-id"))
 	if stateID == "" {
 		failure(w, 400, "state-id is required.")
+		return
+	}
+	expand, ok := parseV1Expand(w, r, 0)
+	if !ok {
 		return
 	}
 	pages, err := h.Store.WikiPagesInContentState(r.Context(), ws, actor, spaceKey, stateID)
@@ -227,8 +239,22 @@ func (h *V1Handler) v1SpaceContentStateContent(w http.ResponseWriter, r *http.Re
 		}
 		limit = parsed
 	}
+	// The rendered export and styled bodies are expensive, so asking for them
+	// holds a page of results to 25.
+	if (expand.wants("body.export_view") || expand.wants("body.styled_view")) && limit > 25 {
+		limit = 25
+	}
 	results := []any{}
 	for i := start; i < len(pages) && len(results) < limit; i++ {
+		if len(expand) > 0 {
+			bean, beanErr := h.v1PageBean(r.Context(), ws, actor, pages[i], expand)
+			if beanErr != nil {
+				writeError(w, beanErr)
+				return
+			}
+			results = append(results, bean)
+			continue
+		}
 		results = append(results, map[string]any{
 			"id": pages[i].ID, "type": "page", "status": pages[i].Status, "title": pages[i].Title,
 			"_links": map[string]string{"webui": "/wiki/spaces/" + spaceKey + "/pages/" + pages[i].ID},

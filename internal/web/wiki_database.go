@@ -18,6 +18,10 @@ type wikiDatabasePageData struct {
 	Views      []models.WikiDatabaseView
 	ActiveView *models.WikiDatabaseView
 	CanEdit    bool
+
+	ClassificationLevels    []models.DataClassificationLevel
+	ClassificationNames     map[string]string
+	PublishedClassification map[string]bool
 }
 
 func (h *Handler) WikiDatabasePage(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +52,11 @@ func (h *Handler) WikiDatabasePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	page := wikiDatabasePageData{Space: space, Database: database, Columns: data.Columns, Rows: data.Rows, Views: data.Views, CanEdit: canEdit, CanRestore: canRestore}
+	page.ClassificationLevels, page.ClassificationNames, page.PublishedClassification, err = h.classificationChoices(r, ws)
+	if err != nil {
+		http.Error(w, "Could not load classification levels.", 500)
+		return
+	}
 	viewID := strings.TrimSpace(r.URL.Query().Get("view"))
 	if viewID != "" {
 		for i := range data.Views {

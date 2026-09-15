@@ -25,3 +25,27 @@ yet maintain derived renditions. Archive inspection supports ZIP within the
 upload bound; Jira's other archive formats, redirect-to-signed-object behavior,
 virus scanning, configurable limits, project permission schemes and complete
 media processing remain compatibility work.
+
+## Confluence v1 attachments on blog posts, and metadata updates
+
+The v1 attachment routes treat pages and blog posts alike. `{id}` in
+`/wiki/rest/api/content/{id}/child/attachment…` may name either.
+
+- **Upload.** `POST` adds files. `PUT` adds them, or makes a new version of
+  an attachment with the same name.
+- **New file for an existing attachment.** `POST …/{attachmentId}/data` adds
+  a new version by attachment id.
+- **Download.** `GET …/{attachmentId}/download` redirects to the file under
+  its container.
+- **Beans** name the container (`page` or `blogpost`) and carry
+  `collectionName` (`contentId-{containerId}`), the media type description,
+  size, file id and comment.
+
+`PUT /wiki/rest/api/content/{id}/child/attachment/{attachmentId}` changes an
+attachment's non-binary data as a new version holding the same file:
+- `title` renames it, `metadata.mediaType` retypes it, and
+  `metadata.comment` replaces its comment;
+- `container` (`{id, type}`) moves it to another page or blog post. The caller
+  must be allowed to add attachments there, and a name already used there is
+  refused;
+- `version.number` must be the next version, or the update is refused with 409.

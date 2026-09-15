@@ -179,53 +179,6 @@ func (s *Store) SaveWikiBlogAttachment(ctx context.Context, ws, actor, blogPostI
 	return a, nil
 }
 
-func (s *Store) UpdateWikiAttachmentProperties(ctx context.Context, ws, actor, pageID, id, filename, mediaType, comment, message string, minor bool, version int) (*models.WikiAttachment, error) {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	old, err := scanWikiAttachment(tx.QueryRow(ctx, wikiAttachmentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanUpdateAttachment+` AND `+wikiPageVisible+` AND `+wikiPageRestrictionWritable+` AND a.page_id::text=$3 AND a.id::text=$4 FOR UPDATE OF a`, ws, actor, pageID, id))
-	if err != nil {
-		return nil, err
-	}
-	if version != old.Version.Number+1 {
-		return nil, ErrWikiConflict
-	}
-	if filename == "" {
-		filename = old.Filename
-	}
-	if mediaType == "" {
-		mediaType = old.MediaType
-	}
-	if comment == "" {
-		comment = old.Comment
-	}
-	_, err = tx.Exec(ctx, `UPDATE wiki_attachments SET filename=$2,media_type=$3,comment=$4,version=$5,updated_at=now() WHERE id::text=$1`, id, filename, mediaType, comment, version)
-	if err != nil {
-		return nil, err
-	}
-	_, err = tx.Exec(ctx, `INSERT INTO wiki_attachment_versions(attachment_id,version,filename,media_type,comment,size,blob_ref,author_id,message,minor_edit) SELECT a.id,$2,$3,$4,$5,a.size,v.blob_ref,$6,$7,$8 FROM wiki_attachments a JOIN wiki_attachment_versions v ON v.attachment_id=a.id AND v.version=$2-1 WHERE a.id::text=$1`, id, version, filename, mediaType, comment, actor, message, minor)
-	if err != nil {
-		return nil, err
-	}
-	a, err := scanWikiAttachment(tx.QueryRow(ctx, wikiAttachmentSelect+` WHERE a.id::text=$1`, id))
-	if err != nil {
-		return nil, err
-	}
-	var spaceID string
-	if err = tx.QueryRow(ctx, `SELECT space_id::text FROM wiki_pages WHERE id::text=$1`, old.PageID).Scan(&spaceID); err != nil {
-		return nil, err
-	}
-	if err = wikiAction(ctx, tx, ws, actor, "wiki_attachment", id, spaceID, a); err != nil {
-		return nil, err
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return a, nil
-}
-
 func (s *Store) WikiAttachmentVersions(ctx context.Context, ws, user, id string) ([]models.WikiAttachmentVersion, error) {
 	if _, err := s.WikiAttachment(ctx, ws, user, id); err != nil {
 		return nil, err

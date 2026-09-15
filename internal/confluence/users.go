@@ -2,11 +2,13 @@ package confluence
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/jackc/pgx/v5"
 )
 
 // strconvAtoiBounded parses a bounded integer query value.
@@ -22,7 +24,7 @@ func (h *Handler) wikiUserBean(user store.WikiUser, withEmail bool) map[string]a
 	bean := map[string]any{
 		"type": "known", "accountId": user.AccountID, "accountType": user.AccountType,
 		"publicName": user.PublicName, "displayName": user.DisplayName,
-		"isExternalCollaborator": false,
+		"isExternalCollaborator": user.ExternalCollaborator, "externalCollaborator": user.ExternalCollaborator,
 		"profilePicture": map[string]any{
 			"path": "/wiki/aa-avatar/" + user.AccountID, "width": 48, "height": 48, "isDefault": true,
 		},
@@ -193,21 +195,56 @@ func (h *V1Handler) v1SearchUsers(w http.ResponseWriter, r *http.Request, ws, ac
 		failure(w, 400, "Only user.fullname ~ \"…\" and user ~ \"…\" queries are supported.")
 		return
 	}
+	// Licensed users by default; guests only, or everyone, when asked.
+	filter := r.URL.Query().Get("sitePermissionTypeFilter")
+	if filter == "" {
+		filter = "none"
+	}
+	if filter != "none" && filter != "externalCollaborator" && filter != "all" {
+		failure(w, 400, "sitePermissionTypeFilter must be all, externalCollaborator or none.")
+		return
+	}
+	start, limit := 0, 25
+	var err error
+	if raw := r.URL.Query().Get("start"); raw != "" {
+		if start, err = strconvAtoiBounded(raw, 0, 1<<20); err != nil {
+			failure(w, 400, "start must be zero or greater.")
+			return
+		}
+	}
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if limit, err = strconvAtoiBounded(raw, 0, 1000); err != nil {
+			failure(w, 400, "limit must be between 0 and 1000.")
+			return
+		}
+	}
 	users, err := h.Store.SearchWikiUsers(r.Context(), ws, actor, term)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	results := make([]any, 0, len(users))
+	matching := make([]store.WikiUser, 0, len(users))
 	for _, user := range users {
+		if filter == "all" || (filter == "externalCollaborator") == user.ExternalCollaborator {
+			matching = append(matching, user)
+		}
+	}
+	total := len(matching)
+	matching = matching[min(start, total):min(start+limit, total)]
+	beans, ok := h.expandedUserBeans(w, r, ws, actor, matching)
+	if !ok {
+		return
+	}
+	results := make([]any, 0, len(beans))
+	for i, bean := range beans {
 		results = append(results, map[string]any{
-			"user": h.wikiUserBean(user, false), "title": user.DisplayName,
+			"user": bean, "title": matching[i].DisplayName,
 			"entityType": "user", "score": 0,
 		})
 	}
 	respond(w, 200, map[string]any{
-		"results": results, "start": 0, "limit": len(results), "size": len(results),
-		"totalSize": len(results), "cqlQuery": cql,
+		"results": results, "start": start, "limit": limit, "size": len(results),
+		"totalSize": total, "cqlQuery": cql,
 		"_links": map[string]string{"base": h.BaseURL + "/wiki"},
 	})
 }
@@ -297,7 +334,7 @@ func (h *V1Handler) v1UserProperty(w http.ResponseWriter, r *http.Request, ws, a
 // bulkUsersV2 is the v2 surface's bulk read, which takes the ids in the body
 // rather than the query string.
 func (h *Handler) bulkUsersV2(w http.ResponseWriter, r *http.Request, ws, actor string) {
-	if !supportedQuery(w, r, "cursor", "limit") {
+	if !supportedQuery(w, r) {
 		return
 	}
 	var input struct {
@@ -306,8 +343,8 @@ func (h *Handler) bulkUsersV2(w http.ResponseWriter, r *http.Request, ws, actor 
 	if !decode(w, r, &input) {
 		return
 	}
-	if len(input.AccountIDs) == 0 || len(input.AccountIDs) > 500 {
-		failure(w, 400, "Between 1 and 500 account ids are required.")
+	if len(input.AccountIDs) == 0 || len(input.AccountIDs) > 250 {
+		failure(w, 400, "Between 1 and 250 account ids are required.")
 		return
 	}
 	users, err := h.Store.WikiUsersByAccountIDs(r.Context(), ws, actor, input.AccountIDs)
@@ -369,7 +406,12 @@ func (h *V1Handler) v1Groups(w http.ResponseWriter, r *http.Request, ws, actor s
 		if !supportedQuery(w, r, "start", "limit", "accessType") {
 			return
 		}
-		groups, err := h.Store.WikiGroups(r.Context(), ws, actor, "")
+		accessType := r.URL.Query().Get("accessType")
+		if accessType != "" && accessType != "user" && accessType != "admin" && accessType != "site-admin" {
+			failure(w, 400, "accessType must be user, admin or site-admin.")
+			return
+		}
+		groups, err := h.Store.WikiGroupsByAccess(r.Context(), ws, actor, accessType)
 		if err != nil {
 			writeError(w, err)
 			return
@@ -458,9 +500,13 @@ func (h *V1Handler) v1GroupMembers(w http.ResponseWriter, r *http.Request, ws, a
 		writeError(w, err)
 		return
 	}
-	values := make([]any, 0, len(users))
-	for _, user := range users {
-		values = append(values, h.wikiUserBean(user, false))
+	beans, ok := h.expandedUserBeans(w, r, ws, actor, users)
+	if !ok {
+		return
+	}
+	values := make([]any, 0, len(beans))
+	for _, bean := range beans {
+		values = append(values, bean)
 	}
 	h.wikiPage(w, r, values, r.URL.Query().Get("shouldReturnTotalSize") == "true")
 }
@@ -506,4 +552,64 @@ func (h *V1Handler) v1GroupMembership(w http.ResponseWriter, r *http.Request, ws
 	default:
 		failure(w, 405, "Method not allowed.")
 	}
+}
+
+// userExpansions are the properties of a user Confluence expands on request.
+var userExpansions = map[string]bool{"operations": true, "personalSpace": true, "isExternalCollaborator": true}
+
+// expandedUserBeans renders users with the expansions the request names:
+// operations are the site permissions the person holds, and personalSpace is
+// the space keyed for them when the caller can see it. Unexpanded properties
+// are listed as expandable.
+func (h *V1Handler) expandedUserBeans(w http.ResponseWriter, r *http.Request, ws, actor string, users []store.WikiUser) ([]map[string]any, bool) {
+	expand := map[string]bool{}
+	for _, raw := range r.URL.Query()["expand"] {
+		for _, name := range strings.Split(raw, ",") {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			if !userExpansions[name] {
+				failure(w, 400, "expand accepts operations, personalSpace and isExternalCollaborator.")
+				return nil, false
+			}
+			expand[name] = true
+		}
+	}
+	beans := make([]map[string]any, 0, len(users))
+	for _, user := range users {
+		bean := h.wikiUserBean(user, false)
+		expandable := map[string]string{}
+		if expand["operations"] {
+			admin, err := h.Store.IsAdmin(r.Context(), ws, user.AccountID)
+			if err != nil {
+				writeError(w, err)
+				return nil, false
+			}
+			operations := []any{operation("use", "application")}
+			if admin {
+				operations = append(operations, operation("create", "space"), operation("administer", "application"))
+			}
+			bean["operations"] = operations
+		} else {
+			expandable["operations"] = ""
+		}
+		if expand["personalSpace"] {
+			bean["personalSpace"] = nil
+			space, err := h.Store.WikiSpaceByKey(r.Context(), ws, actor, store.PersonalSpaceKey(user.AccountID))
+			if err == nil {
+				bean["personalSpace"] = h.spaceBean(space, "plain", false)
+			} else if !errors.Is(err, pgx.ErrNoRows) {
+				writeError(w, err)
+				return nil, false
+			}
+		} else {
+			expandable["personalSpace"] = ""
+		}
+		if len(expandable) > 0 {
+			bean["_expandable"] = expandable
+		}
+		beans = append(beans, bean)
+	}
+	return beans, true
 }

@@ -25,14 +25,24 @@ type WikiUser struct {
 	PublicName  string
 	DisplayName string
 	Active      bool
+	// ExternalCollaborator is a guest: someone whose Confluence access on this
+	// site is the guest role, directly or through a group.
+	ExternalCollaborator bool
 }
 
-const wikiUserSelect = `SELECT u.id,u.email,u.display_name,COALESCE(NULLIF(u.nickname,''),u.display_name),u.active
+// wikiGuestAccess is whether u holds the guest role on this site's Confluence.
+const wikiGuestAccess = `EXISTS (SELECT 1 FROM role_bindings grb
+	JOIN products gp ON grb.scope_type='product' AND gp.id::text=grb.scope_id AND gp.product_key='confluence'
+	JOIN sites gsi ON gsi.id=gp.site_id AND gsi.workspace_id=m.workspace_id
+	WHERE grb.role_key='atlassian/guest' AND (grb.principal_type='user' AND grb.principal_id=u.id
+	  OR grb.principal_type='group' AND EXISTS (SELECT 1 FROM group_members ggm WHERE ggm.group_id::text=grb.principal_id AND ggm.user_id=u.id)))`
+
+var wikiUserSelect = `SELECT u.id,u.email,u.display_name,COALESCE(NULLIF(u.nickname,''),u.display_name),u.active,` + wikiGuestAccess + `
 	FROM users u JOIN memberships m ON m.user_id=u.id`
 
 func scanWikiUser(row pgx.Row) (WikiUser, error) {
 	user := WikiUser{AccountType: "atlassian"}
-	err := row.Scan(&user.AccountID, &user.Email, &user.DisplayName, &user.PublicName, &user.Active)
+	err := row.Scan(&user.AccountID, &user.Email, &user.DisplayName, &user.PublicName, &user.Active, &user.ExternalCollaborator)
 	return user, err
 }
 
@@ -286,7 +296,9 @@ func (s *Store) WikiGroups(ctx context.Context, ws, actor, query string) ([]Wiki
 		return nil, err
 	}
 	rows, err := s.Pool.Query(ctx, `SELECT g.id::text,g.name FROM groups g
-		WHERE ($1='' OR g.name ILIKE '%' || $1 || '%') ORDER BY g.name, g.id`, query)
+		JOIN directories d ON d.id=g.directory_id
+		JOIN sites si ON si.organization_id=d.organization_id AND si.workspace_id=$2
+		WHERE ($1='' OR g.name ILIKE '%' || $1 || '%') ORDER BY g.name, g.id`, query, ws)
 	if err != nil {
 		return nil, err
 	}
@@ -432,4 +444,36 @@ func (s *Store) requireSiteAdmin(ctx context.Context, ws, actor string) error {
 		return ErrProjectPermission
 	}
 	return nil
+}
+
+// WikiGroupsByAccess lists this site's groups by the access they give:
+// "user" groups grant use of Confluence, "admin" groups administer it, and
+// "site-admin" groups administer the site or its organization. No access type
+// lists every group.
+func (s *Store) WikiGroupsByAccess(ctx context.Context, ws, actor, accessType string) ([]WikiGroup, error) {
+	if err := s.requireMember(ctx, ws, actor); err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT g.id::text,g.name FROM groups g
+		JOIN directories d ON d.id=g.directory_id
+		JOIN sites si ON si.organization_id=d.organization_id AND si.workspace_id=$1
+		WHERE $2='' OR EXISTS (
+		  SELECT 1 FROM role_bindings rb
+		  LEFT JOIN products p ON rb.scope_type='product' AND p.id::text=rb.scope_id
+		  WHERE rb.principal_type='group' AND rb.principal_id=g.id::text AND (
+		    ($2='user' AND p.site_id=si.id AND p.product_key='confluence'
+		      AND rb.role_key IN ('atlassian/user','atlassian/product-user','atlassian/basic','atlassian/contributor','atlassian/viewer'))
+		    OR ($2='admin' AND p.site_id=si.id AND p.product_key='confluence'
+		      AND rb.role_key IN ('atlassian/admin','atlassian/product-admin'))
+		    OR ($2='site-admin' AND (rb.role_key='atlassian/site-admin' AND rb.scope_type='site' AND rb.scope_id=si.id::text
+		      OR rb.role_key='atlassian/org-admin' AND rb.scope_type='organization' AND rb.scope_id=si.organization_id::text))))
+		ORDER BY g.name, g.id`, ws, accessType)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (WikiGroup, error) {
+		var group WikiGroup
+		err := row.Scan(&group.ID, &group.Name)
+		return group, err
+	})
 }

@@ -335,3 +335,34 @@ configuration/refresh/conditions, workflow modules, select/read-only issue
 fields and option APIs,
 descriptor-driven upgrade migrations, and Atlassian-hosted Forge compute remain
 separate future slices.
+
+## Confluence operation scopes
+
+Atlassian marks every Confluence REST operation with the Connect scope an app
+needs to call it. The app gateway applies those scopes one operation at a time,
+from a table generated out of the pinned specifications
+(`api/conformance/confluence_app_scopes.py`, whose `--check` keeps the table
+current).
+
+| Connect scope | Granted scope the app must hold |
+| --- | --- |
+| `READ` | `read:confluence-content` |
+| `WRITE` | `write:confluence-content` |
+| `DELETE` | `delete:confluence-content` |
+| `SPACE_ADMIN`, `ADMIN` | `admin:confluence` |
+| `ACCESS_EMAIL_ADDRESSES` | `access:email-addresses` |
+| `NONE` | none |
+| `INACCESSIBLE` | refused to every app |
+
+The scopes nest the way Connect's levels do:
+- `admin:confluence` includes deleting;
+- `delete:confluence-content` includes writing;
+- `write:confluence-content` includes reading.
+
+A Connect descriptor's scopes are translated to match:
+- `DELETE` grants the delete scope;
+- `SPACE_ADMIN` and `ADMIN` grant the administration scope;
+- `ACCESS_EMAIL_ADDRESSES` grants email address access.
+
+A Confluence path that is not a pinned operation falls back to read for `GET`
+and write otherwise.

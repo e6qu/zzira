@@ -182,9 +182,9 @@ var wikiPageWritable = `(` + wikiSpaceVisible + `) AND (` + wikiSpaceCanUpdatePa
 
 const wikiSpaceSelect = `SELECT s.id::text,s.workspace_id,s.key,s.name,s.description,s.author_id,s.private,s.default_classification_level,to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),s.space_type,s.alias,COALESCE(s.homepage_id::text,''),s.status,s.route_override_enabled,s.content_mode,s.theme_key FROM wiki_spaces s`
 const wikiPageSelect = `SELECT p.id::text,s.workspace_id,p.space_id::text,COALESCE(COALESCE(p.parent_id,p.parent_content_id)::text,''),CASE WHEN p.parent_content_id IS NOT NULL THEN (SELECT pc.type FROM wiki_content pc WHERE pc.id=p.parent_content_id) WHEN p.parent_id IS NOT NULL THEN 'page' ELSE '' END,p.title,p.status,p.published,p.classification_level,p.body,p.author_id,to_char(p.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.version,v.message,v.minor_edit,v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),p.position,p.subtype,COALESCE(p.owner_id,p.author_id),COALESCE(p.last_owner_id,'') FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id JOIN wiki_page_versions v ON v.page_id=p.id AND v.version=p.version`
-const wikiCommentSelect = `SELECT c.id::text,COALESCE(p.id::text,''),COALESCE(bp.id::text,''),COALESCE(p.space_id,bp.space_id)::text,COALESCE(c.attachment_id::text,''),COALESCE(c.parent_id::text,''),c.body,c.author_id,u.display_name,c.version,v.message,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),c.comment_type,c.inline_selection,c.inline_match_count,c.inline_match_index,c.inline_marker_ref,c.resolution_status,COALESCE(c.resolution_modifier_id,''),COALESCE(to_char(c.resolution_modified_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),COALESCE(bp.author_id,''),COALESCE(bp.private,false),COALESCE(bp.published,false) FROM wiki_footer_comments c LEFT JOIN wiki_attachments ca ON ca.id=c.attachment_id LEFT JOIN wiki_pages p ON p.id=COALESCE(c.page_id,ca.page_id) LEFT JOIN wiki_blog_posts bp ON bp.id=COALESCE(c.blog_post_id,ca.blog_post_id) JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,bp.space_id) JOIN users u ON u.id=c.author_id JOIN wiki_footer_comment_versions v ON v.comment_id=c.id AND v.version=c.version`
+const wikiCommentSelect = `SELECT c.id::text,COALESCE(p.id::text,''),COALESCE(bp.id::text,''),COALESCE(p.space_id,bp.space_id,cc.space_id)::text,COALESCE(c.attachment_id::text,''),COALESCE(c.parent_id::text,''),c.body,c.author_id,u.display_name,c.version,v.message,to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),v.author_id,to_char(v.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),c.comment_type,c.inline_selection,c.inline_match_count,c.inline_match_index,c.inline_marker_ref,c.resolution_status,COALESCE(c.resolution_modifier_id,''),COALESCE(to_char(c.resolution_modified_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),COALESCE(bp.author_id,''),COALESCE(bp.private,false),COALESCE(bp.published,false),COALESCE(cc.id::text,'') FROM wiki_footer_comments c LEFT JOIN wiki_attachments ca ON ca.id=c.attachment_id LEFT JOIN wiki_pages p ON p.id=COALESCE(c.page_id,ca.page_id) LEFT JOIN wiki_blog_posts bp ON bp.id=COALESCE(c.blog_post_id,ca.blog_post_id) LEFT JOIN wiki_content cc ON cc.id=c.custom_content_id JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,bp.space_id,cc.space_id) JOIN users u ON u.id=c.author_id JOIN wiki_footer_comment_versions v ON v.comment_id=c.id AND v.version=c.version`
 
-var wikiCommentVisible = `(` + wikiSpacePermissionAllowed("read/comment") + `) AND ((p.id IS NOT NULL AND p.status='current' AND ` + wikiPageVisible + `) OR (bp.id IS NOT NULL AND bp.status='current' AND ` + wikiSpacePermissionAllowed("read/blogpost") + ` AND (bp.published OR bp.author_id=$2) AND (NOT bp.private OR bp.author_id=$2)))`
+var wikiCommentVisible = `(` + wikiSpacePermissionAllowed("read/comment") + `) AND ((p.id IS NOT NULL AND p.status='current' AND ` + wikiPageVisible + `) OR (bp.id IS NOT NULL AND bp.status='current' AND ` + wikiSpacePermissionAllowed("read/blogpost") + ` AND (bp.published OR bp.author_id=$2) AND (NOT bp.private OR bp.author_id=$2)) OR (cc.id IS NOT NULL AND cc.status='current' AND ` + wikiCustomContentCommentVisible + `))`
 
 func scanWikiSpace(row pgx.Row) (*models.WikiSpace, error) {
 	s := &models.WikiSpace{}
@@ -201,7 +201,7 @@ func scanWikiPage(row pgx.Row) (*models.WikiPage, error) {
 
 func scanWikiFooterComment(row pgx.Row) (*models.WikiFooterComment, error) {
 	c := &models.WikiFooterComment{Body: models.WikiBody{Representation: "storage"}}
-	err := row.Scan(&c.ID, &c.PageID, &c.BlogPostID, &c.SpaceID, &c.AttachmentID, &c.ParentCommentID, &c.Body.Value, &c.AuthorID, &c.AuthorName, &c.Version.Number, &c.Version.Message, &c.CreatedAt, &c.UpdatedAt, &c.Version.AuthorID, &c.Version.CreatedAt, &c.CommentType, &c.InlineSelection, &c.InlineMatchCount, &c.InlineMatchIndex, &c.InlineMarkerRef, &c.ResolutionStatus, &c.ResolutionModifierID, &c.ResolutionModifiedAt, &c.ParentAuthorID, &c.ParentPrivate, &c.ParentPublished)
+	err := row.Scan(&c.ID, &c.PageID, &c.BlogPostID, &c.SpaceID, &c.AttachmentID, &c.ParentCommentID, &c.Body.Value, &c.AuthorID, &c.AuthorName, &c.Version.Number, &c.Version.Message, &c.CreatedAt, &c.UpdatedAt, &c.Version.AuthorID, &c.Version.CreatedAt, &c.CommentType, &c.InlineSelection, &c.InlineMatchCount, &c.InlineMatchIndex, &c.InlineMarkerRef, &c.ResolutionStatus, &c.ResolutionModifierID, &c.ResolutionModifiedAt, &c.ParentAuthorID, &c.ParentPrivate, &c.ParentPublished, &c.CustomContentID)
 	return c, err
 }
 
@@ -270,7 +270,17 @@ func wikiCommentAction(ctx context.Context, tx pgx.Tx, ws, actor, entity string,
 	if err != nil {
 		return err
 	}
-	payload, err := json.Marshal(map[string]any{"wikiSpaceId": comment.SpaceID, entity: comment, "blogAuthorId": comment.ParentAuthorID, "blogPrivate": comment.ParentPrivate, "blogPublished": comment.ParentPublished})
+	body := map[string]any{"wikiSpaceId": comment.SpaceID, entity: comment, "blogAuthorId": comment.ParentAuthorID, "blogPrivate": comment.ParentPrivate, "blogPublished": comment.ParentPublished}
+	// A comment on custom content is as private as the custom content.
+	if comment.CustomContentID != "" {
+		var private bool
+		var authorID string
+		if err := tx.QueryRow(ctx, `SELECT private,author_id FROM wiki_content WHERE id::text=$1`, comment.CustomContentID).Scan(&private, &authorID); err != nil {
+			return err
+		}
+		body["contentPrivate"], body["contentAuthorId"] = private, authorID
+	}
+	payload, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
@@ -350,7 +360,7 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 	if err != nil {
 		return nil, err
 	}
-	previousParent := ""
+	previousParent, previousBody := "", ""
 	if input.ID != "" {
 		old, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+spacePermission+` AND `+wikiPageVisible+` AND `+wikiPageRestrictionWritable+` AND p.id::text=$3`, ws, actor, input.ID))
 		if err != nil {
@@ -368,10 +378,15 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 			return nil, ErrWikiConflict
 		}
 		previousParent = old.ParentID
+		if old.Status == "current" {
+			// Only what readers already saw has told anyone; a draft's
+			// mentions are news when it is published.
+			previousBody = old.Body.Value
+		}
 		if input.Status == "draft" && old.Published {
 			return nil, fmt.Errorf("%w: a published page cannot be converted to a draft", ErrWikiValidation)
 		}
-		if old.Status == "trashed" && input.Status == "current" {
+		if (old.Status == "trashed" || old.Status == "deleted") && input.Status == "current" {
 			input.Title = old.Title
 			input.Body = old.Body
 			input.ParentID = old.ParentID
@@ -469,6 +484,20 @@ func (s *Store) SaveWikiPage(ctx context.Context, ws, actor string, input models
 	_, err = tx.Exec(ctx, `INSERT INTO wiki_page_versions(page_id,version,title,body,status,author_id,message,minor_edit) VALUES ($1::bigint,$2,$3,$4,$5,$6,$7,$8)`, input.ID, input.Version.Number, input.Title, input.Body.Value, input.Status, actor, input.Version.Message, input.Version.MinorEdit)
 	if err != nil {
 		return nil, err
+	}
+	if err := wikiBodyChanged(ctx, tx, ws, actor, "page", input.ID, input.Body.Value); err != nil {
+		return nil, err
+	}
+	if input.Status == "current" {
+		if err := notifyWikiMentions(ctx, tx, ws, actor, "wiki_page", input.ID, input.Title, wikiPageReadableBy, input.ID, previousBody, input.Body.Value); err != nil {
+			return nil, err
+		}
+	}
+	// Publishing replaces the draft that was waiting beside the page.
+	if input.Status == "current" {
+		if _, err := tx.Exec(ctx, `DELETE FROM wiki_content_drafts WHERE content_type='page' AND content_id::text=$1`, input.ID); err != nil {
+			return nil, err
+		}
 	}
 	page, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE p.id::text=$1`, input.ID))
 	if err != nil {
@@ -653,7 +682,10 @@ func (s *Store) CreateWikiFooterComment(ctx context.Context, ws, actor string, i
 		if err != nil {
 			return nil, err
 		}
-		if parent.AttachmentID != "" {
+		if parent.CustomContentID != "" {
+			input.PageID = ""
+			input.CustomContentID = parent.CustomContentID
+		} else if parent.AttachmentID != "" {
 			input.PageID = ""
 			input.AttachmentID = parent.AttachmentID
 		} else if parent.BlogPostID != "" {
@@ -661,6 +693,14 @@ func (s *Store) CreateWikiFooterComment(ctx context.Context, ws, actor string, i
 			input.BlogPostID = parent.BlogPostID
 		} else {
 			input.PageID = parent.PageID
+		}
+	} else if input.CustomContentID != "" {
+		var id string
+		err := tx.QueryRow(ctx, `SELECT c.id::text FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id LEFT JOIN wiki_pages p ON p.id=c.root_page_id
+			WHERE s.workspace_id=$1 AND `+wikiSpaceCanCreateComment+` AND `+wikiContentVisibleFor("custom")+`
+			AND c.type='custom' AND c.status='current' AND c.id::text=$3 FOR SHARE OF c`, ws, actor, input.CustomContentID).Scan(&id)
+		if err != nil {
+			return nil, err
 		}
 	} else if input.AttachmentID != "" {
 		_, err := scanWikiAttachment(tx.QueryRow(ctx, wikiAttachmentSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiSpaceCanCreateComment+` AND `+wikiAttachmentVisible+` AND a.status='current' AND a.id::text=$3 FOR SHARE OF a`, ws, actor, input.AttachmentID))
@@ -682,10 +722,16 @@ func (s *Store) CreateWikiFooterComment(ctx context.Context, ws, actor string, i
 	}
 	input.Version.Number = 1
 	input.AuthorID = actor
-	if err := tx.QueryRow(ctx, `INSERT INTO wiki_footer_comments(page_id,attachment_id,blog_post_id,parent_id,body,author_id) VALUES ($1::bigint,$2::bigint,$3::bigint,$4::bigint,$5,$6) RETURNING id::text`, nilIfEmpty(input.PageID), nilIfEmpty(input.AttachmentID), nilIfEmpty(input.BlogPostID), nilIfEmpty(input.ParentCommentID), input.Body.Value, actor).Scan(&input.ID); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO wiki_footer_comments(page_id,attachment_id,blog_post_id,parent_id,body,author_id,custom_content_id) VALUES ($1::bigint,$2::bigint,$3::bigint,$4::bigint,$5,$6,$7::bigint) RETURNING id::text`, nilIfEmpty(input.PageID), nilIfEmpty(input.AttachmentID), nilIfEmpty(input.BlogPostID), nilIfEmpty(input.ParentCommentID), input.Body.Value, actor, nilIfEmpty(input.CustomContentID)).Scan(&input.ID); err != nil {
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO wiki_footer_comment_versions(comment_id,version,body,author_id,message) VALUES ($1::bigint,1,$2,$3,$4)`, input.ID, input.Body.Value, actor, input.Version.Message); err != nil {
+		return nil, err
+	}
+	if err := notifyCommentMentions(ctx, tx, ws, actor, input.ID, "", input.Body.Value); err != nil {
+		return nil, err
+	}
+	if err := notifyCommentWatchers(ctx, tx, ws, actor, input.ID); err != nil {
 		return nil, err
 	}
 	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE c.id::text=$1`, input.ID))
@@ -728,6 +774,9 @@ func (s *Store) UpdateWikiFooterComment(ctx context.Context, ws, actor string, i
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO wiki_footer_comment_versions(comment_id,version,body,author_id,message) VALUES ($1::bigint,$2,$3,$4,$5)`, input.ID, input.Version.Number, input.Body.Value, actor, input.Version.Message); err != nil {
+		return nil, err
+	}
+	if err := notifyCommentMentions(ctx, tx, ws, actor, input.ID, old.Body.Value, input.Body.Value); err != nil {
 		return nil, err
 	}
 	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE c.id::text=$1`, input.ID))

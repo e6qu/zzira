@@ -48,166 +48,8 @@ func (h *Handler) blogPostBean(post *models.WikiBlogPost, body bool) map[string]
 	return bean
 }
 
-func (h *Handler) blogPosts(w http.ResponseWriter, r *http.Request, ws, actor, spaceID string) {
-	if !supportedQuery(w, r, "id", "space-id", "sort", "status", "title", "body-format", "cursor", "limit") || !storageFormat(w, r) {
-		return
-	}
-	if spaceID != "" {
-		if _, err := h.Store.WikiSpace(r.Context(), ws, actor, spaceID); err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	status := r.URL.Query().Get("status")
-	if status == "" {
-		status = "current"
-	}
-	if status != "current" && status != "draft" && status != "trashed" {
-		failure(w, 400, "Unsupported blog post status.")
-		return
-	}
-	posts, err := h.Store.WikiBlogPosts(r.Context(), ws, actor, spaceID, status, r.URL.Query().Get("title"), r.URL.Query().Get("sort"))
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	values := []any{}
-	for _, post := range posts {
-		if queryContains(r, "id", post.ID) && queryContains(r, "space-id", post.SpaceID) {
-			values = append(values, h.blogPostBean(post, r.URL.Query().Get("body-format") != ""))
-		}
-	}
-	h.list(w, r, values)
-}
-
-func (h *Handler) saveBlogPost(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !supportedQuery(w, r, "private") {
-		return
-	}
-	private := false
-	if raw := r.URL.Query().Get("private"); raw != "" {
-		if raw != "true" && raw != "false" {
-			failure(w, 400, "private must be true or false.")
-			return
-		}
-		private = raw == "true"
-	}
-	var input blogPostWrite
-	if !decode(w, r, &input) {
-		return
-	}
-	if id != "" && input.ID != id {
-		failure(w, 400, "The body id must match the blog post URL.")
-		return
-	}
-	if id == "" && input.ID != "" {
-		failure(w, 400, "New blog post IDs are assigned by the server.")
-		return
-	}
-	body, ok := input.Body.body()
-	if !ok {
-		failure(w, 400, "Only one storage body representation is currently supported.")
-		return
-	}
-	if id != "" {
-		old, err := h.Store.WikiBlogPost(r.Context(), ws, actor, id)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if input.SpaceID == "" {
-			input.SpaceID = old.SpaceID
-		}
-		private = old.Private
-	}
-	if input.Status == "trashed" {
-		failure(w, 400, "Use DELETE to move a blog post to trash.")
-		return
-	}
-	post, err := h.Commands.SaveWikiBlogPost(r.Context(), ws, actor, models.WikiBlogPost{ID: id, SpaceID: input.SpaceID, Status: input.Status, Title: input.Title, CreatedAt: input.CreatedAt, Private: private, Body: body, Version: input.Version})
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	respond(w, 200, h.blogPostBean(post, true))
-}
-
-func (h *Handler) blogPost(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !supportedQuery(w, r, "body-format", "status") || !storageFormat(w, r) {
-		return
-	}
-	post, err := h.Store.WikiBlogPost(r.Context(), ws, actor, id)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	status := r.URL.Query().Get("status")
-	if status == "" {
-		status = "current"
-	}
-	if post.Status != status {
-		failure(w, 404, "Blog post not found with the requested status.")
-		return
-	}
-	if post.Status == "current" {
-		h.recordView(r, ws, actor, "blogpost", post.ID)
-	}
-	respond(w, 200, h.blogPostBean(post, r.URL.Query().Get("body-format") != ""))
-}
-
-func (h *Handler) deleteBlogPost(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !supportedQuery(w, r, "purge") {
-		return
-	}
-	purge := false
-	if raw := r.URL.Query().Get("purge"); raw != "" {
-		if raw != "true" && raw != "false" {
-			failure(w, 400, "purge must be true or false.")
-			return
-		}
-		purge = raw == "true"
-	}
-	if purge {
-		if err := h.Commands.PurgeWikiBlogPost(r.Context(), ws, actor, id); err != nil {
-			writeError(w, err)
-			return
-		}
-		w.WriteHeader(204)
-		return
-	}
-	post, err := h.Store.WikiBlogPost(r.Context(), ws, actor, id)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	if post.Status == "trashed" {
-		failure(w, 400, "Use purge=true to permanently delete a trashed blog post.")
-		return
-	}
-	post.Status = "trashed"
-	post.Version.Number++
-	post.Version.Message = "Moved to trash"
-	if _, err := h.Commands.SaveWikiBlogPost(r.Context(), ws, actor, *post); err != nil {
-		writeError(w, err)
-		return
-	}
-	w.WriteHeader(204)
-}
-
 func (h *Handler) blogPostVersions(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
-	if !supportedQuery(w, r, "body-format", "cursor", "limit", "sort") || !storageFormat(w, r) {
-		return
-	}
-	versions, err := h.Store.WikiBlogPostVersions(r.Context(), ws, actor, id, r.URL.Query().Get("sort"))
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	values := make([]any, 0, len(versions))
-	for _, version := range versions {
-		values = append(values, version)
-	}
-	h.list(w, r, values)
+	h.contentVersions(w, r, ws, actor, "blogpost", id)
 }
 
 func (h *Handler) blogPostVersion(w http.ResponseWriter, r *http.Request, ws, actor, id, rawVersion string) {
@@ -229,7 +71,7 @@ func (h *Handler) blogPostVersion(w http.ResponseWriter, r *http.Request, ws, ac
 		writeError(w, err)
 		return
 	}
-	bean := map[string]any{"number": version.Number, "authorId": version.AuthorID, "message": version.Message, "createdAt": version.CreatedAt, "minorEdit": version.MinorEdit, "contentTypeModified": false, "collaborators": []string{}}
+	bean := map[string]any{"number": version.Number, "authorId": version.AuthorID, "message": version.Message, "createdAt": version.CreatedAt, "minorEdit": version.MinorEdit, "contentTypeModified": false, "collaborators": []string{version.AuthorID}}
 	for index, candidate := range versions {
 		if candidate.Number != version.Number {
 			continue
@@ -266,31 +108,6 @@ func (h *Handler) blogPostLabels(w http.ResponseWriter, r *http.Request, ws, act
 		values[i] = filtered[i]
 	}
 	h.list(w, r, values)
-}
-
-func sortBlogPosts(posts []*models.WikiBlogPost, order string) bool {
-	allowed := map[string]bool{"": true, "id": true, "-id": true, "created-date": true, "-created-date": true, "modified-date": true, "-modified-date": true}
-	if !allowed[order] {
-		return false
-	}
-	if order == "" || order == "id" {
-		return true
-	}
-	desc := strings.HasPrefix(order, "-")
-	field := strings.TrimPrefix(order, "-")
-	sort.SliceStable(posts, func(i, j int) bool {
-		left, right := posts[i].ID, posts[j].ID
-		if field == "created-date" {
-			left, right = posts[i].CreatedAt, posts[j].CreatedAt
-		} else if field == "modified-date" {
-			left, right = posts[i].Version.CreatedAt, posts[j].Version.CreatedAt
-		}
-		if desc {
-			return left > right
-		}
-		return left < right
-	})
-	return true
 }
 
 func (h *Handler) labelBlogPosts(w http.ResponseWriter, r *http.Request, ws, actor, labelID string) {
@@ -351,22 +168,15 @@ func (h *Handler) blogPostOperations(w http.ResponseWriter, r *http.Request, ws,
 	if !validPageID(w, id) || !supportedQuery(w, r) {
 		return
 	}
-	canUpdate, err := h.Store.CanUpdateWikiBlogPost(r.Context(), ws, actor, id)
+	post, err := h.Store.WikiBlogPost(r.Context(), ws, actor, id)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	canDelete, err := h.Store.CanDeleteWikiBlogPost(r.Context(), ws, actor, id)
+	operations, err := h.blogPostOperationValues(r.Context(), ws, actor, post)
 	if err != nil {
 		writeError(w, err)
 		return
-	}
-	operations := []any{map[string]string{"operation": "read", "targetType": "blogpost"}}
-	if canUpdate {
-		operations = append(operations, map[string]string{"operation": "update", "targetType": "blogpost"})
-	}
-	if canDelete {
-		operations = append(operations, map[string]string{"operation": "delete", "targetType": "blogpost"})
 	}
 	respond(w, 200, map[string]any{"operations": operations})
 }
@@ -463,7 +273,11 @@ func (h *Handler) blogPostClassification(w http.ResponseWriter, r *http.Request,
 		writeError(w, err)
 		return
 	}
-	level, ok := classificationLevels[blog.ClassificationLevel]
+	level, ok, err := h.contentClassificationLevel(r, ws, actor, blog.ClassificationLevel, blog.SpaceID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	if !ok {
 		failure(w, 404, "Blog post does not have a classification level.")
 		return
@@ -479,14 +293,10 @@ func (h *Handler) setBlogPostClassification(w http.ResponseWriter, r *http.Reque
 	if !decode(w, r, &input) {
 		return
 	}
-	if input.Status != "current" || (!reset && classificationLevels[input.ID] == nil) || (reset && input.ID != "") {
-		failure(w, 400, "A current, supported classification level is required.")
+	if !h.assignableClassification(w, r, ws, input, reset) {
 		return
 	}
 	levelID := input.ID
-	if reset {
-		levelID = ""
-	}
 	if _, err := h.Commands.SetWikiBlogPostClassification(r.Context(), ws, actor, id, levelID); err != nil {
 		writeError(w, err)
 		return

@@ -198,9 +198,19 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		case "NONE":
 		case "READ":
 			scopes["read:jira-work"], scopes["read:confluence-content"] = true, true
-		case "WRITE", "DELETE", "PROJECT_ADMIN", "ADMIN":
+		case "WRITE", "DELETE", "PROJECT_ADMIN", "SPACE_ADMIN", "ADMIN":
 			scopes["read:jira-work"], scopes["write:jira-work"] = true, true
 			scopes["read:confluence-content"], scopes["write:confluence-content"] = true, true
+			// Connect's levels nest: deleting includes writing, and
+			// administering includes deleting.
+			if scope != "WRITE" && scope != "PROJECT_ADMIN" {
+				scopes["delete:confluence-content"] = true
+			}
+			if scope == "SPACE_ADMIN" || scope == "ADMIN" {
+				scopes["admin:confluence"] = true
+			}
+		case "ACCESS_EMAIL_ADDRESSES":
+			scopes["access:email-addresses"] = true
 		default:
 			return models.AppDescriptor{}, fmt.Errorf("Connect scope %q is not supported", rawScope)
 		}

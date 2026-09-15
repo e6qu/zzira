@@ -51,6 +51,9 @@ type adminPageData struct {
 	ApplicationProperties             []models.ApplicationProperty
 	NavigatorColumns                  []adminNavigatorColumn
 	ProjectCategories                 []*models.ProjectCategory
+	ClassificationLevels              []models.DataClassificationLevel
+	ClassificationColors              []string
+	LastClassificationIndex           int
 }
 
 type adminNavigatorColumn struct {
@@ -164,6 +167,11 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	if err != nil {
 		return adminPageData{}, err
 	}
+	data.ClassificationLevels, err = h.Store.DataClassificationLevels(r.Context(), workspaceID)
+	if err != nil {
+		return adminPageData{}, err
+	}
+	data.ClassificationColors, data.LastClassificationIndex = models.DataClassificationColors, len(data.ClassificationLevels)-1
 	data.Transfers = map[string][]store.AppMigrationTransfer{}
 	for _, app := range data.Apps {
 		app.OutboundDeliveries, err = h.Store.AppOutboundDeliveries(r.Context(), app.ID, 5)

@@ -183,15 +183,7 @@ func (h *V1Handler) v1PageBean(ctx context.Context, ws, actor string, page *mode
 			return metadata, nil
 		}},
 		{"operations", func() (any, error) {
-			canUpdate, err := h.Store.CanUpdateWikiPage(ctx, ws, actor, page.ID)
-			if err != nil {
-				return nil, err
-			}
-			canDelete, err := h.Store.CanDeleteWikiPage(ctx, ws, actor, page.ID)
-			if err != nil {
-				return nil, err
-			}
-			return pageOperationsFor(canUpdate, canDelete), nil
+			return h.pageOperationValues(ctx, ws, actor, page)
 		}},
 		{"restrictions", func() (any, error) {
 			restrictions, err := h.Store.WikiPageRestrictions(ctx, ws, actor, page.ID)

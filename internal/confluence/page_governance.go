@@ -26,7 +26,7 @@ func (h *Handler) pageVersion(w http.ResponseWriter, r *http.Request, ws, actor,
 		writeError(w, err)
 		return
 	}
-	bean := map[string]any{"number": version.Number, "message": version.Message, "minorEdit": version.MinorEdit, "authorId": version.AuthorID, "createdAt": version.CreatedAt, "contentTypeModified": false, "collaborators": []string{}}
+	bean := map[string]any{"number": version.Number, "message": version.Message, "minorEdit": version.MinorEdit, "authorId": version.AuthorID, "createdAt": version.CreatedAt, "contentTypeModified": false, "collaborators": []string{version.AuthorID}}
 	for i := range versions {
 		if versions[i].Number != version.Number {
 			continue
@@ -151,16 +151,24 @@ func (h *Handler) deletePageProperty(w http.ResponseWriter, r *http.Request, ws,
 	w.WriteHeader(204)
 }
 
-func (h *Handler) classificationLevels(w http.ResponseWriter, r *http.Request) {
+// classificationLevels lists the organization's levels in order, with each
+// one's status so a client can tell what may still be chosen.
+func (h *Handler) classificationLevels(w http.ResponseWriter, r *http.Request, ws string) {
 	if !supportedQuery(w, r) {
 		return
 	}
-	levels := make([]map[string]any, 0, len(classificationLevels))
-	for _, level := range classificationLevels {
-		levels = append(levels, level)
+	levels, err := h.Store.DataClassificationLevels(r.Context(), ws)
+	if err != nil {
+		writeError(w, err)
+		return
 	}
-	sort.SliceStable(levels, func(i, j int) bool { return levels[i]["order"].(int) < levels[j]["order"].(int) })
-	respond(w, 200, levels)
+	beans := make([]map[string]any, 0, len(levels))
+	for _, level := range levels {
+		if level.Status != "DRAFT" {
+			beans = append(beans, classificationLevelBean(level))
+		}
+	}
+	respond(w, 200, beans)
 }
 
 func (h *Handler) pageClassification(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
@@ -184,7 +192,11 @@ func (h *Handler) pageClassification(w http.ResponseWriter, r *http.Request, ws,
 		failure(w, 404, "Page not found with the requested status.")
 		return
 	}
-	level, ok := classificationLevels[page.ClassificationLevel]
+	level, ok, err := h.contentClassificationLevel(r, ws, actor, page.ClassificationLevel, page.SpaceID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	if !ok {
 		failure(w, 404, "Page does not have a classification level.")
 		return
@@ -200,14 +212,10 @@ func (h *Handler) setPageClassification(w http.ResponseWriter, r *http.Request, 
 	if !decode(w, r, &input) {
 		return
 	}
-	if input.Status != "current" || (!reset && classificationLevels[input.ID] == nil) || (reset && input.ID != "") {
-		failure(w, 400, "A current, supported classification level is required.")
+	if !h.assignableClassification(w, r, ws, input, reset) {
 		return
 	}
 	levelID := input.ID
-	if reset {
-		levelID = ""
-	}
 	if _, err := h.Commands.SetWikiPageClassification(r.Context(), ws, actor, id, levelID); err != nil {
 		writeError(w, err)
 		return
@@ -247,21 +255,17 @@ func (h *Handler) pageOperations(w http.ResponseWriter, r *http.Request, ws, act
 	if !validPageID(w, id) || !supportedQuery(w, r) {
 		return
 	}
-	if _, err := h.Store.WikiPage(r.Context(), ws, actor, id); err != nil {
-		writeError(w, err)
-		return
-	}
-	canUpdate, err := h.Store.CanUpdateWikiPage(r.Context(), ws, actor, id)
+	page, err := h.Store.WikiPage(r.Context(), ws, actor, id)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	canDelete, err := h.Store.CanDeleteWikiPage(r.Context(), ws, actor, id)
+	operations, err := h.pageOperationValues(r.Context(), ws, actor, page)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	respond(w, 200, map[string]any{"operations": pageOperationsFor(canUpdate, canDelete)})
+	respond(w, 200, map[string]any{"operations": operations})
 }
 
 func (h *Handler) pageCustomContent(w http.ResponseWriter, r *http.Request, ws, actor, id string) {

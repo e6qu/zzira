@@ -45,7 +45,8 @@ func (s *Store) WikiContentKindByID(ctx context.Context, ws, id string) (WikiCon
 			LEFT JOIN wiki_attachments ca ON ca.id=c.attachment_id
 			LEFT JOIN wiki_pages p ON p.id=COALESCE(c.page_id,ca.page_id)
 			LEFT JOIN wiki_blog_posts bp ON bp.id=COALESCE(c.blog_post_id,ca.blog_post_id)
-			JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,bp.space_id)
+			LEFT JOIN wiki_content cc ON cc.id=c.custom_content_id
+			JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,bp.space_id,cc.space_id)
 			WHERE s.workspace_id=$1 AND c.id::text=$2
 		UNION ALL
 		SELECT 4, 'attachment', ''

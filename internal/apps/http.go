@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -162,6 +163,10 @@ func appAPIScope(r *http.Request) (string, bool) {
 		strings.HasPrefix(r.URL.Path, "/rest/atlassian-connect/1/migration/"), r.URL.Path == "/rest/atlassian-connect/1/service-registry":
 		product = "jira-work"
 	case strings.HasPrefix(r.URL.Path, "/wiki/api/"), strings.HasPrefix(r.URL.Path, "/wiki/rest/api/"):
+		// A pinned Confluence operation carries its own Connect scope.
+		if connectScope, found := confluenceConnectScope(r.Method, r.URL.Path); found {
+			return confluenceGrantedScope(connectScope), true
+		}
 		product = "confluence-content"
 	default:
 		return "", false
@@ -207,13 +212,31 @@ func (h *Handler) APIPrincipal(next http.Handler) http.Handler {
 			appFailure(w, http.StatusForbidden, fmt.Errorf("app is suspended"))
 			return
 		}
-		if scope != "" && !store.AppHasScope(installation, scope) {
+		if scope == appScopeInaccessible {
+			appFailure(w, http.StatusForbidden, fmt.Errorf("this operation is not available to apps"))
+			return
+		}
+		if scope != "" && !appHoldsScope(installation, scope) {
 			appFailure(w, http.StatusForbidden, fmt.Errorf("%s scope is required", scope))
 			return
 		}
 		ctx := ContextWithInstallation(r.Context(), installation)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// appHoldsScope reports whether an installation holds a scope, directly or
+// through a broader Confluence scope that includes it.
+func appHoldsScope(installation *models.AppInstallation, scope string) bool {
+	if store.AppHasScope(installation, scope) {
+		return true
+	}
+	for broader, included := range confluenceScopeImplies {
+		if store.AppHasScope(installation, broader) && slices.Contains(included, scope) {
+			return true
+		}
+	}
+	return false
 }
 
 // ContextWithInstallation attaches an authenticated app to a request context,

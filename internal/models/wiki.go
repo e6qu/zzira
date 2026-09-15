@@ -46,10 +46,6 @@ func (a WikiSpaceRoleAssignment) Principal() map[string]string {
 	return map[string]string{"principalType": a.PrincipalType, "principalId": a.PrincipalID}
 }
 
-func (s WikiSpace) DefaultClassificationName() string {
-	return wikiClassificationName(s.DefaultClassificationLevel)
-}
-
 type WikiVersion struct {
 	Number    int    `json:"number"`
 	Message   string `json:"message"`
@@ -79,25 +75,6 @@ type WikiPage struct {
 	Version             WikiVersion `json:"version"`
 }
 
-func (p WikiPage) ClassificationName() string {
-	return wikiClassificationName(p.ClassificationLevel)
-}
-
-func wikiClassificationName(level string) string {
-	switch level {
-	case "public":
-		return "Public"
-	case "internal":
-		return "Internal"
-	case "confidential":
-		return "Confidential"
-	case "restricted":
-		return "Restricted"
-	default:
-		return ""
-	}
-}
-
 type WikiBlogPost struct {
 	ID                  string      `json:"id"`
 	WorkspaceID         string      `json:"-"`
@@ -111,10 +88,6 @@ type WikiBlogPost struct {
 	CreatedAt           string      `json:"createdAt"`
 	Body                WikiBody    `json:"body"`
 	Version             WikiVersion `json:"version"`
-}
-
-func (p WikiBlogPost) ClassificationName() string {
-	return wikiClassificationName(p.ClassificationLevel)
 }
 
 type WikiContent struct {
@@ -141,21 +114,6 @@ type WikiContent struct {
 	Properties          []WikiContentProperty `json:"-"`
 }
 
-func (c WikiContent) ClassificationName() string {
-	switch c.ClassificationLevel {
-	case "public":
-		return "Public"
-	case "internal":
-		return "Internal"
-	case "confidential":
-		return "Confidential"
-	case "restricted":
-		return "Restricted"
-	default:
-		return ""
-	}
-}
-
 type WikiContentProperty struct {
 	ID          string          `json:"id"`
 	ContentID   string          `json:"-"`
@@ -177,7 +135,7 @@ type WikiRedactionResult struct {
 	From        int    `json:"from"`
 	To          int    `json:"to"`
 	Reason      string `json:"reason,omitempty"`
-	RedactionID string `json:"redactionId"`
+	RedactionID string `json:"redactionId,omitempty"`
 }
 
 type WikiBlogCustomContent struct {
@@ -207,6 +165,7 @@ type WikiFooterComment struct {
 	BlogPostID           string      `json:"blogPostId,omitempty"`
 	SpaceID              string      `json:"-"`
 	AttachmentID         string      `json:"attachmentId,omitempty"`
+	CustomContentID      string      `json:"customContentId,omitempty"`
 	ParentCommentID      string      `json:"parentCommentId,omitempty"`
 	AuthorID             string      `json:"authorId"`
 	AuthorName           string      `json:"-"`
@@ -295,7 +254,8 @@ type WikiTask struct {
 	ID            string   `json:"id"`
 	LocalID       string   `json:"localId"`
 	SpaceID       string   `json:"spaceId"`
-	PageID        string   `json:"pageId"`
+	PageID        string   `json:"pageId,omitempty"`
+	BlogPostID    string   `json:"blogPostId,omitempty"`
 	Status        string   `json:"status"`
 	Body          WikiBody `json:"-"`
 	CreatedBy     string   `json:"createdBy"`

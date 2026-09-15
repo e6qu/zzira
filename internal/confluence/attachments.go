@@ -19,6 +19,7 @@ import (
 
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -371,18 +372,6 @@ func (h *Handler) deleteAttachment(w http.ResponseWriter, r *http.Request, ws, a
 	w.WriteHeader(204)
 }
 
-func (h *Handler) attachmentOperationValues(r *http.Request, ws, actor string, a *models.WikiAttachment) []any {
-	ops := []any{map[string]string{"operation": "read", "targetType": "attachment"}}
-	canUpdate, _ := h.Store.CanUpdateWikiAttachment(r.Context(), ws, actor, a.ID)
-	canDelete, _ := h.Store.CanDeleteWikiAttachment(r.Context(), ws, actor, a.ID)
-	if canUpdate {
-		ops = append(ops, map[string]string{"operation": "update", "targetType": "attachment"})
-	}
-	if canDelete {
-		ops = append(ops, map[string]string{"operation": "delete", "targetType": "attachment"})
-	}
-	return ops
-}
 func (h *Handler) attachmentOperations(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
 	if !supportedQuery(w, r) {
 		return
@@ -595,6 +584,28 @@ func parseWikiMultipart(w http.ResponseWriter, r *http.Request) ([]*models.WikiA
 	return make([]*models.WikiAttachment, 0, len(files)), comments, true
 }
 
+// attachmentContainer is the page or blog post the v1 attachment routes name.
+func (h *V1Handler) attachmentContainer(w http.ResponseWriter, r *http.Request, ws, containerID string) (string, bool) {
+	kind, err := h.Store.WikiContentKindByID(r.Context(), ws, containerID)
+	if err != nil {
+		writeError(w, err)
+		return "", false
+	}
+	if kind.Type != "page" && kind.Type != "blogpost" {
+		failure(w, 400, "Attachments belong to pages and blog posts.")
+		return "", false
+	}
+	return kind.Type, true
+}
+
+// saveContainerAttachment stores a file on a page or blog post.
+func (h *V1Handler) saveContainerAttachment(r *http.Request, ws, actor, kind, containerID, attachmentID, filename, mediaType, comment string, minor bool, file io.Reader) (*models.WikiAttachment, error) {
+	if kind == "blogpost" {
+		return h.Commands.SaveWikiBlogAttachment(r.Context(), ws, actor, containerID, attachmentID, filename, mediaType, comment, "", minor, file)
+	}
+	return h.Commands.SaveWikiAttachment(r.Context(), ws, actor, containerID, attachmentID, filename, mediaType, comment, "", minor, file)
+}
+
 func (h *V1Handler) v1SaveAttachments(w http.ResponseWriter, r *http.Request, ws, actor, pageID string) {
 	if r.Method != "POST" && r.Method != "PUT" {
 		failure(w, 405, "Method not allowed.")
@@ -603,8 +614,12 @@ func (h *V1Handler) v1SaveAttachments(w http.ResponseWriter, r *http.Request, ws
 	if !supportedQuery(w, r, "status") {
 		return
 	}
-	if status := r.URL.Query().Get("status"); status != "" && status != "current" {
-		failure(w, 400, "Only current page attachments are supported.")
+	if status := r.URL.Query().Get("status"); status != "" && status != "current" && status != "draft" {
+		failure(w, 400, "status must be current or draft.")
+		return
+	}
+	kind, ok := h.attachmentContainer(w, r, ws, pageID)
+	if !ok {
 		return
 	}
 	out, comments, ok := parseWikiMultipart(w, r)
@@ -623,11 +638,15 @@ func (h *V1Handler) v1SaveAttachments(w http.ResponseWriter, r *http.Request, ws
 		}
 		attachmentID := ""
 		if r.Method == "PUT" {
-			if old, e := h.Store.WikiAttachmentByFilename(r.Context(), ws, actor, pageID, header.Filename); e == nil {
+			lookup := h.Store.WikiAttachmentByFilename
+			if kind == "blogpost" {
+				lookup = h.Store.WikiBlogAttachmentByFilename
+			}
+			if old, e := lookup(r.Context(), ws, actor, pageID, header.Filename); e == nil {
 				attachmentID = old.ID
 			}
 		}
-		a, e := h.Commands.SaveWikiAttachment(r.Context(), ws, actor, pageID, attachmentID, header.Filename, header.Header.Get("Content-Type"), comment, "", r.FormValue("minorEdit") == "true", file)
+		a, e := h.saveContainerAttachment(r, ws, actor, kind, pageID, attachmentID, header.Filename, header.Header.Get("Content-Type"), comment, r.FormValue("minorEdit") == "true", file)
 		closeErr := file.Close()
 		if e != nil {
 			writeError(w, e)
@@ -647,7 +666,17 @@ func (h *V1Handler) v1SaveAttachments(w http.ResponseWriter, r *http.Request, ws
 }
 
 func (h *V1Handler) v1AttachmentBean(a *models.WikiAttachment) map[string]any {
-	return map[string]any{"id": a.ID, "type": "attachment", "status": a.Status, "title": a.Filename, "container": map[string]any{"id": a.PageID, "type": "page"}, "metadata": map[string]any{"mediaType": a.MediaType, "comment": a.Comment}, "extensions": map[string]any{"mediaType": a.MediaType, "mediaTypeDescription": mediaTypeDescription(a.MediaType, a.Filename), "fileSize": a.Size, "fileId": a.FileID, "comment": a.Comment}, "version": a.Version, "_links": map[string]string{"download": "/download/attachments/" + a.PageID + "/" + a.ID + "/" + url.PathEscape(a.Filename), "base": h.BaseURL + "/wiki"}}
+	containerID, containerType := a.PageID, "page"
+	if a.BlogPostID != "" {
+		containerID, containerType = a.BlogPostID, "blogpost"
+	}
+	return map[string]any{"id": a.ID, "type": "attachment", "status": a.Status, "title": a.Filename,
+		"container": map[string]any{"id": containerID, "type": containerType},
+		"metadata":  map[string]any{"mediaType": a.MediaType, "comment": a.Comment},
+		"extensions": map[string]any{"mediaType": a.MediaType, "mediaTypeDescription": mediaTypeDescription(a.MediaType, a.Filename), "fileSize": a.Size,
+			"fileId": a.FileID, "collectionName": "contentId-" + containerID, "comment": a.Comment},
+		"version": a.Version,
+		"_links":  map[string]string{"download": "/download/attachments/" + containerID + "/" + a.ID + "/" + url.PathEscape(a.Filename), "base": h.BaseURL + "/wiki"}}
 }
 
 func (h *V1Handler) v1UpdateAttachmentData(w http.ResponseWriter, r *http.Request, ws, actor, pageID, id string) {
@@ -670,7 +699,16 @@ func (h *V1Handler) v1UpdateAttachmentData(w http.ResponseWriter, r *http.Reques
 	if len(comments) > 0 {
 		comment = comments[0]
 	}
-	a, err := h.Commands.SaveWikiAttachment(r.Context(), ws, actor, pageID, id, files[0].Filename, files[0].Header.Get("Content-Type"), comment, "", r.FormValue("minorEdit") == "true", file)
+	kind, ok := h.attachmentContainer(w, r, ws, pageID)
+	if !ok {
+		return
+	}
+	existing, err := h.Store.WikiAttachment(r.Context(), ws, actor, id)
+	if err != nil || existing.PageID != pageID && existing.BlogPostID != pageID {
+		writeError(w, pgx.ErrNoRows)
+		return
+	}
+	a, err := h.saveContainerAttachment(r, ws, actor, kind, pageID, id, files[0].Filename, files[0].Header.Get("Content-Type"), comment, r.FormValue("minorEdit") == "true", file)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -683,6 +721,11 @@ func (h *V1Handler) v1UpdateAttachmentProperties(w http.ResponseWriter, r *http.
 		ID, Type, Title string
 		Metadata        struct {
 			MediaType string `json:"mediaType"`
+			Comment   string `json:"comment"`
+		}
+		Container struct {
+			ID   json.Number `json:"id"`
+			Type string      `json:"type"`
 		}
 		Version struct {
 			Number    int
@@ -693,7 +736,11 @@ func (h *V1Handler) v1UpdateAttachmentProperties(w http.ResponseWriter, r *http.
 	if !decode(w, r, &input) {
 		return
 	}
-	a, err := h.Store.UpdateWikiAttachmentProperties(r.Context(), ws, actor, pageID, id, input.Title, input.Metadata.MediaType, "", input.Version.Message, input.Version.MinorEdit, input.Version.Number)
+	a, err := h.Store.UpdateWikiAttachmentMetadata(r.Context(), ws, actor, pageID, id, store.WikiAttachmentMetadataInput{
+		Filename: input.Title, MediaType: input.Metadata.MediaType, Comment: input.Metadata.Comment,
+		Message: input.Version.Message, MinorEdit: input.Version.MinorEdit, Version: input.Version.Number,
+		ContainerID: input.Container.ID.String(), ContainerType: input.Container.Type,
+	})
 	if err != nil {
 		writeError(w, err)
 		return
@@ -709,7 +756,7 @@ func (h *V1Handler) v1DownloadAttachment(w http.ResponseWriter, r *http.Request,
 		writeError(w, err)
 		return
 	}
-	if a.PageID != pageID {
+	if a.PageID != pageID && a.BlogPostID != pageID {
 		writeError(w, pgx.ErrNoRows)
 		return
 	}

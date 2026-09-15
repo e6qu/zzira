@@ -22,7 +22,8 @@ var wikiCommentReadable = `SELECT c.id FROM wiki_footer_comments c
 	LEFT JOIN wiki_attachments ca ON ca.id=c.attachment_id
 	LEFT JOIN wiki_pages p ON p.id=COALESCE(c.page_id,ca.page_id)
 	LEFT JOIN wiki_blog_posts bp ON bp.id=COALESCE(c.blog_post_id,ca.blog_post_id)
-	JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,bp.space_id)
+	LEFT JOIN wiki_content cc ON cc.id=c.custom_content_id
+	JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,bp.space_id,cc.space_id)
 	WHERE s.workspace_id=$1 AND ` + wikiSpaceVisible + ` AND ` + wikiCommentVisible + ` AND c.id::text=$3`
 
 // wikiCommentEditable narrows that to a comment the caller may edit.
@@ -89,10 +90,11 @@ func (s *Store) commentPropertyWriteGate(ctx context.Context, tx pgx.Tx, ws, act
 
 func (s *Store) commentPropertyAction(ctx context.Context, tx pgx.Tx, ws, actor, commentID string, property *models.WikiContentProperty, op string) error {
 	var spaceID string
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(p.space_id,bp.space_id)::text FROM wiki_footer_comments c
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(p.space_id,bp.space_id,cc.space_id)::text FROM wiki_footer_comments c
 		LEFT JOIN wiki_attachments ca ON ca.id=c.attachment_id
 		LEFT JOIN wiki_pages p ON p.id=COALESCE(c.page_id,ca.page_id)
 		LEFT JOIN wiki_blog_posts bp ON bp.id=COALESCE(c.blog_post_id,ca.blog_post_id)
+		LEFT JOIN wiki_content cc ON cc.id=c.custom_content_id
 		WHERE c.id::text=$1`, commentID).Scan(&spaceID); err != nil {
 		return err
 	}

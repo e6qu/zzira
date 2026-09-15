@@ -4,12 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
-	"strings"
-	"time"
 
 	"github.com/e6qu/zzira/internal/models"
-	"github.com/e6qu/zzira/internal/wikimarkup"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -103,115 +99,6 @@ func (s *Store) SetWikiPageLike(ctx context.Context, ws, actor, id string, liked
 		}
 	}
 	return tx.Commit(ctx)
-}
-
-func (s *Store) RedactWikiPage(ctx context.Context, ws, actor, id, createdAt string, version int, cleanHistory bool, titlePointers, bodyPointers []models.WikiRedactionPointer) (*models.WikiPage, []models.WikiRedactionResult, []models.WikiRedactionResult, error) {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	page, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND `+wikiPageVisible+` AND `+wikiPageWritable+` AND p.id::text=$3 AND p.status='current' FOR UPDATE OF p`, ws, actor, id))
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	requestedTime, err := time.Parse(time.RFC3339, createdAt)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("%w: createdAt must be an RFC 3339 timestamp", ErrWikiValidation)
-	}
-	currentTime, _ := time.Parse(time.RFC3339, page.Version.CreatedAt)
-	if !requestedTime.Equal(currentTime) || (version != 0 && version != page.Version.Number) {
-		return nil, nil, nil, ErrWikiConflict
-	}
-	if len(titlePointers)+len(bodyPointers) == 0 || len(titlePointers)+len(bodyPointers) > 100 {
-		return nil, nil, nil, fmt.Errorf("%w: provide between 1 and 100 redaction pointers", ErrWikiValidation)
-	}
-	titleRanges, err := normalizeBlogRedactions(page.Title, titlePointers, map[string]bool{"": true, "/": true, "/title": true, "/value": true})
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	bodyRanges, err := normalizeBlogRedactions(page.Body.Value, bodyPointers, map[string]bool{"": true, "/": true, "/value": true, "/storage/value": true, "/body/storage/value": true})
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	redactedTitle, redactedBody := applyBlogRedactions(page.Title, titleRanges), applyBlogRedactions(page.Body.Value, bodyRanges)
-	if strings.TrimSpace(redactedTitle) == "" {
-		return nil, nil, nil, fmt.Errorf("%w: redaction cannot remove the complete page title", ErrWikiValidation)
-	}
-	if _, err := wikimarkup.Render(redactedBody); err != nil {
-		return nil, nil, nil, fmt.Errorf("%w: redaction ranges must select body text without markup", ErrWikiValidation)
-	}
-	if cleanHistory {
-		rows, err := tx.Query(ctx, `SELECT version,title,body FROM wiki_page_versions WHERE page_id::text=$1 FOR UPDATE`, id)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		type historical struct {
-			version     int
-			title, body string
-		}
-		versions := []historical{}
-		for rows.Next() {
-			var item historical
-			if err := rows.Scan(&item.version, &item.title, &item.body); err != nil {
-				rows.Close()
-				return nil, nil, nil, err
-			}
-			versions = append(versions, item)
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return nil, nil, nil, err
-		}
-		rows.Close()
-		for _, item := range versions {
-			if _, err := tx.Exec(ctx, `UPDATE wiki_page_versions SET title=$3,body=$4 WHERE page_id::text=$1 AND version=$2`, id, item.version, scrubBlogHistory(item.title, titleRanges), scrubBlogHistory(item.body, bodyRanges)); err != nil {
-				return nil, nil, nil, err
-			}
-		}
-	}
-	newVersion := page.Version.Number + 1
-	if _, err := tx.Exec(ctx, `UPDATE wiki_pages SET title=$2,body=$3,version=$4 WHERE id::text=$1`, id, redactedTitle, redactedBody, newVersion); err != nil {
-		return nil, nil, nil, err
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO wiki_page_versions(page_id,version,title,body,status,author_id,message) VALUES($1::bigint,$2,$3,$4,'current',$5,'Sensitive content redacted')`, id, newVersion, redactedTitle, redactedBody, actor); err != nil {
-		return nil, nil, nil, err
-	}
-	titleResults := make([]models.WikiRedactionResult, 0, len(titleRanges))
-	bodyResults := make([]models.WikiRedactionResult, 0, len(bodyRanges))
-	insert := func(section string, ranges []blogRedactionRange, results *[]models.WikiRedactionResult) error {
-		ordered := append([]blogRedactionRange(nil), ranges...)
-		sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].order < ordered[j].order })
-		for _, item := range ordered {
-			var redactionID string
-			if err := tx.QueryRow(ctx, `INSERT INTO wiki_page_redactions(page_id,version,section,pointer,from_index,to_index,reason,actor_id) VALUES($1::bigint,$2,$3,$4,$5,$6,$7,$8) RETURNING id::text`, id, newVersion, section, item.pointer, item.from, item.to, item.reason, actor).Scan(&redactionID); err != nil {
-				return err
-			}
-			*results = append(*results, models.WikiRedactionResult{Pointer: item.pointer, From: item.from, To: item.to, Reason: item.reason, RedactionID: redactionID})
-		}
-		return nil
-	}
-	if err := insert("title", titleRanges, &titleResults); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := insert("body", bodyRanges, &bodyResults); err != nil {
-		return nil, nil, nil, err
-	}
-	updated, err := scanWikiPage(tx.QueryRow(ctx, wikiPageSelect+` WHERE p.id::text=$1`, id))
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	if err := wikiAction(ctx, tx, ws, actor, "wiki_page", updated.ID, updated.SpaceID, updated); err != nil {
-		return nil, nil, nil, err
-	}
-	detail, _ := json.Marshal(map[string]any{"cleanHistory": cleanHistory, "previousVersion": page.Version.Number, "version": newVersion, "titleRedactions": len(titleResults), "bodyRedactions": len(bodyResults)})
-	if _, err := tx.Exec(ctx, `INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail) SELECT organization_id,$2,'wiki.page.redacted','wiki_page',$3,$4::jsonb FROM sites WHERE workspace_id=$1`, ws, actor, id, detail); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, nil, nil, err
-	}
-	return updated, titleResults, bodyResults, nil
 }
 
 func (s *Store) WikiPageCustomContent(ctx context.Context, ws, actor, pageID, contentType, order string) ([]models.WikiBlogCustomContent, error) {

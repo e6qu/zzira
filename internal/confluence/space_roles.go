@@ -20,10 +20,6 @@ func (h *Handler) spaceRoles(w http.ResponseWriter, r *http.Request, ws, actor s
 		failure(w, 400, "principal-id and principal-type must be provided together.")
 		return
 	}
-	if q.Get("principal-id") != "" && q.Get("space-id") == "" {
-		failure(w, 400, "Principal filtering currently requires space-id.")
-		return
-	}
 	if roleType := q.Get("role-type"); roleType != "" && roleType != "SYSTEM" && roleType != "CUSTOM" {
 		failure(w, 400, "role-type must be SYSTEM or CUSTOM.")
 		return
@@ -33,11 +29,27 @@ func (h *Handler) spaceRoles(w http.ResponseWriter, r *http.Request, ws, actor s
 		writeError(w, err)
 		return
 	}
+	// With a space, the roles assigned in it; with a principal, the roles that
+	// principal holds in the space, or in any space the caller can see.
 	available := map[string]bool{}
+	filtered := q.Get("space-id") != "" || q.Get("principal-id") != ""
+	spaceIDs := []string{}
 	if spaceID := q.Get("space-id"); spaceID != "" {
 		if !validPageID(w, spaceID) {
 			return
 		}
+		spaceIDs = append(spaceIDs, spaceID)
+	} else if q.Get("principal-id") != "" {
+		spaces, spacesErr := h.Store.WikiSpaces(r.Context(), ws, actor)
+		if spacesErr != nil {
+			writeError(w, spacesErr)
+			return
+		}
+		for _, space := range spaces {
+			spaceIDs = append(spaceIDs, space.ID)
+		}
+	}
+	for _, spaceID := range spaceIDs {
 		assignments, assignmentErr := h.Store.WikiSpaceRoleAssignments(r.Context(), ws, actor, spaceID)
 		if assignmentErr != nil {
 			writeError(w, assignmentErr)
@@ -55,7 +67,7 @@ func (h *Handler) spaceRoles(w http.ResponseWriter, r *http.Request, ws, actor s
 		if q.Get("role-type") != "" && role.Type != q.Get("role-type") {
 			continue
 		}
-		if q.Get("space-id") != "" && !available[role.ID] {
+		if filtered && !available[role.ID] {
 			continue
 		}
 		values = append(values, role)
@@ -106,27 +118,24 @@ func (h *Handler) updateSpaceRole(w http.ResponseWriter, r *http.Request, ws, ac
 	if !decode(w, r, &input) {
 		return
 	}
-	if input.AnonymousRoleID != "" || input.GuestRoleID != "" {
-		failure(w, 400, "Guest and anonymous assignment migration is not available.")
-		return
-	}
-	role, err := h.Commands.UpdateWikiSpaceRole(r.Context(), ws, actor, id, input.Name, input.Description, input.SpacePermissions)
+	role, task, err := h.Commands.UpdateWikiSpaceRole(r.Context(), ws, actor, id, input.Name, input.Description, input.SpacePermissions, input.AnonymousRoleID, input.GuestRoleID)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	respond(w, 200, role)
+	respond(w, 202, map[string]any{"id": role.ID, "type": role.Type, "name": role.Name, "description": role.Description, "taskId": task.WireID()})
 }
 
 func (h *Handler) deleteSpaceRole(w http.ResponseWriter, r *http.Request, ws, actor, id string) {
 	if strings.TrimSpace(id) == "" || !supportedQuery(w, r) {
 		return
 	}
-	if err := h.Commands.DeleteWikiSpaceRole(r.Context(), ws, actor, id); err != nil {
+	task, err := h.Commands.DeleteWikiSpaceRole(r.Context(), ws, actor, id)
+	if err != nil {
 		writeError(w, err)
 		return
 	}
-	w.WriteHeader(204)
+	respond(w, 202, map[string]any{"taskId": task.WireID()})
 }
 
 func (h *Handler) spaceRoleAssignments(w http.ResponseWriter, r *http.Request, ws, actor, spaceID string) {

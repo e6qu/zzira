@@ -117,66 +117,6 @@ func (s *Store) CreateWikiSpaceRole(ctx context.Context, ws, actor, name, descri
 	return role, nil
 }
 
-func (s *Store) UpdateWikiSpaceRole(ctx context.Context, ws, actor, id, name, description string, permissions []string) (*models.WikiSpaceRole, error) {
-	if systemWikiSpaceRole(id) != nil {
-		return nil, fmt.Errorf("%w: system space roles cannot be changed", ErrWikiValidation)
-	}
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if err := projectAdmin(ctx, tx, ws, actor); err != nil {
-		return nil, err
-	}
-	tag, err := tx.Exec(ctx, `UPDATE wiki_space_roles SET name=$3,description=$4,space_permissions=$5 WHERE workspace_id=$1 AND id::text=$2`, ws, id, name, description, permissions)
-	if err != nil {
-		return nil, err
-	}
-	if tag.RowsAffected() == 0 {
-		return nil, pgx.ErrNoRows
-	}
-	role, err := scanWikiSpaceRole(tx.QueryRow(ctx, wikiSpaceRoleSelect+` WHERE r.id::text=$1`, id))
-	if err != nil {
-		return nil, err
-	}
-	if err := wikiRoleAction(ctx, tx, ws, actor, "wiki_space_role", id, models.OpUpsert, role); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return role, nil
-}
-
-func (s *Store) DeleteWikiSpaceRole(ctx context.Context, ws, actor, id string) error {
-	if systemWikiSpaceRole(id) != nil {
-		return fmt.Errorf("%w: system space roles cannot be deleted", ErrWikiValidation)
-	}
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if err := projectAdmin(ctx, tx, ws, actor); err != nil {
-		return err
-	}
-	role, err := scanWikiSpaceRole(tx.QueryRow(ctx, wikiSpaceRoleSelect+` WHERE r.workspace_id=$1 AND r.id::text=$2 FOR UPDATE`, ws, id))
-	if err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM wiki_space_role_assignments WHERE role_id=$1 AND space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$2)`, id, ws); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM wiki_space_roles WHERE id::text=$1`, id); err != nil {
-		return err
-	}
-	if err := wikiRoleAction(ctx, tx, ws, actor, "wiki_space_role", id, models.OpDelete, role); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
-}
-
 func (s *Store) WikiSpaceRoleAssignments(ctx context.Context, ws, actor, spaceID string) ([]models.WikiSpaceRoleAssignment, error) {
 	space, err := s.WikiSpace(ctx, ws, actor, spaceID)
 	if err != nil {
@@ -210,6 +150,37 @@ func (s *Store) WikiSpaceRoleAssignments(ctx context.Context, ws, actor, spaceID
 	return assignments, nil
 }
 
+// validateWikiSpaceRoleAssignment checks an assignment names a role that exists
+// and a principal that belongs to the site.
+func (s *Store) validateWikiSpaceRoleAssignment(ctx context.Context, tx pgx.Tx, ws string, assignment models.WikiSpaceRoleAssignment) error {
+	if systemWikiSpaceRole(assignment.RoleID) == nil {
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_space_roles WHERE workspace_id=$1 AND id::text=$2)`, ws, assignment.RoleID).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return fmt.Errorf("%w: assigned space role does not exist", ErrWikiValidation)
+		}
+	}
+	switch assignment.PrincipalType {
+	case "USER":
+		if err := s.validateWikiRestriction(ctx, tx, ws, models.WikiRestrictionSubject{Type: "user", AccountID: assignment.PrincipalID}); err != nil {
+			return fmt.Errorf("%w: assigned user is not an active workspace member", ErrWikiValidation)
+		}
+	case "GROUP":
+		if err := s.validateWikiRestriction(ctx, tx, ws, models.WikiRestrictionSubject{Type: "group", ID: assignment.PrincipalID}); err != nil {
+			return fmt.Errorf("%w: assigned group does not belong to the workspace directory", ErrWikiValidation)
+		}
+	case "ACCESS_CLASS":
+		if assignment.PrincipalID != "anonymous-users" && assignment.PrincipalID != "authenticated-users" && assignment.PrincipalID != "all-licensed-users" && assignment.PrincipalID != "all-product-admins" && assignment.PrincipalID != "jsm-project-admins" {
+			return fmt.Errorf("%w: assigned access class is not supported", ErrWikiValidation)
+		}
+	default:
+		return fmt.Errorf("%w: assigned principal type is not supported", ErrWikiValidation)
+	}
+	return nil
+}
+
 func (s *Store) SetWikiSpaceRoleAssignments(ctx context.Context, ws, actor, spaceID string, assignments []models.WikiSpaceRoleAssignment) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -227,30 +198,8 @@ func (s *Store) SetWikiSpaceRoleAssignments(ctx context.Context, ws, actor, spac
 		return err
 	}
 	for _, assignment := range assignments {
-		if systemWikiSpaceRole(assignment.RoleID) == nil {
-			var exists bool
-			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_space_roles WHERE workspace_id=$1 AND id::text=$2)`, ws, assignment.RoleID).Scan(&exists); err != nil {
-				return err
-			}
-			if !exists {
-				return fmt.Errorf("%w: assigned space role does not exist", ErrWikiValidation)
-			}
-		}
-		switch assignment.PrincipalType {
-		case "USER":
-			if err := s.validateWikiRestriction(ctx, tx, ws, models.WikiRestrictionSubject{Type: "user", AccountID: assignment.PrincipalID}); err != nil {
-				return fmt.Errorf("%w: assigned user is not an active workspace member", ErrWikiValidation)
-			}
-		case "GROUP":
-			if err := s.validateWikiRestriction(ctx, tx, ws, models.WikiRestrictionSubject{Type: "group", ID: assignment.PrincipalID}); err != nil {
-				return fmt.Errorf("%w: assigned group does not belong to the workspace directory", ErrWikiValidation)
-			}
-		case "ACCESS_CLASS":
-			if assignment.PrincipalID != "anonymous-users" && assignment.PrincipalID != "authenticated-users" && assignment.PrincipalID != "all-licensed-users" && assignment.PrincipalID != "all-product-admins" && assignment.PrincipalID != "jsm-project-admins" {
-				return fmt.Errorf("%w: assigned access class is not supported", ErrWikiValidation)
-			}
-		default:
-			return fmt.Errorf("%w: assigned principal type is not supported", ErrWikiValidation)
+		if err := s.validateWikiSpaceRoleAssignment(ctx, tx, ws, assignment); err != nil {
+			return err
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO wiki_space_role_assignments(space_id,role_id,principal_type,principal_id) VALUES($1::bigint,$2,$3,$4)`, spaceID, assignment.RoleID, assignment.PrincipalType, assignment.PrincipalID); err != nil {
 			return err

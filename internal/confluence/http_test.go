@@ -183,7 +183,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal("private space leaked")
 	}
 	call(member, "GET", "/spaces/"+private, nil, 404)
-	if permissions := call(member, "GET", "/spaces/"+public+"/permissions?limit=5", nil, 200); !strings.Contains(permissions.Body.String(), `"id":"workspace-member"`) || !strings.Contains(permissions.Body.String(), `"key":"read","targetType":"space"`) || !strings.Contains(permissions.Header().Get("Link"), "cursor=") {
+	if permissions := call(member, "GET", "/spaces/"+public+"/permissions?limit=5", nil, 200); !strings.Contains(permissions.Body.String(), `"id":"authenticated-users","type":"role"`) || !strings.Contains(permissions.Body.String(), `"key":"read","targetType":"space"`) || !strings.Contains(permissions.Header().Get("Link"), "cursor=") {
 		t.Fatal(permissions.Body.String(), permissions.Header())
 	}
 	call(member, "GET", "/spaces/"+private+"/permissions", nil, 404)
@@ -193,15 +193,16 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if roles := call(member, "GET", "/space-roles?role-type=SYSTEM&limit=2", nil, 200); !strings.Contains(roles.Body.String(), `"id":"system-member"`) || !strings.Contains(roles.Header().Get("Link"), "cursor=") {
 		t.Fatal(roles.Body.String(), roles.Header())
 	}
-	call(member, "POST", "/space-roles", map[string]any{"name": "Release editors", "description": "Manage release pages", "spacePermissions": []string{"read/space", "update/page"}}, 403)
-	customRoleResponse := call(actor, "POST", "/space-roles", map[string]any{"name": "Release editors", "description": "Manage release pages", "spacePermissions": []string{"read/space", "update/page"}}, 201)
+	call(member, "POST", "/space-roles", map[string]any{"name": "Release editors", "description": "Manage release pages", "spacePermissions": []string{"read/space", "read/page", "update/page"}}, 403)
+	call(actor, "POST", "/space-roles", map[string]any{"name": "Dependent editors", "description": "Missing dependencies", "spacePermissions": []string{"update/page"}}, 400)
+	customRoleResponse := call(actor, "POST", "/space-roles", map[string]any{"name": "Release editors", "description": "Manage release pages", "spacePermissions": []string{"read/space", "read/page", "update/page"}}, 201)
 	var customRole models.WikiSpaceRole
 	if err := json.Unmarshal(customRoleResponse.Body.Bytes(), &customRole); err != nil || customRole.Type != "CUSTOM" {
 		t.Fatalf("unexpected custom role: %+v %v", customRole, err)
 	}
 	call(member, "GET", "/space-roles/"+customRole.ID, nil, 200)
 	call(actor, "PUT", "/space-roles/system-member", map[string]any{"name": "Changed", "description": "No", "spacePermissions": []string{"read/space"}}, 400)
-	call(actor, "PUT", "/space-roles/"+customRole.ID, map[string]any{"name": "Release governors", "description": "Govern release pages", "spacePermissions": []string{"read/space", "create/page", "read/page", "update/page"}}, 200)
+	call(actor, "PUT", "/space-roles/"+customRole.ID, map[string]any{"name": "Release governors", "description": "Govern release pages", "spacePermissions": []string{"read/space", "create/page", "read/page", "update/page"}}, 202)
 	assignmentBody := []map[string]any{{"roleId": customRole.ID, "principal": map[string]string{"principalType": "ACCESS_CLASS", "principalId": "authenticated-users"}}}
 	call(member, "POST", "/spaces/"+public+"/role-assignments", assignmentBody, 403)
 	call(actor, "POST", "/spaces/"+public+"/role-assignments", assignmentBody, 204)
@@ -245,7 +246,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(operations.Body.String())
 	}
 	call(member, "POST", "/pages", map[string]any{"spaceId": restrictedSpace, "title": "Viewer write", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Denied</p>"}}, 404)
-	spaceAdminRoleResponse := call(actor, "POST", "/space-roles", map[string]any{"name": "Space stewards", "description": "Manage one knowledge space", "spacePermissions": []string{"administer/space"}}, 201)
+	spaceAdminRoleResponse := call(actor, "POST", "/space-roles", map[string]any{"name": "Space stewards", "description": "Manage one knowledge space", "spacePermissions": []string{"read/space", "administer/space"}}, 201)
 	var spaceAdminRole models.WikiSpaceRole
 	if err := json.Unmarshal(spaceAdminRoleResponse.Body.Bytes(), &spaceAdminRole); err != nil {
 		t.Fatal(err)
@@ -276,7 +277,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	call(member, "DELETE", "/spaces/"+managedSpace+"/properties/"+managedProperty.ID, nil, 204)
 	callV1(member, "POST", "/space/MANAGED/label", []map[string]string{{"prefix": "team", "name": "stewarded"}}, 200)
 	call(member, "POST", "/spaces/"+managedSpace+"/role-assignments", managedAssignments, 204)
-	call(actor, "DELETE", "/space-roles/"+spaceAdminRole.ID, nil, 204)
+	call(actor, "DELETE", "/space-roles/"+spaceAdminRole.ID, nil, 202)
 	call(actor, "POST", "/spaces", map[string]any{"key": "UNSUPPORTED", "name": "Unsupported", "roleAssignments": []map[string]any{{"roleId": "1"}}}, 400)
 	if _, err := h.Commands.AddWikiSpaceLabels(ctx, ws, actor, public, []models.WikiLabel{{Prefix: "team", Name: "core-space"}}); err != nil {
 		t.Fatal(err)
@@ -286,13 +287,16 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(spaceList.Body.String())
 	}
 	call(member, "GET", "/spaces?sort=unknown", nil, 400)
-	call(member, "GET", "/spaces?status=archived", nil, 400)
-	call(member, "GET", "/spaces?favorited-by="+member, nil, 400)
+	if archivedSpaces := call(member, "GET", "/spaces?status=archived", nil, 200); strings.Contains(archivedSpaces.Body.String(), `"key"`) {
+		t.Fatal(archivedSpaces.Body.String())
+	}
+	call(member, "GET", "/spaces?status=unknown", nil, 400)
+	call(member, "GET", "/spaces?favorited-by="+member, nil, 200)
 	expandedSpace := call(actor, "GET", "/spaces/"+public+"?include-icon=true&include-operations=true&include-labels=true&include-permissions=true&include-role-assignments=true", nil, 200)
-	if !strings.Contains(expandedSpace.Body.String(), `"operation":"update"`) || !strings.Contains(expandedSpace.Body.String(), `"name":"core-space"`) || !strings.Contains(expandedSpace.Body.String(), `"icon"`) || !strings.Contains(expandedSpace.Body.String(), `"id":"workspace-admin"`) || !strings.Contains(expandedSpace.Body.String(), `"roleId":"`+customRole.ID+`"`) {
+	if !strings.Contains(expandedSpace.Body.String(), `"operation":"update"`) || !strings.Contains(expandedSpace.Body.String(), `"name":"core-space"`) || !strings.Contains(expandedSpace.Body.String(), `"icon"`) || !strings.Contains(expandedSpace.Body.String(), `"principal":{"id":"authenticated-users","type":"role"}`) || !strings.Contains(expandedSpace.Body.String(), `"roleId":"`+customRole.ID+`"`) {
 		t.Fatal(expandedSpace.Body.String())
 	}
-	call(actor, "DELETE", "/space-roles/"+customRole.ID, nil, 204)
+	call(actor, "DELETE", "/space-roles/"+customRole.ID, nil, 202)
 	call(actor, "GET", "/space-roles/"+customRole.ID, nil, 404)
 	call(member, "POST", "/spaces/"+public+"/properties", map[string]any{"key": "app-config", "value": map[string]any{"mode": "read-only"}}, 403)
 	spacePropertyResponse := call(actor, "POST", "/spaces/"+public+"/properties", map[string]any{"key": "app-config", "value": map[string]any{"mode": "active"}}, 200)
@@ -1302,7 +1306,8 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal(versions.Body.String())
 	}
 	update["parentId"] = page.ID
-	update["version"] = map[string]int{"number": 3}
+	// Adding the two tasks above made two versions of the page.
+	update["version"] = map[string]int{"number": 5}
 	call(actor, "PUT", "/pages/"+page.ID, update, 400)
 	delete(update, "parentId")
 	call(actor, "DELETE", "/pages/"+hierarchyGrandchild.ID, nil, 204)
@@ -1313,7 +1318,7 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	call(actor, "DELETE", "/pages/"+page.ID, nil, 204)
 	call(actor, "GET", "/pages/"+page.ID, nil, 404)
 	call(actor, "GET", "/pages/"+page.ID+"?status=trashed&body-format=storage", nil, 200)
-	update["version"] = map[string]int{"number": 4}
+	update["version"] = map[string]int{"number": 6}
 	call(actor, "PUT", "/pages/"+page.ID, update, 200)
 	got := call(actor, "GET", "/pages/"+page.ID+"?body-format=storage", nil, 200)
 	if !strings.Contains(got.Body.String(), "<h2>Ready</h2>") && !strings.Contains(got.Body.String(), `\u003ch2\u003eReady`) {
@@ -1325,7 +1330,10 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 		t.Fatal("missing cursor Link header")
 	}
 	call(actor, "GET", "/pages?cursor=broken", nil, 400)
-	call(actor, "DELETE", "/pages/"+draft.ID, nil, 204)
+	// A draft is discarded with draft=true rather than sent to the trash.
+	call(actor, "DELETE", "/pages/"+draft.ID, nil, 400)
+	call(actor, "DELETE", "/pages/"+draft.ID+"?draft=true", nil, 204)
+	call(actor, "GET", "/pages/"+draft.ID+"?status=draft", nil, 404)
 	call(member, "GET", "/pages/"+draft.ID+"?status=trashed", nil, 404)
 	trash := call(member, "GET", "/pages?status=trashed", nil, 200)
 	if strings.Contains(trash.Body.String(), "Private draft") {

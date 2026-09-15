@@ -112,6 +112,12 @@ func (s *Store) CreateWikiInlineComment(ctx context.Context, ws, actor string, i
 	if _, err := tx.Exec(ctx, `INSERT INTO wiki_footer_comment_versions(comment_id,version,body,author_id,message) VALUES($1::bigint,1,$2,$3,$4)`, input.ID, input.Body.Value, actor, input.Version.Message); err != nil {
 		return nil, err
 	}
+	if err := notifyCommentMentions(ctx, tx, ws, actor, input.ID, "", input.Body.Value); err != nil {
+		return nil, err
+	}
+	if err := notifyCommentWatchers(ctx, tx, ws, actor, input.ID); err != nil {
+		return nil, err
+	}
 	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE c.id::text=$1`, input.ID))
 	if err != nil {
 		return nil, err
@@ -158,6 +164,9 @@ func (s *Store) UpdateWikiInlineComment(ctx context.Context, ws, actor string, i
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO wiki_footer_comment_versions(comment_id,version,body,author_id,message) VALUES($1::bigint,$2,$3,$4,$5)`, input.ID, input.Version.Number, input.Body.Value, actor, input.Version.Message); err != nil {
+		return nil, err
+	}
+	if err := notifyCommentMentions(ctx, tx, ws, actor, input.ID, old.Body.Value, input.Body.Value); err != nil {
 		return nil, err
 	}
 	comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE c.id::text=$1`, input.ID))
@@ -244,4 +253,71 @@ func (s *Store) WikiInlineCommentLikes(ctx context.Context, ws, user, id string)
 		users = append(users, id)
 	}
 	return users, rows.Err()
+}
+
+// relocateInlineComments keeps a page's or blog post's inline comments on the
+// passage they were left on after the body changes. A passage that still
+// appears keeps its comment, and the comment's match count and index follow
+// the new body. A passage that no longer appears leaves its comment dangling,
+// as Confluence marks it, and a dangling comment whose passage comes back is
+// anchored again.
+func relocateInlineComments(ctx context.Context, tx pgx.Tx, ws, actor, contentType, contentID, body string) error {
+	column := "page_id"
+	if contentType == "blogpost" {
+		column = "blog_post_id"
+	}
+	rows, err := tx.Query(ctx, `SELECT id::text,inline_selection,inline_match_count,inline_match_index,resolution_status
+		FROM wiki_footer_comments WHERE comment_type='inline' AND parent_id IS NULL AND `+column+`::text=$1
+		ORDER BY id FOR UPDATE`, contentID)
+	if err != nil {
+		return err
+	}
+	type anchor struct {
+		id, selection, status string
+		count, index          int
+	}
+	anchors := []anchor{}
+	for rows.Next() {
+		var a anchor
+		if err := rows.Scan(&a.id, &a.selection, &a.count, &a.index, &a.status); err != nil {
+			rows.Close()
+			return err
+		}
+		anchors = append(anchors, a)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, a := range anchors {
+		matches := strings.Count(body, a.selection)
+		status, count, index := a.status, a.count, a.index
+		if matches == 0 {
+			status = "dangling"
+		} else {
+			if status == "dangling" {
+				status = "open"
+			}
+			count = matches
+			if index >= matches {
+				index = matches - 1
+			}
+		}
+		if status == a.status && count == a.count && index == a.index {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `UPDATE wiki_footer_comments SET resolution_status=$2,inline_match_count=$3,inline_match_index=$4,
+			resolution_modified_at=CASE WHEN resolution_status<>$2 THEN now() ELSE resolution_modified_at END
+			WHERE id::text=$1`, a.id, status, count, index); err != nil {
+			return err
+		}
+		comment, err := scanWikiFooterComment(tx.QueryRow(ctx, wikiCommentSelect+` WHERE c.id::text=$1`, a.id))
+		if err != nil {
+			return err
+		}
+		if err := wikiCommentAction(ctx, tx, ws, actor, "wiki_inline_comment", comment, models.OpUpsert); err != nil {
+			return err
+		}
+	}
+	return nil
 }
