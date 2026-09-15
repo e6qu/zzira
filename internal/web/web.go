@@ -73,6 +73,14 @@ func siteLookFor(properties map[string]string) render.SiteLook {
 	}
 	look.LogoURL, look.FaviconURL = properties["jira.lf.logo.url"], properties["jira.lf.favicon.url"]
 	look.NavigationBackground, look.NavigationHighlight = properties["jira.lf.navigation.bgcolour"], properties["jira.lf.navigation.highlightcolour"]
+	look.ShowTitle = properties["jira.lf.logo.show.application.title"] == "true"
+	look.FaviconHiResURL = properties["jira.lf.favicon.hires.url"]
+	if colour := strings.TrimSpace(properties["jira.lf.hero.button.base.bg.colour"]); lookAndFeelColour.MatchString(colour) && whiteTextContrast(colour) >= 4.5 {
+		// The chosen colour is for the light theme; the dark theme keeps its
+		// own buttons so their text stays readable.
+		rule := " .btn-primary{background:" + colour + ";border-color:" + colour + "}"
+		look.ButtonStyle = template.CSS("@media (prefers-color-scheme: light){:root:not([data-theme=\"dark\"])" + rule + "}:root[data-theme=\"light\"]" + rule)
+	}
 	look.DateComplete, look.DateDay = models.SiteDateLayouts(properties)
 	return look
 }

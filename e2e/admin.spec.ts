@@ -111,7 +111,20 @@ test('site admin manages a directory group and its audited membership', async ({
   expect((await page.request.put('/rest/api/3/application-properties/jira.title', { headers: titleAuth, data: { id: 'jira.title', value: 'Acme Delivery' } })).status()).toBe(200);
   await page.reload();
   await expect(page).toHaveTitle(/Acme Delivery/);
+  // As in Jira, the logo link names the application and the title shows beside
+  // the logo only once "Show application title" is on; the hero button colour
+  // brands primary buttons.
+  await expect(page.getByRole('link', { name: 'Acme Delivery home' })).toBeVisible();
+  await expect(page.locator('.global-header .logo')).not.toContainText('Acme Delivery');
+  const setProperty = async (id: string, value: string) => expect((await page.request.put(`/rest/api/3/application-properties/${id}`, { headers: titleAuth, data: { id, value } })).status()).toBe(200);
+  await setProperty('jira.lf.logo.show.application.title', 'true');
+  await setProperty('jira.lf.hero.button.base.bg.colour', '#206B4E');
+  await page.reload();
   await expect(page.locator('.global-header .logo')).toContainText('Acme Delivery');
+  const primaryButton = page.locator('.btn-primary').first();
+  if (await primaryButton.count()) await expect(primaryButton).toHaveCSS('background-color', 'rgb(32, 107, 78)');
+  await setProperty('jira.lf.logo.show.application.title', 'false');
+  await setProperty('jira.lf.hero.button.base.bg.colour', '#3b7fc4');
   expect((await page.request.put('/rest/api/3/application-properties/jira.title', { headers: titleAuth, data: { id: 'jira.title', value: 'ZZIRA' } })).status()).toBe(200);
   await page.reload();
   await expect(page).toHaveTitle(/ZZIRA/);

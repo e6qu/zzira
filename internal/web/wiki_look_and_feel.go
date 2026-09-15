@@ -2,7 +2,9 @@ package web
 
 import (
 	"html/template"
+	"math"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -68,4 +70,51 @@ func wikiLookAndFeelCSS(settings map[string]any) template.CSS {
 		}
 	}
 	return template.CSS(css.String())
+}
+
+// whiteTextContrast is the WCAG contrast ratio of white text on a hex or
+// rgb() colour, or 0 when the colour cannot be read as one. Primary buttons
+// carry white labels, so a hero colour darker than 4.5:1 leaves them unreadable.
+func whiteTextContrast(colour string) float64 {
+	var channels [3]float64
+	switch {
+	case strings.HasPrefix(colour, "#"):
+		hex := colour[1:]
+		if len(hex) == 3 || len(hex) == 4 {
+			hex = string([]byte{hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]})
+		}
+		if len(hex) != 6 && len(hex) != 8 {
+			return 0
+		}
+		for index := range channels {
+			value, err := strconv.ParseUint(hex[index*2:index*2+2], 16, 8)
+			if err != nil {
+				return 0
+			}
+			channels[index] = float64(value)
+		}
+	case strings.HasPrefix(colour, "rgb"):
+		parts := strings.FieldsFunc(colour[strings.Index(colour, "(")+1:], func(r rune) bool { return r == ',' || r == ')' || r == ' ' })
+		if len(parts) < 3 {
+			return 0
+		}
+		for index := range channels {
+			value, err := strconv.ParseFloat(parts[index], 64)
+			if err != nil || value < 0 || value > 255 {
+				return 0
+			}
+			channels[index] = value
+		}
+	default:
+		return 0
+	}
+	linear := func(channel float64) float64 {
+		channel /= 255
+		if channel <= 0.03928 {
+			return channel / 12.92
+		}
+		return math.Pow((channel+0.055)/1.055, 2.4)
+	}
+	luminance := 0.2126*linear(channels[0]) + 0.7152*linear(channels[1]) + 0.0722*linear(channels[2])
+	return 1.05 / (luminance + 0.05)
 }

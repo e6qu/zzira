@@ -42,9 +42,14 @@ the app does not declare is refused. Selecting a provider enables time
 tracking; an unknown provider, or one whose app is suspended, answers 400. The editable
 application-property catalog matches the properties documented by Jira Cloud.
 The look and feel applies across the site:
-- The application title names every page and the header.
-- A configured logo and favicon replace ZZIRA's, and the navigation colours
-  style the header.
+- The application title names every page and the header's logo link, and
+  shows beside the logo once *Show application title*
+  (`jira.lf.logo.show.application.title`) is on, as in Jira.
+- A configured logo, favicon and high-resolution favicon replace ZZIRA's, and
+  the navigation colours style the header.
+- The hero button background colours primary buttons in the light theme, when
+  their white labels keep at least 4.5:1 contrast on it; a lighter colour,
+  such as Jira's default `#3b7fc4`, leaves ZZIRA's accessible buttons in place.
 - The complete and day date formats decide how automation runs, trash
   deadlines and rendered search dates display.
 

@@ -1,7 +1,7 @@
 {{define "head"}}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-{{with (site $).FaviconURL}}<link rel="icon" href="{{.}}">{{end}}
+{{with (site $).FaviconURL}}<link rel="icon" href="{{.}}">{{end}}{{with (site $).FaviconHiResURL}}<link rel="icon" sizes="64x64" href="{{.}}"><link rel="apple-touch-icon" href="{{.}}">{{end}}{{with (site $).ButtonStyle}}<style>{{.}}</style>{{end}}
 <meta name="color-scheme" content="light dark">
 <script>
   (function () {
@@ -49,7 +49,7 @@
       {{if .RecentProjects}}<nav aria-label="Recent projects"><h2 class="app-switcher-heading">Recent projects</h2>{{range .RecentProjects}}<a href="/projects/{{.Key}}">{{.Name}}</a>{{end}}</nav>{{end}}
     </div>
   </details>{{end}}{{end}}
-  <a class="logo" href="/" aria-label="{{(site $).Title}} home">{{with (site $).LogoURL}}<img class="logo-image" src="{{.}}" alt="" width="30" height="30">{{else}}<span class="logo-mark" aria-hidden="true">Z</span>{{end}}<span{{with (site $).NavigationHighlight}} style="color:{{.}}"{{end}}>{{(site $).Title}}</span></a>
+  <a class="logo" href="/" aria-label="{{(site $).Title}} home">{{with (site $).LogoURL}}<img class="logo-image" src="{{.}}" alt="" width="30" height="30">{{else}}<span class="logo-mark" aria-hidden="true">Z</span>{{end}}{{if (site $).ShowTitle}}<span{{with (site $).NavigationHighlight}} style="color:{{.}}"{{end}}>{{(site $).Title}}</span>{{end}}</a>
   <form class="global-search" method="get" action="{{with .Navigation}}{{with .Current}}{{.WorkURL}}{{else}}/projects{{end}}{{else}}/projects{{end}}" role="search">
     <label class="sr-only" for="global-jql-query">Search issues with JQL</label>
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
