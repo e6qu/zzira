@@ -2,7 +2,10 @@ package models
 
 import "encoding/json"
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // ServiceDesk is the Jira Service Management portal attached to a service project.
 type ServiceDesk struct {
@@ -169,6 +172,63 @@ type ServiceSLAMetric struct {
 	ID, ServiceDeskID, CalendarID, Name, Kind, PauseJQL string
 	GoalMillis                                          int64
 	Position                                            int
+	// StartConditions and StopConditions are the Jira SLA conditions that
+	// start and stop the metric's clock.
+	StartConditions, StopConditions []string
+}
+
+// StartsOn reports whether a condition starts the metric's clock.
+func (m ServiceSLAMetric) StartsOn(condition string) bool {
+	return slices.Contains(m.StartConditions, condition)
+}
+
+// StopsOn reports whether a condition stops the metric's clock.
+func (m ServiceSLAMetric) StopsOn(condition string) bool {
+	return slices.Contains(m.StopConditions, condition)
+}
+
+// Jira's SLA conditions: the events that start or stop an SLA's clock.
+const (
+	SLAConditionIssueCreated           = "issue_created"
+	SLAConditionAssigneeFromUnassigned = "assignee_from_unassigned"
+	SLAConditionAssigneeToUnassigned   = "assignee_to_unassigned"
+	SLAConditionAssigneeChanged        = "assignee_changed"
+	SLAConditionCommentByCustomer      = "comment_by_customer"
+	SLAConditionCommentForCustomers    = "comment_for_customers"
+	SLAConditionDueDateSet             = "duedate_set"
+	SLAConditionDueDateCleared         = "duedate_cleared"
+	SLAConditionDueDateChanged         = "duedate_changed"
+	SLAConditionResolutionSet          = "resolution_set"
+	SLAConditionResolutionCleared      = "resolution_cleared"
+	slaConditionEnteredStatusPrefix    = "entered_status:"
+)
+
+// ServiceSLACondition is one condition as Jira names it.
+type ServiceSLACondition struct {
+	Key, Name string
+}
+
+// ServiceSLAConditions lists the conditions that do not depend on a
+// project's statuses, in Jira's order.
+func ServiceSLAConditions() []ServiceSLACondition {
+	return []ServiceSLACondition{
+		{SLAConditionAssigneeFromUnassigned, "Assignee: From Unassigned"},
+		{SLAConditionAssigneeToUnassigned, "Assignee: To Unassigned"},
+		{SLAConditionAssigneeChanged, "Assignee: Changed"},
+		{SLAConditionCommentByCustomer, "Comment: By Customer"},
+		{SLAConditionCommentForCustomers, "Comment: For Customers"},
+		{SLAConditionDueDateCleared, "Due Date: Cleared"},
+		{SLAConditionDueDateSet, "Due Date: Set"},
+		{SLAConditionDueDateChanged, "Due Date: Changed"},
+		{SLAConditionIssueCreated, "Issue Created"},
+		{SLAConditionResolutionCleared, "Resolution: Cleared"},
+		{SLAConditionResolutionSet, "Resolution: Set"},
+	}
+}
+
+// ServiceSLAEnteredStatus is the condition met when a work item enters a status.
+func ServiceSLAEnteredStatus(statusID string) ServiceSLACondition {
+	return ServiceSLACondition{Key: slaConditionEnteredStatusPrefix + statusID}
 }
 
 type ServiceSLAGoal struct {

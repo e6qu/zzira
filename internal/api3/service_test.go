@@ -1144,7 +1144,67 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(transitions.Body.String(), `"id":"21"`) {
 		t.Fatal(transitions.Body.String())
 	}
+	// Time to first response also stops when the request enters In Progress;
+	// a customer's own comment is not a comment for customers, so the clock is
+	// still running until then.
+	serviceDesk, err := st.ServiceDesk(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectStatuses, err := st.StatusesForProject(ctx, workspaceID, serviceDesk.ProjectID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inProgress := ""
+	for _, status := range projectStatuses {
+		if status.Name == "In Progress" {
+			inProgress = models.ServiceSLAEnteredStatus(status.ID).Key
+		}
+	}
+	if inProgress == "" {
+		t.Fatalf("no In Progress status in %+v", projectStatuses)
+	}
+	firstResponseConditions := []string{models.SLAConditionCommentForCustomers, inProgress}
+	if err := handler.Commands.UpdateServiceSLAConditions(ctx, customerID, workspaceID, serviceDeskID, metricByKind["first_response"], []string{models.SLAConditionIssueCreated}, firstResponseConditions); err == nil {
+		t.Fatal("customer configured SLA conditions")
+	}
+	if err := handler.Commands.UpdateServiceSLAConditions(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], []string{"coffee_break"}, firstResponseConditions); err == nil {
+		t.Fatal("unknown SLA condition was accepted")
+	}
+	if err := handler.Commands.UpdateServiceSLAConditions(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], []string{models.SLAConditionIssueCreated}, nil); err == nil {
+		t.Fatal("an SLA without a stop condition was accepted")
+	}
+	if err := handler.Commands.UpdateServiceSLAConditions(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], []string{models.SLAConditionIssueCreated, models.SLAConditionIssueCreated}, firstResponseConditions); err != nil {
+		t.Fatal(err)
+	}
+	ongoingFirstResponse := func() int {
+		t.Helper()
+		var count int
+		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2 AND stopped_at IS NULL`, issue.ID, metricByKind["first_response"]).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	if ongoingFirstResponse() != 1 {
+		t.Fatal("a customer's comment stopped time to first response")
+	}
+	configuredMetrics, err := st.ServiceSLAMetrics(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, metric := range configuredMetrics {
+		if metric.ID == metricByKind["first_response"] && (len(metric.StartConditions) != 1 || !metric.StopsOn(inProgress) || !metric.StopsOn(models.SLAConditionCommentForCustomers)) {
+			t.Fatalf("first response conditions = %+v", metric)
+		}
+	}
 	callAs(customerID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/transition", `{"id":"21","additionalComment":{"body":"Work can begin.","public":true}}`, 204)
+	if ongoingFirstResponse() != 0 {
+		t.Fatal("entering In Progress did not stop time to first response")
+	}
+	var conditionAudits int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action='service.sla.conditions.updated'`, actorID).Scan(&conditionAudits); err != nil || conditionAudits != 1 {
+		t.Fatalf("SLA condition audits = %d, %v", conditionAudits, err)
+	}
 	// Comments appear on a request only when expanded, as in Jira.
 	detail := callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"?expand=comment", "", 200)
 	if !strings.Contains(detail.Body.String(), `"status":"In Progress"`) || !strings.Contains(detail.Body.String(), "Work can begin") {

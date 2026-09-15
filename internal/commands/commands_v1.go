@@ -214,7 +214,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	if err = s.enforceCustomFieldContexts(ctx, in.WorkspaceID, issue.ProjectID, issue.IssueType.ID, in.Fields); err != nil {
 		return nil, nil, err
 	}
-	previousDescription := issue.Description
+	previous, previousDescription := *issue, issue.Description
 	issue, action, err := s.Store.UpdateIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, update)
 	if err != nil {
 		return nil, nil, err
@@ -244,11 +244,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 			}
 		}
 	}
-	if in.StatusID != nil {
-		if err := s.syncServiceSLAsAfterIssueChange(ctx, in.ActorID, in.WorkspaceID, issue, time.Now().UTC()); err != nil {
-			return nil, nil, err
-		}
-	} else if err := s.Store.ReconcileServiceSLAPauses(ctx, in.WorkspaceID, in.ActorID, issue.ID, time.Now().UTC()); err != nil {
+	if err := s.syncServiceSLAsAfterIssueChange(ctx, in.ActorID, in.WorkspaceID, &previous, issue, time.Now().UTC()); err != nil {
 		return nil, nil, err
 	}
 	return issue, action, nil
@@ -632,7 +628,7 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	if err = s.deliverIssueEvent(ctx, workspaceID, actorID, updated, action, eventID, notificationKind, notificationVerb); err != nil {
 		return updated, action, err
 	}
-	if err := s.syncServiceSLAsAfterIssueChange(ctx, actorID, workspaceID, updated, time.Now().UTC()); err != nil {
+	if err := s.syncServiceSLAsAfterIssueChange(ctx, actorID, workspaceID, issue, updated, time.Now().UTC()); err != nil {
 		return nil, nil, err
 	}
 	if updated.Status.ID != issue.Status.ID {

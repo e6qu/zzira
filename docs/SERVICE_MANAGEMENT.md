@@ -283,9 +283,18 @@ Every service desk starts with a Monday-to-Friday 09:00–17:00 UTC business
 calendar, a four-business-hour first-response goal and an eight-business-hour
 resolution goal. Service desk administrators can change the calendar name, IANA time
 zone, working days, daily window and both goal durations from the agent
-workspace. New requests start both durable clocks. The first public agent reply
-completes the response cycle, reaching a Done status completes the resolution
-cycle, and reopening starts another resolution cycle.
+workspace. Each SLA counts time between Jira's start and stop conditions, which
+managers choose per metric with the goal and pause condition: Issue Created,
+Entered Status for each of the project's statuses, Assignee From Unassigned,
+To Unassigned and Changed, Comment By Customer and For Customers, Due Date
+Set, Cleared and Changed, and Resolution Set and Cleared. Every SLA needs at
+least one start and one stop condition. A matching stop condition stops the
+running cycle, and a matching start condition starts a new cycle when none is
+running, so a reopened request starts another resolution cycle. New desks and
+existing metrics keep Jira's defaults: time to first response starts at Issue
+Created and stops at a comment for customers, and time to resolution starts at
+Issue Created or Resolution Cleared and stops at Resolution Set. Condition
+changes are audited and apply to the events that follow.
 
 Administrators add, rename, or remove dated holidays in the same calendar
 workspace. Changes are scoped to the selected service desk and audited. SLA
@@ -415,7 +424,7 @@ The implemented operations are assessed as partial. JQL support follows the
 documented ZZIRA search subset, including array-aware label matching;
 Assets-backed portal pickers, participant notifications,
 approval workflow configuration, email delivery and notification preference administration, CSAT configuration,
-SLA goal distributions, complete public Assets object/schema/import API parity, advanced SLA criteria,
+SLA goal distributions, complete public Assets object/schema/import API parity, custom SLA metrics,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
 remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

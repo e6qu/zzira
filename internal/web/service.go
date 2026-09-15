@@ -94,7 +94,10 @@ type servicePageData struct {
 	ReportFilter     models.ServiceReportFilter
 	ReportChannels   []string
 	SLAMetrics       []models.ServiceSLAMetric
-	SLAGoals         map[string][]models.ServiceSLAGoal
+	// SLAConditions are the conditions an SLA's clock can start and stop on,
+	// including entering each of the desk project's statuses.
+	SLAConditions []models.ServiceSLACondition
+	SLAGoals      map[string][]models.ServiceSLAGoal
 	// SLAGoalOrder says which conditional goals start and end their metric's order.
 	SLAGoalOrder        map[string]serviceSLAGoalOrder
 	SLAs                []models.ServiceSLA
@@ -257,6 +260,22 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				http.Error(w, "Could not load SLA goals.", http.StatusInternalServerError)
 				return
+			}
+			slaDesk, err := h.Store.ServiceDesk(r.Context(), workspaceID, deskID)
+			if err != nil {
+				http.Error(w, "Could not load SLA conditions.", http.StatusInternalServerError)
+				return
+			}
+			slaStatuses, err := h.Store.StatusesForProject(r.Context(), workspaceID, slaDesk.ProjectID, true)
+			if err != nil {
+				http.Error(w, "Could not load SLA conditions.", http.StatusInternalServerError)
+				return
+			}
+			data.SLAConditions = models.ServiceSLAConditions()
+			for _, status := range slaStatuses {
+				condition := models.ServiceSLAEnteredStatus(status.ID)
+				condition.Name = "Entered Status: " + status.Name
+				data.SLAConditions = append(data.SLAConditions, condition)
 			}
 			data.SLAGoals = make(map[string][]models.ServiceSLAGoal, len(data.SLAMetrics))
 			data.SLAGoalOrder = map[string]serviceSLAGoalOrder{}
@@ -954,6 +973,12 @@ func (h *Handler) ServiceSLASettings(w http.ResponseWriter, r *http.Request) {
 	if err := h.Commands.UpdateServiceSLAMetric(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PathValue("metric"), r.PostFormValue("pauseJql"), goalMinutes*time.Minute.Milliseconds()); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	if r.PostFormValue("conditions") != "" {
+		if err := h.Commands.UpdateServiceSLAConditions(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PathValue("metric"), r.PostForm["startCondition"], r.PostForm["stopCondition"]); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#sla-settings")
 }

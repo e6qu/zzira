@@ -254,7 +254,7 @@ func (s *Store) CreateServiceRequest(ctx context.Context, workspaceID, issueID, 
 		INSERT INTO service_sla_cycles(request_issue_id,metric_id,started_at,goal_id,goal_name,goal_millis)
 		SELECT $1,m.id,now(),g.id,g.name,g.goal_millis FROM service_sla_metrics m
 		JOIN service_sla_goals g ON g.metric_id=m.id AND g.jql=''
-		WHERE m.service_desk_id=$2`, issueID, serviceDeskID); err != nil {
+		WHERE m.service_desk_id=$2 AND 'issue_created'=ANY(m.start_conditions)`, issueID, serviceDeskID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO service_request_subscriptions(request_issue_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, issueID, customerID); err != nil {
