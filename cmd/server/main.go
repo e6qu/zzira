@@ -211,7 +211,7 @@ func main() {
 	go (&commands.AttachmentBlobDeletionRunner{Service: cmdSvc}).Run(ctx)
 	go (&commands.ServiceTemporaryAttachmentRunner{Service: cmdSvc}).Run(ctx)
 	if smtpSender != nil {
-		go (&mailer.Runner{Store: st, Sender: smtpSender}).Run(ctx)
+		go (&mailer.Runner{Store: st, Sender: smtpSender, BaseURL: baseURL}).Run(ctx)
 	}
 	go func() {
 		for {

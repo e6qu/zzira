@@ -162,6 +162,15 @@ func TestNotificationSchemeContractAndDelivery(t *testing.T) {
 	if notificationCount != 1 || emailCount != 1 || deliveryCount != 1 {
 		t.Fatalf("inbox=%d email=%d deliveries=%d", notificationCount, emailCount, deliveryCount)
 	}
+	var htmlBody string
+	if err = st.Pool.QueryRow(ctx, `SELECT html_body FROM email_outbox WHERE workspace_id=$1 AND recipient=$2`, workspaceID, recipientID+"@example.test").Scan(&htmlBody); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`href="/browse/` + issue.Key + `"`, ">Ship notification schemes</a>", ">Notifications / <a", "View work item", `href="/profile"`} {
+		if !strings.Contains(htmlBody, want) {
+			t.Fatalf("html email lacks %q: %s", want, htmlBody)
+		}
+	}
 	var issueID string
 	var issueActionSeq int64
 	if err = st.Pool.QueryRow(ctx, `SELECT i.id,a.seq FROM issues i JOIN actions a ON a.workspace_id=i.workspace_id AND a.entity_type='issue' AND a.entity_id=i.id WHERE i.workspace_id=$1 AND i.jira_id=$2::bigint ORDER BY a.seq LIMIT 1`, workspaceID, issue.ID).Scan(&issueID, &issueActionSeq); err != nil {

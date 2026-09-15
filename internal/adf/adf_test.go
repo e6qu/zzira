@@ -126,4 +126,3 @@ func TestMentionedAccounts(t *testing.T) {
 		t.Fatal("an empty or broken document mentions nobody")
 	}
 }
-

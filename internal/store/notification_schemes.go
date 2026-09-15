@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"net/mail"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -505,9 +507,9 @@ func deliverIssueNotificationTx(ctx context.Context, tx pgx.Tx, workspaceID, act
 	if err != nil || command.RowsAffected() == 0 {
 		return err
 	}
-	var projectID, issueKey, summary, assigneeID, reporterID, projectLeadID, securityLevelID string
+	var projectID, issueKey, summary, assigneeID, reporterID, projectLeadID, securityLevelID, projectName, statusName string
 	var fields []byte
-	err = tx.QueryRow(ctx, `SELECT i.project_id,i.key,i.summary,COALESCE(i.assignee_id,''),COALESCE(i.reporter_id,''),COALESCE(p.lead_account_id,''),i.fields,COALESCE(i.security_level_id,'') FROM issues i JOIN projects p ON p.id=i.project_id WHERE i.workspace_id=$1 AND i.id=$2`, workspaceID, issueID).Scan(&projectID, &issueKey, &summary, &assigneeID, &reporterID, &projectLeadID, &fields, &securityLevelID)
+	err = tx.QueryRow(ctx, `SELECT i.project_id,i.key,i.summary,COALESCE(i.assignee_id,''),COALESCE(i.reporter_id,''),COALESCE(p.lead_account_id,''),i.fields,COALESCE(i.security_level_id,''),p.name,COALESCE(st.name,'') FROM issues i JOIN projects p ON p.id=i.project_id LEFT JOIN statuses st ON st.id=i.status_id WHERE i.workspace_id=$1 AND i.id=$2`, workspaceID, issueID).Scan(&projectID, &issueKey, &summary, &assigneeID, &reporterID, &projectLeadID, &fields, &securityLevelID, &projectName, &statusName)
 	if err != nil {
 		return err
 	}
@@ -638,6 +640,7 @@ func deliverIssueNotificationTx(ctx context.Context, tx pgx.Tx, workspaceID, act
 	sort.Strings(userIDs)
 	subject := fmt.Sprintf("[%s] %s: %s", issueKey, event.Name, summary)
 	body := message + "\n\n" + issueKey + " — " + summary + "\n/browse/" + issueKey
+	htmlBody := issueNotificationHTML(actorName, message, issueKey, summary, projectName, statusName)
 	for _, userID := range userIDs {
 		if userID == actorID && !users[userID] {
 			ownChanges, preferenceErr := userPreferenceEnabled(ctx, tx, workspaceID, actorID, UserPreferenceNotifyOwnChanges, false)
@@ -648,7 +651,7 @@ func deliverIssueNotificationTx(ctx context.Context, tx pgx.Tx, workspaceID, act
 				continue
 			}
 		}
-		email, notifyErr := notifyIssueUserTx(ctx, tx, workspaceID, actorID, actorName, projectID, issueID, securityLevelID, userID, kind, message, subject, body,
+		email, notifyErr := notifyIssueUserTx(ctx, tx, workspaceID, actorID, actorName, projectID, issueID, securityLevelID, userID, kind, message, subject, body, htmlBody,
 			fmt.Sprintf("issue-notification:%s:%d:%d:%s", workspaceID, actionSeq, eventID, userID))
 		if notifyErr != nil {
 			return notifyErr
@@ -663,7 +666,7 @@ func deliverIssueNotificationTx(ctx context.Context, tx pgx.Tx, workspaceID, act
 			continue
 		}
 		dedupe := fmt.Sprintf("issue-notification:%s:%d:%d:email:%s", workspaceID, actionSeq, eventID, email)
-		if _, err = tx.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,dedupe_key) VALUES($1,$2,$3,$4,$5) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, workspaceID, email, subject, body, dedupe); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,html_body,dedupe_key) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, workspaceID, email, subject, body, htmlBody, dedupe); err != nil {
 			return err
 		}
 	}
@@ -674,7 +677,7 @@ func deliverIssueNotificationTx(ctx context.Context, tx pgx.Tx, workspaceID, act
 // queues its email, provided they are an active member who can browse the work
 // item at its security level. It returns the address it used, or "" when the
 // person was skipped.
-func notifyIssueUserTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID, actorName, projectID, issueID, securityLevelID, userID, kind, message, subject, body, dedupe string) (string, error) {
+func notifyIssueUserTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID, actorName, projectID, issueID, securityLevelID, userID, kind, message, subject, body, htmlBody, dedupe string) (string, error) {
 	allowed, _, err := hasProjectPermissionTx(ctx, tx, workspaceID, userID, projectID, issueID, "BROWSE_PROJECTS")
 	if err != nil || !allowed {
 		return "", err
@@ -709,7 +712,7 @@ func notifyIssueUserTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID, act
 	}
 	if collector := bulkNotifications(ctx); collector != nil {
 		collector.add(email, subject)
-	} else if _, err = tx.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,dedupe_key) VALUES($1,$2,$3,$4,$5) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, workspaceID, email, subject, body, dedupe); err != nil {
+	} else if _, err = tx.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,html_body,dedupe_key) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, workspaceID, email, subject, body, htmlBody, dedupe); err != nil {
 		return "", err
 	}
 	return email, nil
@@ -738,8 +741,8 @@ func (s *Store) DeliverIssueMentions(ctx context.Context, workspaceID, actorID, 
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var projectID, issueKey, summary, securityLevelID, actorName string
-	if err = tx.QueryRow(ctx, `SELECT project_id,key,summary,COALESCE(security_level_id,'') FROM issues WHERE workspace_id=$1 AND id=$2`, workspaceID, issueID).Scan(&projectID, &issueKey, &summary, &securityLevelID); err != nil {
+	var projectID, issueKey, summary, securityLevelID, projectName, statusName, actorName string
+	if err = tx.QueryRow(ctx, `SELECT i.project_id,i.key,i.summary,COALESCE(i.security_level_id,''),p.name,COALESCE(st.name,'') FROM issues i JOIN projects p ON p.id=i.project_id LEFT JOIN statuses st ON st.id=i.status_id WHERE i.workspace_id=$1 AND i.id=$2`, workspaceID, issueID).Scan(&projectID, &issueKey, &summary, &securityLevelID, &projectName, &statusName); err != nil {
 		return err
 	}
 	_ = tx.QueryRow(ctx, `SELECT display_name FROM users WHERE id=$1`, actorID).Scan(&actorName)
@@ -749,6 +752,7 @@ func (s *Store) DeliverIssueMentions(ctx context.Context, workspaceID, actorID, 
 	}
 	subject := fmt.Sprintf("[%s] %s mentioned you: %s", issueKey, actorName, summary)
 	body := message + "\n\n" + issueKey + " — " + summary + "\n/browse/" + issueKey
+	htmlBody := issueNotificationHTML(actorName, message, issueKey, summary, projectName, statusName)
 	for _, userID := range mentioned {
 		if comment != nil {
 			visible, visibleErr := s.CommentVisibleTo(ctx, workspaceID, projectID, userID, comment)
@@ -759,10 +763,34 @@ func (s *Store) DeliverIssueMentions(ctx context.Context, workspaceID, actorID, 
 				continue
 			}
 		}
-		if _, err = notifyIssueUserTx(ctx, tx, workspaceID, actorID, actorName, projectID, issueID, securityLevelID, userID, "issue_mentioned", message, subject, body,
+		if _, err = notifyIssueUserTx(ctx, tx, workspaceID, actorID, actorName, projectID, issueID, securityLevelID, userID, "issue_mentioned", message, subject, body, htmlBody,
 			fmt.Sprintf("issue-mention:%s:%d:%s", workspaceID, actionSeq, userID)); err != nil {
 			return err
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// issueNotificationHTML is the HTML part of a work item notification email:
+// who did what, the work item it is about with its status, and links to open
+// it and to change notification preferences. Links are site-relative; the
+// mailer makes them absolute.
+func issueNotificationHTML(actorName, message, issueKey, summary, projectName, statusName string) string {
+	escape := html.EscapeString
+	link := "/browse/" + url.PathEscape(issueKey)
+	if actorName == "" {
+		actorName = "Someone"
+	}
+	var b strings.Builder
+	b.WriteString(`<!doctype html><html lang="en"><body style="margin:0;padding:24px;background:#f7f8f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#172b4d">`)
+	b.WriteString(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #dfe1e6;border-radius:8px"><tr><td style="padding:24px">`)
+	b.WriteString(`<p style="margin:0 0 16px;font-size:14px"><strong>` + escape(actorName) + `</strong> ` + escape(message) + `</p>`)
+	b.WriteString(`<p style="margin:0 0 4px;font-size:12px;color:#626f86">` + escape(projectName) + ` / <a href="` + link + `" style="color:#0c66e4">` + escape(issueKey) + `</a></p>`)
+	b.WriteString(`<h1 style="margin:0 0 12px;font-size:20px;line-height:1.3"><a href="` + link + `" style="color:#172b4d;text-decoration:none">` + escape(summary) + `</a></h1>`)
+	if statusName != "" {
+		b.WriteString(`<p style="margin:0 0 20px;font-size:12px"><span style="display:inline-block;padding:2px 6px;border-radius:3px;background:#dfe1e6;font-weight:700;text-transform:uppercase">` + escape(statusName) + `</span></p>`)
+	}
+	b.WriteString(`<p style="margin:0"><a href="` + link + `" style="display:inline-block;padding:8px 12px;border-radius:4px;background:#0c66e4;color:#ffffff;text-decoration:none;font-weight:600">View work item</a></p>`)
+	b.WriteString(`</td></tr></table><p style="max-width:600px;margin:16px auto 0;font-size:12px;color:#626f86">You are receiving this because of your notification settings. <a href="/profile" style="color:#0c66e4">Manage notification preferences</a></p></body></html>`)
+	return b.String()
 }

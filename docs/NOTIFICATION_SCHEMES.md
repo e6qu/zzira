@@ -91,8 +91,15 @@ email; keeping a mention while editing tells nobody again, and mentioning
 yourself notifies nobody. The person must be an active member who can browse
 the work item at its security level and, for a restricted comment, belong to
 its group or project role. Typing @ in the issue page's comment editor offers
-the project's people and inserts the mention. The assessment remains partial
-while notification diagnostics and rich email rendering remain. The `user`, `group`, `projectRole`, `field`
+the project's people and inserts the mention.
+
+Work item notification and mention emails are HTML with a plain-text
+alternative (`multipart/alternative`, quoted-printable, RFC 2047 subjects).
+The HTML names who did what, the project, the linked key and summary, the
+status, a *View work item* button and a link to notification preferences.
+The outbox stores site-relative links, and the mailer makes them absolute with
+`BASE_URL` when it sends. The assessment remains partial while notification
+diagnostics remain. The `user`, `group`, `projectRole`, `field`
 and `all` expansions add each recipient's details. Jira's deprecated
 direct email-address recipient is stored and delivered, but it does not create
 an in-app identity. Exact self links on every paged response and all Jira error
