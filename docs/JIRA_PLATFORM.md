@@ -150,8 +150,21 @@ issue source ids are Jira's numbers; Atlassian team ids are UUIDs.
 | `POST .../team/planonly`, `GET/PUT/DELETE .../team/planonly/{planOnlyTeamId}` | A plan-only team with name, planning style (Scrum or Kanban), issue source, sprint length, capacity and members; PUT is a JSON Patch. |
 | `POST .../team/atlassian`, `GET/PUT/DELETE .../team/atlassian/{atlassianTeamId}` | Adds an existing Atlassian team with its planning settings; an unknown team is 404 and a team already in the plan is 400. |
 
-Every team operation on a plan that is not active is 409. Plans are a planning
-record: ZZIRA has no timeline view that schedules work from them.
+Every team operation on a plan that is not active is 409.
+
+**Plans** in the navigation lists the active plans a person can view, and
+`/plans/{planId}` shows one. The page gathers the work the plan's boards (by
+board filter), projects and saved filters give the viewer, leaves out what the
+exclusion rules name (work items, work types, releases, statuses, status
+categories, sub-tasks, and completed work resolved before
+`numberOfDaysToShowCompletedIssues` days ago), nests child work under the epics
+the plan includes, and lays it across whole months from the scheduling start
+and end fields: Due date, the site's Target start and Target end fields (which
+every site has), or a chosen date field. A teams table lists each team's
+planning style, sprint length, capacity and member count. Site administrators
+and the plan lead can view and edit; View and Edit permissions grant the same
+to people and groups, and anyone else gets 404. Capacity planning, dependency
+scheduling, scenarios and editing work from the plan remain.
 
 Atlassian teams are kept on the site's **People › Teams** page. Anyone can start
 a team; its members and site administrators add and remove members or delete

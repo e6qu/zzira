@@ -4226,7 +4226,7 @@
         "docs/JIRA_PLATFORM.md",
         "e2e/plans_teams.spec.ts"
       ],
-      "notes": "Creates plans with validated issue sources, scheduling, exclusion rules, releases, custom fields, lead and group or account permissions; no timeline scheduling runs from plans."
+      "notes": "Creates plans with validated issue sources, scheduling, exclusion rules, releases, custom fields, lead and group or account permissions; the plan page schedules the work its sources give on a month timeline."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/plans/plan/{planId}",
