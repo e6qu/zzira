@@ -885,6 +885,9 @@ func (s *Service) AddComment(ctx context.Context, in AddCommentInput) (*models.C
 	if err = s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, 6, "issue_commented", "commented on"); err != nil {
 		return comment, action, err
 	}
+	if err = s.Store.AutowatchIssue(ctx, in.WorkspaceID, in.ActorID, issue.ID); err != nil {
+		return comment, action, err
+	}
 	return comment, action, nil
 }
 

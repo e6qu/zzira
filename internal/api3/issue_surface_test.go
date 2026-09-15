@@ -339,7 +339,8 @@ func TestIssueSurfaceContract(t *testing.T) {
 		IssuesIsWatching map[string]bool `json:"issuesIsWatching"`
 	}
 	decode(call(admin, "POST", "/rest/api/3/issue/watching", `{"issueIds":["`+jiraID("ISS-1")+`","`+jiraID("ISS-2")+`","999999"]}`, 200), &watching)
-	if !watching.IssuesIsWatching[jiraID("ISS-1")] || watching.IssuesIsWatching[jiraID("ISS-2")] || watching.IssuesIsWatching["999999"] {
+	// Commenting on ISS-2 through the Blocks link autowatched it for admin.
+	if !watching.IssuesIsWatching[jiraID("ISS-1")] || !watching.IssuesIsWatching[jiraID("ISS-2")] || watching.IssuesIsWatching["999999"] {
 		t.Fatalf("bulk watching = %+v", watching.IssuesIsWatching)
 	}
 

@@ -53,6 +53,7 @@ func TestNotificationSchemeContractAndDelivery(t *testing.T) {
 		exec(`DELETE FROM projects WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM actions WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM jira_user_preferences WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM workspaces WHERE id=$1`, workspaceID)
 		for _, id := range []string{adminID, recipientID} {
 			exec(`DELETE FROM api_tokens WHERE user_id=$1`, id)
@@ -187,6 +188,27 @@ func TestNotificationSchemeContractAndDelivery(t *testing.T) {
 	}
 	if notificationCount != 1 || emailCount != 1 {
 		t.Fatalf("restricted delivery leaked: inbox=%d email=%d", notificationCount, emailCount)
+	}
+
+	// The reporter's own changes stay silent until they choose "Notify me".
+	call(adminID, http.MethodPut, schemePath+"/notification", `{"notificationSchemeEvents":[{"event":{"id":"1"},"notifications":[{"notificationType":"Reporter"}]}]}`, http.StatusNoContent)
+	adminInbox := func() int {
+		t.Helper()
+		var count int
+		if countErr := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2`, workspaceID, adminID).Scan(&count); countErr != nil {
+			t.Fatal(countErr)
+		}
+		return count
+	}
+	before := adminInbox()
+	call(adminID, http.MethodPost, "/rest/api/3/issue", `{"fields":{"project":{"key":"`+projectKey+`"},"summary":"Quiet own change","issuetype":{"name":"Task"}}}`, http.StatusCreated)
+	if adminInbox() != before {
+		t.Fatalf("own change notified the reporter by default")
+	}
+	call(adminID, http.MethodPut, "/rest/api/3/mypreferences?key="+store.UserPreferenceNotifyOwnChanges, `true`, http.StatusNoContent)
+	call(adminID, http.MethodPost, "/rest/api/3/issue", `{"fields":{"project":{"key":"`+projectKey+`"},"summary":"Announced own change","issuetype":{"name":"Task"}}}`, http.StatusCreated)
+	if adminInbox() != before+1 {
+		t.Fatalf("own change inbox = %d, want %d", adminInbox(), before+1)
 	}
 
 	call(adminID, http.MethodDelete, schemePath, "", http.StatusBadRequest)

@@ -271,6 +271,9 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if err = s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, eventID, notificationKind, "created"); err != nil {
 		return issue, action, err
 	}
+	if err = s.Store.AutowatchIssue(ctx, in.WorkspaceID, in.ActorID, issue.ID); err != nil {
+		return issue, action, err
+	}
 	if len(triggers.TriggeredWebhookIDs) > 0 || len(triggers.TriggeredAgents) > 0 {
 		triggers.SuppressChangelog, triggers.SuppressEvents = true, true
 		if _, _, err = s.Store.UpdateIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, triggers); err != nil {

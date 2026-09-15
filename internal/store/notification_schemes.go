@@ -525,9 +525,9 @@ func deliverIssueNotificationTx(ctx context.Context, tx pgx.Tx, workspaceID, act
 		rules = append(rules, rule)
 	}
 	rows.Close()
-	// The value records an explicit CurrentUser match. Implicit roles follow
-	// ZZIRA's default preference of suppressing notifications for your own
-	// changes; administrators can add CurrentUser when a scheme needs them.
+	// The value records an explicit CurrentUser match. Implicit roles skip the
+	// actor's own changes unless they chose to be notified of them, as Jira's
+	// personal "My changes" setting does.
 	users := map[string]bool{}
 	addUser := func(id string, currentUser bool) {
 		if id == "" {
@@ -639,7 +639,13 @@ func deliverIssueNotificationTx(ctx context.Context, tx pgx.Tx, workspaceID, act
 	body := message + "\n\n" + issueKey + " — " + summary + "\n/browse/" + issueKey
 	for _, userID := range userIDs {
 		if userID == actorID && !users[userID] {
-			continue
+			ownChanges, preferenceErr := userPreferenceEnabled(ctx, tx, workspaceID, actorID, UserPreferenceNotifyOwnChanges, false)
+			if preferenceErr != nil {
+				return preferenceErr
+			}
+			if !ownChanges {
+				continue
+			}
 		}
 		allowed, _, permissionErr := hasProjectPermissionTx(ctx, tx, workspaceID, userID, projectID, issueID, "BROWSE_PROJECTS")
 		if permissionErr != nil {

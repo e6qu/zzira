@@ -470,6 +470,7 @@ func main() {
 	mux.HandleFunc("POST /service-registry/{id}", webHandler.ServiceRegistryPage)
 	mux.HandleFunc("GET /profile", webHandler.SelfProfile)
 	mux.HandleFunc("POST /profile/identities/{provider}/unlink", webHandler.UnlinkIdentityProvider)
+	mux.HandleFunc("POST /profile/notifications", webHandler.UpdateNotificationPreferences)
 	mux.HandleFunc("GET /people/{id}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.ProfilePage(w, r, r.PathValue("id"))
 	})

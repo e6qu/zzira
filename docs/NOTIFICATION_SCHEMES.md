@@ -73,8 +73,16 @@ watchers. Implicit roles suppress the actor's own changes; an explicit
 
 Deleting a work item fires Issue deleted (8) while its watchers and security
 level still resolve, and a move fires Issue moved (9) for the item and each
-moved sub-task. The assessment remains partial while per-user email
-preferences, mentions, notification diagnostics and rich email rendering
+moved sub-task.
+
+Each person chooses two notification preferences in the Email notifications
+section of their profile, stored under Jira's preference keys and readable
+through `/rest/api/3/mypreferences`. *My changes* (`user.notify.own.changes`,
+default "Do not notify me") decides whether implicit recipients such as
+reporter, assignee and watchers include the person who made the change.
+*Autowatch* (`user.autowatch.disabled`, default enabled) makes a member a
+watcher of work items they create or comment on. The assessment remains
+partial while mentions, notification diagnostics and rich email rendering
 remain. The `user`, `group`, `projectRole`, `field`
 and `all` expansions add each recipient's details. Jira's deprecated
 direct email-address recipient is stored and delivered, but it does not create
