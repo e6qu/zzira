@@ -75,8 +75,8 @@ project is created. The deprecated `lead` is accepted in place of
 - Anonymous Browse Projects is not available, so project-property reads require
   an authenticated workspace member.
 - The built-in software feature catalog is fixed: Connect apps cannot
-  contribute project features. ZZIRA has no timeline view, so the Roadmap
-  state is stored but governs nothing.
+  contribute project features. Disabling Roadmap removes the project's
+  Timeline from navigation and answers its page with 404.
 - Sender addresses are syntax validated. Custom-domain ownership, verification
   warnings, bounce handling, and outbound notification delivery remain.
 - Project types follow the site's products. `GET /project/type/accessible`

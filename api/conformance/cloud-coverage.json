@@ -4992,7 +4992,7 @@
         "e2e/projects.spec.ts",
         "docs/PROJECT_GOVERNANCE.md"
       ],
-      "notes": "Returns Jira-shaped state and served feature images for ZZIRA's built-in software features and rejects non-software projects; the catalog is fixed because Connect apps cannot contribute project features, and Roadmap state has no timeline view to govern."
+      "notes": "Returns Jira-shaped state and served feature images for ZZIRA's built-in software features and rejects non-software projects; the catalog is fixed because Connect apps cannot contribute project features."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/project/{projectIdOrKey}/features/{featureKey}",
@@ -5005,7 +5005,7 @@
         "docs/PROJECT_GOVERNANCE.md",
         "internal/api3/project_administration_test.go"
       ],
-      "notes": "Persists ENABLED/DISABLED state for Administer Projects for the project, which Administer Jira implies, and returns the complete project feature container. Disabling Backlog or Reports removes navigation, Sprints removes sprint creation, Code hides issue development information, and Deployments hides issue and release delivery information; Roadmap state has no timeline view to govern."
+      "notes": "Persists ENABLED/DISABLED state for Administer Projects for the project, which Administer Jira implies, and returns the complete project feature container. Disabling Backlog or Reports removes navigation, Sprints removes sprint creation, Code hides issue development information, and Deployments hides issue and release delivery information, and Roadmap removes the project timeline."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/project/{projectIdOrKey}/properties",
