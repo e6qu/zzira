@@ -30,18 +30,21 @@ type Service struct {
 }
 
 type Rule struct {
-	UUID                string
-	WorkspaceID         string
-	AuthorID            string
-	ActorID             string
-	Name                string
-	Description         string
-	Labels              []string
-	State               string
-	RuleScopeARIs       []string
-	Payload             json.RawMessage
-	Connections         json.RawMessage
-	IntervalMinutes     *int
+	UUID            string
+	WorkspaceID     string
+	AuthorID        string
+	ActorID         string
+	Name            string
+	Description     string
+	Labels          []string
+	State           string
+	RuleScopeARIs   []string
+	Payload         json.RawMessage
+	Connections     json.RawMessage
+	IntervalMinutes *int
+	// EventTrigger is the work item event a rule starts from: created,
+	// transitioned, field_changed or commented; empty for other triggers.
+	EventTrigger        string
 	ScheduleTimezone    string
 	JQL                 string
 	NextRunAt           *time.Time
@@ -225,12 +228,12 @@ func (s *Service) CreateRule(ctx context.Context, workspaceID, requesterID strin
 	}
 	_, err = s.Store.Pool.Exec(ctx, `
 		INSERT INTO automation_rules
-		(uuid,workspace_id,author_id,actor_id,name,description,labels,state,rule_scope_aris,payload,connections,interval_minutes,schedule_timezone,jql,next_run_at)
+		(uuid,workspace_id,author_id,actor_id,name,description,labels,state,rule_scope_aris,payload,connections,interval_minutes,schedule_timezone,jql,next_run_at,event_trigger)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
-		       CASE WHEN $8::text='ENABLED' AND $12::int IS NOT NULL THEN now()+make_interval(mins=>$12::int) END)`,
+		       CASE WHEN $8::text='ENABLED' AND $12::int IS NOT NULL THEN now()+make_interval(mins=>$12::int) END,NULLIF($15,''))`,
 		prepared.UUID, workspaceID, prepared.AuthorID, prepared.ActorID, prepared.Name, prepared.Description,
 		prepared.Labels, prepared.State, prepared.RuleScopeARIs, prepared.Payload, prepared.Connections,
-		prepared.IntervalMinutes, prepared.ScheduleTimezone, prepared.JQL)
+		prepared.IntervalMinutes, prepared.ScheduleTimezone, prepared.JQL, prepared.EventTrigger)
 	if err != nil {
 		return "", fmt.Errorf("create rule: %w", err)
 	}
@@ -249,9 +252,9 @@ func (s *Service) UpdateRule(ctx context.Context, workspaceID, requesterID, uuid
 		UPDATE automation_rules SET author_id=$3,actor_id=$4,name=$5,description=$6,labels=$7,state=$8,
 		 rule_scope_aris=$9,payload=$10,connections=$11,interval_minutes=$12,schedule_timezone=$13,jql=$14,
 		 next_run_at=CASE WHEN $8::text='ENABLED' AND $12::int IS NOT NULL THEN COALESCE(next_run_at,now()+make_interval(mins=>$12::int)) END,
-		 updated_at=now() WHERE workspace_id=$1 AND uuid=$2`, workspaceID, uuid,
+		 event_trigger=NULLIF($15,''),updated_at=now() WHERE workspace_id=$1 AND uuid=$2`, workspaceID, uuid,
 		prepared.AuthorID, prepared.ActorID, prepared.Name, prepared.Description, prepared.Labels, prepared.State,
-		prepared.RuleScopeARIs, prepared.Payload, prepared.Connections, prepared.IntervalMinutes, prepared.ScheduleTimezone, prepared.JQL)
+		prepared.RuleScopeARIs, prepared.Payload, prepared.Connections, prepared.IntervalMinutes, prepared.ScheduleTimezone, prepared.JQL, prepared.EventTrigger)
 	if err != nil {
 		return fmt.Errorf("update rule: %w", err)
 	}
@@ -445,11 +448,19 @@ func (s *Service) prepareRule(ctx context.Context, workspaceID, requesterID, for
 	if err != nil {
 		return nil, err
 	}
+	event, eventJQL, err := nativeEvent(payload)
+	if err != nil {
+		return nil, err
+	}
+	if event != "" {
+		query = eventJQL
+	}
 	return &Rule{
 		UUID: uuid, AuthorID: authorID, ActorID: actorID, Name: name,
 		Description: jsonString(write.Rule["description"]), Labels: jsonStrings(write.Rule["labels"]),
 		State: state, RuleScopeARIs: jsonStrings(write.Rule["ruleScopeARIs"]), Payload: payload,
 		Connections: write.Connections, IntervalMinutes: interval, ScheduleTimezone: timezone, JQL: query,
+		EventTrigger: event,
 	}, nil
 }
 
@@ -536,6 +547,63 @@ func nativeSchedule(payload json.RawMessage) (*int, string, string, error) {
 	return &value.IntervalMinutes, value.Timezone, value.JQL, nil
 }
 
+// EventTriggers are Jira Automation's work item event triggers, by the event
+// each starts from.
+var EventTriggers = map[string]string{
+	"jira.issue.event.trigger:created":      "created",
+	"jira.issue.event.trigger:transitioned": "transitioned",
+	"jira.issue.field.changed":              "field_changed",
+	"jira.issue.event.trigger:commented":    "commented",
+}
+
+// eventTriggerValue is what an event trigger narrows its events to: work
+// matching JQL, transitions from or to statuses, and changes to fields.
+type eventTriggerValue struct {
+	JQL           string   `json:"jql"`
+	FromStatusIDs []string `json:"fromStatusIds"`
+	ToStatusIDs   []string `json:"toStatusIds"`
+	Fields        []string `json:"fields"`
+}
+
+func decodeComponentValue(raw json.RawMessage) json.RawMessage {
+	var encoded string
+	if json.Unmarshal(raw, &encoded) == nil && strings.HasPrefix(strings.TrimSpace(encoded), "{") {
+		return json.RawMessage(encoded)
+	}
+	return raw
+}
+
+// nativeEvent reads a rule's work item event trigger and its JQL.
+func nativeEvent(payload json.RawMessage) (string, string, error) {
+	var rule struct {
+		Trigger struct {
+			Type  string          `json:"type"`
+			Value json.RawMessage `json:"value"`
+		} `json:"trigger"`
+	}
+	if err := json.Unmarshal(payload, &rule); err != nil {
+		return "", "", err
+	}
+	event, ok := EventTriggers[rule.Trigger.Type]
+	if !ok {
+		return "", "", nil
+	}
+	value := eventTriggerValue{}
+	if raw := decodeComponentValue(rule.Trigger.Value); len(raw) > 0 && string(raw) != "null" {
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return "", "", fmt.Errorf("%s trigger value must be an object", rule.Trigger.Type)
+		}
+	}
+	value.JQL = strings.TrimSpace(value.JQL)
+	if _, err := jql.Parse(value.JQL); err != nil {
+		return "", "", fmt.Errorf("%s trigger JQL: %w", rule.Trigger.Type, err)
+	}
+	if event == "field_changed" && (len(value.Fields) == 0 || len(value.Fields) > 20) {
+		return "", "", fmt.Errorf("field value changed trigger needs between 1 and 20 fields")
+	}
+	return event, value.JQL, nil
+}
+
 func triggerType(payload json.RawMessage) string {
 	var rule struct {
 		Trigger struct {
@@ -575,7 +643,7 @@ func contains(values []string, target string) bool {
 }
 
 const ruleSelect = `SELECT uuid::text,workspace_id,author_id,actor_id,name,description,labels,state,rule_scope_aris,
- payload,connections,interval_minutes,schedule_timezone,jql,next_run_at,consecutive_failures,created_at,updated_at FROM automation_rules`
+ payload,connections,interval_minutes,schedule_timezone,jql,next_run_at,consecutive_failures,created_at,updated_at,COALESCE(event_trigger,'') FROM automation_rules`
 
 type rowScanner interface{ Scan(...any) error }
 
@@ -583,6 +651,6 @@ func scanRule(row rowScanner) (*Rule, error) {
 	rule := &Rule{}
 	err := row.Scan(&rule.UUID, &rule.WorkspaceID, &rule.AuthorID, &rule.ActorID, &rule.Name, &rule.Description,
 		&rule.Labels, &rule.State, &rule.RuleScopeARIs, &rule.Payload, &rule.Connections, &rule.IntervalMinutes,
-		&rule.ScheduleTimezone, &rule.JQL, &rule.NextRunAt, &rule.ConsecutiveFailures, &rule.CreatedAt, &rule.UpdatedAt)
+		&rule.ScheduleTimezone, &rule.JQL, &rule.NextRunAt, &rule.ConsecutiveFailures, &rule.CreatedAt, &rule.UpdatedAt, &rule.EventTrigger)
 	return rule, err
 }

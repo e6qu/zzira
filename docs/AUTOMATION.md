@@ -1,8 +1,8 @@
-# Scheduled automation and Jira Automation API
+# Jira Automation rules and API
 
 ZZIRA implements the Jira Cloud Automation rule-management surface at the
-site gateway base path and runs a native, permission-aware subset of scheduled
-rules. This is a compatibility slice, not the complete Atlassian Automation
+site gateway base path and runs a native, permission-aware subset of scheduled,
+event-triggered and manually triggered rules. This is a compatibility slice, not the complete Atlassian Automation
 runtime.
 
 ## API base path and operations
@@ -71,18 +71,67 @@ The worker executes these action component types in order:
 | `jira.issue.add-label` | `{"label":"reviewed"}` | Adds the label if absent |
 | `jira.issue.assign` | `{"accountId":"..."}` | Assigns an active member; `ACTOR` and `UNASSIGNED` are accepted |
 | `jira.issue.transition` | `{"statusId":"10001"}` | Uses a valid current-workflow transition to the target status |
+| `jira.issue.comment` | `{"comment":"Picked up by {{initiator.displayName}}"}` | Adds a comment as the rule actor |
+| `jira.issue.edit` | `{"field":"summary","value":"[{{issue.key}}] {{issue.summary}}"}` | Sets the `summary` or `duedate` (yyyy-MM-dd; blank clears it) when it differs |
 
 JQL evaluation and every mutation run as the stored rule actor. Issue security
 therefore filters the matched set, and command-layer validation applies to
 assignment and workflow changes. Runs are capped at 1,000 matching work items;
 larger results fail before any actions run.
 
-Unknown triggers, components, conditions, branches, smart values, and connection
-payloads remain available through the rule API, but the scheduled worker records
-an explicit failed audit entry when asked to execute unsupported behavior. Event
-triggers, Cron, condition evaluation, branching, issue/page creation, comments,
-email/web requests, usage limits, and the complete Jira action catalog remain
-gaps.
+Other triggers, components, branches, smart values and connection payloads
+remain available through the rule API, but the worker records an explicit failed
+audit entry when asked to execute unsupported behavior. Cron schedules,
+branching, issue and page creation, email and web requests, usage limits and the
+rest of Jira's trigger, condition and action catalog remain gaps.
+
+## Event triggers, conditions and smart values
+
+A rule can instead start when work changes. Its trigger `value` may hold `jql`,
+which the work item must match for the rule actor:
+
+| Trigger type | Extra value | Starts when |
+|---|---|---|
+| `jira.issue.event.trigger:created` | none | A work item is created |
+| `jira.issue.event.trigger:transitioned` | optional `fromStatusIds`, `toStatusIds` | A work item's status changes, from and to the listed statuses when given |
+| `jira.issue.field.changed` | `fields`, 1 to 20 names such as `summary`, `priority`, `assignee`, `labels` | Any listed field changes |
+| `jira.issue.event.trigger:commented` | none | A comment is added |
+
+The worker reads new events from the action log in order and queues one run per
+rule and event, so a retried batch never repeats a run. Enabling a rule never
+replays earlier events. An event run acts on its work item only if the rule
+actor can still see it, it is unarchived and in the rule's scope, and it matches
+the trigger's JQL. A rule never starts from its own changes, and starts from
+another rule's changes only when its `canOtherRuleTrigger` is true, as in Jira.
+
+Components run in order. A `CONDITION` component that does not hold stops the
+rule for that work item, and each action sees the work item as the previous
+action left it. Scheduled, event and manual runs evaluate:
+
+| Condition type | Value | Holds when |
+|---|---|---|
+| `jira.jql.condition` | `{"jql":"priority = High"}` | The work item matches the JQL for the rule actor |
+| `jira.issue.condition` | `{"field":"status","operator":"EQUALS","value":"In Progress"}` | The field compares as asked |
+
+Fields conditions compare `status`, `priority`, `issuetype`, `assignee`,
+`reporter`, `labels`, `summary` or `duedate`, ignoring case, with `EQUALS`,
+`NOT_EQUALS`, `CONTAINS`, `IS_EMPTY` or `IS_NOT_EMPTY`. People match by account
+ID or display name, statuses, priorities and work types by name or ID, and
+labels by any label.
+
+Label, assignee, comment, edit and condition values render smart values:
+`{{issue.key}}`, `{{issue.summary}}`, `{{issue.status.name}}`,
+`{{issue.priority.name}}`, `{{issue.issueType.name}}`, `{{issue.dueDate}}`,
+`{{issue.labels}}`, `{{issue.assignee.displayName}}`,
+`{{issue.assignee.accountId}}`, `{{issue.reporter.displayName}}`,
+`{{issue.reporter.accountId}}`, `{{initiator.displayName}}`,
+`{{initiator.accountId}}`, `{{rule.name}}`, `{{now}}` and `{{now.jiraDate}}`.
+The initiator is the person whose change started an event run or who invoked a
+manual rule. Unknown smart values render empty, as in Jira.
+
+The rule editor at `/settings/automation` offers the scheduled and work item
+event triggers with their options, work item fields conditions, and the label,
+assign, transition, comment, edit summary and due date actions.
 
 ## Manually triggered rules
 

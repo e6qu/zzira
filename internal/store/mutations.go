@@ -26,11 +26,26 @@ func nextSeq(ctx context.Context, tx pgx.Tx, workspaceID string) (int64, error) 
 	return seq, err
 }
 
+type automationRuleKey struct{}
+
+// WithAutomationRule marks the changes made under ctx as an automation rule's
+// actions, so the action log records the rule that caused them.
+func WithAutomationRule(ctx context.Context, ruleUUID string) context.Context {
+	return context.WithValue(ctx, automationRuleKey{}, ruleUUID)
+}
+
+func automationRuleFrom(ctx context.Context) *string {
+	if uuid, ok := ctx.Value(automationRuleKey{}).(string); ok && uuid != "" {
+		return &uuid
+	}
+	return nil
+}
+
 func appendAction(ctx context.Context, tx pgx.Tx, a *models.Action) error {
 	_, err := tx.Exec(ctx, `
-		INSERT INTO actions (workspace_id, seq, entity_type, entity_id, op, schema_v, payload, actor_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		a.WorkspaceID, a.Seq, a.EntityType, a.EntityID, a.Op, a.SchemaV, a.Payload, a.ActorID)
+		INSERT INTO actions (workspace_id, seq, entity_type, entity_id, op, schema_v, payload, actor_id, automation_rule_uuid)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		a.WorkspaceID, a.Seq, a.EntityType, a.EntityID, a.Op, a.SchemaV, a.Payload, a.ActorID, automationRuleFrom(ctx))
 	if err != nil {
 		return err
 	}

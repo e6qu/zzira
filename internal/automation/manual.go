@@ -15,6 +15,7 @@ import (
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 // manualTriggerType is the trigger of rules people run from an issue.
@@ -302,7 +303,7 @@ func (h *Handler) invokeManualRule(w http.ResponseWriter, r *http.Request, works
 		}
 	}
 	invocable := rule.State == "ENABLED" && triggerType(rule.Payload) == manualTriggerType
-	components, componentErr := actionComponents(rule.Payload)
+	components, componentErr := ruleComponents(rule.Payload)
 	results := map[string]string{}
 	runner := &Runner{Service: h.Service}
 	for _, ari := range request.Objects {
@@ -318,17 +319,8 @@ func (h *Handler) invokeManualRule(w http.ResponseWriter, r *http.Request, works
 			results[ari] = "INVALID_TARGET_SCOPE"
 			continue
 		}
-		run := &claimedRun{WorkspaceID: workspaceID, ActorID: rule.ActorID, Payload: rule.Payload}
-		changed := false
-		var executionErr error
-		for _, action := range components {
-			didChange, err := runner.apply(r.Context(), run, issue, action)
-			if err != nil {
-				executionErr = fmt.Errorf("%s on %s: %w", action.Type, issue.Key, err)
-				break
-			}
-			changed = changed || didChange
-		}
+		run := &claimedRun{Run: Run{RuleUUID: rule.UUID}, WorkspaceID: workspaceID, ActorID: rule.ActorID, Payload: rule.Payload, InitiatorID: userID, RuleName: rule.Name}
+		changed, executionErr := runner.runComponents(store.WithAutomationRule(r.Context(), rule.UUID), run, issue, components)
 		if err := h.recordManualRun(r.Context(), rule.UUID, changed, executionErr); err != nil {
 			automationError(w, http.StatusInternalServerError, "automation.run.failed", "The rule run could not be recorded", "")
 			return

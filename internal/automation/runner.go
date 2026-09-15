@@ -7,14 +7,17 @@ import (
 	"fmt"
 	"log"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 type Runner struct {
@@ -28,6 +31,11 @@ type claimedRun struct {
 	ActorID     string
 	Payload     json.RawMessage
 	JQL         string
+	// IssueID and InitiatorID are the work item and person of the event an
+	// event run started from; both are empty for scheduled runs.
+	IssueID, InitiatorID string
+	RuleName             string
+	ScopeARIs            []string
 }
 
 type component struct {
@@ -64,6 +72,9 @@ func (r *Runner) DrainOnce(ctx context.Context, workspaceID string) error {
 	if err := r.enqueueDue(ctx, workspaceID); err != nil {
 		return err
 	}
+	if err := r.enqueueEvents(ctx, workspaceID); err != nil {
+		return err
+	}
 	run, err := r.claim(ctx, workspaceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
@@ -84,7 +95,7 @@ func (r *Runner) enqueueDue(ctx context.Context, workspaceID string) error {
 		), queued AS (
 		 INSERT INTO automation_runs(id,rule_uuid,scheduled_for,state)
 		 SELECT gen_random_uuid(),uuid,next_run_at,'PENDING' FROM due
-		 ON CONFLICT(rule_uuid,scheduled_for) DO NOTHING
+		 ON CONFLICT(rule_uuid,scheduled_for) WHERE trigger_seq IS NULL DO NOTHING
 		)
 		UPDATE automation_rules r SET
 		 next_run_at=GREATEST(d.next_run_at+make_interval(mins=>d.interval_minutes),now()+make_interval(mins=>d.interval_minutes))
@@ -106,14 +117,15 @@ func (r *Runner) claim(ctx context.Context, workspaceID string) (*claimedRun, er
 		  started_at=COALESCE(started_at,now()),completed_at=NULL
 		 FROM candidate WHERE ar.id=candidate.id
 		 RETURNING ar.id,ar.rule_uuid,ar.scheduled_for,ar.state,ar.attempts,ar.started_at,
-		           ar.completed_at,ar.matched_count,ar.changed_count,ar.detail
+		           ar.completed_at,ar.matched_count,ar.changed_count,ar.detail,ar.issue_id,ar.initiator_id
 		)
 		SELECT c.id::text,c.rule_uuid::text,c.scheduled_for,c.state,c.attempts,c.started_at,c.completed_at,
-		       c.matched_count,c.changed_count,c.detail,rule.workspace_id,rule.actor_id,rule.payload,rule.jql
+		       c.matched_count,c.changed_count,c.detail,rule.workspace_id,rule.actor_id,rule.payload,rule.jql,
+		       COALESCE(c.issue_id,''),COALESCE(c.initiator_id,''),rule.name,rule.rule_scope_aris
 		FROM claimed c JOIN automation_rules rule ON rule.uuid=c.rule_uuid`, workspaceID).
 		Scan(&run.ID, &run.RuleUUID, &run.ScheduledFor, &run.State, &run.Attempts, &run.StartedAt,
 			&run.CompletedAt, &run.MatchedCount, &run.ChangedCount, &run.Detail, &run.WorkspaceID,
-			&run.ActorID, &run.Payload, &run.JQL)
+			&run.ActorID, &run.Payload, &run.JQL, &run.IssueID, &run.InitiatorID, &run.RuleName, &run.ScopeARIs)
 	return run, err
 }
 
@@ -121,47 +133,137 @@ func (r *Runner) execute(ctx context.Context, run *claimedRun) (int, int, error)
 	if err := validateExecutionActor(run.Payload, run.ActorID); err != nil {
 		return 0, 0, err
 	}
-	query, err := jql.Parse(run.JQL)
+	components, err := ruleComponents(run.Payload)
 	if err != nil {
-		return 0, 0, fmt.Errorf("parse JQL: %w", err)
+		return 0, 0, err
 	}
-	if err := r.Service.Store.ExpandAppJQL(ctx, run.WorkspaceID, query); err != nil {
-		return 0, 0, fmt.Errorf("expand app JQL: %w", err)
-	}
-	resolver, err := r.Service.Store.JQLResolver(ctx, run.WorkspaceID)
-	if err != nil {
-		return 0, 0, fmt.Errorf("resolve JQL fields: %w", err)
-	}
-	compiled := jql.CompileAt(query, run.ActorID, resolver, 2)
-	if compiled.Err != nil {
-		return 0, 0, fmt.Errorf("compile JQL: %w", compiled.Err)
-	}
-	issues, total, err := r.Service.Store.Search(ctx, run.WorkspaceID, run.ActorID, compiled, 1000, 0)
-	if err != nil {
-		return 0, 0, fmt.Errorf("search issues: %w", err)
-	}
-	if total > 1000 {
-		return total, 0, fmt.Errorf("JQL matched %d issues; scheduled rules are limited to 1000 per run", total)
-	}
-	components, err := actionComponents(run.Payload)
-	if err != nil {
-		return total, 0, err
+	// The action log records this rule as the cause of every change it makes.
+	ctx = store.WithAutomationRule(ctx, run.RuleUUID)
+	var issues []*models.Issue
+	total := 0
+	if run.IssueID != "" {
+		issue, applies, err := r.eventIssue(ctx, run)
+		if err != nil || !applies {
+			return 0, 0, err
+		}
+		issues, total = []*models.Issue{issue}, 1
+	} else {
+		query, err := jql.Parse(run.JQL)
+		if err != nil {
+			return 0, 0, fmt.Errorf("parse JQL: %w", err)
+		}
+		if err := r.Service.Store.ExpandAppJQL(ctx, run.WorkspaceID, query); err != nil {
+			return 0, 0, fmt.Errorf("expand app JQL: %w", err)
+		}
+		resolver, err := r.Service.Store.JQLResolver(ctx, run.WorkspaceID)
+		if err != nil {
+			return 0, 0, fmt.Errorf("resolve JQL fields: %w", err)
+		}
+		compiled := jql.CompileAt(query, run.ActorID, resolver, 2)
+		if compiled.Err != nil {
+			return 0, 0, fmt.Errorf("compile JQL: %w", compiled.Err)
+		}
+		issues, total, err = r.Service.Store.Search(ctx, run.WorkspaceID, run.ActorID, compiled, 1000, 0)
+		if err != nil {
+			return 0, 0, fmt.Errorf("search issues: %w", err)
+		}
+		if total > 1000 {
+			return total, 0, fmt.Errorf("JQL matched %d issues; scheduled rules are limited to 1000 per run", total)
+		}
 	}
 	changedIssues := 0
 	for _, issue := range issues {
-		changed := false
-		for _, action := range components {
-			didChange, err := r.apply(ctx, run, issue, action)
-			if err != nil {
-				return total, changedIssues, fmt.Errorf("%s on %s: %w", action.Type, issue.Key, err)
-			}
-			changed = changed || didChange
+		changed, err := r.runComponents(ctx, run, issue, components)
+		if err != nil {
+			return total, changedIssues, err
 		}
 		if changed {
 			changedIssues++
 		}
 	}
 	return total, changedIssues, nil
+}
+
+// eventIssue loads the work item an event run started from, reporting whether
+// the rule still applies: the rule actor can see it, it is in the rule's scope
+// and it matches the trigger's JQL.
+func (r *Runner) eventIssue(ctx context.Context, run *claimedRun) (*models.Issue, bool, error) {
+	issue, err := r.Service.Store.IssueByIDOrKey(ctx, run.WorkspaceID, run.IssueID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	visible, err := authz.CanSeeIssue(ctx, r.Service.Store, run.WorkspaceID, issue.ProjectID, run.ActorID, issue.ID, issue.SecurityLevelID)
+	if err != nil || !visible || issue.ArchivedAt != "" {
+		return nil, false, err
+	}
+	cloudID, err := r.Service.WorkspaceCloudID(ctx, run.WorkspaceID)
+	if err != nil {
+		return nil, false, err
+	}
+	if !ruleAppliesTo(&Rule{RuleScopeARIs: run.ScopeARIs}, cloudID, issue.ProjectID) {
+		return nil, false, nil
+	}
+	if strings.TrimSpace(run.JQL) != "" {
+		match, err := r.matchesJQL(ctx, run, issue, run.JQL)
+		if err != nil || !match {
+			return nil, false, err
+		}
+	}
+	return issue, true, nil
+}
+
+// runComponents runs a rule's conditions and actions in order on a work item:
+// a condition that does not hold stops the rule for it, and each action sees
+// the work item as the previous one left it.
+func (r *Runner) runComponents(ctx context.Context, run *claimedRun, issue *models.Issue, components []component) (bool, error) {
+	changed := false
+	for _, item := range components {
+		if item.Component == "CONDITION" {
+			holds, err := r.condition(ctx, run, issue, item)
+			if err != nil {
+				return changed, fmt.Errorf("%s on %s: %w", item.Type, issue.Key, err)
+			}
+			if !holds {
+				return changed, nil
+			}
+			continue
+		}
+		didChange, err := r.apply(ctx, run, issue, item)
+		if err != nil {
+			return changed, fmt.Errorf("%s on %s: %w", item.Type, issue.Key, err)
+		}
+		if didChange {
+			changed = true
+			if fresh, err := r.Service.Store.IssueByIDOrKey(ctx, run.WorkspaceID, issue.ID); err == nil {
+				issue = fresh
+			}
+		}
+	}
+	return changed, nil
+}
+
+// matchesJQL reports whether the rule actor's JQL matches a work item.
+func (r *Runner) matchesJQL(ctx context.Context, run *claimedRun, issue *models.Issue, text string) (bool, error) {
+	query, err := jql.Parse(fmt.Sprintf("(%s) AND key = %s", text, strconv.Quote(issue.Key)))
+	if err != nil {
+		return false, fmt.Errorf("parse JQL: %w", err)
+	}
+	if err := r.Service.Store.ExpandAppJQL(ctx, run.WorkspaceID, query); err != nil {
+		return false, fmt.Errorf("expand app JQL: %w", err)
+	}
+	resolver, err := r.Service.Store.JQLResolver(ctx, run.WorkspaceID)
+	if err != nil {
+		return false, err
+	}
+	compiled := jql.CompileAt(query, run.ActorID, resolver, 2)
+	if compiled.Err != nil {
+		return false, fmt.Errorf("compile JQL: %w", compiled.Err)
+	}
+	_, total, err := r.Service.Store.Search(ctx, run.WorkspaceID, run.ActorID, compiled, 1, 0)
+	return total > 0, err
 }
 
 func validateExecutionActor(payload json.RawMessage, actorID string) error {
@@ -180,33 +282,44 @@ func validateExecutionActor(payload json.RawMessage, actorID string) error {
 	return nil
 }
 
-func actionComponents(payload json.RawMessage) ([]component, error) {
+// Actions and conditions the runner executes.
+var (
+	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true}
+	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true}
+)
+
+func ruleComponents(payload json.RawMessage) ([]component, error) {
 	var rule struct {
 		Components []component `json:"components"`
 	}
 	if err := json.Unmarshal(payload, &rule); err != nil {
 		return nil, err
 	}
-	if len(rule.Components) == 0 {
-		return nil, errors.New("rule has no actions")
-	}
+	actions := 0
 	for _, item := range rule.Components {
-		if item.Component != "" && item.Component != "ACTION" {
-			return nil, fmt.Errorf("component %q is not executable by the scheduled runner", item.Component)
+		switch {
+		case item.Component == "CONDITION":
+			if !runnableConditions[item.Type] {
+				return nil, fmt.Errorf("unsupported condition %q", item.Type)
+			}
+		case item.Component == "" || item.Component == "ACTION":
+			if !runnableActions[item.Type] {
+				return nil, fmt.Errorf("unsupported action %q", item.Type)
+			}
+			actions++
+		default:
+			return nil, fmt.Errorf("component %q is not executable", item.Component)
 		}
-		if item.Type != "jira.issue.add-label" && item.Type != "jira.issue.assign" && item.Type != "jira.issue.transition" {
-			return nil, fmt.Errorf("unsupported scheduled action %q", item.Type)
-		}
+	}
+	if actions == 0 {
+		return nil, errors.New("rule has no actions")
 	}
 	return rule.Components, nil
 }
 
 func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue, action component) (bool, error) {
-	valueRaw := action.Value
-	var encoded string
-	if json.Unmarshal(valueRaw, &encoded) == nil && strings.HasPrefix(strings.TrimSpace(encoded), "{") {
-		valueRaw = json.RawMessage(encoded)
-	}
+	valueRaw := decodeComponentValue(action.Value)
+	render := func(text string) (string, error) { return r.renderSmartValues(ctx, run, issue, text) }
 	switch action.Type {
 	case "jira.issue.add-label":
 		var value struct {
@@ -214,6 +327,13 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 		}
 		if err := json.Unmarshal(valueRaw, &value); err != nil || strings.TrimSpace(value.Label) == "" {
 			return false, errors.New("label action requires value.label")
+		}
+		label, err := render(value.Label)
+		if err != nil {
+			return false, err
+		}
+		if value.Label = strings.TrimSpace(label); value.Label == "" {
+			return false, errors.New("label action rendered an empty label")
 		}
 		if slices.Contains(issue.Labels, value.Label) {
 			return false, nil
@@ -230,7 +350,10 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 		if err := json.Unmarshal(valueRaw, &value); err != nil || value.AccountID == "" {
 			return false, errors.New("assign action requires value.accountId")
 		}
-		accountID := value.AccountID
+		accountID, err := render(value.AccountID)
+		if err != nil {
+			return false, err
+		}
 		if accountID == "ACTOR" {
 			accountID = run.ActorID
 		} else if accountID == "UNASSIGNED" {
@@ -265,6 +388,54 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 			}
 		}
 		return false, fmt.Errorf("no workflow transition from %s to status %s", issue.Status.Name, value.StatusID)
+	case "jira.issue.comment":
+		var value struct {
+			Comment string `json:"comment"`
+		}
+		if err := json.Unmarshal(valueRaw, &value); err != nil || strings.TrimSpace(value.Comment) == "" {
+			return false, errors.New("comment action requires value.comment")
+		}
+		text, err := render(value.Comment)
+		if err != nil {
+			return false, err
+		}
+		_, commented, err := r.Service.Commands.AddComment(ctx, commands.AddCommentInput{
+			ActorID: run.ActorID, WorkspaceID: run.WorkspaceID, IssueIDOrKey: issue.ID, PlainText: text,
+		})
+		return commented != nil, err
+	case "jira.issue.edit":
+		var value struct {
+			Field string `json:"field"`
+			Value string `json:"value"`
+		}
+		if err := json.Unmarshal(valueRaw, &value); err != nil {
+			return false, errors.New("edit action requires value.field and value.value")
+		}
+		text, err := render(value.Value)
+		if err != nil {
+			return false, err
+		}
+		text = strings.TrimSpace(text)
+		input := commands.UpdateIssueInput{ActorID: run.ActorID, WorkspaceID: run.WorkspaceID, IssueIDOrKey: issue.ID}
+		switch value.Field {
+		case "summary":
+			if text == "" {
+				return false, errors.New("edit action rendered an empty summary")
+			}
+			if text == issue.Summary {
+				return false, nil
+			}
+			input.Summary = &text
+		case "duedate":
+			if text == issue.DueDate {
+				return false, nil
+			}
+			input.DueDate = &text
+		default:
+			return false, fmt.Errorf("edit action cannot change %q", value.Field)
+		}
+		_, changed, err := r.Service.Commands.UpdateIssue(ctx, input)
+		return changed != nil, err
 	default:
 		return false, fmt.Errorf("unsupported scheduled action %q", action.Type)
 	}
