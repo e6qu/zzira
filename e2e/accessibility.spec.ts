@@ -149,6 +149,32 @@ test('dynamic menus, validation errors, and edit dialog remain accessible', asyn
   await page.locator('#main-content').click({ position: { x: 5, y: 5 } });
   await expect(page.locator('.user-menu')).not.toHaveAttribute('open', '');
 
+  // The app switcher offers the site's products the person may use, and
+  // closes like the other header menus.
+  const switcher = page.locator('.app-switcher');
+  await switcher.locator('summary').click();
+  const switchTo = page.getByRole('navigation', { name: 'Switch to' });
+  await expect(switchTo.getByRole('link', { name: 'Jira Software', exact: true })).toBeVisible();
+  await expect(switchTo.getByRole('link', { name: 'Jira Service Management', exact: true })).toBeVisible();
+  await expect(switchTo.getByRole('link', { name: 'Confluence', exact: true })).toBeVisible();
+  await expect(switchTo.getByRole('link', { name: 'Administration', exact: true })).toBeVisible();
+  await expectNoWCAGViolations(page);
+  await page.keyboard.press('Escape');
+  await expect(switcher).not.toHaveAttribute('open', '');
+  await expect(switcher.locator('summary')).toBeFocused();
+  // The switcher opens from the left edge over the top of the page, so the
+  // outside click lands beside it.
+  await switcher.locator('summary').click();
+  await page.locator('#main-content').click({ position: { x: 700, y: 240 } });
+  await expect(switcher).not.toHaveAttribute('open', '');
+  await switcher.locator('summary').click();
+  await switchTo.getByRole('link', { name: 'Confluence', exact: true }).click();
+  await expect(page).toHaveURL(/\/wiki$/);
+  await page.locator('.app-switcher summary').click();
+  await expect(page.getByRole('navigation', { name: 'Switch to' }).getByRole('link', { name: 'Confluence', exact: true })).toHaveAttribute('aria-current', 'page');
+  await page.keyboard.press('Escape');
+  await page.goto('/');
+
   await page.locator('#global-create-issue').click();
   await page.fill('#create-summary', 'Accessible validation state');
   await page.locator('.create-more summary').click();
