@@ -1,9 +1,10 @@
 package web
 
 import (
+	"crypto/rand"
 	"errors"
 	"log"
-	"math/rand/v2"
+	"math/big"
 	"net/http"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -121,8 +122,21 @@ func (h *Handler) DashboardWallboardSlideshow(w http.ResponseWriter, r *http.Req
 		data.Rotates = data.Rotates || rotates
 	}
 	if show.RandomOrder {
-		rand.Shuffle(len(data.Slides), func(i, j int) { data.Slides[i], data.Slides[j] = data.Slides[j], data.Slides[i] })
+		shuffleSlides(data.Slides)
 	}
 	data.Rotates = data.Rotates || len(data.Slides) > 1
 	h.writeWorkspacePage(w, r, "page_dashboard_wallboard", user, ws, data, "dashboards", "")
+}
+
+// shuffleSlides puts slides in a random order. crypto/rand keeps one random
+// source across the codebase, although the order protects nothing.
+func shuffleSlides(slides []wallboardSlide) {
+	for i := len(slides) - 1; i > 0; i-- {
+		j, err := rand.Int(rand.Reader, big.NewInt(int64(i+1)))
+		if err != nil {
+			return
+		}
+		k := int(j.Int64())
+		slides[i], slides[k] = slides[k], slides[i]
+	}
 }
