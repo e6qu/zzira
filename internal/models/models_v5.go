@@ -58,8 +58,13 @@ type Sprint struct {
 	State     string `json:"state"` // future | active | closed
 	StartDate string `json:"startDate,omitempty"`
 	EndDate   string `json:"endDate,omitempty"`
-	Goal      string `json:"goal,omitempty"`
-	JiraID    int64  `json:"-"`
+	// ActivatedDate and CompleteDate are when the sprint actually started and
+	// completed, as opposed to its planned dates.
+	ActivatedDate string `json:"-"`
+	CompleteDate  string `json:"completeDate,omitempty"`
+	CreatedDate   string `json:"createdDate,omitempty"`
+	Goal          string `json:"goal,omitempty"`
+	JiraID        int64  `json:"-"`
 	// BoardJiraID is the id clients know the sprint's board by.
 	BoardJiraID int64 `json:"-"`
 }
