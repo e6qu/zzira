@@ -56,3 +56,23 @@ actually holds:
 
 Each permission appears once, with an id that stays the same for that
 principal and permission in that space.
+
+## Space tools in the browser
+A space's page links to its **Templates** and **Analytics**, and its
+administrators can archive the space or restore it to current from there.
+
+The templates page lists the space's own content templates, the site's
+templates the space inherits, and the blueprints with any site or space changes
+applied. Space administrators create, edit and delete the space's own templates:
+a name, a description, whether it is for pages or blog posts, a storage-format
+body and labels. Every page template offers **Create page from**, which opens the
+page editor with the template's body; a template from another space cannot be
+used.
+
+The analytics page counts views, and distinct viewers, of the space's current
+pages and blog posts over the last 7, 30 or 90 days, most viewed first and at
+most 50. It counts only content the reader can see, so the numbers never reveal
+restricted pages.
+
+Archiving sets the space's status to `archived` and shows it as an archived
+space; restoring returns it to `current`.
