@@ -509,6 +509,11 @@ func (s *Store) createServiceApproval(ctx context.Context, workspaceID, requestI
 		if result.RowsAffected() == 0 {
 			return nil, false, fmt.Errorf("approver %q is not an active user in this site", userID)
 		}
+		for _, groupID := range rule.ApproverGroups[userID] {
+			if _, err := tx.Exec(ctx, `INSERT INTO service_request_approver_groups(approval_id,user_id,group_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, id, userID, groupID); err != nil {
+				return nil, false, err
+			}
+		}
 		if _, err := tx.Exec(ctx, `INSERT INTO service_request_subscriptions(request_issue_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, requestIssueID, userID); err != nil {
 			return nil, false, err
 		}
@@ -606,6 +611,25 @@ func (s *Store) AnswerServiceApproval(ctx context.Context, requestIssueID, appro
 		return nil, err
 	}
 	final = serviceApprovalDecision(approved, declined, total, conditionType, conditionValue)
+	if conditionType == "numberPerPrincipal" {
+		rows, err := tx.Query(ctx, `SELECT count(*) FILTER (WHERE r.decision='approved'),count(*)
+			FROM service_request_approver_groups g JOIN service_request_approvers r ON r.approval_id=g.approval_id AND r.user_id=g.user_id
+			WHERE g.approval_id=$1 GROUP BY g.group_id`, approvalID)
+		if err != nil {
+			return nil, err
+		}
+		groups, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (serviceApprovalGroupTally, error) {
+			var tally serviceApprovalGroupTally
+			err := row.Scan(&tally.Approved, &tally.Total)
+			return tally, err
+		})
+		if err != nil {
+			return nil, err
+		}
+		if len(groups) > 0 {
+			final = serviceApprovalGroupDecision(declined, groups, conditionValue)
+		}
+	}
 	if final != "pending" {
 		if _, err := tx.Exec(ctx, `UPDATE service_request_approvals SET final_decision=$2,completed_at=now() WHERE id=$1`, approvalID, final); err != nil {
 			return nil, err
@@ -636,6 +660,31 @@ func serviceApprovalDecision(approved, declined, total int, conditionType string
 		return "approved"
 	}
 	return "pending"
+}
+
+// serviceApprovalGroupTally counts one approver group's approvers and their
+// approvals.
+type serviceApprovalGroupTally struct {
+	Approved, Total int
+}
+
+// serviceApprovalGroupDecision decides an approval whose approvers came from
+// groups under Jira's numberPerPrincipal condition: any decline declines it,
+// and it is approved once every group has the number of approvals required,
+// at most the group's size.
+func serviceApprovalGroupDecision(declined int, groups []serviceApprovalGroupTally, perGroup int) string {
+	if declined > 0 {
+		return "declined"
+	}
+	if len(groups) == 0 {
+		return "pending"
+	}
+	for _, group := range groups {
+		if group.Approved < max(min(perGroup, group.Total), 1) {
+			return "pending"
+		}
+	}
+	return "approved"
 }
 
 func scanServiceQueue(row interface{ Scan(...any) error }) (*models.ServiceQueue, error) {

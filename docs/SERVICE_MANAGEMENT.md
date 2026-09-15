@@ -125,11 +125,15 @@ Agents can request an approval from an active site user. Every approver has an
 independent pending, approved, or declined decision. Any decline completes the
 approval as declined; otherwise it completes only after every approver accepts.
 A workflow status can also carry Jira's approval configuration. When a request
-enters that status, an approval named after it opens for the users in the
-configured user picker field, less the assignee or reporter when excluded, and
-they are notified. It needs the configured number or percentage of approvals,
-any decline declines it, and the configured approved or declined transition then
-moves the request on. Administrators set or remove a status's approval from the
+enters that status, an approval named after it opens for the approvers the
+configured field names, less the assignee or reporter when excluded, and they
+are notified. A user picker names the approvers; a group picker (Jira's
+approver groups) names groups whose active members approve, and while the
+approvers field is empty the pre-populated field names them instead. It needs
+the configured number or percentage of approvals, or under numberPerPrincipal
+that number from each group, at most the group's size; any decline declines
+it, and the configured approved or declined transition then moves the request
+on. Administrators set or remove a status's approval from the
 workflow editor's status approvals panel as well as through the workflow REST
 API.
 Only a pending assigned approver can answer, and an approver can open the request
@@ -453,7 +457,7 @@ so there is no Organization added notification to send.
 The implemented operations are assessed as partial. JQL support follows the
 documented ZZIRA search subset, including array-aware label matching;
 Assets-backed portal pickers,
-approval workflow configuration, customer notification email templates and Organization added notifications, CSAT configuration,
+customer notification email templates and Organization added notifications, CSAT configuration,
 SLA goal distributions, complete public Assets object/schema/import API parity, historical pause replay for recalculated SLAs, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
 remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

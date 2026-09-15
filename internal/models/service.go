@@ -169,6 +169,9 @@ type ServiceApproval struct {
 	StatusID, ConditionType                string
 	ConditionValue                         int
 	TransitionApproved, TransitionRejected string
+	// ApproverGroups names, for approvers who came from group picker fields,
+	// the groups they came from.
+	ApproverGroups map[string][]string
 }
 
 type ServiceTemporaryAttachment struct {
