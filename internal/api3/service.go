@@ -992,6 +992,14 @@ func (h *Handler) serviceRequestTypeFields(r *http.Request, workspaceID, actorID
 				}
 				validValues = append(validValues, map[string]any{"value": option.ID, "label": option.Value, "children": children})
 			}
+		} else if store.IsServicePortalPicker(field.Type) {
+			choices, err := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, serviceDeskID, actorID, field.Type)
+			if err != nil {
+				return nil, err
+			}
+			for _, choice := range choices {
+				validValues = append(validValues, map[string]any{"value": choice.ID, "label": choice.Value, "children": []any{}})
+			}
 		}
 		presetValues := []string{}
 		if field.Hidden && len(field.PresetValue) > 0 {

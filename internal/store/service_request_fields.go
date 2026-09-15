@@ -116,3 +116,54 @@ func (s *Store) ServiceRequestFieldOptions(ctx context.Context, workspaceID, ser
 	}
 	return options, rows.Err()
 }
+
+// ServicePortalPickerChoices lists what a group, project or version picker on
+// a service desk's portal offers, in the option shape select fields use: the
+// site's groups, the projects the requester can browse, and the desk project's
+// versions that are not archived. Other field types offer nothing.
+func (s *Store) ServicePortalPickerChoices(ctx context.Context, workspaceID, serviceDeskID, userID, fieldType string) ([]ServiceRequestFieldOption, error) {
+	choices := []ServiceRequestFieldOption{}
+	switch fieldType {
+	case models.CustomFieldGroup, models.CustomFieldMultiGroup:
+		groups, err := s.GroupsByWorkspace(ctx, workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		for _, group := range groups {
+			choices = append(choices, ServiceRequestFieldOption{ID: group.ID, Value: group.Name})
+		}
+	case models.CustomFieldProject:
+		projects, err := s.ProjectsWithPermissions(ctx, workspaceID, userID, []string{"BROWSE_PROJECTS"})
+		if err != nil {
+			return nil, err
+		}
+		for _, project := range projects {
+			choices = append(choices, ServiceRequestFieldOption{ID: project.ID, Value: project.Name})
+		}
+	case models.CustomFieldVersion, models.CustomFieldMultiVersion:
+		var projectID string
+		if err := s.Pool.QueryRow(ctx, `SELECT project_id FROM service_desks WHERE workspace_id=$1 AND id=$2`, workspaceID, serviceDeskID).Scan(&projectID); err != nil {
+			return nil, err
+		}
+		versions, err := s.ProjectVersions(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		for _, version := range versions {
+			if !version.Archived {
+				choices = append(choices, ServiceRequestFieldOption{ID: version.ID, Value: version.Name})
+			}
+		}
+	}
+	return choices, nil
+}
+
+// IsServicePortalPicker reports a field type whose portal choices come from
+// the site's groups, projects or versions rather than configured options.
+func IsServicePortalPicker(fieldType string) bool {
+	switch fieldType {
+	case models.CustomFieldGroup, models.CustomFieldMultiGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion:
+		return true
+	}
+	return false
+}

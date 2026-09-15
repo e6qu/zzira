@@ -300,15 +300,24 @@ test('admin creates a service project with Jira Service Management request types
   await choiceField(platformName, 'select', ['Web', 'Mobile']);
   await choiceField(regionsName, 'multiselect', ['EU', 'US']);
   await choiceField(contactName, 'userpicker', []);
+  // A version picker offers the service project's versions.
+  const releaseName = `Affected release ${choiceStamp}`;
+  const versionName = `Portal release ${choiceStamp}`;
+  expect((await page.request.post('/rest/api/3/version', { headers: auth, data: { projectId: Number(serviceProject.id), name: versionName } })).status()).toBe(201);
+  await choiceField(releaseName, 'version', []);
   await page.goto(`/service/agent/${desk.id}`);
   const choicesForm = page.locator('#request-forms form').filter({ has: page.getByRole('heading', { name: 'Report an incident', level: 3 }) });
   const fieldSettings = (name: string) => choicesForm.locator(`xpath=.//fieldset[legend[normalize-space()="${name}"]]`);
-  for (const name of [platformName, regionsName, contactName]) await fieldSettings(name).getByRole('checkbox', { name: 'Show on portal' }).check();
+  for (const name of [platformName, regionsName, contactName, releaseName]) await fieldSettings(name).getByRole('checkbox', { name: 'Show on portal' }).check();
   // The contact is asked for only when the platform is Mobile.
   await fieldSettings(contactName).getByLabel('Show only when').selectOption({ label: `${platformName} has one of the options below` });
   await fieldSettings(contactName).getByRole('group', { name: `Options of ${platformName} that show ${contactName}` }).getByLabel('Mobile').check();
   await choicesForm.getByRole('button', { name: 'Save Report an incident form' }).click();
   await page.goto(`/service/portals/${desk.id}/request/${incidentRequestType.id}`);
+  const portalFields = await (await page.request.get(`/rest/servicedeskapi/servicedesk/${desk.id}/requesttype/${incidentRequestType.id}/field`, { headers: auth })).json();
+  const releaseField = portalFields.requestTypeFields.find((field: any) => field.name === releaseName);
+  expect(releaseField.jiraSchema.custom).toBe('com.atlassian.jira.plugin.system.customfieldtypes:version');
+  expect(releaseField.validValues.map((value: any) => value.label)).toContain(versionName);
   const choicesSummary = `Structured incident ${choiceStamp}`;
   await page.getByLabel('Summary').fill(choicesSummary);
   await page.getByLabel('Description').fill('Portal choices route the incident.');
@@ -322,18 +331,21 @@ test('admin creates a service project with Jira Service Management request types
   await regions.getByLabel('EU').check();
   await regions.getByLabel('US').check();
   await page.getByLabel(contactName).fill('nobody@example.test');
+  await page.getByLabel(releaseName).selectOption({ label: versionName });
   await accessible(page);
   await page.getByRole('button', { name: 'Send request' }).click();
   // An email that names no member is refused with the answers kept.
   await expect(page.getByRole('alert')).toHaveText('No active member of this site uses nobody@example.test.');
   await expect(page.getByLabel(platformName)).not.toHaveValue('');
   await expect(regions.getByLabel('US')).toBeChecked();
+  await expect(page.getByLabel(releaseName)).not.toHaveValue('');
   await page.getByLabel(contactName).fill('demo@zzira.dev');
   await page.getByRole('button', { name: 'Send request' }).click();
   await expect(page.getByRole('heading', { name: choicesSummary, level: 1 })).toBeVisible();
   await expect(page.locator('.service-request-fields')).toContainText('Mobile');
   await expect(page.locator('.service-request-fields')).toContainText('EU, US');
   await expect(page.locator('.service-request-fields')).toContainText('Demo User');
+  await expect(page.locator('.service-request-fields')).toContainText(versionName);
   await accessible(page);
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

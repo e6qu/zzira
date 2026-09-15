@@ -84,6 +84,13 @@ picker takes a site member's email address and a multi-user picker several,
 separated by commas; the portal finds the member without listing the site's
 people. The request page shows the chosen options and people by name.
 
+Group, project and version picker fields ask for a choice instead: a group
+picker offers the site's groups, a project picker the projects the requester
+can browse, and a version picker the desk project's versions that are not
+archived; the multi-group and multi-version pickers take several. The portal
+form, the request type's REST `validValues` and the request page's display
+all list the same choices, and a submitted answer outside them is refused.
+
 A field can also be shown only for some answers. Administrators choose another
 visible select or multi-select field of the same form, which is not conditional
 itself, and the options of it that show the field. The portal hides the field
@@ -405,8 +412,7 @@ compensated by a logged issue deletion, so no orphaned ticket remains.
 
 The implemented operations are assessed as partial. JQL support follows the
 documented ZZIRA search subset, including array-aware label matching;
-group, project, version, team and
-Assets-backed portal pickers, participant notifications,
+team and Assets-backed portal pickers, participant notifications,
 approval workflow configuration, email delivery and notification preference administration, CSAT configuration,
 SLA goal distributions, complete public Assets object/schema/import API parity, advanced SLA criteria,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates

@@ -1148,6 +1148,15 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			data.FieldOptions[field.ID] = options
+		default:
+			if store.IsServicePortalPicker(field.Type) {
+				choices, err := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, desk.ID, user.ID, field.Type)
+				if err != nil {
+					http.Error(w, "Could not load request field options.", http.StatusInternalServerError)
+					return
+				}
+				data.FieldOptions[field.ID] = choices
+			}
 		}
 	}
 	status := http.StatusOK
@@ -1206,12 +1215,15 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 			if child != "" {
 				data.FieldChoices[field.ID+"_child"] = []string{child}
 			}
+			// The first problem is reported, but every answer is still kept so a
+			// refused form comes back as the customer filled it in.
+			problem := ""
 			switch field.ID {
 			case "summary", "description":
 				value := r.PostFormValue("field_" + field.ID)
 				switch {
 				case field.Required && strings.TrimSpace(value) == "":
-					data.Error = field.Name + " is required."
+					problem = field.Name + " is required."
 				case field.ID == "summary":
 					data.Summary = strings.TrimSpace(value)
 				default:
@@ -1221,19 +1233,19 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 				encoded, present, err := encodeServicePortalField(field, submitted, child, data.FieldOptions[field.ID], memberByEmail)
 				switch {
 				case err != nil:
-					data.Error = err.Error()
+					problem = err.Error()
 				case !present && field.Required:
-					data.Error = field.Name + " is required."
+					problem = field.Name + " is required."
 				case present:
 					customFields[field.ID] = encoded
 				}
 			}
-			if data.Error != "" {
-				status = http.StatusBadRequest
-				break
+			if data.Error == "" {
+				data.Error = problem
 			}
 		}
 		if data.Error != "" {
+			status = http.StatusBadRequest
 			h.writeWorkspacePageStatus(w, r, "page_service_request_form", user, workspaceID, data, "service", desk.ProjectID, status)
 			return
 		}
@@ -1295,12 +1307,12 @@ func encodeServicePortalField(field models.ServiceRequestTypeField, submitted []
 			return nil, true, fmt.Errorf("%s must be a date.", field.Name)
 		}
 		encoded = values[0]
-	case models.CustomFieldSelect:
+	case models.CustomFieldSelect, models.CustomFieldGroup, models.CustomFieldProject, models.CustomFieldVersion:
 		if _, ok := option(values[0]); !ok {
 			return nil, true, fmt.Errorf("Choose one of the options for %s.", field.Name)
 		}
 		encoded = values[0]
-	case models.CustomFieldMultiSelect:
+	case models.CustomFieldMultiSelect, models.CustomFieldMultiGroup, models.CustomFieldMultiVersion:
 		ids, seen := []string{}, map[string]bool{}
 		for _, value := range values {
 			if _, ok := option(value); !ok {
@@ -1383,13 +1395,19 @@ func serviceFieldIDs(value any) []string {
 
 // serviceFieldDisplay writes a stored field value for people: options and
 // members by name, and lists joined.
-func serviceFieldDisplay(fieldType string, value any, catalog store.CustomFieldValueCatalog) string {
+func serviceFieldDisplay(fieldType string, value any, catalog store.CustomFieldValueCatalog, pickerNames map[string]string) string {
 	name := func(id string) string {
 		if option, ok := catalog.Options[id]; ok {
 			return option.Value
 		}
 		if user, ok := catalog.Users[id]; ok {
 			return user.DisplayName
+		}
+		if group, ok := catalog.Groups[id]; ok {
+			return group.Name
+		}
+		if picked, ok := pickerNames[id]; ok {
+			return picked
 		}
 		return id
 	}
@@ -1405,7 +1423,8 @@ func serviceFieldDisplay(fieldType string, value any, catalog store.CustomFieldV
 		return out
 	}
 	switch fieldType {
-	case models.CustomFieldSelect, models.CustomFieldUser, models.CustomFieldMultiSelect, models.CustomFieldMultiUser, models.CustomFieldLabels:
+	case models.CustomFieldSelect, models.CustomFieldUser, models.CustomFieldMultiSelect, models.CustomFieldMultiUser, models.CustomFieldLabels,
+		models.CustomFieldGroup, models.CustomFieldMultiGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion:
 		return strings.Join(names(), ", ")
 	case models.CustomFieldCascadingSelect:
 		return strings.Join(names(), " - ")
@@ -1604,7 +1623,8 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	decodedFields := map[string]any{}
-	optionIDs, userIDs := []string{}, []string{}
+	optionIDs, userIDs, groupIDs := []string{}, []string{}, []string{}
+	pickerNames := map[string]string{}
 	for _, field := range configuredFields {
 		if !field.Custom {
 			continue
@@ -1624,9 +1644,20 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 			optionIDs = append(optionIDs, serviceFieldIDs(value)...)
 		case models.CustomFieldUser, models.CustomFieldMultiUser:
 			userIDs = append(userIDs, serviceFieldIDs(value)...)
+		case models.CustomFieldGroup, models.CustomFieldMultiGroup:
+			groupIDs = append(groupIDs, serviceFieldIDs(value)...)
+		case models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion:
+			choices, choicesErr := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, request.ServiceDesk.ID, user.ID, field.Type)
+			if choicesErr != nil {
+				http.Error(w, "Could not render request fields.", http.StatusInternalServerError)
+				return
+			}
+			for _, choice := range choices {
+				pickerNames[choice.ID] = choice.Value
+			}
 		}
 	}
-	fieldCatalog, err := h.Store.LoadCustomFieldValueCatalog(r.Context(), workspaceID, optionIDs, userIDs, nil)
+	fieldCatalog, err := h.Store.LoadCustomFieldValueCatalog(r.Context(), workspaceID, optionIDs, userIDs, groupIDs)
 	if err != nil {
 		http.Error(w, "Could not render request fields.", http.StatusInternalServerError)
 		return
@@ -1634,7 +1665,7 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 	requestFields := make([]serviceRequestFieldValueView, 0)
 	for _, field := range configuredFields {
 		if value, ok := decodedFields[field.ID]; ok {
-			requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: serviceFieldDisplay(field.Type, value, fieldCatalog)})
+			requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: serviceFieldDisplay(field.Type, value, fieldCatalog, pickerNames)})
 		}
 	}
 	var assetInventory *models.ServiceAssetInventory

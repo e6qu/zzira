@@ -38,6 +38,12 @@ func TestEncodeServicePortalField(t *testing.T) {
 		{models.CustomFieldMultiUser, []string{"ghost@example.test"}, "", "", "No active member of this site uses ghost@example.test."},
 		{models.CustomFieldNumber, []string{"42.5"}, "", `42.5`, ""},
 		{models.CustomFieldURL, []string{"https://status.example.test"}, "", `"https://status.example.test"`, ""},
+		// Group, project and version pickers answer from their listed choices.
+		{models.CustomFieldVersion, []string{"1"}, "", `"1"`, ""},
+		{models.CustomFieldProject, []string{"2"}, "", `"2"`, ""},
+		{models.CustomFieldGroup, []string{"9"}, "", "", "Choose one of the options for Platform."},
+		{models.CustomFieldMultiVersion, []string{"2", "1", "2"}, "", `["2","1"]`, ""},
+		{models.CustomFieldMultiGroup, []string{"1", "7"}, "", "", "Choose from the options for Platform."},
 	} {
 		field := models.ServiceRequestTypeField{ID: "customfield_1", Name: "Platform", Type: check.kind}
 		raw, present, err := encodeServicePortalField(field, check.submitted, check.child, options, member)
@@ -52,10 +58,14 @@ func TestEncodeServicePortalField(t *testing.T) {
 	if _, present, err := encodeServicePortalField(models.ServiceRequestTypeField{Type: models.CustomFieldMultiSelect}, []string{" ", ""}, "", options, member); present || err != nil {
 		t.Fatalf("a blank answer was present: %v, %v", present, err)
 	}
-	catalog := store.CustomFieldValueCatalog{Options: map[string]models.CustomFieldOption{"2": {ID: "2", Value: "Mobile"}, "3": {ID: "3", Value: "iOS"}}, Users: map[string]*models.User{"usr_ana": {ID: "usr_ana", DisplayName: "Ana"}}}
-	for fieldType, want := range map[string]string{models.CustomFieldCascadingSelect: "Mobile - iOS", models.CustomFieldMultiUser: "Ana", models.CustomFieldLabels: "a, b", models.CustomFieldNumber: "42.5"} {
-		value := map[string]any{models.CustomFieldCascadingSelect: map[string]any{"parent": "2", "child": "3"}, models.CustomFieldMultiUser: []any{"usr_ana"}, models.CustomFieldLabels: []any{"a", "b"}, models.CustomFieldNumber: 42.5}[fieldType]
-		if got := serviceFieldDisplay(fieldType, value, catalog); got != want {
+	catalog := store.CustomFieldValueCatalog{Options: map[string]models.CustomFieldOption{"2": {ID: "2", Value: "Mobile"}, "3": {ID: "3", Value: "iOS"}}, Users: map[string]*models.User{"usr_ana": {ID: "usr_ana", DisplayName: "Ana"}},
+		Groups: map[string]store.SiteGroup{"grp-ops": {Name: "Operations"}}}
+	pickerNames := map[string]string{"10000": "Service desk", "10010": "Release 1", "10011": "Release 2"}
+	for fieldType, want := range map[string]string{models.CustomFieldCascadingSelect: "Mobile - iOS", models.CustomFieldMultiUser: "Ana", models.CustomFieldLabels: "a, b", models.CustomFieldNumber: "42.5",
+		models.CustomFieldMultiGroup: "Operations", models.CustomFieldProject: "Service desk", models.CustomFieldMultiVersion: "Release 1, Release 2"} {
+		value := map[string]any{models.CustomFieldCascadingSelect: map[string]any{"parent": "2", "child": "3"}, models.CustomFieldMultiUser: []any{"usr_ana"}, models.CustomFieldLabels: []any{"a", "b"}, models.CustomFieldNumber: 42.5,
+			models.CustomFieldMultiGroup: []any{"grp-ops"}, models.CustomFieldProject: "10000", models.CustomFieldMultiVersion: []any{"10010", "10011"}}[fieldType]
+		if got := serviceFieldDisplay(fieldType, value, catalog, pickerNames); got != want {
 			t.Fatalf("%s display = %q, want %q", fieldType, got, want)
 		}
 	}
