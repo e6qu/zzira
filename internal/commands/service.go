@@ -793,7 +793,7 @@ func (s *Service) validateServiceSLAGoal(ctx context.Context, workspaceID, name,
 	return name, query, nil
 }
 
-func (s *Service) CreateServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, name, query string, goalMillis int64) (*models.ServiceSLAGoal, error) {
+func (s *Service) CreateServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, name, query, calendarID string, goalMillis int64) (*models.ServiceSLAGoal, error) {
 	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return nil, err
 	}
@@ -801,10 +801,10 @@ func (s *Service) CreateServiceSLAGoal(ctx context.Context, actorID, workspaceID
 	if err != nil {
 		return nil, err
 	}
-	return s.Store.CreateServiceSLAGoal(ctx, workspaceID, actorID, serviceDeskID, metricID, name, query, goalMillis)
+	return s.Store.CreateServiceSLAGoal(ctx, workspaceID, actorID, serviceDeskID, metricID, name, query, strings.TrimSpace(calendarID), goalMillis)
 }
 
-func (s *Service) UpdateServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, goalID, name, query string, goalMillis int64) error {
+func (s *Service) UpdateServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, goalID, name, query, calendarID string, goalMillis int64) error {
 	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
@@ -812,7 +812,7 @@ func (s *Service) UpdateServiceSLAGoal(ctx context.Context, actorID, workspaceID
 	if err != nil {
 		return err
 	}
-	return s.Store.UpdateServiceSLAGoal(ctx, workspaceID, actorID, serviceDeskID, metricID, goalID, name, query, goalMillis)
+	return s.Store.UpdateServiceSLAGoal(ctx, workspaceID, actorID, serviceDeskID, metricID, goalID, name, query, strings.TrimSpace(calendarID), goalMillis)
 }
 
 func (s *Service) DeleteServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, goalID string) error {
@@ -838,7 +838,23 @@ func (s *Service) UpdateServiceCalendar(ctx context.Context, actorID, workspaceI
 	return s.Store.UpdateServiceCalendar(ctx, workspaceID, actorID, serviceDeskID, name, timeZone, weekdays, startMinute, endMinute)
 }
 
-func (s *Service) UpsertServiceCalendarHoliday(ctx context.Context, actorID, workspaceID, serviceDeskID, day, name string) error {
+// CreateServiceCalendar adds working hours the desk's SLA goals can name.
+func (s *Service) CreateServiceCalendar(ctx context.Context, actorID, workspaceID, serviceDeskID, name, timeZone string, weekdays []int16, startMinute, endMinute int16) (*models.ServiceCalendar, error) {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return nil, err
+	}
+	return s.Store.CreateServiceCalendar(ctx, workspaceID, actorID, serviceDeskID, name, timeZone, weekdays, startMinute, endMinute)
+}
+
+// DeleteServiceCalendar removes working hours no SLA goal is measured in.
+func (s *Service) DeleteServiceCalendar(ctx context.Context, actorID, workspaceID, serviceDeskID, calendarID string) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	return s.Store.DeleteServiceCalendar(ctx, workspaceID, actorID, serviceDeskID, strings.TrimSpace(calendarID))
+}
+
+func (s *Service) UpsertServiceCalendarHoliday(ctx context.Context, actorID, workspaceID, serviceDeskID, calendarID, day, name string) error {
 	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
@@ -850,10 +866,10 @@ func (s *Service) UpsertServiceCalendarHoliday(ctx context.Context, actorID, wor
 	if name == "" || len(name) > 255 {
 		return fmt.Errorf("holiday name is required and accepts at most 255 characters")
 	}
-	return s.Store.UpsertServiceCalendarHoliday(ctx, workspaceID, actorID, serviceDeskID, holiday, name)
+	return s.Store.UpsertServiceCalendarHoliday(ctx, workspaceID, actorID, serviceDeskID, strings.TrimSpace(calendarID), holiday, name)
 }
 
-func (s *Service) DeleteServiceCalendarHoliday(ctx context.Context, actorID, workspaceID, serviceDeskID, day string) error {
+func (s *Service) DeleteServiceCalendarHoliday(ctx context.Context, actorID, workspaceID, serviceDeskID, calendarID, day string) error {
 	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
@@ -861,7 +877,7 @@ func (s *Service) DeleteServiceCalendarHoliday(ctx context.Context, actorID, wor
 	if err != nil {
 		return fmt.Errorf("holiday date must use YYYY-MM-DD")
 	}
-	return s.Store.DeleteServiceCalendarHoliday(ctx, workspaceID, actorID, serviceDeskID, holiday)
+	return s.Store.DeleteServiceCalendarHoliday(ctx, workspaceID, actorID, serviceDeskID, strings.TrimSpace(calendarID), holiday)
 }
 
 func (s *Service) validateServiceQueue(ctx context.Context, workspaceID, name, query string) (string, string, error) {

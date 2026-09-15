@@ -18,7 +18,7 @@ func (s *Store) ServiceCalendar(ctx context.Context, workspaceID, serviceDeskID 
 	err := s.Pool.QueryRow(ctx, `
 		SELECT c.id,c.service_desk_id,c.name,c.time_zone,c.weekdays,c.start_minute,c.end_minute
 		FROM service_calendars c JOIN service_desks sd ON sd.id=c.service_desk_id
-		WHERE sd.workspace_id=$1 AND sd.id=$2`, workspaceID, serviceDeskID).Scan(
+		WHERE sd.workspace_id=$1 AND sd.id=$2 ORDER BY c.id::bigint LIMIT 1`, workspaceID, serviceDeskID).Scan(
 		&calendar.ID, &calendar.ServiceDeskID, &calendar.Name, &calendar.TimeZone,
 		&calendar.Weekdays, &calendar.StartMinute, &calendar.EndMinute)
 	if err != nil {
@@ -165,7 +165,9 @@ func (s *Store) UpdateServiceCalendar(ctx context.Context, workspaceID, actorID,
 	return tx.Commit(ctx)
 }
 
-func (s *Store) UpsertServiceCalendarHoliday(ctx context.Context, workspaceID, actorID, serviceDeskID string, holiday time.Time, name string) error {
+// UpsertServiceCalendarHoliday names a non-working day in one of the desk's
+// calendars. An empty calendar means the desk's default one.
+func (s *Store) UpsertServiceCalendarHoliday(ctx context.Context, workspaceID, actorID, serviceDeskID, calendar string, holiday time.Time, name string) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -174,7 +176,8 @@ func (s *Store) UpsertServiceCalendarHoliday(ctx context.Context, workspaceID, a
 	var calendarID string
 	if err := tx.QueryRow(ctx, `
 		SELECT c.id FROM service_calendars c JOIN service_desks sd ON sd.id=c.service_desk_id
-		WHERE sd.workspace_id=$1 AND sd.id=$2`, workspaceID, serviceDeskID).Scan(&calendarID); err != nil {
+		WHERE sd.workspace_id=$1 AND sd.id=$2 AND ($3='' OR c.id=$3)
+		ORDER BY c.id::bigint LIMIT 1`, workspaceID, serviceDeskID, calendar).Scan(&calendarID); err != nil {
 		return fmt.Errorf("service calendar does not exist")
 	}
 	if _, err := tx.Exec(ctx, `
@@ -192,7 +195,7 @@ func (s *Store) UpsertServiceCalendarHoliday(ctx context.Context, workspaceID, a
 	return tx.Commit(ctx)
 }
 
-func (s *Store) DeleteServiceCalendarHoliday(ctx context.Context, workspaceID, actorID, serviceDeskID string, holiday time.Time) error {
+func (s *Store) DeleteServiceCalendarHoliday(ctx context.Context, workspaceID, actorID, serviceDeskID, calendar string, holiday time.Time) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -202,7 +205,8 @@ func (s *Store) DeleteServiceCalendarHoliday(ctx context.Context, workspaceID, a
 	if err := tx.QueryRow(ctx, `
 		DELETE FROM service_calendar_holidays h USING service_calendars c,service_desks sd
 		WHERE h.calendar_id=c.id AND c.service_desk_id=sd.id AND sd.workspace_id=$1 AND sd.id=$2 AND h.holiday=$3
-		RETURNING c.id,h.name`, workspaceID, serviceDeskID, holiday).Scan(&calendarID, &name); err != nil {
+		  AND ($4='' OR c.id=$4)
+		RETURNING c.id,h.name`, workspaceID, serviceDeskID, holiday, calendar).Scan(&calendarID, &name); err != nil {
 		return fmt.Errorf("calendar holiday does not exist")
 	}
 	if _, err := tx.Exec(ctx, `
@@ -244,8 +248,8 @@ func (s *Store) ApplyServiceSLAEvents(ctx context.Context, workspaceID, serviceD
 		return false, err
 	}
 	started, err := tx.Exec(ctx, `
-		INSERT INTO service_sla_cycles(request_issue_id,metric_id,cycle_number,started_at,goal_id,goal_name,goal_millis)
-		SELECT sr.issue_id,m.id,COALESCE((SELECT max(c.cycle_number)+1 FROM service_sla_cycles c WHERE c.request_issue_id=sr.issue_id AND c.metric_id=m.id),1),$4,g.id,g.name,g.goal_millis
+		INSERT INTO service_sla_cycles(request_issue_id,metric_id,cycle_number,started_at,goal_id,goal_name,goal_millis,calendar_id)
+		SELECT sr.issue_id,m.id,COALESCE((SELECT max(c.cycle_number)+1 FROM service_sla_cycles c WHERE c.request_issue_id=sr.issue_id AND c.metric_id=m.id),1),$4,g.id,g.name,g.goal_millis,g.calendar_id
 		FROM service_requests sr JOIN service_sla_metrics m ON m.service_desk_id=sr.service_desk_id
 		JOIN service_sla_goals g ON g.metric_id=m.id AND g.jql=''
 		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND sr.issue_id=$3 AND m.start_conditions && $5::text[]
@@ -466,8 +470,8 @@ func (s *Store) ReplaceServiceSLACycles(ctx context.Context, workspaceID, servic
 	}
 	for index, span := range spans {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO service_sla_cycles(request_issue_id,metric_id,cycle_number,started_at,stopped_at,goal_id,goal_name,goal_millis)
-			SELECT $1,m.id,$3,$4,$5,g.id,g.name,g.goal_millis FROM service_sla_metrics m
+			INSERT INTO service_sla_cycles(request_issue_id,metric_id,cycle_number,started_at,stopped_at,goal_id,goal_name,goal_millis,calendar_id)
+			SELECT $1,m.id,$3,$4,$5,g.id,g.name,g.goal_millis,g.calendar_id FROM service_sla_metrics m
 			JOIN service_sla_goals g ON g.metric_id=m.id AND g.jql='' WHERE m.id=$2`, requestIssueID, metricID, index+1, span.Start, span.Stop); err != nil {
 			return err
 		}
@@ -800,4 +804,128 @@ func (s *Store) ServiceSLAs(ctx context.Context, workspaceID, requestIssueID str
 		}
 	}
 	return values, rows.Err()
+}
+
+// ServiceCalendars lists a service desk's calendars, the first of which is the
+// default one an SLA measures in when nothing names another.
+func (s *Store) ServiceCalendars(ctx context.Context, workspaceID, serviceDeskID string) ([]models.ServiceCalendar, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT c.id,c.service_desk_id,c.name,c.time_zone,c.weekdays,c.start_minute,c.end_minute
+		FROM service_calendars c JOIN service_desks sd ON sd.id=c.service_desk_id
+		WHERE sd.workspace_id=$1 AND sd.id=$2 ORDER BY c.id::bigint`, workspaceID, serviceDeskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	calendars := []models.ServiceCalendar{}
+	for rows.Next() {
+		var calendar models.ServiceCalendar
+		if err := rows.Scan(&calendar.ID, &calendar.ServiceDeskID, &calendar.Name, &calendar.TimeZone,
+			&calendar.Weekdays, &calendar.StartMinute, &calendar.EndMinute); err != nil {
+			return nil, err
+		}
+		calendars = append(calendars, calendar)
+	}
+	return calendars, rows.Err()
+}
+
+// CreateServiceCalendar adds working hours a desk's SLA goals can be measured
+// in, beside the default calendar every desk starts with.
+func (s *Store) CreateServiceCalendar(ctx context.Context, workspaceID, actorID, serviceDeskID, name, timeZone string, weekdays []int16, startMinute, endMinute int16) (*models.ServiceCalendar, error) {
+	if err := validateServiceCalendar(name, timeZone, weekdays, startMinute, endMinute); err != nil {
+		return nil, err
+	}
+	sort.Slice(weekdays, func(i, j int) bool { return weekdays[i] < weekdays[j] })
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	calendar := &models.ServiceCalendar{ServiceDeskID: serviceDeskID, Name: strings.TrimSpace(name), TimeZone: strings.TrimSpace(timeZone),
+		Weekdays: weekdays, StartMinute: startMinute, EndMinute: endMinute}
+	err = tx.QueryRow(ctx, `
+		INSERT INTO service_calendars(service_desk_id,name,time_zone,weekdays,start_minute,end_minute)
+		SELECT sd.id,$3,$4,$5,$6,$7 FROM service_desks sd
+		WHERE sd.workspace_id=$1 AND sd.id=$2
+		  AND (SELECT count(*) FROM service_calendars c WHERE c.service_desk_id=sd.id) < 20
+		RETURNING id`, workspaceID, serviceDeskID, calendar.Name, calendar.TimeZone, weekdays, startMinute, endMinute).Scan(&calendar.ID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("service desk does not exist or already has 20 calendars")
+		}
+		if strings.Contains(err.Error(), "idx_service_calendars_desk_name") {
+			return nil, fmt.Errorf("a calendar of this service desk is already called %q", calendar.Name)
+		}
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT organization_id,$2,'service.calendar.created','service_calendar',$3,
+		       jsonb_build_object('serviceDeskId',$4::text,'name',$5::text,'timeZone',$6::text)
+		FROM sites WHERE workspace_id=$1`, workspaceID, actorID, calendar.ID, serviceDeskID, calendar.Name, calendar.TimeZone); err != nil {
+		return nil, err
+	}
+	return calendar, tx.Commit(ctx)
+}
+
+// DeleteServiceCalendar removes working hours nothing is measured in. The
+// desk's default calendar stays, because every SLA falls back to it.
+func (s *Store) DeleteServiceCalendar(ctx context.Context, workspaceID, actorID, serviceDeskID, calendarID string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var isDefault bool
+	if err := tx.QueryRow(ctx, `
+		SELECT c.id=(SELECT d.id FROM service_calendars d WHERE d.service_desk_id=c.service_desk_id ORDER BY d.id::bigint LIMIT 1)
+		FROM service_calendars c JOIN service_desks sd ON sd.id=c.service_desk_id
+		WHERE sd.workspace_id=$1 AND sd.id=$2 AND c.id=$3`, workspaceID, serviceDeskID, calendarID).Scan(&isDefault); err != nil {
+		return fmt.Errorf("service calendar does not exist")
+	}
+	if isDefault {
+		return fmt.Errorf("the default calendar of a service desk cannot be removed")
+	}
+	var goals int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM service_sla_goals WHERE calendar_id=$1`, calendarID).Scan(&goals); err != nil {
+		return err
+	}
+	if goals > 0 {
+		return fmt.Errorf("this calendar measures %d SLA goals, which name another calendar first", goals)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM service_calendars WHERE id=$1`, calendarID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT organization_id,$2,'service.calendar.deleted','service_calendar',$3,jsonb_build_object('serviceDeskId',$4::text)
+		FROM sites WHERE workspace_id=$1`, workspaceID, actorID, calendarID, serviceDeskID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// validateServiceCalendar holds Jira's rules for working hours: a named
+// calendar, a real time zone, unique ISO weekdays and a working window.
+func validateServiceCalendar(name, timeZone string, weekdays []int16, startMinute, endMinute int16) error {
+	if name = strings.TrimSpace(name); name == "" || len(name) > 255 {
+		return fmt.Errorf("calendar name is required and accepts at most 255 characters")
+	}
+	if _, err := time.LoadLocation(strings.TrimSpace(timeZone)); err != nil {
+		return fmt.Errorf("calendar time zone is invalid")
+	}
+	if startMinute < 0 || endMinute > 1440 || startMinute >= endMinute {
+		return fmt.Errorf("calendar hours are invalid")
+	}
+	seen := make(map[int16]bool)
+	for _, weekday := range weekdays {
+		if weekday < 1 || weekday > 7 || seen[weekday] {
+			return fmt.Errorf("calendar weekdays must be unique ISO weekdays from 1 to 7")
+		}
+		seen[weekday] = true
+	}
+	if len(weekdays) == 0 {
+		return fmt.Errorf("calendar requires at least one working day")
+	}
+	return nil
 }

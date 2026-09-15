@@ -330,6 +330,13 @@ that status; a condition that asks about anything else applies from the
 recalculation onwards, because it is evaluated against the request as it
 stands.
 
+A desk keeps several business calendars beside the default one, and each
+conditional goal counts its time in the calendar it names, as Jira sets a
+calendar beside a goal's JQL and time. A cycle keeps the calendar it was
+measured in, so changing a goal later does not rewrite the hours a request
+already spent. The default calendar cannot be removed, because every SLA falls
+back to it, and neither can one a goal still names.
+
 Administrators add, rename, or remove dated holidays in the same calendar
 workspace. Changes are scoped to the selected service desk and audited. SLA
 calculation, queue urgency, customer-visible goal state, and the escalation
@@ -494,6 +501,6 @@ The implemented operations are assessed as partial. JQL support follows the
 documented ZZIRA search subset, including array-aware label matching;
 Assets-backed portal pickers,
 customer notification email templates and Organization added notifications, CSAT configuration,
-SLA goal distributions, complete public Assets object/schema/import API parity, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
+complete public Assets object/schema/import API parity, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
 remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

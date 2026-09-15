@@ -91,6 +91,7 @@ type servicePageData struct {
 	Members          []*models.User
 	Agents           map[string]bool
 	Calendar         *models.ServiceCalendar
+	Calendars        []models.ServiceCalendar
 	CalendarHolidays []serviceCalendarHolidayView
 	Report           *models.ServiceReport
 	ReportDays       []serviceReportDayView
@@ -262,6 +263,11 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			data.Calendar, err = h.Store.ServiceCalendar(r.Context(), workspaceID, deskID)
 			if err != nil {
 				http.Error(w, "Could not load the service calendar.", http.StatusInternalServerError)
+				return
+			}
+			data.Calendars, err = h.Store.ServiceCalendars(r.Context(), workspaceID, deskID)
+			if err != nil {
+				http.Error(w, "Could not load the service calendars.", http.StatusInternalServerError)
 				return
 			}
 			for day, name := range data.Calendar.Holidays {
@@ -981,6 +987,48 @@ func parseServiceClock(value string) (int16, error) {
 	return int16(hour*60 + minute), nil
 }
 
+// ServiceCalendars adds or removes the working hours a desk's SLA goals can be
+// measured in, beside the default calendar the desk started with.
+func (h *Handler) ServiceCalendars(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	deskID := r.PathValue("desk")
+	var err error
+	if r.PostFormValue("action") == "delete" {
+		err = h.Commands.DeleteServiceCalendar(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("calendarId"))
+	} else {
+		startMinute, startErr := parseServiceClock(r.PostFormValue("start"))
+		endMinute, endErr := parseServiceClock(r.PostFormValue("end"))
+		if startErr != nil || endErr != nil {
+			http.Error(w, "Working hours must use HH:MM.", http.StatusBadRequest)
+			return
+		}
+		_, err = h.Commands.CreateServiceCalendar(r.Context(), user.ID, workspaceID, deskID,
+			r.PostFormValue("name"), r.PostFormValue("timeZone"), serviceWeekdays(r), startMinute, endMinute)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#calendar")
+}
+
+// serviceWeekdays reads the ISO working days a calendar form submitted.
+func serviceWeekdays(r *http.Request) []int16 {
+	weekdays := make([]int16, 0, len(r.PostForm["weekday"]))
+	for _, value := range r.PostForm["weekday"] {
+		if len(value) == 1 && value[0] >= '1' && value[0] <= '7' {
+			weekdays = append(weekdays, int16(value[0]-'0'))
+		}
+	}
+	return weekdays
+}
+
 func (h *Handler) ServiceCalendarSettings(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
@@ -1118,9 +1166,9 @@ func (h *Handler) ServiceSLAGoalSettings(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		if action == "update" {
-			err = h.Commands.UpdateServiceSLAGoal(r.Context(), user.ID, workspaceID, deskID, metricID, goalID, r.PostFormValue("name"), r.PostFormValue("jql"), goalMinutes*time.Minute.Milliseconds())
+			err = h.Commands.UpdateServiceSLAGoal(r.Context(), user.ID, workspaceID, deskID, metricID, goalID, r.PostFormValue("name"), r.PostFormValue("jql"), r.PostFormValue("calendarId"), goalMinutes*time.Minute.Milliseconds())
 		} else {
-			_, err = h.Commands.CreateServiceSLAGoal(r.Context(), user.ID, workspaceID, deskID, metricID, r.PostFormValue("name"), r.PostFormValue("jql"), goalMinutes*time.Minute.Milliseconds())
+			_, err = h.Commands.CreateServiceSLAGoal(r.Context(), user.ID, workspaceID, deskID, metricID, r.PostFormValue("name"), r.PostFormValue("jql"), r.PostFormValue("calendarId"), goalMinutes*time.Minute.Milliseconds())
 		}
 	}
 	if err != nil {
@@ -1139,11 +1187,13 @@ func (h *Handler) ServiceCalendarHolidaySettings(w http.ResponseWriter, r *http.
 		return
 	}
 	deskID, day := r.PathValue("desk"), r.PostFormValue("day")
+	// An empty calendar means the desk's default one.
+	calendarID := r.PostFormValue("calendarId")
 	var err error
 	if r.PostFormValue("action") == "delete" {
-		err = h.Commands.DeleteServiceCalendarHoliday(r.Context(), user.ID, workspaceID, deskID, day)
+		err = h.Commands.DeleteServiceCalendarHoliday(r.Context(), user.ID, workspaceID, deskID, calendarID, day)
 	} else {
-		err = h.Commands.UpsertServiceCalendarHoliday(r.Context(), user.ID, workspaceID, deskID, day, r.PostFormValue("name"))
+		err = h.Commands.UpsertServiceCalendarHoliday(r.Context(), user.ID, workspaceID, deskID, calendarID, day, r.PostFormValue("name"))
 	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

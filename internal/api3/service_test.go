@@ -855,17 +855,17 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	for _, metric := range metrics {
 		metricByKind[metric.Kind] = metric.ID
 	}
-	if _, err := handler.Commands.CreateServiceSLAGoal(ctx, customerID, workspaceID, serviceDeskID, metricByKind["first_response"], "Forbidden incident response", `labels = incident`, time.Hour.Milliseconds()); err == nil {
+	if _, err := handler.Commands.CreateServiceSLAGoal(ctx, customerID, workspaceID, serviceDeskID, metricByKind["first_response"], "Forbidden incident response", `labels = incident`, "", time.Hour.Milliseconds()); err == nil {
 		t.Fatal("customer configured a conditional SLA goal")
 	}
-	if _, err := handler.Commands.CreateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], "Invalid ordered goal", `labels = incident ORDER BY created ASC`, time.Hour.Milliseconds()); err == nil {
+	if _, err := handler.Commands.CreateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], "Invalid ordered goal", `labels = incident ORDER BY created ASC`, "", time.Hour.Milliseconds()); err == nil {
 		t.Fatal("conditional SLA goal accepted ORDER BY")
 	}
-	incidentGoal, err := handler.Commands.CreateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], "Incident response", `labels = incident`, time.Hour.Milliseconds())
+	incidentGoal, err := handler.Commands.CreateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], "Incident response", `labels = incident`, "", time.Hour.Milliseconds())
 	if err != nil {
 		t.Fatal(err)
 	}
-	keywordGoal, err := handler.Commands.CreateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], "Keyword response", `summary ~ "conditional"`, (2 * time.Hour).Milliseconds())
+	keywordGoal, err := handler.Commands.CreateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], "Keyword response", `summary ~ "conditional"`, "", (2 * time.Hour).Milliseconds())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -955,7 +955,7 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err := handler.Commands.DeleteServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], keywordGoal.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := handler.Commands.UpdateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], incidentGoal.ID, "Priority incident response", `labels = incident`, (90 * time.Minute).Milliseconds()); err != nil {
+	if err := handler.Commands.UpdateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], incidentGoal.ID, "Priority incident response", `labels = incident`, "", (90 * time.Minute).Milliseconds()); err != nil {
 		t.Fatal(err)
 	}
 	conditionalSLA := call("GET", "/rest/servicedeskapi/request/"+conditionalIssue.Key+"/sla/"+metricByKind["first_response"], "", 200)
@@ -991,17 +991,60 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err := handler.Commands.UpdateServiceCalendar(ctx, actorID, workspaceID, serviceDeskID, "Every day", "UTC", []int16{1, 2, 3, 4, 5, 6, 7}, 0, 1440); err != nil {
 		t.Fatal(err)
 	}
-	if err := handler.Commands.UpsertServiceCalendarHoliday(ctx, customerID, workspaceID, serviceDeskID, "2030-01-01", "Forbidden holiday"); err == nil {
+	// A desk keeps several calendars, and a conditional goal counts its time in
+	// the calendar it names rather than in the desk's default one.
+	if _, err := handler.Commands.CreateServiceCalendar(ctx, customerID, workspaceID, serviceDeskID, "Weekend cover", "UTC", []int16{6, 7}, 540, 1020); err == nil {
+		t.Fatal("customer added a service calendar")
+	}
+	weekendCalendar, err := handler.Commands.CreateServiceCalendar(ctx, actorID, workspaceID, serviceDeskID, "Weekend cover", "UTC", []int16{6, 7}, 540, 1020)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := handler.Commands.CreateServiceCalendar(ctx, actorID, workspaceID, serviceDeskID, "Weekend cover", "UTC", []int16{6, 7}, 540, 1020); err == nil {
+		t.Fatal("two calendars of one desk share a name")
+	}
+	deskCalendars, err := st.ServiceCalendars(ctx, workspaceID, serviceDeskID)
+	if err != nil || len(deskCalendars) != 2 || deskCalendars[1].ID != weekendCalendar.ID {
+		t.Fatalf("desk calendars = %+v, %v", deskCalendars, err)
+	}
+	// The default calendar stays, because every SLA falls back to it.
+	if err := handler.Commands.DeleteServiceCalendar(ctx, actorID, workspaceID, serviceDeskID, deskCalendars[0].ID); err == nil {
+		t.Fatal("the default calendar was removed")
+	}
+	weekendGoal, err := handler.Commands.CreateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], "Weekend response", `labels = incident`, weekendCalendar.ID, time.Hour.Milliseconds())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if goals, goalErr := st.ServiceSLAGoals(ctx, workspaceID, serviceDeskID, metricByKind["first_response"]); goalErr != nil || !slices.ContainsFunc(goals, func(goal models.ServiceSLAGoal) bool {
+		return goal.ID == weekendGoal.ID && goal.CalendarID == weekendCalendar.ID
+	}) {
+		t.Fatalf("goals = %+v, %v", goals, goalErr)
+	}
+	// A calendar a goal counts in cannot be removed until the goal names another.
+	if err := handler.Commands.DeleteServiceCalendar(ctx, actorID, workspaceID, serviceDeskID, weekendCalendar.ID); err == nil {
+		t.Fatal("a calendar an SLA goal counts in was removed")
+	}
+	if _, err := handler.Commands.CreateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], "Stray calendar", `labels = problem`, "cal_does_not_exist", time.Hour.Milliseconds()); err == nil {
+		t.Fatal("a goal named a calendar of another service desk")
+	}
+	if err := handler.Commands.UpdateServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], weekendGoal.ID, "Weekend response", `labels = incident`, "", time.Hour.Milliseconds()); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.Commands.DeleteServiceCalendar(ctx, actorID, workspaceID, serviceDeskID, weekendCalendar.ID); err != nil {
+		t.Fatalf("a calendar no goal counts in: %v", err)
+	}
+
+	if err := handler.Commands.UpsertServiceCalendarHoliday(ctx, customerID, workspaceID, serviceDeskID, "", "2030-01-01", "Forbidden holiday"); err == nil {
 		t.Fatal("customer configured a service calendar holiday")
 	}
-	if err := handler.Commands.UpsertServiceCalendarHoliday(ctx, actorID, workspaceID, serviceDeskID, "2030-01-01", "Regional support shutdown"); err != nil {
+	if err := handler.Commands.UpsertServiceCalendarHoliday(ctx, actorID, workspaceID, serviceDeskID, "", "2030-01-01", "Regional support shutdown"); err != nil {
 		t.Fatal(err)
 	}
 	calendar, err := st.ServiceCalendar(ctx, workspaceID, serviceDeskID)
 	if err != nil || calendar.Holidays["2030-01-01"] != "Regional support shutdown" {
 		t.Fatalf("service calendar holidays = %+v, %v", calendar, err)
 	}
-	if err := handler.Commands.DeleteServiceCalendarHoliday(ctx, actorID, workspaceID, serviceDeskID, "2030-01-01"); err != nil {
+	if err := handler.Commands.DeleteServiceCalendarHoliday(ctx, actorID, workspaceID, serviceDeskID, "", "2030-01-01"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.Pool.Exec(ctx, `UPDATE service_calendars SET time_zone='America/New_York',weekdays=ARRAY[1,2,3,4,5]::SMALLINT[],start_minute=540,end_minute=1020 WHERE id=$1`, calendar.ID); err != nil {

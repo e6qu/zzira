@@ -12,7 +12,7 @@ import (
 
 func (s *Store) ServiceSLAGoals(ctx context.Context, workspaceID, serviceDeskID, metricID string) ([]models.ServiceSLAGoal, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT g.id,g.metric_id,g.name,g.jql,g.goal_millis,g.position
+		SELECT g.id,g.metric_id,g.name,g.jql,g.goal_millis,g.position,COALESCE(g.calendar_id,'')
 		FROM service_sla_goals g
 		JOIN service_sla_metrics m ON m.id=g.metric_id
 		JOIN service_desks sd ON sd.id=m.service_desk_id
@@ -25,7 +25,7 @@ func (s *Store) ServiceSLAGoals(ctx context.Context, workspaceID, serviceDeskID,
 	goals := make([]models.ServiceSLAGoal, 0)
 	for rows.Next() {
 		var goal models.ServiceSLAGoal
-		if err := rows.Scan(&goal.ID, &goal.MetricID, &goal.Name, &goal.JQL, &goal.GoalMillis, &goal.Position); err != nil {
+		if err := rows.Scan(&goal.ID, &goal.MetricID, &goal.Name, &goal.JQL, &goal.GoalMillis, &goal.Position, &goal.CalendarID); err != nil {
 			return nil, err
 		}
 		goals = append(goals, goal)
@@ -33,23 +33,25 @@ func (s *Store) ServiceSLAGoals(ctx context.Context, workspaceID, serviceDeskID,
 	return goals, rows.Err()
 }
 
-func (s *Store) CreateServiceSLAGoal(ctx context.Context, workspaceID, actorID, serviceDeskID, metricID, name, query string, goalMillis int64) (*models.ServiceSLAGoal, error) {
+func (s *Store) CreateServiceSLAGoal(ctx context.Context, workspaceID, actorID, serviceDeskID, metricID, name, query, calendarID string, goalMillis int64) (*models.ServiceSLAGoal, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	goal := &models.ServiceSLAGoal{MetricID: metricID, Name: name, JQL: query, GoalMillis: goalMillis}
+	goal := &models.ServiceSLAGoal{MetricID: metricID, Name: name, JQL: query, CalendarID: calendarID, GoalMillis: goalMillis}
 	err = tx.QueryRow(ctx, `
-		INSERT INTO service_sla_goals(metric_id,name,jql,goal_millis,position)
-		SELECT m.id,$4,$5,$6,COALESCE((SELECT max(g.position)+1 FROM service_sla_goals g WHERE g.metric_id=m.id AND g.jql<>''),0)
+		INSERT INTO service_sla_goals(metric_id,name,jql,goal_millis,position,calendar_id)
+		SELECT m.id,$4,$5,$6,COALESCE((SELECT max(g.position)+1 FROM service_sla_goals g WHERE g.metric_id=m.id AND g.jql<>''),0),
+		  (SELECT c.id FROM service_calendars c WHERE c.id=NULLIF($7,'') AND c.service_desk_id=sd.id)
 		FROM service_sla_metrics m JOIN service_desks sd ON sd.id=m.service_desk_id
 		WHERE sd.workspace_id=$1 AND sd.id=$2 AND m.id=$3
 		  AND (SELECT count(*) FROM service_sla_goals g WHERE g.metric_id=m.id AND g.jql<>'') < 50
-		RETURNING id,position`, workspaceID, serviceDeskID, metricID, name, query, goalMillis).Scan(&goal.ID, &goal.Position)
+		  AND ($7='' OR EXISTS(SELECT 1 FROM service_calendars c WHERE c.id=$7 AND c.service_desk_id=sd.id))
+		RETURNING id,position`, workspaceID, serviceDeskID, metricID, name, query, goalMillis, calendarID).Scan(&goal.ID, &goal.Position)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return nil, fmt.Errorf("SLA metric does not exist or already has 50 conditional goals")
+			return nil, fmt.Errorf("SLA metric does not exist, already has 50 conditional goals, or names a calendar of another service desk")
 		}
 		return nil, err
 	}
@@ -59,25 +61,26 @@ func (s *Store) CreateServiceSLAGoal(ctx context.Context, workspaceID, actorID, 
 	return goal, tx.Commit(ctx)
 }
 
-func (s *Store) UpdateServiceSLAGoal(ctx context.Context, workspaceID, actorID, serviceDeskID, metricID, goalID, name, query string, goalMillis int64) error {
+func (s *Store) UpdateServiceSLAGoal(ctx context.Context, workspaceID, actorID, serviceDeskID, metricID, goalID, name, query, calendarID string, goalMillis int64) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	goal := &models.ServiceSLAGoal{ID: goalID, MetricID: metricID, Name: name, JQL: query, GoalMillis: goalMillis}
+	goal := &models.ServiceSLAGoal{ID: goalID, MetricID: metricID, Name: name, JQL: query, CalendarID: calendarID, GoalMillis: goalMillis}
 	result, err := tx.Exec(ctx, `
-		UPDATE service_sla_goals g SET name=$5,jql=$6,goal_millis=$7
+		UPDATE service_sla_goals g SET name=$5,jql=$6,goal_millis=$7,calendar_id=NULLIF($8,'')
 		FROM service_sla_metrics m,service_desks sd
-		WHERE g.metric_id=m.id AND m.service_desk_id=sd.id AND sd.workspace_id=$1 AND sd.id=$2 AND m.id=$3 AND g.id=$4 AND g.jql<>''`,
-		workspaceID, serviceDeskID, metricID, goalID, name, query, goalMillis)
+		WHERE g.metric_id=m.id AND m.service_desk_id=sd.id AND sd.workspace_id=$1 AND sd.id=$2 AND m.id=$3 AND g.id=$4 AND g.jql<>''
+		  AND ($8='' OR EXISTS(SELECT 1 FROM service_calendars c WHERE c.id=$8 AND c.service_desk_id=sd.id))`,
+		workspaceID, serviceDeskID, metricID, goalID, name, query, goalMillis, calendarID)
 	if err != nil {
 		return err
 	}
 	if result.RowsAffected() == 0 {
-		return fmt.Errorf("conditional SLA goal does not exist")
+		return fmt.Errorf("conditional SLA goal does not exist, or names a calendar of another service desk")
 	}
-	if _, err := tx.Exec(ctx, `UPDATE service_sla_cycles SET goal_name=$2,goal_millis=$3 WHERE goal_id=$1 AND stopped_at IS NULL`, goalID, name, goalMillis); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE service_sla_cycles SET goal_name=$2,goal_millis=$3,calendar_id=NULLIF($4,'') WHERE goal_id=$1 AND stopped_at IS NULL`, goalID, name, goalMillis, calendarID); err != nil {
 		return err
 	}
 	if err := writeServiceSLAGoalAudit(ctx, tx, workspaceID, actorID, serviceDeskID, "service.sla.goal.updated", goal); err != nil {
@@ -172,10 +175,10 @@ func (s *Store) ApplyServiceSLAGoals(ctx context.Context, workspaceID, actorID, 
 			return fmt.Errorf("SLA metric %q has no default goal", metric.Name)
 		}
 		if _, err := s.Pool.Exec(ctx, `
-			UPDATE service_sla_cycles SET goal_id=$5,goal_name=$6,goal_millis=$7
+			UPDATE service_sla_cycles SET goal_id=$5,goal_name=$6,goal_millis=$7,calendar_id=NULLIF($8,'')
 			WHERE request_issue_id=$1 AND metric_id=$2 AND stopped_at IS NULL
 			  AND EXISTS(SELECT 1 FROM service_requests sr WHERE sr.issue_id=$1 AND sr.workspace_id=$3 AND sr.service_desk_id=$4)`,
-			issueID, metric.ID, workspaceID, serviceDeskID, selected.ID, selected.Name, selected.GoalMillis); err != nil {
+			issueID, metric.ID, workspaceID, serviceDeskID, selected.ID, selected.Name, selected.GoalMillis, selected.CalendarID); err != nil {
 			return err
 		}
 	}

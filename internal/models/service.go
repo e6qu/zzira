@@ -293,14 +293,19 @@ func ServiceSLAEnteredStatus(statusID string) ServiceSLACondition {
 	return ServiceSLACondition{Key: slaConditionEnteredStatusPrefix + statusID}
 }
 
+// ServiceSLAGoal is one of an SLA's goals: the requests it applies to, the
+// time it allows and the calendar that time is measured in.
+// ServiceSLAGoal is one of an SLA's goals: the requests it applies to, the
+// time it allows and, when it names one, the calendar that time is measured
+// in. An empty CalendarID measures the goal in the metric's calendar.
 type ServiceSLAGoal struct {
-	ID, MetricID, Name, JQL string
-	GoalMillis              int64
-	Position                int
+	ID, MetricID, Name, JQL, CalendarID string
+	GoalMillis                          int64
+	Position                            int
 }
 
 type ServiceSLACycle struct {
-	ID, GoalID, GoalName                       string
+	ID, GoalID, GoalName, CalendarID           string
 	GoalLabel, ElapsedLabel, RemainingLabel    string
 	StartTime, BreachTime                      time.Time
 	StopTime                                   *time.Time
