@@ -351,19 +351,34 @@ const startLiveEditing = (status, text, form) => {
   // Edits not yet shared are kept on this device, so closing the page or
   // reloading it offline loses nothing: the next editor on this page starts
   // from them and merges them like any unsent typing.
-  const keptKey = `zzira-live:${status.dataset.liveUrl}`;
-  const keep = () => {
+  // Each open editor keeps its own entry and refreshes it with every
+  // exchange, so a second editor of the same page never takes typing the
+  // first still holds: it only takes what an editor that closed, or stopped
+  // answering for ten seconds, left behind.
+  const keptPrefix = `zzira-live:${status.dataset.liveUrl}#`;
+  const keptKey = `${keptPrefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  const keep = (closed = false) => {
     try {
       const current = text.get();
-      if (synced !== null && current !== synced) localStorage.setItem(keptKey, JSON.stringify({ session, revision, synced, text: current }));
+      if (synced !== null && current !== synced) localStorage.setItem(keptKey, JSON.stringify({ session, revision, synced, text: current, at: Date.now(), closed }));
       else if (synced !== null) localStorage.removeItem(keptKey);
     } catch {
       // Storage may be full or unavailable; live editing carries on without it.
     }
   };
   let kept = null;
+  let keptFrom = '';
   try {
-    kept = JSON.parse(localStorage.getItem(keptKey) || 'null');
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || !key.startsWith(keptPrefix)) continue;
+      const entry = JSON.parse(localStorage.getItem(key) || 'null');
+      if (!entry || !Number.isFinite(entry.at) || !(entry.closed || Date.now() - entry.at > 10000)) continue;
+      if (!kept || entry.at > kept.at) {
+        kept = entry;
+        keptFrom = key;
+      }
+    }
   } catch {
     kept = null;
   }
@@ -451,13 +466,12 @@ const startLiveEditing = (status, text, form) => {
     }
   };
   if (kept && typeof kept.synced === 'string' && typeof kept.text === 'string' && typeof kept.session === 'string' && Number.isInteger(kept.revision)) {
-    if (kept.text === initial) {
-      try {
-        localStorage.removeItem(keptKey);
-      } catch {
-        // Nothing to forget.
-      }
-    } else {
+    try {
+      localStorage.removeItem(keptFrom);
+    } catch {
+      // Nothing to forget.
+    }
+    if (kept.text !== initial) {
       session = kept.session;
       revision = kept.revision;
       synced = kept.synced;
@@ -479,7 +493,10 @@ const startLiveEditing = (status, text, form) => {
   text.element.addEventListener('compositionend', () => { composing = false; soon(); });
   const timer = window.setInterval(sync, 1000);
   form.addEventListener('submit', () => { stopped = true; window.clearInterval(timer); drawCursors(); });
-  window.addEventListener('pagehide', () => window.clearInterval(timer));
+  window.addEventListener('pagehide', () => {
+    window.clearInterval(timer);
+    keep(true);
+  });
   sync();
 };
 

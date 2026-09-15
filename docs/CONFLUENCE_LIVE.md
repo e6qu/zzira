@@ -64,7 +64,9 @@ exchanged at `POST /wiki/spaces/{space}/pages/{page}/live` (or
   forgotten once everything is shared. An editor opened on that page, even
   offline from the site's page cache, starts from the kept text and merges it
   with what it missed when it connects, as it would unsent typing; kept text
-  the page already contains is discarded.
+  the page already contains is discarded. Each open editor keeps its own
+  entry and refreshes it with every exchange, so another editor of the same
+  page only takes typing left by one that closed or stopped for ten seconds.
 - **Carets.** Each exchange also sends `"cursor":{"position":…,"end":…}`,
   the editor's caret or selection in the text it sent. The server keeps it
   only from an editor holding the latest revision, moves every kept caret
