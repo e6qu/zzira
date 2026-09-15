@@ -90,6 +90,11 @@ test('cumulative flow and control chart follow work through the board', async ({
   const controlCSV = await downloadCSV(page);
   expect(controlCSV.lines[0]).toBe('Work item,Summary,Completed,Cycle time (hours)');
   expect(controlCSV.lines.some((line) => line.startsWith(`${key},`))).toBe(true);
+  await page.getByLabel('Compare with previous period').check();
+  await page.getByRole('button', { name: 'Show window' }).click();
+  await expect(page).toHaveURL(/compare=previous/);
+  await expect(page.getByRole('region', { name: 'Cycle time summary' }).locator('.report-change')).toHaveCount(3);
+  expect((await downloadCSV(page)).lines.some((line) => line.startsWith(`Current period,${key},`))).toBe(true);
   await expect(page.getByRole('region', { name: 'Cycle time summary' })).toContainText('Average cycle time');
   await expect(page.locator('.control-point').first()).toBeAttached();
   await accessible(page);
@@ -123,6 +128,17 @@ test('cumulative flow and control chart follow work through the board', async ({
   expect(createdCSV.lines[0]).toBe('Date,Created,Resolved,Created in total,Resolved in total');
   expect(createdCSV.lines).toHaveLength(8);
   expect(Number(createdCSV.lines[7].split(',')[3])).toBeGreaterThanOrEqual(1);
+  await page.getByLabel('Compare with previous period').check();
+  await page.getByRole('button', { name: 'Update' }).click();
+  await expect(page).toHaveURL(/compare=previous/);
+  await expect(page).toHaveURL(/cumulative=true/);
+  await expect(totals.locator('.report-change')).toHaveCount(2);
+  await expect(totals.locator('.report-change').first()).toContainText('previous 7 days');
+  const comparedCSV = await downloadCSV(page);
+  expect(comparedCSV.lines[0]).toBe('Period,Date,Created,Resolved,Created in total,Resolved in total');
+  expect(comparedCSV.lines).toHaveLength(15);
+  expect(comparedCSV.lines[1]).toMatch(/^Previous period,/);
+  expect(comparedCSV.lines[14]).toMatch(/^Current period,/);
   await accessible(page);
 
   await page.goto(`/projects/${projectKey}/reports`);

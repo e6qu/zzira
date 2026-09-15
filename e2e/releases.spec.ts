@@ -97,6 +97,12 @@ test('plan a release, assign scope, publish notes, archive and delete', async ({
   expect(doraCSV.name).toMatch(/^ZZ-DORA-metrics-\d{4}-\d{2}-\d{2}\.csv$/);
   expect(doraCSV.lines[0]).toBe('Date,Successful deployments,Failed or rolled back');
   expect(doraCSV.lines.length).toBe(await page.getByRole('table').locator('tbody tr').count() + 1);
+  await page.getByLabel('Compare with previous period').check();
+  await page.getByRole('button', { name: 'Update' }).click();
+  await expect(page).toHaveURL(/compare=previous/);
+  await expect(doraSummary.locator('.report-change')).toHaveCount(4);
+  await expect(doraSummary.locator('.report-change').first()).toContainText('previous 30 days');
+  await page.getByText('View daily data', { exact: true }).click();
   await accessible(page);
   await page.locator('[data-theme-toggle]').click();
   await accessible(page);

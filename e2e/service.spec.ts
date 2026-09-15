@@ -399,6 +399,13 @@ test('admin creates a service project with Jira Service Management request types
   const serviceCSV = await downloadCSV(page);
   expect(serviceCSV.lines[0]).toBe('Date,Requests created');
   expect(serviceCSV.lines.slice(1).reduce((sum, line) => sum + Number(line.split(',')[1]), 0)).toBe(1);
+  await page.getByLabel('Compare with previous period').check();
+  await page.getByRole('button', { name: 'Apply filters' }).click();
+  await expect(page).toHaveURL(/compare=previous/);
+  await expect(page.locator('.service-report-metrics article').filter({ hasText: 'Total requests' }).locator('.report-change')).toContainText('previous 30 days');
+  const comparedServiceCSV = await downloadCSV(page);
+  expect(comparedServiceCSV.lines[0]).toBe('Period,Date,Requests created');
+  expect(comparedServiceCSV.lines.filter((line) => line.startsWith('Current period,')).reduce((sum, line) => sum + Number(line.split(',')[2]), 0)).toBe(1);
   await expect(page.locator('.service-report-metrics article').filter({ hasText: 'Total requests' })).toContainText('1');
   await expect(page.locator('.service-report-metrics article').filter({ hasText: 'Open requests' })).toContainText('0');
   await page.getByRole('link', { name: '7 days' }).click();

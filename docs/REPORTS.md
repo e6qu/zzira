@@ -25,10 +25,21 @@ in light and dark themes and at 320 px width.
 Jira Service Management incident request types currently add the `incident`
 label that feeds recovery time; dedicated incident relationships and service
 configuration remain. Deployment approvals, configurable
-environment mapping, excluded-period calendars, team filters, comparison
-periods and targets remain.
-Every Jira and Agile report named in the plan is now available; comparisons
-remain.
+environment mapping, excluded-period calendars, and team filters and targets remain.
+Every Jira and Agile report named in the plan is now available.
+
+## Previous-period comparisons
+
+DORA metrics, the control chart, created vs. resolved, resolution time and the
+service desk report offer Compare with previous period. Each summary figure
+then says how it changed from the same length of time just before the window,
+such as "Up 2 from 3 in the previous 7 days" or "Shorter by 4h than 1d 2h in
+the previous 30 days", computed with the same access, board and filters. A
+window with nothing to measure says so rather than showing a change. The CSV
+download of a compared report adds a Period column and lists the previous
+period's rows before the current ones, and a report email keeps the
+comparison. Service requests are compared by when they were created; open and
+resolved are their statuses now.
 
 ## CSV downloads
 
@@ -104,7 +115,8 @@ has an accessible text alternative and keyboard-reachable data table. SLA
 breaches are calculated with the same desk calendar and holidays used on the
 customer request and attention queue. The Download CSV link exports the daily
 intake series for the filters on screen, and Email this report sends it on a
-schedule. Organization and priority segments and comparison periods remain.
+schedule, with or without a previous-period comparison. Organization and
+priority segments remain.
 
 ## Cumulative flow diagram and control chart
 

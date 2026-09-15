@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -40,6 +41,9 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 		return nil, fmt.Errorf("service report status must be open or resolved")
 	}
 	from := now.UTC().Truncate(24*time.Hour).AddDate(0, 0, -(days - 1))
+	// The window ends with the day of now, so a report for an earlier now is
+	// the same length of time before it.
+	window := "i.created_at >= $3 AND i.created_at < $3 + make_interval(days => " + strconv.Itoa(days) + ")"
 	report := &models.ServiceReport{WindowDays: days, Daily: make([]models.ServiceReportDay, 0), RequestTypes: []models.ServiceReportSegment{}, Channels: []models.ServiceReportSegment{}}
 	if err := s.Pool.QueryRow(ctx, `
 		SELECT count(*),
@@ -49,7 +53,7 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 		JOIN service_desks sd ON sd.id=sr.service_desk_id
 		JOIN issues i ON i.id=sr.issue_id
 		JOIN statuses st ON st.id=i.status_id
-		WHERE sr.workspace_id=$1 AND sd.id=$2 AND i.created_at >= $3
+		WHERE sr.workspace_id=$1 AND sd.id=$2 AND `+window+`
 		  AND ($4='' OR sr.request_type_id=$4) AND ($5='' OR sr.channel=$5)
 		  AND ($6='' OR ($6='open' AND st.category<>'done') OR ($6='resolved' AND st.category='done'))`, workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status).Scan(
 		&report.TotalRequests, &report.OpenRequests, &report.ResolvedRequests); err != nil {
@@ -61,7 +65,7 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 		JOIN service_requests sr ON sr.issue_id=f.request_issue_id
 		JOIN issues i ON i.id=sr.issue_id
 		JOIN statuses st ON st.id=i.status_id
-		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND i.created_at >= $3
+		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND `+window+`
 		  AND ($4='' OR sr.request_type_id=$4) AND ($5='' OR sr.channel=$5)
 		  AND ($6='' OR ($6='open' AND st.category<>'done') OR ($6='resolved' AND st.category='done'))`, workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status).Scan(
 		&report.SatisfactionResponses, &report.AverageSatisfaction); err != nil {
@@ -72,7 +76,7 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 		FROM generate_series($3::date,$4::date,interval '1 day') d(day)
 		LEFT JOIN (
 		  SELECT i.created_at FROM service_requests sr JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
-		  WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND i.created_at >= $3
+		  WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND `+window+`
 		    AND ($5='' OR sr.request_type_id=$5) AND ($6='' OR sr.channel=$6)
 		    AND ($7='' OR ($7='open' AND st.category<>'done') OR ($7='resolved' AND st.category='done'))
 		) filtered ON filtered.created_at::date=d.day::date
@@ -93,7 +97,7 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 	}
 	requestRows, err := s.Pool.Query(ctx, `
 		SELECT sr.issue_id FROM service_requests sr JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
-		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND i.created_at >= $3
+		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND `+window+`
 		  AND ($4='' OR sr.request_type_id=$4) AND ($5='' OR sr.channel=$5)
 		  AND ($6='' OR ($6='open' AND st.category<>'done') OR ($6='resolved' AND st.category='done'))`, workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status)
 	if err != nil {
@@ -134,7 +138,7 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 		SELECT rt.id,rt.name,count(*) FROM service_requests sr
 		JOIN service_request_types rt ON rt.id=sr.request_type_id
 		JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
-		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND i.created_at >= $3
+		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND `+window+`
 		  AND ($4='' OR sr.request_type_id=$4) AND ($5='' OR sr.channel=$5)
 		  AND ($6='' OR ($6='open' AND st.category<>'done') OR ($6='resolved' AND st.category='done'))
 		GROUP BY rt.id,rt.name ORDER BY count(*) DESC,rt.name`, workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status)
@@ -156,7 +160,7 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 	channelRows, err := s.Pool.Query(ctx, `
 		SELECT sr.channel,sr.channel,count(*) FROM service_requests sr
 		JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
-		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND i.created_at >= $3
+		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND `+window+`
 		  AND ($4='' OR sr.request_type_id=$4) AND ($5='' OR sr.channel=$5)
 		  AND ($6='' OR ($6='open' AND st.category<>'done') OR ($6='resolved' AND st.category='done'))
 		GROUP BY sr.channel ORDER BY count(*) DESC,sr.channel`, workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status)
