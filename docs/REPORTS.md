@@ -27,8 +27,8 @@ label that feeds recovery time; dedicated incident relationships and service
 configuration remain. Deployment approvals, configurable
 environment mapping, excluded-period calendars, team filters, comparison
 periods, targets, exports, subscriptions and scheduled delivery remain.
-Created versus resolved, resolution time, epic and version reports remain on
-the active plan.
+Created versus resolved and resolution time reports remain on the active
+plan.
 
 ## Sprint report and velocity chart
 
@@ -98,4 +98,23 @@ work counts only once it is done again, and work that went straight to done
 without starting has no cycle time. The summary gives the number of items and
 the average and median cycle time, the chart marks the average, and a table
 lists each item.
+
+## Epic report and version report
+
+`/projects/{key}/reports/epic` follows the work in an epic (its child work,
+not sub-tasks) and `/projects/{key}/reports/version` the work fixed in an
+unarchived version, both through a chosen board's estimation field or by
+counting work items. The report replays the action log day by day from the
+epic's creation, or from the version's start date or its earliest work, to
+today:
+
+- the chart draws the estimate of all the work that existed each day against
+  the estimate of the work done, so scope growth and progress show together,
+  and a table lists the daily values;
+- the summary gives the share of work items done, the total and remaining
+  estimate and how many work items have no estimate;
+- tables list the completed and incomplete work with their estimates.
+
+Only work the viewer can browse is included, and an epic the viewer cannot see
+answers 404.
 
