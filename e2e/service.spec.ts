@@ -521,7 +521,7 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.locator('#sla-settings .service-calendar-holidays')).not.toContainText('Regional support shutdown');
   const calendarList = page.locator('#sla-settings .service-calendar-list');
   await expect(calendarList).toContainText('default');
-  await calendarList.getByLabel('New calendar').fill('Weekend cover');
+  await calendarList.getByLabel('New calendar', { exact: true }).fill('Weekend cover');
   await calendarList.getByLabel('Opens').fill('10:00');
   await calendarList.getByLabel('Closes').fill('16:00');
   await calendarList.getByRole('button', { name: 'Add calendar' }).click();
