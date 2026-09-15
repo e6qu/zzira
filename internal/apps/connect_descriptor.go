@@ -119,10 +119,11 @@ type connectPermissionWire struct {
 }
 
 type connectRemoteModuleWire struct {
-	Key      string          `json:"key"`
-	URL      string          `json:"url"`
-	Location string          `json:"location"`
-	Name     connectNameWire `json:"name"`
+	Key        string            `json:"key"`
+	URL        string            `json:"url"`
+	Location   string            `json:"location"`
+	Name       connectNameWire   `json:"name"`
+	Conditions []json.RawMessage `json:"conditions"`
 }
 
 type connectIssueTabPanelWire struct {
@@ -148,7 +149,6 @@ type connectAdminPageWire struct {
 
 type connectWebItemWire struct {
 	connectRemoteModuleWire
-	Conditions []json.RawMessage `json:"conditions"`
 }
 
 type connectIssueContentWire struct {
@@ -518,7 +518,11 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 				return models.AppDescriptor{}, fmt.Errorf("invalid Connect %s: %w", moduleType, err)
 			}
 			for _, module := range modules {
-				translated := moduleWire{Key: module.Key, URL: module.URL, Title: module.Name.Value}
+				conditions, err := connectConditions(module.Conditions)
+				if err != nil {
+					return models.AppDescriptor{}, fmt.Errorf("Connect %s %q: %w", moduleType, module.Key, err)
+				}
+				translated := moduleWire{Key: module.Key, URL: module.URL, Title: module.Name.Value, Conditions: conditions}
 				switch moduleType {
 				case "generalPages":
 					translated.Type, translated.Location = "jira:globalPage", "jira.navigation"
@@ -555,10 +559,13 @@ func translateConnectAdminPage(module connectAdminPageWire) (moduleWire, error) 
 	if module.Location != "advanced_menu_section/advanced_section" {
 		return moduleWire{}, fmt.Errorf("Connect admin page %q uses unsupported location %q", module.Key, module.Location)
 	}
-	if module.Cacheable || module.FullPage || len(module.Conditions) > 0 {
-		return moduleWire{}, fmt.Errorf("Connect admin page %q uses unsupported cacheable, fullPage, or conditions behavior", module.Key)
+	if module.Cacheable || module.FullPage {
+		return moduleWire{}, fmt.Errorf("Connect admin page %q uses unsupported cacheable or fullPage behavior", module.Key)
 	}
-	var err error
+	conditions, err := connectConditions(module.Conditions)
+	if err != nil {
+		return moduleWire{}, fmt.Errorf("Connect admin page %q: %w", module.Key, err)
+	}
 	if module.URL, err = appendConnectParams(module.URL, module.Params); err != nil {
 		return moduleWire{}, fmt.Errorf("Connect admin page %q: %w", module.Key, err)
 	}
@@ -566,7 +573,7 @@ func translateConnectAdminPage(module connectAdminPageWire) (moduleWire, error) 
 	if weight == 0 {
 		weight = 100
 	}
-	return moduleWire{Key: module.Key, Type: "jira:adminPage", Location: "jira.admin", Title: module.Name.Value, URL: module.URL, Position: weight}, nil
+	return moduleWire{Key: module.Key, Type: "jira:adminPage", Location: "jira.admin", Title: module.Name.Value, URL: module.URL, Position: weight, Conditions: conditions}, nil
 }
 
 func translateConnectIssueTabPanel(module connectIssueTabPanelWire) (moduleWire, error) {
@@ -576,10 +583,10 @@ func translateConnectIssueTabPanel(module connectIssueTabPanelWire) (moduleWire,
 	if !connectModuleKeyPattern.MatchString(module.Key) || module.Name.Value == "" || len(module.Name.Value) > 1500 || !validAppCallbackPath(module.URL) {
 		return moduleWire{}, fmt.Errorf("Connect issue tab panel needs a valid key, name, and relative URL")
 	}
-	if len(module.Conditions) > 0 {
-		return moduleWire{}, fmt.Errorf("Connect issue tab panel %q uses unsupported conditions", module.Key)
+	conditions, err := connectConditions(module.Conditions)
+	if err != nil {
+		return moduleWire{}, fmt.Errorf("Connect issue tab panel %q: %w", module.Key, err)
 	}
-	var err error
 	if module.URL, err = appendConnectParams(module.URL, module.Params); err != nil {
 		return moduleWire{}, fmt.Errorf("Connect issue tab panel %q: %w", module.Key, err)
 	}
@@ -587,7 +594,7 @@ func translateConnectIssueTabPanel(module connectIssueTabPanelWire) (moduleWire,
 	if weight == 0 {
 		weight = 100
 	}
-	return moduleWire{Key: module.Key, Type: "jira:issueTabPanel", Location: "jira.issue.activity", Title: module.Name.Value, URL: module.URL, Position: weight}, nil
+	return moduleWire{Key: module.Key, Type: "jira:issueTabPanel", Location: "jira.issue.activity", Title: module.Name.Value, URL: module.URL, Position: weight, Conditions: conditions}, nil
 }
 
 func translateConnectIssueContext(module connectIssueContextWire) (moduleWire, error) {
@@ -609,11 +616,12 @@ func translateConnectIssueViewContext(module connectIssueContextWire, translated
 	if !moduleKeyPattern.MatchString(module.Key) || module.Name.Value == "" || len(module.Name.Value) > 1500 || module.Content.Type != "label" || module.Content.Label.Value == "" || len(module.Content.Label.Value) > 1500 || module.Target.Type != "web_panel" || !validAppCallbackPath(module.Target.URL) || !validAppCallbackPath(icon) {
 		return moduleWire{}, fmt.Errorf("Connect issue context or glance needs a valid key, name, label content, relative icon, and web_panel target")
 	}
-	if len(module.Conditions) > 0 {
-		return moduleWire{}, fmt.Errorf("Connect issue context %q uses unsupported conditions", module.Key)
+	conditions, err := connectConditions(module.Conditions)
+	if err != nil {
+		return moduleWire{}, fmt.Errorf("Connect issue context %q: %w", module.Key, err)
 	}
 	meta, _ := json.Marshal(connectIssueContextMeta{IconURL: module.Icon.URL, Label: module.Content.Label.Value})
-	return moduleWire{Key: module.Key, Type: translatedType, Location: "jira.issue.context", Title: module.Name.Value, Body: string(meta), URL: module.Target.URL}, nil
+	return moduleWire{Key: module.Key, Type: translatedType, Location: "jira.issue.context", Title: module.Name.Value, Body: string(meta), URL: module.Target.URL, Conditions: conditions}, nil
 }
 
 func translateConnectDashboardItem(module connectDashboardItemWire) (moduleWire, error) {
@@ -634,7 +642,7 @@ func translateConnectDashboardItem(module connectDashboardItemWire) (moduleWire,
 		return moduleWire{}, fmt.Errorf("Connect dashboard item %q: %w", module.Key, err)
 	}
 	meta, _ := json.Marshal(connectDashboardItemMeta{Description: module.Description.Value, ThumbnailURL: module.ThumbnailURL, Configurable: module.Configurable, Refreshable: module.Refreshable, Conditions: conditions})
-	return moduleWire{Key: module.Key, Type: "jira:dashboardGadget", Location: "jira.dashboard", Title: module.Name.Value, Body: string(meta), URL: module.URL}, nil
+	return moduleWire{Key: module.Key, Type: "jira:dashboardGadget", Location: "jira.dashboard", Title: module.Name.Value, Body: string(meta), URL: module.URL, Conditions: conditions}, nil
 }
 
 func translateConnectReport(module connectReportWire) (moduleWire, error) {
@@ -663,14 +671,14 @@ func translateConnectProjectAdminPage(module connectProjectAdminPageWire) (modul
 	if !moduleKeyPattern.MatchString(module.Key) || module.Name.Value == "" || len(module.Name.Value) > 1500 || !validAppCallbackPath(module.URL) || group == 0 {
 		return moduleWire{}, fmt.Errorf("Connect project admin tab needs a valid key, name, relative URL, and projectgroup1 through projectgroup4 location")
 	}
-	if len(module.Conditions) > 0 {
-		return moduleWire{}, fmt.Errorf("Connect project admin tab %q uses unsupported conditions", module.Key)
+	conditions, err := connectConditions(module.Conditions)
+	if err != nil {
+		return moduleWire{}, fmt.Errorf("Connect project admin tab %q: %w", module.Key, err)
 	}
-	var err error
 	if module.URL, err = appendConnectParams(module.URL, module.Params); err != nil {
 		return moduleWire{}, fmt.Errorf("Connect project admin tab %q: %w", module.Key, err)
 	}
-	return moduleWire{Key: module.Key, Type: "jira:projectAdminPage", Location: "jira.project.settings", Title: module.Name.Value, URL: module.URL, Position: group + module.Weight}, nil
+	return moduleWire{Key: module.Key, Type: "jira:projectAdminPage", Location: "jira.project.settings", Title: module.Name.Value, URL: module.URL, Position: group + module.Weight, Conditions: conditions}, nil
 }
 
 func appendConnectParams(moduleURL string, params map[string]string) (string, error) {
@@ -699,15 +707,16 @@ func translateConnectProjectPage(module connectProjectPageWire) (moduleWire, err
 	if !moduleKeyPattern.MatchString(module.Key) || module.Name.Value == "" || len(module.Name.Value) > 1500 || !validAppCallbackPath(module.URL) || !validAppCallbackPath(module.IconURL) {
 		return moduleWire{}, fmt.Errorf("Connect project page needs a valid key, name, relative URL, and relative iconUrl")
 	}
-	if len(module.Conditions) > 0 {
-		return moduleWire{}, fmt.Errorf("Connect project page %q uses unsupported conditions", module.Key)
+	conditions, err := connectConditions(module.Conditions)
+	if err != nil {
+		return moduleWire{}, fmt.Errorf("Connect project page %q: %w", module.Key, err)
 	}
 	weight := module.Weight
 	if weight == 0 {
 		weight = 100
 	}
 	meta, _ := json.Marshal(connectProjectPageMeta{IconURL: module.IconURL})
-	return moduleWire{Key: module.Key, Type: "jira:projectPage", Location: "jira.project.page", Title: module.Name.Value, Body: string(meta), URL: module.URL, Position: weight}, nil
+	return moduleWire{Key: module.Key, Type: "jira:projectPage", Location: "jira.project.page", Title: module.Name.Value, Body: string(meta), URL: module.URL, Position: weight, Conditions: conditions}, nil
 }
 
 func translateConnectIssueContent(module connectIssueContentWire) (moduleWire, error) {
@@ -734,7 +743,11 @@ func translateConnectWebItem(module connectWebItemWire) (moduleWire, error) {
 	module.URL = strings.TrimSpace(module.URL)
 	module.Location = strings.TrimSpace(module.Location)
 	module.Name.Value = strings.TrimSpace(module.Name.Value)
-	translated := moduleWire{Key: module.Key, URL: module.URL, Title: module.Name.Value}
+	conditions, err := connectConditions(module.Conditions)
+	if err != nil {
+		return moduleWire{}, fmt.Errorf("Connect web item %q: %w", module.Key, err)
+	}
+	translated := moduleWire{Key: module.Key, URL: module.URL, Title: module.Name.Value, Conditions: conditions}
 	switch module.Location {
 	case "system.top.navigation.bar":
 		translated.Type, translated.Location = "jira:webItem", "jira.navigation"
@@ -742,9 +755,6 @@ func translateConnectWebItem(module connectWebItemWire) (moduleWire, error) {
 		translated.Type, translated.Location = "confluence:webItem", "confluence.navigation"
 	default:
 		return moduleWire{}, fmt.Errorf("Connect web item %q uses unsupported location %q", module.Key, module.Location)
-	}
-	if len(module.Conditions) > 0 {
-		return moduleWire{}, fmt.Errorf("Connect web item %q uses unsupported conditions", module.Key)
 	}
 	return translated, nil
 }

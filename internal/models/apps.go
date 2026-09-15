@@ -110,6 +110,8 @@ type AppModule struct {
 	ContextStatusAccessibleLabel                 string
 	Position                                     int
 	Dynamic                                      bool
+	// Conditions are the module's Connect conditions, nil when it has none.
+	Conditions json.RawMessage
 }
 
 type AppIssueContent struct {

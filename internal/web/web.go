@@ -666,7 +666,9 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
-	appContexts = selectIssueContextModules(appContexts)
+	issueFacts := h.appConditionFactsFor(r.Context(), wsID, user, nil, issue)
+	appPanels = appModulesShown(appPanels, issueFacts)
+	appContexts = selectIssueContextModules(appModulesShown(appContexts, issueFacts))
 	issueProperties := map[string]json.RawMessage{}
 	if len(appContexts) > 0 {
 		issueProperties, err = h.Store.IssueProperties(r.Context(), issue.ID)
@@ -682,6 +684,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	appActivityTabs = appModulesShown(appActivityTabs, issueFacts)
 	appIssueContent, err := h.Store.AppIssueContentForIssue(r.Context(), wsID, issue.ID)
 	if err != nil {
 		return nil, err

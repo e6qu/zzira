@@ -136,6 +136,18 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 		}
 	}
 	navigation.Current = selectCurrentProject(navigation.Projects, selection)
+	// App modules show only to people their Connect conditions admit: site
+	// items by who they are, project items in the current project.
+	siteFacts := h.appConditionFactsFor(r.Context(), workspaceID, currentUser, nil, nil)
+	navigation.AppModules = appModulesShown(navigation.AppModules, siteFacts)
+	navigation.AdminAppModules = appModulesShown(navigation.AdminAppModules, siteFacts)
+	var currentProject *models.Project
+	if navigation.Current != nil {
+		currentProject = navigation.Current.Project
+	}
+	projectFacts := h.appConditionFactsFor(r.Context(), workspaceID, currentUser, currentProject, nil)
+	navigation.ProjectAppModules = appModulesShown(navigation.ProjectAppModules, projectFacts)
+	navigation.ProjectAdminAppModules = appModulesShown(navigation.ProjectAdminAppModules, projectFacts)
 	if currentUser != nil && navigation.Current != nil {
 		navigation.CanManageCurrentProject, err = h.Store.CanAdministerProject(r.Context(), workspaceID, currentUser.ID, navigation.Current.Project.ID)
 		if err != nil {

@@ -1484,6 +1484,7 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 				http.Error(w, "Could not load page apps.", 500)
 				return
 			}
+			data.AppByline = appModulesShown(data.AppByline, h.appConditionFactsFor(r.Context(), ws, user, nil, nil))
 			data.PageProperties, err = h.Store.WikiPageProperties(r.Context(), ws, user.ID, page.ID, "")
 			if err != nil {
 				http.Error(w, "Could not load page properties.", 500)

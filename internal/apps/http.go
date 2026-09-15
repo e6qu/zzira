@@ -370,7 +370,7 @@ func parseDynamicModules(body []byte, installation *models.AppInstallation) ([]m
 					return nil, fmt.Errorf("dynamic web item needs a unique key, name, relative URL, and supported navigation location")
 				}
 				keys[translated.Key] = true
-				modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: translated.Key, Descriptor: entry, Module: models.AppModule{Key: translated.Key, Type: translated.Type, Location: translated.Location, Title: translated.Title, RemoteURL: translated.URL, Dynamic: true}})
+				modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: translated.Key, Descriptor: entry, Module: models.AppModule{Key: translated.Key, Type: translated.Type, Location: translated.Location, Title: translated.Title, RemoteURL: translated.URL, Dynamic: true, Conditions: translated.Conditions}})
 				continue
 			}
 			if moduleType == "jiraIssueFields" {
@@ -432,7 +432,7 @@ func parseDynamicModules(body []byte, installation *models.AppInstallation) ([]m
 					return nil, fmt.Errorf("dynamic module keys must be unique")
 				}
 				keys[translated.Key] = true
-				modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: translated.Key, Descriptor: entry, Module: models.AppModule{Key: translated.Key, Type: translated.Type, Location: translated.Location, Title: translated.Title, Body: translated.Body, RemoteURL: translated.URL, Dynamic: true}})
+				modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: translated.Key, Descriptor: entry, Module: models.AppModule{Key: translated.Key, Type: translated.Type, Location: translated.Location, Title: translated.Title, Body: translated.Body, RemoteURL: translated.URL, Dynamic: true, Conditions: translated.Conditions}})
 				continue
 			}
 			if moduleType == "webhooks" {
@@ -461,8 +461,12 @@ func parseDynamicModules(body []byte, installation *models.AppInstallation) ([]m
 			if !moduleKeyPattern.MatchString(input.Key) || keys[input.Key] || !validAppCallbackPath(input.URL) || !connectIssuePanelLocation(input.Location) || input.Name.Value == "" || len(input.Name.Value) > 255 {
 				return nil, fmt.Errorf("dynamic web panel needs a unique key, name, relative URL, and supported issue-view location")
 			}
+			conditions, err := connectConditions(input.Conditions)
+			if err != nil {
+				return nil, fmt.Errorf("dynamic web panel %q: %w", input.Key, err)
+			}
 			keys[input.Key] = true
-			modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: input.Key, Descriptor: entry, Module: models.AppModule{Key: input.Key, Type: "jira:issuePanel", Location: "jira.issue.view", Title: input.Name.Value, RemoteURL: input.URL, Dynamic: true}})
+			modules = append(modules, models.AppDynamicModule{Type: moduleType, Key: input.Key, Descriptor: entry, Module: models.AppModule{Key: input.Key, Type: "jira:issuePanel", Location: "jira.issue.view", Title: input.Name.Value, RemoteURL: input.URL, Dynamic: true, Conditions: conditions}})
 		}
 	}
 	return modules, nil

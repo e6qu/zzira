@@ -352,7 +352,7 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptorRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Dynamic test","baseUrl":"https://connect.example.test/base","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"webPanels":[{"key":"static-panel","url":"/static","location":"atl.jira.view.issue.right.context","name":{"value":"Static panel"}}],"jiraIssueFields":[{"key":"static-score","name":{"value":"Static score"},"description":{"value":"Installed with the app"},"type":"number"}],"jiraIssueContents":[{"key":"runbook","name":{"value":"Runbook"},"tooltip":{"value":"Add runbook"},"icon":{"url":"/runbook.svg"},"target":{"type":"web_panel","url":"/runbook?issue={issue.key}"}}]}}`, appKey))
+	descriptorRaw := []byte(fmt.Sprintf(`{"key":%q,"name":"Dynamic test","baseUrl":"https://connect.example.test/base","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"webPanels":[{"key":"static-panel","url":"/static","location":"atl.jira.view.issue.right.context","name":{"value":"Static panel"},"conditions":[{"condition":"has_issue_permission","params":{"permission":"EDIT_ISSUES"}}]}],"jiraIssueFields":[{"key":"static-score","name":{"value":"Static score"},"description":{"value":"Installed with the app"},"type":"number"}],"jiraIssueContents":[{"key":"runbook","name":{"value":"Runbook"},"tooltip":{"value":"Add runbook"},"icon":{"url":"/runbook.svg"},"target":{"type":"web_panel","url":"/runbook?issue={issue.key}"}}]}}`, appKey))
 	descriptor, err := ParseDescriptor(descriptorRaw)
 	if err != nil {
 		t.Fatal(err)
@@ -416,6 +416,17 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 	if err != nil || issueContentModule == nil {
 		t.Fatalf("issue content modules = %+v, %v", issueContentModules, err)
 	}
+	// A static module keeps the conditions its descriptor gives it.
+	issuePanels, err := st.AppModulesByLocation(ctx, workspaceID, "jira.issue.view")
+	staticConditions := ""
+	for _, module := range issuePanels {
+		if module.InstallationID == installation.ID && module.Key == "static-panel" {
+			staticConditions = string(module.Conditions)
+		}
+	}
+	if err != nil || !strings.Contains(staticConditions, `"has_issue_permission"`) || !strings.Contains(staticConditions, `"EDIT_ISSUES"`) {
+		t.Fatalf("static panel conditions = %q, %v", staticConditions, err)
+	}
 	if err := st.SetAppIssueContent(ctx, workspaceID, issueID, adminID, issueContentModule.ID, true); err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +465,7 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 		return response
 	}
 
-	dynamic := `{"webPanels":[{"key":"dynamic-risk","url":"/risk?issue={issue.key}","location":"atl.jira.view.issue.right.context","name":{"value":"Dynamic risk"}}],"webItems":[{"key":"dynamic-nav","url":"/dynamic-nav","location":"system.top.navigation.bar","name":{"value":"Dynamic navigation"}}],"webhooks":[{"key":"dynamic-hook","event":"jira:issue_created","url":"/hooks/dynamic","filter":"project = ZZ"}],"jiraIssueFields":[{"key":"dynamic-score","name":{"value":"Dynamic score"},"description":{"value":"Registered at runtime"},"type":"number"}]}`
+	dynamic := `{"webPanels":[{"key":"dynamic-risk","url":"/risk?issue={issue.key}","location":"atl.jira.view.issue.right.context","name":{"value":"Dynamic risk"},"conditions":[{"condition":"is_issue_unassigned"}]}],"webItems":[{"key":"dynamic-nav","url":"/dynamic-nav","location":"system.top.navigation.bar","name":{"value":"Dynamic navigation"},"conditions":[{"condition":"user_is_admin","invert":true}]}],"webhooks":[{"key":"dynamic-hook","event":"jira:issue_created","url":"/hooks/dynamic","filter":"project = ZZ"}],"jiraIssueFields":[{"key":"dynamic-score","name":{"value":"Dynamic score"},"description":{"value":"Registered at runtime"},"type":"number"}]}`
 	call(http.MethodPost, dynamicPath, dynamic, http.StatusOK)
 	listed := call(http.MethodGet, dynamicPath, "", http.StatusOK)
 	if !strings.Contains(listed.Body.String(), `"dynamic-risk"`) || !strings.Contains(listed.Body.String(), `"webPanels"`) || !strings.Contains(listed.Body.String(), `"dynamic-nav"`) || !strings.Contains(listed.Body.String(), `"dynamic-hook"`) || !strings.Contains(listed.Body.String(), `"dynamic-score"`) {
@@ -470,7 +481,7 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 	}
 	found := false
 	for _, module := range modules {
-		if module.InstallationID == installation.ID && module.Key == "dynamic-risk" && module.Dynamic && module.RemoteURL == "/risk?issue={issue.key}" {
+		if module.InstallationID == installation.ID && module.Key == "dynamic-risk" && module.Dynamic && module.RemoteURL == "/risk?issue={issue.key}" && strings.Contains(string(module.Conditions), "is_issue_unassigned") {
 			found = true
 		}
 	}
@@ -483,7 +494,7 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 	}
 	found = false
 	for _, module := range navigation {
-		found = found || module.InstallationID == installation.ID && module.Key == "dynamic-nav" && module.Dynamic && module.Type == "jira:webItem"
+		found = found || module.InstallationID == installation.ID && module.Key == "dynamic-nav" && module.Dynamic && module.Type == "jira:webItem" && strings.Contains(string(module.Conditions), "user_is_admin")
 	}
 	if !found {
 		t.Fatalf("dynamic web item not materialized: %+v", navigation)
@@ -537,6 +548,7 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 	}
 	call(http.MethodPost, dynamicPath, `{"jiraEntityProperties":[{"key":"dynamic-bad-index","name":{"value":"Bad"},"entityType":"board","keyConfigurations":[{"propertyKey":"release","extractions":[{"objectName":"train","type":"string"}]}]}]}`, http.StatusBadRequest)
 	call(http.MethodPost, dynamicPath, `{"webPanels":[{"key":"static-panel","url":"/duplicate","location":"atl.jira.view.issue.right.context","name":{"value":"Duplicate"}}]}`, http.StatusBadRequest)
+	call(http.MethodPost, dynamicPath, `{"webItems":[{"key":"dynamic-bad-condition","url":"/bad","location":"system.top.navigation.bar","name":{"value":"Bad"},"conditions":[{"condition":"can_attach_file_to_issue"}]}]}`, http.StatusBadRequest)
 	if err := st.UpdateAppState(ctx, workspaceID, adminID, appKey, "uninstalled", true); err != nil {
 		t.Fatal(err)
 	}
@@ -553,10 +565,18 @@ func TestConnectDynamicModulesAndIssueFields(t *testing.T) {
 	}
 	found = false
 	for _, module := range modules {
-		found = found || module.InstallationID == installation.ID && module.Key == "dynamic-risk" && module.Dynamic
+		found = found || module.InstallationID == installation.ID && module.Key == "dynamic-risk" && module.Dynamic && strings.Contains(string(module.Conditions), "is_issue_unassigned")
 	}
 	if !found {
 		t.Fatalf("dynamic issue panel was not restored after reinstall: %+v", modules)
+	}
+	navigation, err = st.AppNavigationModules(ctx, workspaceID)
+	found = false
+	for _, module := range navigation {
+		found = found || module.InstallationID == installation.ID && module.Key == "dynamic-nav" && strings.Contains(string(module.Conditions), "user_is_admin")
+	}
+	if err != nil || !found {
+		t.Fatalf("dynamic web item conditions were not restored after reinstall: %+v, %v", navigation, err)
 	}
 	issueContent, err = st.AppIssueContentForIssue(ctx, workspaceID, issueID)
 	contentAdded = false
