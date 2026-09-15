@@ -281,6 +281,36 @@ test('admin creates a service project with Jira Service Management request types
   await requestRow.getByRole('button', { name: 'Assign to me' }).click();
   await page.getByRole('link', { name: 'Assigned to me', exact: true }).click();
   await expect(page.getByRole('row').filter({ hasText: requestSummary }).getByRole('button', { name: 'Unassign' })).toBeVisible();
+  // The queue's action bar changes the selected requests together.
+  const bulk = page.locator('#bulk-requests');
+  const assignedRow = page.getByRole('row').filter({ hasText: requestSummary });
+  await page.getByLabel('Select all requests in Assigned to me').check();
+  await expect(assignedRow.getByRole('checkbox')).toBeChecked();
+  await page.getByLabel('Select all requests in Assigned to me').uncheck();
+  await assignedRow.getByRole('checkbox').check();
+  await bulk.getByLabel('Action').selectOption('comment');
+  await bulk.getByLabel('Comment', { exact: true }).fill('Checked by the queue together.');
+  await bulk.getByLabel('Comment visibility').selectOption('internal');
+  await accessible(page);
+  await bulk.getByRole('button', { name: 'Apply to selected requests' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'requests changed' })).toHaveText(/^1 of 1 requests changed\.$/);
+  const targetStatus = await page.locator('#bulk-status option').first().getAttribute('value');
+  expect(targetStatus).toBeTruthy();
+  await page.getByRole('row').filter({ hasText: requestSummary }).getByRole('checkbox').check();
+  await page.locator('#bulk-requests').getByLabel('Action').selectOption('transition');
+  await page.locator('#bulk-requests').getByLabel('Status').selectOption(targetStatus!);
+  await page.locator('#bulk-requests').getByRole('button', { name: 'Apply to selected requests' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'requests changed' })).toHaveText(/^1 of 1 requests changed\.$/);
+  await expect(page.getByRole('row').filter({ hasText: requestSummary })).toContainText(targetStatus!);
+  // Nothing selected is refused with the reason.
+  await page.locator('#bulk-requests').getByRole('button', { name: 'Apply to selected requests' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Select the requests' })).toHaveText('Select the requests to change.');
+  await page.getByRole('row').filter({ hasText: requestSummary }).getByRole('checkbox').check();
+  await page.locator('#bulk-requests').getByLabel('Action').selectOption('assign');
+  await page.locator('#bulk-requests').getByLabel('Assignee').selectOption('');
+  await page.locator('#bulk-requests').getByRole('button', { name: 'Apply to selected requests' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'requests changed' })).toHaveText(/^1 of 1 requests changed\.$/);
+  await expect(page.getByRole('row').filter({ hasText: requestSummary })).toHaveCount(0);
   const agentSettings = page.locator('#agents');
   await expect(agentSettings.getByRole('heading', { name: 'Agents' })).toBeVisible();
   await agentSettings.getByRole('button', { name: /Add agent Demo User/ }).click();

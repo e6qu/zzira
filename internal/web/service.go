@@ -7,6 +7,7 @@ import (
 	"github.com/e6qu/zzira/internal/store"
 	"math"
 	"net/http"
+	"net/url"
 	"slices"
 	"sort"
 	"strconv"
@@ -46,6 +47,13 @@ type serviceReportDayView struct {
 }
 
 type servicePageData struct {
+	// BulkStatuses are the statuses selected queue requests can move to,
+	// DeskAgents the people requests can be assigned to, and BulkNotice and
+	// BulkProblem what the last bulk action did.
+	BulkStatuses          []string
+	DeskAgents            []*models.User
+	BulkNotice            string
+	BulkProblem           string
 	ReportActions         reportActions
 	ReportCompare         bool
 	ReportComparison      map[string]string
@@ -305,6 +313,26 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 				http.NotFound(w, r)
 				return
 			}
+			statuses := map[string]bool{}
+			for _, request := range data.Requests {
+				transitions, err := h.servicePageTransitions(r, workspaceID, user.ID, request)
+				if err != nil {
+					http.Error(w, "Could not load request transitions.", http.StatusInternalServerError)
+					return
+				}
+				for _, transition := range transitions {
+					statuses[transition.To] = true
+				}
+			}
+			for status := range statuses {
+				data.BulkStatuses = append(data.BulkStatuses, status)
+			}
+			sort.Strings(data.BulkStatuses)
+			if data.DeskAgents, err = h.Store.ServiceDeskAgents(r.Context(), workspaceID, deskID); err != nil {
+				http.Error(w, "Could not load service desk agents.", http.StatusInternalServerError)
+				return
+			}
+			data.BulkNotice, data.BulkProblem = r.URL.Query().Get("bulk"), r.URL.Query().Get("bulkError")
 		}
 		data.Customers, err = h.Store.ServiceDeskCustomers(r.Context(), workspaceID, deskID, "")
 		if err != nil {
@@ -1590,4 +1618,127 @@ func (h *Handler) ServiceRequestTransition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key)
+}
+
+// ServiceQueueBulk applies one action to the requests an agent selects in a
+// queue, as Jira Service Management's queue action bar does: assigning them
+// to an agent or leaving them unassigned, moving each to a status through a
+// transition its workflow offers, or commenting on them as an internal note or
+// a reply to the customer. Requests it cannot change are named with the
+// reason, and the rest are changed.
+func (h *Handler) ServiceQueueBulk(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	deskID := r.PathValue("desk")
+	agent, err := h.Store.IsServiceAgent(r.Context(), workspaceID, deskID, user.ID)
+	if err != nil || !agent {
+		http.Error(w, "Service agent access is required.", http.StatusForbidden)
+		return
+	}
+	back := func(notice, problem string) {
+		query := url.Values{"queue": {r.PostFormValue("queue")}}
+		if notice != "" {
+			query.Set("bulk", notice)
+		}
+		if problem != "" {
+			if len(problem) > 1500 {
+				problem = problem[:1500] + "…"
+			}
+			query.Set("bulkError", problem)
+		}
+		redirectLocal(w, r, "/service/agent/"+url.PathEscape(deskID)+"?"+query.Encode())
+	}
+	keys := r.PostForm["request"]
+	if len(keys) == 0 {
+		back("", "Select the requests to change.")
+		return
+	}
+	if len(keys) > 100 {
+		back("", "Change at most 100 requests at a time.")
+		return
+	}
+	action := r.PostFormValue("action")
+	assignee := r.PostFormValue("assignee")
+	status := strings.TrimSpace(r.PostFormValue("status"))
+	body := strings.TrimSpace(r.PostFormValue("body"))
+	switch action {
+	case "assign":
+		if assignee != "" {
+			agents, err := h.Store.ServiceDeskAgents(r.Context(), workspaceID, deskID)
+			if err != nil {
+				http.Error(w, "Could not load service desk agents.", http.StatusInternalServerError)
+				return
+			}
+			found := false
+			for _, candidate := range agents {
+				found = found || candidate.ID == assignee
+			}
+			if !found {
+				back("", "Assign requests to an agent of this service desk.")
+				return
+			}
+		}
+	case "transition":
+		if status == "" {
+			back("", "Choose the status to move the requests to.")
+			return
+		}
+	case "comment":
+		if body == "" {
+			back("", "Write the comment to add to the requests.")
+			return
+		}
+	default:
+		back("", "Choose an action for the selected requests.")
+		return
+	}
+	changed := 0
+	problems := []string{}
+	for _, key := range keys {
+		request, err := h.Store.ServiceRequest(r.Context(), workspaceID, user.ID, key, true)
+		if err != nil || request.ServiceDesk.ID != deskID {
+			problems = append(problems, key+" is not a request of this service desk.")
+			continue
+		}
+		switch action {
+		case "assign":
+			value := assignee
+			_, _, err = h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{ActorID: user.ID, WorkspaceID: workspaceID, IssueIDOrKey: request.Issue.ID, AssigneeID: &value})
+		case "transition":
+			if request.Issue.Status.Name == status {
+				problems = append(problems, request.Issue.Key+" is already "+status+".")
+				continue
+			}
+			transitions, transitionErr := h.servicePageTransitions(r, workspaceID, user.ID, request)
+			if transitionErr != nil {
+				http.Error(w, "Could not load request transitions.", http.StatusInternalServerError)
+				return
+			}
+			transitionID := ""
+			for _, transition := range transitions {
+				if transition.To == status && transitionID == "" {
+					transitionID = transition.ID
+				}
+			}
+			if transitionID == "" {
+				problems = append(problems, request.Issue.Key+" cannot move from "+request.Issue.Status.Name+" to "+status+".")
+				continue
+			}
+			_, err = h.Commands.TransitionServiceRequest(r.Context(), user.ID, workspaceID, request.Issue.ID, transitionID)
+		case "comment":
+			_, err = h.Commands.AddServiceRequestComment(r.Context(), user.ID, workspaceID, request.Issue.ID, json.RawMessage(nil), body, r.PostFormValue("visibility") == "public")
+		}
+		if err != nil {
+			problems = append(problems, request.Issue.Key+": "+err.Error())
+			continue
+		}
+		changed++
+	}
+	notice := ""
+	if changed > 0 {
+		notice = fmt.Sprintf("%d of %d requests changed.", changed, len(keys))
+	}
+	back(notice, strings.Join(problems, " "))
 }
