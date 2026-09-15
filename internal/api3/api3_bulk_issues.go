@@ -2,7 +2,9 @@ package api3
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -111,7 +113,8 @@ func (h *Handler) bulkAvailableTransitions(w http.ResponseWriter, r *http.Reques
 		workflowIDs = append(workflowIDs, id)
 	}
 	sort.Strings(workflowIDs)
-	start, cursorErr := bulkFieldPageStart(r, len(workflowIDs))
+	pageQuery := bulkPageQuery(issues, "")
+	start, cursorErr := bulkFieldPageStart(r, pageQuery, len(workflowIDs))
 	if cursorErr != nil {
 		bulkOperationError(w, http.StatusBadRequest, cursorErr.Error())
 		return
@@ -142,10 +145,10 @@ func (h *Handler) bulkAvailableTransitions(w http.ResponseWriter, r *http.Reques
 	}
 	response := map[string]any{"availableTransitions": result}
 	if start > 0 {
-		response["endingBefore"] = encodeBulkFieldCursor(start)
+		response["endingBefore"] = encodeBulkFieldCursor(pageQuery, start)
 	}
 	if end < len(workflowIDs) {
-		response["startingAfter"] = encodeBulkFieldCursor(end)
+		response["startingAfter"] = encodeBulkFieldCursor(pageQuery, end)
 	}
 	writeJSON(w, http.StatusOK, response)
 }
@@ -498,7 +501,8 @@ func (h *Handler) bulkEditableFields(w http.ResponseWriter, r *http.Request) {
 		bulkOperationError(w, http.StatusNotFound, "No editable fields were found for the selected issues")
 		return
 	}
-	start, cursorErr := bulkFieldPageStart(r, len(fields))
+	pageQuery := bulkPageQuery(issues, search)
+	start, cursorErr := bulkFieldPageStart(r, pageQuery, len(fields))
 	if cursorErr != nil {
 		bulkOperationError(w, http.StatusBadRequest, cursorErr.Error())
 		return
@@ -506,10 +510,10 @@ func (h *Handler) bulkEditableFields(w http.ResponseWriter, r *http.Request) {
 	end := min(start+50, len(fields))
 	response := map[string]any{"fields": fields[start:end]}
 	if start > 0 {
-		response["endingBefore"] = encodeBulkFieldCursor(start)
+		response["endingBefore"] = encodeBulkFieldCursor(pageQuery, start)
 	}
 	if end < len(fields) {
-		response["startingAfter"] = encodeBulkFieldCursor(end)
+		response["startingAfter"] = encodeBulkFieldCursor(pageQuery, end)
 	}
 	writeJSON(w, http.StatusOK, response)
 }
@@ -548,6 +552,22 @@ func (h *Handler) resolveBulkIssues(r *http.Request, workspaceID string, values 
 // allows. A selection spans projects and work types, and each pair resolves its
 // own screen, field configuration and custom field contexts, so the offer is the
 // intersection across those pairs rather than the projects' field superset.
+// bulkEditableSources expands time tracking into the original and remaining
+// estimates Jira bulk edits separately.
+func bulkEditableSources(fields []models.CreateFieldMeta) []models.CreateFieldMeta {
+	sources := make([]models.CreateFieldMeta, 0, len(fields)+1)
+	for _, field := range fields {
+		if field.Type != "timetracking" {
+			sources = append(sources, field)
+			continue
+		}
+		sources = append(sources,
+			models.CreateFieldMeta{ID: "timeoriginalestimate", Name: "Original estimate", Type: "originalEstimate"},
+			models.CreateFieldMeta{ID: "timeestimate", Name: "Remaining estimate", Type: "timeTracking"})
+	}
+	return sources
+}
+
 func commonBulkEditableFields(metadata *models.IssueCreateMetadata, issues []*models.Issue, baseURL string) []bulkEditableField {
 	projects := make(map[string]bool)
 	selection := map[string]map[string]bool{}
@@ -583,7 +603,7 @@ func commonBulkEditableFields(metadata *models.IssueCreateMetadata, issues []*mo
 		}
 		sort.Strings(issueTypeIDs)
 		for _, issueTypeID := range issueTypeIDs {
-			for _, source := range project.FieldsForIssueType(issueTypeID) {
+			for _, source := range bulkEditableSources(project.FieldsForIssueType(issueTypeID)) {
 				fieldType := bulkEditableFieldType(source)
 				if fieldType == "" {
 					continue
@@ -660,10 +680,28 @@ func bulkEditableFieldType(field models.CreateFieldMeta) string {
 		return "number"
 	case "datetime":
 		return "dateTime"
-	case "securitylevel":
+	case "securitylevel", "option":
 		return "singleSelect"
 	case "string":
 		return "singleLineText"
+	case "options":
+		return "multiSelect"
+	case "option-with-child":
+		return "cascadingSelect"
+	case "users":
+		return "multiUser"
+	case "group":
+		return "singleGroup"
+	case "groups":
+		return "multiGroup"
+	case "version":
+		return "singleVersion"
+	case "date":
+		return "datePicker"
+	case "url":
+		return "url"
+	case "originalEstimate", "timeTracking":
+		return field.Type
 	default:
 		return ""
 	}
@@ -680,37 +718,59 @@ func bulkFieldOption(fieldType string, option models.CreateFieldOption) map[stri
 	}
 }
 
-func encodeBulkFieldCursor(offset int) string {
-	return base64.RawURLEncoding.EncodeToString([]byte("bulk-fields:" + strconv.Itoa(offset)))
+// bulkPageQuery fingerprints the query a bulk page answers, so a cursor only
+// pages the selection and search it was issued for.
+func bulkPageQuery(issues []*models.Issue, search string) string {
+	ids := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		ids = append(ids, issue.ID)
+	}
+	sort.Strings(ids)
+	sum := sha256.Sum256([]byte(strings.Join(ids, ",") + "\x00" + search))
+	return hex.EncodeToString(sum[:8])
 }
 
-func decodeBulkFieldCursor(cursor string) (int, error) {
+func encodeBulkFieldCursor(query string, offset int) string {
+	return base64.RawURLEncoding.EncodeToString([]byte("bulk-fields:" + query + ":" + strconv.Itoa(offset)))
+}
+
+func decodeBulkFieldCursor(query, cursor string) (int, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(cursor)
 	if err != nil || !strings.HasPrefix(string(raw), "bulk-fields:") {
 		return 0, errors.New("invalid bulk field cursor")
 	}
-	offset, err := strconv.Atoi(strings.TrimPrefix(string(raw), "bulk-fields:"))
-	if err != nil || offset < 0 {
+	issued, offsetText, bound := strings.Cut(strings.TrimPrefix(string(raw), "bulk-fields:"), ":")
+	offset, err := strconv.Atoi(offsetText)
+	if !bound || err != nil || offset < 0 {
 		return 0, errors.New("invalid bulk field cursor")
+	}
+	if issued != query {
+		return 0, errors.New("the cursor belongs to a different selection or search")
 	}
 	return offset, nil
 }
 
-func bulkFieldPageStart(r *http.Request, total int) (int, error) {
+func bulkFieldPageStart(r *http.Request, query string, total int) (int, error) {
 	startingAfter, endingBefore := r.URL.Query().Get("startingAfter"), r.URL.Query().Get("endingBefore")
 	if startingAfter != "" && endingBefore != "" {
 		return 0, errors.New("startingAfter and endingBefore cannot be used together")
 	}
 	if startingAfter != "" {
-		offset, err := decodeBulkFieldCursor(startingAfter)
-		if err != nil || offset > total {
+		offset, err := decodeBulkFieldCursor(query, startingAfter)
+		if err != nil {
+			return 0, err
+		}
+		if offset > total {
 			return 0, errors.New("invalid startingAfter cursor")
 		}
 		return offset, nil
 	}
 	if endingBefore != "" {
-		offset, err := decodeBulkFieldCursor(endingBefore)
-		if err != nil || offset > total {
+		offset, err := decodeBulkFieldCursor(query, endingBefore)
+		if err != nil {
+			return 0, err
+		}
+		if offset > total {
 			return 0, errors.New("invalid endingBefore cursor")
 		}
 		return max(0, offset-50), nil
