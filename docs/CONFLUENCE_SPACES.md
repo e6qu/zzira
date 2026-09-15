@@ -76,3 +76,12 @@ restricted pages.
 
 Archiving sets the space's status to `archived` and shows it as an archived
 space; restoring returns it to `current`.
+
+Space administrators can also export a space from its page. **Export to HTML**
+queues a task that writes the space's current pages and blog posts that the
+administrator can see into a zip: an `index.html` linking every page and blog
+post, and one HTML file for each with its body rendered as the space shows it.
+Attachments are not included. The space page lists the administrator's latest
+five exports with their state, and a finished export downloads only for the
+person who asked for it; an email with the download link is sent when it is
+ready. Importing a space is not supported.

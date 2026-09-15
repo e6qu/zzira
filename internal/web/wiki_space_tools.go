@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"net/http"
 	"sort"
 	"strings"
@@ -209,4 +210,46 @@ func (h *Handler) WikiSpaceStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, "/wiki/spaces/"+space.ID)
+}
+
+// WikiSpaceExportCreate queues an HTML export of a space for its administrator.
+func (h *Handler) WikiSpaceExportCreate(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, msg := wikiWebError(err)
+		http.Error(w, msg, status)
+		return
+	}
+	if _, err := h.Store.EnqueueWikiSpaceExport(r.Context(), ws, user.ID, space.Key); err != nil {
+		status, msg := wikiWebError(err)
+		http.Error(w, msg, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"#wiki-space-exports")
+}
+
+// WikiSpaceExportFile serves a space export to the person who asked for it.
+func (h *Handler) WikiSpaceExportFile(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	content, err := h.Store.WikiSpaceExport(r.Context(), ws, space.ID, strings.TrimSuffix(r.PathValue("file"), ".zip"), user.ID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+space.Key+`-export.zip"`)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeContent(w, r, space.Key+"-export.zip", time.Time{}, bytes.NewReader(content))
 }

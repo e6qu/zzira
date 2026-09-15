@@ -428,6 +428,8 @@ func (r *APITaskRunner) execute(ctx context.Context, task APITask) error {
 		return r.Store.executeWikiArchivePages(ctx, task)
 	case apiTaskWikiTrashPageTree:
 		return r.Store.executeWikiTrashPageTree(ctx, task)
+	case apiTaskWikiSpaceExport:
+		return r.Store.executeWikiSpaceExport(ctx, task)
 	case apiTaskDeleteProject:
 		var payload deleteProjectTaskPayload
 		if err := json.Unmarshal(task.Payload, &payload); err != nil {

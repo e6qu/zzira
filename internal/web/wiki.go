@@ -88,18 +88,20 @@ type wikiData struct {
 	AnalyticsDays             int
 	AnalyticsWindows          []int
 	TotalViews, ViewedContent int
-	WatchingPage              bool
-	WatchingBlogPost          bool
-	WatchedLabels             map[string]bool
-	MoveTargets               []wikiMoveGroup
-	Starred                   []*models.WikiPage
-	PageFavourite             bool
-	PageOwnerName             string
-	OwnerChoices              []*models.User
-	Draft                     *store.WikiContentDraft
-	CanPurge                  bool
-	ChildPageCount            int
-	ArchivedChildCount        int
+	// SpaceExports are the reader's latest exports of the space.
+	SpaceExports       []store.WikiSpaceExportTask
+	WatchingPage       bool
+	WatchingBlogPost   bool
+	WatchedLabels      map[string]bool
+	MoveTargets        []wikiMoveGroup
+	Starred            []*models.WikiPage
+	PageFavourite      bool
+	PageOwnerName      string
+	OwnerChoices       []*models.User
+	Draft              *store.WikiContentDraft
+	CanPurge           bool
+	ChildPageCount     int
+	ArchivedChildCount int
 }
 
 // wikiMoveGroup is one space's worth of pages a page can be moved beside or
@@ -434,7 +436,14 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{ContentStateSettings: stateSettings, Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "")
+	exports := []store.WikiSpaceExportTask{}
+	if canManageSpace {
+		if exports, err = h.Store.WikiSpaceExportTasks(r.Context(), ws, user.ID, space.ID); err != nil {
+			http.Error(w, "Could not load space exports.", 500)
+			return
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{ContentStateSettings: stateSettings, SpaceExports: exports, Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "")
 }
 
 // WikiSpaceContentStateSettings saves whether the space's pages carry content

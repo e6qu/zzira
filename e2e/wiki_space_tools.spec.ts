@@ -74,6 +74,24 @@ test('space manager keeps templates, starts pages from them, reads analytics and
   await page.getByRole('region', { name: 'Space templates' }).getByRole('button', { name: 'Delete Service runbook', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Space templates' })).toContainText('This space has no templates of its own yet.');
 
+  // The space is exported to HTML for its administrator.
+  await page.goto(spaceURL);
+  await page.getByRole('button', { name: 'Export to HTML', exact: true }).click();
+  const exportsRegion = page.getByRole('region', { name: 'Export space' });
+  await expect.poll(async () => {
+    await page.reload();
+    return exportsRegion.getByRole('link', { name: /^Download export / }).count();
+  }, { timeout: 15_000 }).toBeGreaterThan(0);
+  await accessible(page);
+  const href = await exportsRegion.getByRole('link', { name: /^Download export / }).first().getAttribute('href');
+  const archive = await page.request.get(href!);
+  expect(archive.status()).toBe(200);
+  expect(archive.headers()['content-type']).toBe('application/zip');
+  const zipBytes = await archive.body();
+  expect(zipBytes.subarray(0, 2).toString()).toBe('PK');
+  expect(zipBytes.includes(Buffer.from('index.html'))).toBe(true);
+  expect(zipBytes.includes(Buffer.from('pages/'))).toBe(true);
+
   // The space is archived and restored.
   await page.goto(spaceURL);
   await page.getByRole('button', { name: 'Archive space', exact: true }).click();

@@ -369,6 +369,8 @@ func main() {
 	mux.HandleFunc("POST /wiki/spaces/{space}/templates", webHandler.WikiSpaceTemplates)
 	mux.HandleFunc("GET /wiki/spaces/{space}/analytics", webHandler.WikiSpaceAnalytics)
 	mux.HandleFunc("POST /wiki/spaces/{space}/status", webHandler.WikiSpaceStatus)
+	mux.HandleFunc("POST /wiki/spaces/{space}/exports", webHandler.WikiSpaceExportCreate)
+	mux.HandleFunc("GET /wiki/spaces/{space}/exports/{file}", webHandler.WikiSpaceExportFile)
 	mux.HandleFunc("GET /wiki/spaces/{space}/pages/new", webHandler.WikiEdit)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/new", webHandler.WikiEdit)
 	mux.HandleFunc("GET /wiki/spaces/{space}/pages/{page}", webHandler.WikiPage)
