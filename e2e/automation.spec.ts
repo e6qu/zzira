@@ -140,3 +140,37 @@ test('admin builds an event rule with a condition and smart values that runs whe
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
 });
+
+test('admin schedules a rule with a Quartz cron expression', async ({ page }) => {
+  await login(page);
+  const name = `E2E cron ${Date.now()}`;
+  const fill = async (expression: string) => {
+    await page.goto('/settings/automation/new');
+    await page.getByLabel('Rule name').fill(name);
+    await page.getByLabel('Timezone').fill('Europe/Bucharest');
+    await page.getByLabel('Cron expression').fill(expression);
+    await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
+    await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('weekday-morning');
+  };
+  // Quartz features the scheduler does not run are refused.
+  await fill('0 0 9 ? * MON#2');
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page.locator('body')).toContainText('L, W and # are not supported');
+
+  await fill('0 0 9 ? * MON-FRI');
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  await expect(page.getByLabel('Cron expression')).toHaveValue('0 0 9 ? * MON-FRI');
+  await expect(page.getByRole('combobox', { name: 'Trigger', exact: true })).toHaveValue('jira.jql.scheduled');
+  await page.goto('/settings/automation');
+  const card = page.getByRole('article').filter({ hasText: name });
+  await expect(card).toContainText('Scheduled · Cron 0 0 9 ? * MON-FRI in Europe/Bucharest · Next run');
+
+  await page.goto(ruleURL);
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});
