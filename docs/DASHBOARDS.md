@@ -22,10 +22,13 @@ platform REST v3 contract:
 | GET `/rest/api/3/dashboard/{id}/items/{itemId}/properties` | Sorted property key listing |
 | GET/PUT/DELETE `/rest/api/3/dashboard/{id}/items/{itemId}/properties/{propertyKey}` | JSON property lifecycle with Jira key and value bounds |
 
-The unimplemented operation is `PUT /rest/api/3/dashboard/bulk/edit`. Group and
-project share permissions, archived/deleted search, anonymous dashboards, admin
-permission extension and dashboard layout/favourite REST extensions also remain
-compatibility gaps.
+`PUT /rest/api/3/dashboard/bulk/edit` changes permissions, changes owners and
+deletes, with a per-dashboard error map. Dashboards share with everyone signed
+in, people, groups, projects and project roles, and `extendAdminPermissions`
+lets a site administrator update a dashboard they neither own nor were shared.
+Searching archived or deleted dashboards answers 400, because dashboards here
+are only ever active; anonymous dashboards and REST extensions for this site's
+layout and favourite settings remain compatibility gaps.
 
 ## Native gadgets and presentation
 
