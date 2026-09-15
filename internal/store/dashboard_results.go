@@ -36,6 +36,10 @@ func (s *Store) DashboardGadgetResults(ctx context.Context, ws, user, id string,
 	if err = NormalizeGadgetConfig(&out.Config); err != nil {
 		return out, err
 	}
+	// A report gadget draws its project or board report, not a query.
+	if models.ReportGadget(g.ModuleKey) {
+		return out, nil
+	}
 	query := out.Config.JQL
 	if out.Config.FilterID != "" {
 		f, e := s.FilterByID(ctx, ws, user, out.Config.FilterID)

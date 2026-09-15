@@ -758,3 +758,4 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 .flow-band { stroke:var(--ds-surface); stroke-width:1; }.flow-band-0, i.flow-band-0 { fill:#6b778c; background:#6b778c; }.flow-band-1, i.flow-band-1 { fill:#0c66e4; background:#0c66e4; }.flow-band-2, i.flow-band-2 { fill:#1f845a; background:#1f845a; }.flow-band-3, i.flow-band-3 { fill:#a54800; background:#a54800; }.flow-band-4, i.flow-band-4 { fill:#6e5dc6; background:#6e5dc6; }.flow-band-5, i.flow-band-5 { fill:#c9372c; background:#c9372c; }.control-point { fill:var(--ds-danger); fill-opacity:.8; }.chart-data .table-scroll table, .sprint-report-work .table-scroll table { min-width:100%; }
 .report-toggle { display:flex !important; gap:6px; align-items:center; width:auto !important; }
 .wiki-live-sync { margin: 4px 0 0; }
+.gadget-report-chart { display:block; width:100%; height:auto; max-height:220px; }

@@ -114,12 +114,37 @@ func GadgetCatalog() []GadgetDefinition {
 		{"com.zzira:issue-statistics", "Issue statistics", "Compare work by status, priority, type or assignee.", ""},
 		{"com.zzira:pie-chart", "Pie chart", "See how work is distributed, with an accessible data table.", ""},
 		{"com.zzira:assigned-to-me", "Assigned to me", "Your assigned work, evaluated for whoever views the dashboard.", ""},
+		{"com.zzira:created-vs-resolved", "Created vs. resolved chart", "Work created against work resolved in a project, day by day.", ""},
+		{"com.zzira:resolution-time", "Resolution time", "How long a project's work takes from creation to resolution.", ""},
+		{"com.zzira:velocity", "Velocity chart", "Commitment against completed work for a scrum board's recent sprints.", ""},
+		{"com.zzira:sprint-burndown", "Sprint burndown", "Remaining work in a scrum board's active sprint.", ""},
 	}
 }
 
+// ReportGadget reports whether a gadget draws a project or board report
+// rather than the results of a work item query.
+func ReportGadget(moduleKey string) bool {
+	switch moduleKey {
+	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:velocity", "com.zzira:sprint-burndown":
+		return true
+	}
+	return false
+}
+
+// ReportGadget reports whether the gadget draws a report.
+func (g DashboardGadget) ReportGadget() bool {
+	return ReportGadget(g.ModuleKey)
+}
+
+// GadgetConfig is a gadget's settings: a work item query for list and chart
+// gadgets, or the project or board and time window a report gadget draws.
 type GadgetConfig struct {
-	JQL      string `json:"jql"`
-	FilterID string `json:"filterId"`
-	GroupBy  string `json:"groupBy"`
-	Limit    int    `json:"limit"`
+	JQL        string `json:"jql"`
+	FilterID   string `json:"filterId"`
+	GroupBy    string `json:"groupBy"`
+	Limit      int    `json:"limit"`
+	ProjectKey string `json:"projectKey,omitempty"`
+	BoardID    string `json:"boardId,omitempty"`
+	Days       int    `json:"days,omitempty"`
+	Cumulative bool   `json:"cumulative,omitempty"`
 }
