@@ -519,6 +519,16 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.locator('#sla-settings .service-calendar-holidays')).toContainText('Regional support shutdown');
   await page.locator('#sla-settings .service-calendar-holidays').getByRole('button', { name: 'Remove holiday Regional support shutdown' }).click();
   await expect(page.locator('#sla-settings .service-calendar-holidays')).not.toContainText('Regional support shutdown');
+  const calendarList = page.locator('#sla-settings .service-calendar-list');
+  await expect(calendarList).toContainText('default');
+  await calendarList.getByLabel('New calendar').fill('Weekend cover');
+  await calendarList.getByLabel('Opens').fill('10:00');
+  await calendarList.getByLabel('Closes').fill('16:00');
+  await calendarList.getByRole('button', { name: 'Add calendar' }).click();
+  await expect(page.locator('#sla-settings .service-calendar-list')).toContainText('Weekend cover');
+  await page.locator('#sla-settings .service-calendar-list').getByRole('button', { name: 'Remove Weekend cover' }).click();
+  await expect(page.locator('#sla-settings .service-calendar-list')).not.toContainText('Weekend cover');
+
   const firstResponseGoal = page.locator('#sla-settings .service-sla-goals form').first();
   await firstResponseGoal.getByRole('spinbutton').fill('180');
   await firstResponseGoal.getByLabel('Pause while JQL matches').fill('status = "To Do"');
