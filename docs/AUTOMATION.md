@@ -148,11 +148,13 @@ smart values describe the related work item and `{{triggerIssue.key}}` and
 that does not hold skips only that related work item.
 
 The rule editor at `/settings/automation` offers the scheduled and work item
-event triggers with their options, work item fields conditions, and the label,
-assign, transition, comment, edit summary and due date actions. It does not show
-branches, JQL conditions, or triggers and actions it cannot edit, such as the
-manual trigger; for those rules it turns saving off so nothing is lost, and they
-are changed through the rule API.
+event triggers with their options, work item fields and JQL conditions, the
+label, assign, transition, comment, edit summary and due date actions, and one
+related work items branch of actions placed after them. It does not show
+triggers, conditions, actions or branches it cannot edit, such as the manual
+trigger, a branch with conditions, or a branch before other components; for
+those rules it turns saving off so nothing is lost, and they are changed
+through the rule API.
 
 ## Manually triggered rules
 

@@ -186,7 +186,9 @@ test('the editor keeps a branched rule it cannot show by turning saving off', as
     name, state: 'ENABLED', actor: { type: 'ACCOUNT_ID', actor: me.accountId },
     trigger: { component: 'TRIGGER', type: 'jira.issue.event.trigger:created', schemaVersion: 1, value: { jql: 'project = ZZ' } },
     components: [{ component: 'BRANCH', type: 'jira.issue.related', schemaVersion: 1, value: { relatedType: 'sub-tasks' },
-      children: [{ component: 'ACTION', type: 'jira.issue.add-label', schemaVersion: 1, value: { label: 'from-{{triggerIssue.key}}' } }] }],
+      // A condition inside a branch is something the editor does not show.
+      children: [{ component: 'CONDITION', type: 'jira.jql.condition', schemaVersion: 1, value: { jql: 'status != Done' } },
+        { component: 'ACTION', type: 'jira.issue.add-label', schemaVersion: 1, value: { label: 'from-{{triggerIssue.key}}' } }] }],
   }, connections: [] } });
   expect(created.status(), await created.text()).toBe(201);
   const uuid = (await created.json()).ruleUuid as string;
@@ -204,6 +206,59 @@ test('the editor keeps a branched rule it cannot show by turning saving off', as
   const rule = await (await page.request.get(`${base}/${uuid}`, { headers })).json();
   expect(rule.rule.components[0].component).toBe('BRANCH');
 
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});
+
+test('admin builds a rule with a JQL condition and a branch for linked work in the editor', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const issue = async (summary: string) => {
+    const created = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary, issuetype: { name: 'Task' } } } });
+    expect(created.status()).toBe(201);
+    return (await created.json()).key as string;
+  };
+  const blocker = await issue(`Blocker ${stamp}`);
+  const blocked = await issue(`Blocked ${stamp}`);
+  const link = await page.request.post('/rest/api/3/issueLink', { headers, data: { type: { name: 'Blocks' }, inwardIssue: { key: blocker }, outwardIssue: { key: blocked } } });
+  expect(link.status(), await link.text()).toBe(201);
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E branch editor ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByLabel('JQL query').fill(`key = ${blocker}`);
+  await page.getByRole('combobox', { name: 'Condition field', exact: true }).selectOption('jql');
+  await page.getByLabel('Compared with').fill('status != Done');
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(`blocker-${stamp}`);
+  await page.getByRole('combobox', { name: 'Related work items', exact: true }).selectOption('linked');
+  await page.getByLabel('Link types').fill('Blocks');
+  await page.getByRole('combobox', { name: 'Additional branch action', exact: true }).selectOption('jira.issue.add-label');
+  await page.getByRole('combobox', { name: 'Branch value', exact: true }).first().fill('blocked-by-{{triggerIssue.key}}');
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  // The editor shows the whole rule, so saving stays available.
+  await expect(page.getByRole('note')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save rule', exact: true })).toBeEnabled();
+  await expect(page.getByRole('combobox', { name: 'Condition field', exact: true }).first()).toHaveValue('jql');
+  await expect(page.getByRole('combobox', { name: 'Related work items', exact: true })).toHaveValue('linked');
+  await expect(page.getByLabel('Link types')).toHaveValue('Blocks');
+  await expect(page.getByRole('combobox', { name: 'Branch action', exact: true })).toHaveValue('jira.issue.add-label');
+
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => (await (await page.request.get(`/rest/api/3/issue/${blocked}`, { headers })).json()).fields.labels, { timeout: 15_000 }).toContain(`blocked-by-${blocker}`);
+  expect((await (await page.request.get(`/rest/api/3/issue/${blocker}`, { headers })).json()).fields.labels).toContain(`blocker-${stamp}`);
+
+  // Saving again from the editor keeps the branch.
+  await page.goto(ruleURL);
+  await page.getByRole('button', { name: 'Save rule', exact: true }).click();
+  await expect(page).toHaveURL(ruleURL);
+  await expect(page.getByRole('combobox', { name: 'Related work items', exact: true })).toHaveValue('linked');
   await page.getByRole('button', { name: 'Disable' }).click();
   await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();

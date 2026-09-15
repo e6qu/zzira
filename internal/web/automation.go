@@ -40,8 +40,15 @@ type automationTriggerView struct {
 	AllowRules                         bool
 }
 
-// automationConditionView is a work item fields condition in the editor.
+// automationConditionView is a work item fields or JQL condition in the
+// editor; a JQL condition has the field "jql".
 type automationConditionView struct{ Field, Operator, Value string }
+
+// automationBranchView is a related work items branch and its actions.
+type automationBranchView struct {
+	RelatedType, LinkTypes string
+	Actions                []automationActionView
+}
 
 var (
 	automationTriggers = []automationOption{
@@ -53,8 +60,9 @@ var (
 		{"jira.issue.add-label", "Add label"}, {"jira.issue.assign", "Assign work item"}, {"jira.issue.transition", "Transition work item"},
 		{"jira.issue.comment", "Comment on work item"}, {"jira.issue.edit:summary", "Edit summary"}, {"jira.issue.edit:duedate", "Set due date"},
 	}
+	automationRelatedTypes    = []automationOption{{"sub-tasks", "Sub-tasks"}, {"parent", "Parent"}, {"linked", "Linked work items"}}
 	automationConditionFields = []automationOption{
-		{"status", "Status"}, {"priority", "Priority"}, {"issuetype", "Work type"}, {"assignee", "Assignee"},
+		{"jql", "Matches JQL"}, {"status", "Status"}, {"priority", "Priority"}, {"issuetype", "Work type"}, {"assignee", "Assignee"},
 		{"reporter", "Reporter"}, {"labels", "Labels"}, {"summary", "Summary"}, {"duedate", "Due date"},
 	}
 	automationConditionOperators = []automationOption{
@@ -88,13 +96,17 @@ type automationEditorData struct {
 	// Unsupported names what the editor cannot show in the rule, which turns
 	// saving there off so it is not lost.
 	Unsupported string
-	Runs        []automationRunView
-	Members     []*models.User
-	Statuses    []models.Status
-	CloudID     string
-	IsNew       bool
-	FormAction  string
-	Error       string
+	// Branch is the rule's related work items branch, and RelatedTypes the
+	// work a branch can run for.
+	Branch       automationBranchView
+	RelatedTypes []automationOption
+	Runs         []automationRunView
+	Members      []*models.User
+	Statuses     []models.Status
+	CloudID      string
+	IsNew        bool
+	FormAction   string
+	Error        string
 }
 
 func (h *Handler) AutomationRules(w http.ResponseWriter, r *http.Request) {
@@ -247,10 +259,12 @@ func (h *Handler) automationEditorData(r *http.Request, workspaceID string, rule
 		return automationEditorData{}, err
 	}
 	data := automationEditorData{Rule: rule, Members: members, Statuses: statuses, CloudID: cloudID,
-		Triggers: automationTriggers, ActionTypes: automationActionTypes, ConditionFields: automationConditionFields, ConditionOperators: automationConditionOperators}
+		Triggers: automationTriggers, ActionTypes: automationActionTypes, ConditionFields: automationConditionFields, ConditionOperators: automationConditionOperators,
+		RelatedTypes: automationRelatedTypes}
 	if rule == nil {
 		data.Trigger = automationTriggerView{Type: "jira.jql.scheduled"}
 		data.Conditions = []automationConditionView{{}}
+		data.Branch = automationBranchView{Actions: []automationActionView{}}
 		data.Rule = &automation.Rule{State: "ENABLED", ActorID: h.currentUser(r).ID, ScheduleTimezone: h.currentUser(r).TimeZone}
 		if data.Rule.ScheduleTimezone == "" {
 			data.Rule.ScheduleTimezone = "UTC"
@@ -276,6 +290,7 @@ func (h *Handler) automationEditorData(r *http.Request, workspaceID string, rule
 	data.Trigger = parseAutomationTrigger(rule.Payload)
 	data.Conditions = append(parseAutomationConditions(rule.Payload), automationConditionView{})
 	data.Unsupported = automationEditorUnsupported(rule.Payload)
+	data.Branch = parseAutomationBranch(rule.Payload)
 	return data, nil
 }
 
@@ -338,6 +353,15 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 		if index < len(conditionValues) {
 			value = strings.TrimSpace(conditionValues[index])
 		}
+		if field == "jql" {
+			if value == "" {
+				return nil, fmt.Errorf("a JQL condition needs a query")
+			}
+			components = append(components, map[string]any{
+				"component": "CONDITION", "schemaVersion": 1, "type": "jira.jql.condition", "value": map[string]string{"jql": value},
+			})
+			continue
+		}
 		if automationOptionName(automationConditionFields, field) == "" || automationOptionName(automationConditionOperators, operator) == "" {
 			return nil, fmt.Errorf("unsupported condition")
 		}
@@ -349,16 +373,56 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 			"value": map[string]string{"field": field, "operator": operator, "value": value},
 		})
 	}
-	actionValues := r.PostForm["action_value"]
-	actions := 0
-	for index, actionType := range r.PostForm["action_type"] {
+	actionComponents, err := automationFormActions(r.PostForm["action_type"], r.PostForm["action_value"])
+	if err != nil {
+		return nil, err
+	}
+	components = append(components, actionComponents...)
+	actions := len(actionComponents)
+	if related := strings.TrimSpace(r.PostFormValue("branch_related")); related != "" {
+		if automationOptionName(automationRelatedTypes, related) == "" {
+			return nil, fmt.Errorf("unsupported related work items")
+		}
+		children, err := automationFormActions(r.PostForm["branch_action_type"], r.PostForm["branch_action_value"])
+		if err != nil {
+			return nil, err
+		}
+		if len(children) == 0 {
+			return nil, fmt.Errorf("add at least one action for the related work items")
+		}
+		value := map[string]any{"relatedType": related}
+		if linkTypes := splitLines(r.PostFormValue("branch_link_types")); related == "linked" && len(linkTypes) > 0 {
+			value["linkTypes"] = linkTypes
+		}
+		components = append(components, map[string]any{"component": "BRANCH", "schemaVersion": 1, "type": "jira.issue.related", "value": value, "children": children})
+		actions += len(children)
+	}
+	if actions == 0 {
+		return nil, fmt.Errorf("add at least one action")
+	}
+	scope := splitLines(r.PostFormValue("scope_aris"))
+	rule := map[string]any{
+		"actor":               map[string]string{"actor": r.PostFormValue("actor_id"), "type": "ACCOUNT_ID"},
+		"canOtherRuleTrigger": r.PostFormValue("allow_rule_trigger") == "true", "collaborators": []string{}, "components": components,
+		"description": strings.TrimSpace(r.PostFormValue("description")), "labels": []string{},
+		"name": name, "notifyOnError": "FIRSTERROR", "ruleScopeARIs": scope,
+		"state": strings.ToUpper(r.PostFormValue("state")), "writeAccessType": "OWNER_ONLY",
+		"trigger": map[string]any{"component": "TRIGGER", "schemaVersion": 1, "type": triggerType, "value": triggerValue},
+	}
+	return json.Marshal(map[string]any{"rule": rule, "connections": []any{}})
+}
+
+// automationFormActions reads the editor's action rows into rule components.
+func automationFormActions(types, values []string) ([]map[string]any, error) {
+	components := []map[string]any{}
+	for index, actionType := range types {
 		actionType = strings.TrimSpace(actionType)
 		if actionType == "" {
 			continue
 		}
 		value := ""
-		if index < len(actionValues) {
-			value = strings.TrimSpace(actionValues[index])
+		if index < len(values) {
+			value = strings.TrimSpace(values[index])
 		}
 		if value == "" {
 			return nil, fmt.Errorf("every action needs a value")
@@ -382,21 +446,8 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 		components = append(components, map[string]any{
 			"component": "ACTION", "schemaVersion": 1, "type": actionType, "value": actionValue,
 		})
-		actions++
 	}
-	if actions == 0 {
-		return nil, fmt.Errorf("add at least one action")
-	}
-	scope := splitLines(r.PostFormValue("scope_aris"))
-	rule := map[string]any{
-		"actor":               map[string]string{"actor": r.PostFormValue("actor_id"), "type": "ACCOUNT_ID"},
-		"canOtherRuleTrigger": r.PostFormValue("allow_rule_trigger") == "true", "collaborators": []string{}, "components": components,
-		"description": strings.TrimSpace(r.PostFormValue("description")), "labels": []string{},
-		"name": name, "notifyOnError": "FIRSTERROR", "ruleScopeARIs": scope,
-		"state": strings.ToUpper(r.PostFormValue("state")), "writeAccessType": "OWNER_ONLY",
-		"trigger": map[string]any{"component": "TRIGGER", "schemaVersion": 1, "type": triggerType, "value": triggerValue},
-	}
-	return json.Marshal(map[string]any{"rule": rule, "connections": []any{}})
+	return components, nil
 }
 
 func nonEmpty(values ...string) []string {
@@ -426,23 +477,35 @@ func automationEditorUnsupported(payload json.RawMessage) string {
 		Trigger struct {
 			Type string `json:"type"`
 		} `json:"trigger"`
-		Components []struct {
-			Component string `json:"component"`
-			Type      string `json:"type"`
-		} `json:"components"`
+		Components []automationComponentJSON `json:"components"`
 	}
 	_ = json.Unmarshal(payload, &rule)
 	if automationOptionName(automationTriggers, rule.Trigger.Type) == "" {
 		return "its trigger"
 	}
-	for _, component := range rule.Components {
-		switch {
-		case component.Component == "BRANCH":
-			return "its branches"
-		case component.Component == "CONDITION" && component.Type != "jira.issue.condition":
-			return "its JQL conditions"
-		case (component.Component == "" || component.Component == "ACTION") && component.Type != "jira.issue.edit" && automationOptionName(automationActionTypes, component.Type) == "":
-			return "some of its actions"
+	editableAction := func(component automationComponentJSON) bool {
+		return (component.Component == "" || component.Component == "ACTION") && (component.Type == "jira.issue.edit" || automationOptionName(automationActionTypes, component.Type) != "")
+	}
+	for index, component := range rule.Components {
+		switch component.Component {
+		case "CONDITION":
+			if component.Type != "jira.issue.condition" && component.Type != "jira.jql.condition" {
+				return "some of its conditions"
+			}
+		case "BRANCH":
+			// The editor shows one related work items branch of actions, last.
+			if component.Type != "jira.issue.related" || index != len(rule.Components)-1 {
+				return "its branches"
+			}
+			for _, child := range component.Children {
+				if !editableAction(child) {
+					return "its branches"
+				}
+			}
+		default:
+			if !editableAction(component) {
+				return "some of its actions"
+			}
 		}
 	}
 	return ""
@@ -484,7 +547,18 @@ func parseAutomationConditions(payload json.RawMessage) []automationConditionVie
 	_ = json.Unmarshal(payload, &rule)
 	conditions := []automationConditionView{}
 	for _, component := range rule.Components {
-		if component.Component != "CONDITION" || component.Type != "jira.issue.condition" {
+		if component.Component != "CONDITION" {
+			continue
+		}
+		if component.Type == "jira.jql.condition" {
+			var value struct {
+				JQL string `json:"jql"`
+			}
+			automationComponentValue(component.Value, &value)
+			conditions = append(conditions, automationConditionView{Field: "jql", Value: value.JQL})
+			continue
+		}
+		if component.Type != "jira.issue.condition" {
 			continue
 		}
 		var value struct{ Field, Operator, Value string }
@@ -496,15 +570,23 @@ func parseAutomationConditions(payload json.RawMessage) []automationConditionVie
 
 func parseAutomationActions(payload json.RawMessage) []automationActionView {
 	var value struct {
-		Components []struct {
-			Component string          `json:"component"`
-			Type      string          `json:"type"`
-			Value     json.RawMessage `json:"value"`
-		} `json:"components"`
+		Components []automationComponentJSON `json:"components"`
 	}
 	_ = json.Unmarshal(payload, &value)
-	actions := make([]automationActionView, 0, len(value.Components))
-	for _, component := range value.Components {
+	return automationActionViews(value.Components)
+}
+
+// automationComponentJSON is a stored rule component as the editor reads it.
+type automationComponentJSON struct {
+	Component string                    `json:"component"`
+	Type      string                    `json:"type"`
+	Value     json.RawMessage           `json:"value"`
+	Children  []automationComponentJSON `json:"children"`
+}
+
+func automationActionViews(components []automationComponentJSON) []automationActionView {
+	actions := make([]automationActionView, 0, len(components))
+	for _, component := range components {
 		if component.Component == "CONDITION" || component.Component == "BRANCH" {
 			continue
 		}
@@ -524,6 +606,27 @@ func parseAutomationActions(payload json.RawMessage) []automationActionView {
 		actions = append(actions, view)
 	}
 	return actions
+}
+
+// parseAutomationBranch reads the rule's related work items branch for the
+// editor.
+func parseAutomationBranch(payload json.RawMessage) automationBranchView {
+	var rule struct {
+		Components []automationComponentJSON `json:"components"`
+	}
+	_ = json.Unmarshal(payload, &rule)
+	for _, component := range rule.Components {
+		if component.Component != "BRANCH" {
+			continue
+		}
+		var value struct {
+			RelatedType string   `json:"relatedType"`
+			LinkTypes   []string `json:"linkTypes"`
+		}
+		automationComponentValue(component.Value, &value)
+		return automationBranchView{RelatedType: value.RelatedType, LinkTypes: strings.Join(value.LinkTypes, ", "), Actions: automationActionViews(component.Children)}
+	}
+	return automationBranchView{Actions: []automationActionView{}}
 }
 
 func splitLines(value string) []string {
