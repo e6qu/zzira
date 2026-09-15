@@ -106,7 +106,7 @@ func TestTimeTracking(t *testing.T) {
 	deliveries := func() int {
 		t.Helper()
 		var count int
-		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notification_event_deliveries d JOIN issues i ON i.id=d.issue_id WHERE i.key=$1 AND d.event_id=11`, key).Scan(&count); err != nil {
+		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notification_event_deliveries d JOIN issues i ON i.id=d.issue_id WHERE i.key=$1 AND d.event_id=10`, key).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		return count

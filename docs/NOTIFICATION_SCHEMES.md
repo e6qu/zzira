@@ -30,7 +30,8 @@ assignment mutations write immutable actions in the same transaction.
 
 ## Events, recipients, and delivery
 
-The event registry contains Jira's 17 built-in issue events and the site's
+The event registry contains Jira's 17 built-in issue events, numbered as Jira's
+EventType ids (1 created through 17 comment deleted, with 13 the generic event), and the site's
 custom events. Administrators add, rename and delete custom events in the
 Events section of site administration. Custom events take ids from 10000 up,
 and one a notification scheme or workflow transition uses cannot be deleted.
@@ -70,9 +71,11 @@ watchers. Implicit roles suppress the actor's own changes; an explicit
   PostgreSQL schema. Both settings pages are included in the light and dark axe
   sweep.
 
-The assessment remains partial while per-user email preferences, mentions,
-notification diagnostics, event firing for issue delete/move, and rich email
-rendering remain. The `user`, `group`, `projectRole`, `field`
+Deleting a work item fires Issue deleted (8) while its watchers and security
+level still resolve, and a move fires Issue moved (9) for the item and each
+moved sub-task. The assessment remains partial while per-user email
+preferences, mentions, notification diagnostics and rich email rendering
+remain. The `user`, `group`, `projectRole`, `field`
 and `all` expansions add each recipient's details. Jira's deprecated
 direct email-address recipient is stored and delivered, but it does not create
 an in-app identity. Exact self links on every paged response and all Jira error

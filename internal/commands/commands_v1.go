@@ -610,14 +610,14 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	if err != nil {
 		return nil, nil, err
 	}
-	eventID, notificationKind, notificationVerb := int64(16), "issue_transitioned", "transitioned"
+	eventID, notificationKind, notificationVerb := int64(13), "issue_transitioned", "transitioned"
 	if strings.EqualFold(updated.Status.Category, "done") && !strings.EqualFold(issue.Status.Category, "done") {
 		eventID, notificationKind, notificationVerb = 4, "issue_resolved", "resolved"
 		if strings.Contains(strings.ToLower(updated.Status.Name), "closed") {
 			eventID, notificationKind, notificationVerb = 5, "issue_closed", "closed"
 		}
 	} else if !strings.EqualFold(updated.Status.Category, "done") && strings.EqualFold(issue.Status.Category, "done") {
-		eventID, notificationKind, notificationVerb = 8, "issue_reopened", "reopened"
+		eventID, notificationKind, notificationVerb = 7, "issue_reopened", "reopened"
 	}
 	// A transition configured with an event fires that event instead.
 	if custom, parseErr := strconv.ParseInt(t.CustomIssueEventID, 10, 64); parseErr == nil && custom > 0 {

@@ -248,7 +248,7 @@ func (s *Service) bulkMoveIssue(ctx context.Context, task store.APITask, issue *
 	if err != nil {
 		return nil, err
 	}
-	if err = s.deliverIssueEvent(ctx, task.WorkspaceID, task.SubmittedBy, updated, action, 10, "issue_moved", "moved"); err != nil {
+	if err = s.deliverIssueEvent(ctx, task.WorkspaceID, task.SubmittedBy, updated, action, 9, "issue_moved", "moved"); err != nil {
 		return nil, err
 	}
 	moved := []int64{item.JiraID}
@@ -267,7 +267,7 @@ func (s *Service) bulkMoveIssue(ctx context.Context, task store.APITask, issue *
 		if childErr != nil {
 			return moved, fmt.Errorf("sub-task %s: %w", child.Key, childErr)
 		}
-		if childErr = s.deliverIssueEvent(ctx, task.WorkspaceID, task.SubmittedBy, movedChild, childAction, 10, "issue_moved", "moved"); childErr != nil {
+		if childErr = s.deliverIssueEvent(ctx, task.WorkspaceID, task.SubmittedBy, movedChild, childAction, 9, "issue_moved", "moved"); childErr != nil {
 			return moved, childErr
 		}
 		moved = append(moved, movedChild.JiraID)

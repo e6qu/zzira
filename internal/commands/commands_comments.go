@@ -64,7 +64,7 @@ func (s *Service) UpdateComment(ctx context.Context, in UpdateCommentInput) (*mo
 	if err != nil {
 		return nil, nil, err
 	}
-	if err = s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, 7, "issue_comment_edited", "edited a comment on"); err != nil {
+	if err = s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, 14, "issue_comment_edited", "edited a comment on"); err != nil {
 		return comment, action, err
 	}
 	return comment, action, nil

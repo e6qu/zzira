@@ -60,7 +60,7 @@ func (s *Service) AddWorklogWithEstimate(ctx context.Context, actorID, workspace
 	}
 	worklog, action, err := s.Store.CreateWorklogWithEstimate(ctx, actorID, workspaceID, issue.ID, comment, seconds, estimate)
 	if err == nil && estimate.Notify {
-		err = s.deliverIssueEvent(ctx, workspaceID, actorID, issue, action, 11, "worklog_created", "logged work on")
+		err = s.deliverIssueEvent(ctx, workspaceID, actorID, issue, action, 10, "worklog_created", "logged work on")
 	}
 	return worklog, action, err
 }
@@ -95,7 +95,7 @@ func (s *Service) UpdateWorklog(ctx context.Context, actorID, workspaceID, workl
 	}
 	worklog, action, err := s.Store.UpdateWorklogWithEstimate(ctx, actorID, workspaceID, w.ID, comment, seconds, estimate)
 	if err == nil && estimate.Notify {
-		err = s.deliverIssueEvent(ctx, workspaceID, actorID, issue, action, 14, "worklog_updated", "updated work logged on")
+		err = s.deliverIssueEvent(ctx, workspaceID, actorID, issue, action, 15, "worklog_updated", "updated work logged on")
 	}
 	return worklog, action, err
 }
@@ -127,7 +127,7 @@ func (s *Service) DeleteWorklogWithEstimate(ctx context.Context, actorID, worksp
 	}
 	action, err := s.Store.DeleteWorklogWithEstimate(ctx, actorID, workspaceID, w.ID, estimate)
 	if err == nil && estimate.Notify {
-		err = s.deliverIssueEvent(ctx, workspaceID, actorID, issue, action, 15, "worklog_deleted", "deleted work logged on")
+		err = s.deliverIssueEvent(ctx, workspaceID, actorID, issue, action, 16, "worklog_deleted", "deleted work logged on")
 	}
 	return action, err
 }

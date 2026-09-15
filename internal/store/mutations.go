@@ -416,7 +416,7 @@ func (s *Store) DeleteIssue(ctx context.Context, actorID, workspaceID, issueID, 
 	}
 	// The Issue deleted event resolves its recipients while the work item,
 	// its watchers and its security level still exist.
-	if err := deliverIssueNotificationTx(ctx, tx, workspaceID, actorID, issueID, seq, 9, "issue_deleted", "deleted "+issueKey); err != nil {
+	if err := deliverIssueNotificationTx(ctx, tx, workspaceID, actorID, issueID, seq, 8, "issue_deleted", "deleted "+issueKey); err != nil {
 		return nil, nil, err
 	}
 	if _, err := tx.Exec(ctx, `
