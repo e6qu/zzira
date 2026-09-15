@@ -79,11 +79,11 @@ func (s *Store) workflowBatchDefinitions(ctx context.Context, workspaceID string
 		if err != nil {
 			return nil, nil, err
 		}
+		// A workflow sees the new global statuses and those of its own project.
 		for _, status := range validatedStatuses {
-			if status.ProjectID != wf.ProjectID {
-				return nil, nil, fmt.Errorf("%w: workflow-created statuses must share the workflow scope", ErrAdminValidation)
+			if status.ProjectID == "" || status.ProjectID == wf.ProjectID {
+				visible = append(visible, status)
 			}
-			visible = append(visible, status)
 		}
 		definition, err := validateWorkflowAgainstStatuses(wf, visible)
 		if err != nil {

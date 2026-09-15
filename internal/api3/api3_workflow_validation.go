@@ -175,26 +175,39 @@ func workflowCategory(category string) string {
 	}
 }
 
-func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID, projectID string, updates []workflowStatusUpdateRequest, generateIDs bool) (map[string]string, []models.Status, []map[string]any, error) {
-	var statuses []models.Status
-	var err error
-	if projectID == "" {
-		statuses, err = h.Store.StatusesForWorkspace(r.Context(), workspaceID)
-	} else {
-		statuses, err = h.Store.StatusesForProject(r.Context(), workspaceID, projectID, true)
-	}
+// workflowStatusReferences resolves a workflow request's status references,
+// creating the new statuses each in the scope scopeOf gives its reference. It
+// knows the global statuses and those of the given projects; a name is taken
+// when a status of the same scope already uses it.
+func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID string, scopeOf func(string) string, projects []string, updates []workflowStatusUpdateRequest, generateIDs bool) (map[string]string, []models.Status, []map[string]any, error) {
+	statuses, err := h.Store.StatusesForWorkspace(r.Context(), workspaceID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	for _, project := range projects {
+		if project == "" {
+			continue
+		}
+		projectStatuses, err := h.Store.StatusesForProject(r.Context(), workspaceID, project, false)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		statuses = append(statuses, projectStatuses...)
+	}
 	known := make(map[string]bool, len(statuses))
-	names := make(map[string]bool, len(statuses)+len(updates))
+	names := map[string]map[string]bool{}
+	nameTaken := func(scope, name string) bool { return names[scope][strings.ToLower(name)] }
+	takeName := func(scope, name string) {
+		if names[scope] == nil {
+			names[scope] = map[string]bool{}
+		}
+		names[scope][strings.ToLower(name)] = true
+	}
 	references := make(map[string]string, len(statuses)*2+len(updates))
 	wireToStored := make(map[string]string, len(statuses))
 	for _, status := range statuses {
 		known[status.ID] = true
-		if projectID == "" || status.ProjectID == projectID {
-			names[strings.ToLower(status.Name)] = true
-		}
+		takeName(status.ProjectID, status.Name)
 		references[status.ID] = status.ID
 		references[statusWireID(status)] = status.ID
 		wireToStored[statusWireID(status)] = status.ID
@@ -228,8 +241,8 @@ func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID, project
 			continue
 		}
 		if status.ID == "" {
-			nameKey := strings.ToLower(name)
-			if names[nameKey] {
+			scope := scopeOf(status.StatusReference)
+			if nameTaken(scope, name) {
 				errors = append(errors, workflowValidationError("STATUS_NAME_CONFLICT", "A visible status already uses this name.", "STATUS", map[string]any{"statusReference": status.StatusReference}))
 				continue
 			}
@@ -237,8 +250,9 @@ func (h *Handler) workflowStatusReferences(r *http.Request, workspaceID, project
 			if generateIDs {
 				id = store.NewID("status")
 			}
-			created = append(created, models.Status{ID: id, Name: name, Category: category, ProjectID: projectID})
-			names[nameKey], known[id], references[status.StatusReference] = true, true, id
+			created = append(created, models.Status{ID: id, Name: name, Category: category, ProjectID: scope})
+			takeName(scope, name)
+			known[id], references[status.StatusReference] = true, id
 			continue
 		}
 		if !known[status.ID] {
@@ -268,23 +282,55 @@ func (h *Handler) workflowCreateScope(r *http.Request, workspaceID string, paylo
 	}
 }
 
-func (h *Handler) workflowUpdateScope(r *http.Request, workspaceID string, workflows []workflowUpdateItemRequest) (string, error) {
-	projectID := ""
-	found := false
+// workflowStatusScopes decides the scope of each status a workflow update
+// creates, so one update may change workflows of different scopes: a status
+// the workflows of one project use belongs to that project, and one a global
+// workflow or several projects use is global. A status no workflow uses takes
+// the scope every workflow shares, or is global. It also returns the projects
+// the workflows belong to.
+func (h *Handler) workflowStatusScopes(r *http.Request, workspaceID string, workflows []workflowUpdateItemRequest) (func(string) string, []string) {
 	stored := h.workflowIDsFor(r, workspaceID)
+	users := map[string]map[string]bool{}
+	projects := map[string]bool{}
+	common, shared, mixed := "", false, false
 	for _, item := range workflows {
 		published, err := h.Store.WorkflowByID(r.Context(), workspaceID, stored.toInternal(item.ID))
 		if err != nil {
 			continue
 		}
-		if !found {
-			projectID = published.ProjectID
-			found = true
-		} else if projectID != published.ProjectID {
-			return "", fmt.Errorf("workflow updates with new statuses must share one scope")
+		projects[published.ProjectID] = true
+		if !shared {
+			common, shared = published.ProjectID, true
+		} else if common != published.ProjectID {
+			mixed = true
+		}
+		for _, status := range item.Statuses {
+			if users[status.StatusReference] == nil {
+				users[status.StatusReference] = map[string]bool{}
+			}
+			users[status.StatusReference][published.ProjectID] = true
 		}
 	}
-	return projectID, nil
+	if mixed {
+		common = ""
+	}
+	scopeOf := func(reference string) string {
+		scopes := users[reference]
+		if len(scopes) == 0 {
+			return common
+		}
+		if len(scopes) == 1 {
+			for scope := range scopes {
+				return scope
+			}
+		}
+		return ""
+	}
+	list := make([]string, 0, len(projects))
+	for project := range projects {
+		list = append(list, project)
+	}
+	return scopeOf, list
 }
 
 func workflowDefinitionFromRequest(id, name, description string, startPointLayout, loopedTransitionContainerLayout *workflow.Layout, statuses []workflowStatusLayoutRequest, transitions []workflowTransitionUpdateRequest, references map[string]string) (workflow.Workflow, []map[string]any) {
@@ -548,7 +594,7 @@ func (h *Handler) workflowCreateValidation(w http.ResponseWriter, r *http.Reques
 	if len(request.Payload.Workflows) == 0 || len(request.Payload.Workflows) > 20 || len(request.Payload.Statuses) > 1000 {
 		errors = append(errors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
 	}
-	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, projectID, request.Payload.Statuses, false)
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, func(string) string { return projectID }, []string{projectID}, request.Payload.Statuses, false)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -610,16 +656,19 @@ func (h *Handler) workflowUpdateValidation(w http.ResponseWriter, r *http.Reques
 		writeJerr(w, errWorkflowPermission())
 		return
 	}
-	projectID, scopeErr := h.workflowUpdateScope(r, workspaceID, request.Payload.Workflows)
-	if scopeErr != nil {
-		errors = append(errors, workflowValidationError("SCOPE_INVALID", scopeErr.Error(), "SCOPE", nil))
-	}
-	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, projectID, request.Payload.Statuses, false)
+	scopeOf, projects := h.workflowStatusScopes(r, workspaceID, request.Payload.Workflows)
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, scopeOf, projects, request.Payload.Statuses, false)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	errors = append(errors, statusErrors...)
+	// Only site administrators create global statuses.
+	for _, status := range createdStatuses {
+		if status.ProjectID == "" && !access.admin {
+			errors = append(errors, workflowValidationError("SCOPE_INVALID", "Creating a global status needs the Administer Jira permission.", "STATUS", map[string]any{"statusReference": status.Name}))
+		}
+	}
 	storedWorkflows := h.workflowIDsFor(r, workspaceID)
 	for _, item := range request.Payload.Workflows {
 		storedID := storedWorkflows.toInternal(item.ID)
@@ -725,7 +774,7 @@ func (h *Handler) workflowCreate(w http.ResponseWriter, r *http.Request) {
 	if len(payload.Workflows) == 0 || len(payload.Workflows) > 20 || len(payload.Statuses) > 1000 {
 		validationErrors = append(validationErrors, workflowValidationError("PAYLOAD_SIZE_INVALID", "Provide between 1 and 20 workflows and no more than 1000 statuses.", "WORKFLOW", nil))
 	}
-	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, projectID, payload.Statuses, true)
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, func(string) string { return projectID }, []string{projectID}, payload.Statuses, true)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -790,16 +839,19 @@ func (h *Handler) workflowUpdate(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, errWorkflowPermission())
 		return
 	}
-	projectID, scopeErr := h.workflowUpdateScope(r, workspaceID, payload.Workflows)
-	if scopeErr != nil {
-		validationErrors = append(validationErrors, workflowValidationError("SCOPE_INVALID", scopeErr.Error(), "SCOPE", nil))
-	}
-	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, projectID, payload.Statuses, true)
+	scopeOf, projects := h.workflowStatusScopes(r, workspaceID, payload.Workflows)
+	references, createdStatuses, statusErrors, err := h.workflowStatusReferences(r, workspaceID, scopeOf, projects, payload.Statuses, true)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	validationErrors = append(validationErrors, statusErrors...)
+	// Only site administrators create global statuses.
+	for _, status := range createdStatuses {
+		if status.ProjectID == "" && !access.admin {
+			validationErrors = append(validationErrors, workflowValidationError("SCOPE_INVALID", "Creating a global status needs the Administer Jira permission.", "STATUS", map[string]any{"statusReference": status.Name}))
+		}
+	}
 	updates := make([]store.WorkflowUpdateDefinition, 0, len(payload.Workflows))
 	storedWorkflows := h.workflowIDsFor(r, workspaceID)
 	for _, item := range payload.Workflows {

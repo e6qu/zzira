@@ -10388,9 +10388,10 @@
         "internal/store/workflow_mutations.go",
         "docs/CLOUD_PARITY.md",
         "internal/api3/workflow_approvals_test.go",
-        "migrations/204_service_status_approvals.sql"
+        "migrations/204_service_status_approvals.sql",
+        "internal/api3/workflow_mixed_scope_test.go"
       ],
-      "notes": "Atomically creates related scoped statuses, migrates active work with sync actions, and updates layouts, INITIAL, GLOBAL and DIRECTED transitions plus executable conditions, validators, post-functions, transition screens and customIssueEventId events with optimistic versions, rollback, and audit; every documented system rule; mixed-scope batches and queued tasks remain. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401. Status layouts carry Jira's approvalConfiguration (active, conditionType and conditionValue within Jira's limits, excluded roles, the approvers field and approved and declined transitions out of the status), validated with STATUS_APPROVAL_CONFIGURATION_INVALID."
+      "notes": "Atomically creates related scoped statuses, migrates active work with sync actions, and updates layouts, INITIAL, GLOBAL and DIRECTED transitions plus executable conditions, validators, post-functions, transition screens and customIssueEventId events with optimistic versions, rollback, and audit; every documented system rule. One update may change workflows of different scopes: each new status takes the scope of the workflows using it (a project's, or global when a global workflow or several projects use it, which needs Administer Jira), and taskId is null because the update and its migrations complete synchronously. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401. Status layouts carry Jira's approvalConfiguration (active, conditionType and conditionValue within Jira's limits, excluded roles, the approvers field and approved and declined transitions out of the status), validated with STATUS_APPROVAL_CONFIGURATION_INVALID."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflows/update/validation",
@@ -10404,9 +10405,10 @@
         "internal/store/agile.go",
         "docs/CLOUD_PARITY.md",
         "internal/api3/workflow_approvals_test.go",
-        "migrations/204_service_status_approvals.sql"
+        "migrations/204_service_status_approvals.sql",
+        "internal/api3/workflow_mixed_scope_test.go"
       ],
-      "notes": "Returns structured validation for existence and preserved scope, optimistic versions, scoped statuses, layouts, INITIAL, GLOBAL and DIRECTED topology, mappings, executable conditions, validators, post-functions, transition screens and custom issue events without mutation; every documented system rule is validated; mixed-scope batches remain. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401. Status layouts carry Jira's approvalConfiguration (active, conditionType and conditionValue within Jira's limits, excluded roles, the approvers field and approved and declined transitions out of the status), validated with STATUS_APPROVAL_CONFIGURATION_INVALID."
+      "notes": "Returns structured validation for existence and preserved scope, optimistic versions, scoped statuses, layouts, INITIAL, GLOBAL and DIRECTED topology, mappings, executable conditions, validators, post-functions, transition screens and custom issue events without mutation; every documented system rule is validated, including batches that change workflows of different scopes, whose new statuses take the scope of the workflows using them. Site administrators reach every workflow and a project's administrators (Administer projects) its project-scoped workflows; anyone else gets 401. Status layouts carry Jira's approvalConfiguration (active, conditionType and conditionValue within Jira's limits, excluded roles, the approvers field and approved and declined transitions out of the status), validated with STATUS_APPROVAL_CONFIGURATION_INVALID."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/workflowscheme",
