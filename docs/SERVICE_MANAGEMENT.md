@@ -56,7 +56,13 @@ agents see matching service requests in the query's requested order. Built-in
 queues cannot be edited or removed. Live counts and queue contents
 update from the canonical request issue. Agents can open the full request,
 review internal notes, assign a request to themselves, unassign it, comment,
-and execute its workflow actions. Agent access is assigned per service desk and
+and execute its workflow actions. A queue's checkboxes, with a select-all box,
+choose up to 100 requests for its action bar, which assigns them to an agent
+of the desk or leaves them unassigned, moves each to a chosen status through a
+transition its own workflow offers, or adds the same internal note or reply to
+the customer to each. Requests that cannot change, such as one already in the
+status or without a transition to it, are named with the reason while the rest
+change. Agent access is assigned per service desk and
 is shared by the queue UI, request UI, and REST permission checks. Site
 administrators can add or remove active workspace members from the desk roster.
 Revocation immediately removes queue access, all-request visibility, request
@@ -68,6 +74,30 @@ custom fields available to the project can be shown, required, ordered and given
 customer help text. They can also be hidden from the portal with a preset value,
 which every new request takes; a hidden required field needs a preset. The
 portal UI and JSM field metadata read the same durable configuration.
+
+The portal form asks for each visible field in its own terms. Select and
+cascading select fields offer the options of the context that reaches the
+desk's project, with a cascading select's child options grouped under their
+parent, and multi-select fields offer a checkbox per option. Date, URL and
+number fields use matching inputs, and labels are separated by spaces. A user
+picker takes a site member's email address and a multi-user picker several,
+separated by commas; the portal finds the member without listing the site's
+people. The request page shows the chosen options and people by name.
+
+Group, project, version and team picker fields ask for a choice instead: a
+group picker offers the site's groups, a project picker the projects the
+requester can browse, a version picker the desk project's versions that are
+not archived, and a team picker the site's Atlassian teams; the multi-group
+and multi-version pickers take several. The portal
+form, the request type's REST `validValues` and the request page's display
+all list the same choices, and a submitted answer outside them is refused.
+
+A field can also be shown only for some answers. Administrators choose another
+visible select or multi-select field of the same form, which is not conditional
+itself, and the options of it that show the field. The portal hides the field
+until one of those options is chosen. Portal and REST request creation require
+a conditional field only while it is shown, and refuse an answer to a field the
+other answers keep hidden.
 
 Field metadata gives each field's Jira schema (type, custom field type,
 `customId` and array `items`). Select, multi-select and cascading select fields
@@ -95,11 +125,15 @@ Agents can request an approval from an active site user. Every approver has an
 independent pending, approved, or declined decision. Any decline completes the
 approval as declined; otherwise it completes only after every approver accepts.
 A workflow status can also carry Jira's approval configuration. When a request
-enters that status, an approval named after it opens for the users in the
-configured user picker field, less the assignee or reporter when excluded, and
-they are notified. It needs the configured number or percentage of approvals,
-any decline declines it, and the configured approved or declined transition then
-moves the request on. Administrators set or remove a status's approval from the
+enters that status, an approval named after it opens for the approvers the
+configured field names, less the assignee or reporter when excluded, and they
+are notified. A user picker names the approvers; a group picker (Jira's
+approver groups) names groups whose active members approve, and while the
+approvers field is empty the pre-populated field names them instead. It needs
+the configured number or percentage of approvals, or under numberPerPrincipal
+that number from each group, at most the group's size; any decline declines
+it, and the configured approved or declined transition then moves the request
+on. Administrators set or remove a status's approval from the
 workflow editor's status approvals panel as well as through the workflow REST
 API.
 Only a pending assigned approver can answer, and an approver can open the request
@@ -148,6 +182,15 @@ public updates, while assigned desk agents see both and can publish updates.
 Subscribers receive notifications through the same audience boundary. Every
 publication records its audience in the organization audit log. Declassifying
 the incident preserves its timeline and closes it to new publications.
+
+During a major incident, desk agents give the Incident commander,
+Communications lead and Technical lead roles to agents of the desk; each
+assignment notifies its new holder. Agents also keep a list of stakeholders,
+site members or email addresses outside the site, and can publish stakeholder
+updates, a third audience. Stakeholder updates stay with the response team on
+the request, off the customer timeline, and are emailed once to every
+stakeholder address without adding stakeholders to the request. Role and
+stakeholder changes are recorded in the organization audit log.
 
 Service managers configure each desk's CAB threshold, approver roster, incident
 review deadline, bounded on-call shifts, and ordered major-incident escalation
@@ -244,9 +287,36 @@ Every service desk starts with a Monday-to-Friday 09:00–17:00 UTC business
 calendar, a four-business-hour first-response goal and an eight-business-hour
 resolution goal. Service desk administrators can change the calendar name, IANA time
 zone, working days, daily window and both goal durations from the agent
-workspace. New requests start both durable clocks. The first public agent reply
-completes the response cycle, reaching a Done status completes the resolution
-cycle, and reopening starts another resolution cycle.
+workspace. Each SLA counts time between Jira's start and stop conditions, which
+managers choose per metric with the goal and pause condition: Issue Created,
+Entered Status for each of the project's statuses, Assignee From Unassigned,
+To Unassigned and Changed, Comment By Customer and For Customers, Due Date
+Set, Cleared and Changed, and Resolution Set and Cleared. Every SLA needs at
+least one start and one stop condition. A matching stop condition stops the
+running cycle, and a matching start condition starts a new cycle when none is
+running, so a reopened request starts another resolution cycle. New desks and
+existing metrics keep Jira's defaults: time to first response starts at Issue
+Created and stops at a comment for customers, and time to resolution starts at
+Issue Created or Resolution Cleared and stops at Resolution Set. Condition
+changes are audited and apply to the events that follow.
+
+Managers also add their own SLAs, such as time to approve, with a name, a goal
+and their start and stop conditions, and delete them again; time to first
+response and time to resolution are built in and stay. A new SLA runs on the
+desk's calendar, gets its default goal, follows the events after it is added,
+and is searchable by its name with the SLA JQL functions, for example
+`"Time to approve" = breached()`. Deleting it removes its goals and cycles.
+Creating and deleting SLAs are audited.
+
+Changing an SLA's conditions, or adding an SLA, recalculates that SLA for
+every open request of the desk from the request's history, as Jira does: its
+creation, its status, assignee, due date and resolution changes, and its
+public comments are replayed in order against the conditions, and the SLA's
+cycles are rebuilt with their historical start and stop times on its default
+goal before goals and pauses are settled again. A comment counts as for
+customers when its author manages the request now. Completed requests keep
+their cycles, and pause conditions apply from the recalculation onwards
+because they are evaluated against the request's current state.
 
 Administrators add, rename, or remove dated holidays in the same calendar
 workspace. Changes are scoped to the selected service desk and audited. SLA
@@ -362,21 +432,56 @@ help, incident, problem, and change request types. Operations requests receive
 one deterministic `incident`, `problem`, or `change` label, problem/change
 descriptions are required, and agents can link visible related Jira work from
 the service request without exposing those links to portal customers. Managers can define ordered JQL
-conditions per SLA metric; the first matching condition wins and every cycle
+conditions per SLA metric and move each one up or down; the first matching
+condition wins, a reorder applies to cycles that start afterwards, and every cycle
 snapshots the chosen goal name and duration so completed history remains stable.
 Active cycles follow edits to their selected goal, and the default remains the
 fallback. Managers also configure per-metric pause JQL in this workspace.
 Recursive SLA-dependent pause conditions are rejected. Failed metadata association is
 compensated by a logged issue deletion, so no orphaned ticket remains.
 
+## Portal settings
+
+A desk's administrators set its portal name, introduction text and logo from
+the Portal section of the agent workspace, as Jira's portal settings do. The
+portal page shows the logo and introduction under its name, and the help
+center lists the portal with its logo and introduction. The name is one line
+of up to 255 characters, the introduction up to 1000, and the logo a site path
+or an http or https address; changes are audited. Site administrators customize the help center from the *Customize help center*
+section of its home page: the help center name and home page title, a logo and
+a banner image (site paths or http(s) addresses), the banner, link and button
+colour, the banner text colour, the navigation background and text colours,
+and an announcement title and message shown on the home page. Colours are hex;
+a colour pair is applied only when its text keeps 4.5:1 contrast, and the
+banner, link and button colour styles links and buttons only when white text
+stays readable on it. Changes are audited.
+
+A portal's administrators can let its agents add announcements, with the
+*Agents can add announcements to this portal* setting in the Portal section.
+While it is on, the desk's agents and administrators write an announcement
+title and message in the agent workspace's Portal announcement section, and
+the portal page shows it under the portal's name; clearing both fields removes
+it. Titles are one line of up to 255 characters, messages up to 2000, and a
+message needs a title. Announcement changes are audited.
+
+## Customer notifications
+
+Service desk administrators choose which of Jira's customer notifications the
+desk sends, from the Customers section of the agent workspace: Customer
+invited, Request created, Public comment added, Customer-visible status
+changed, Participant added and Approval required. Every notification starts
+on. A turned-off notification stops reaching customers, both in their
+notifications and by email, while agents keep their own updates. Request
+created confirms to the reporter that the request arrived. Service projects
+link customer organizations to the desk rather than sharing single requests,
+so there is no Organization added notification to send.
+
 ## Remaining fidelity
 
 The implemented operations are assessed as partial. JQL support follows the
 documented ZZIRA search subset, including array-aware label matching;
-conditional form logic, user and
-Assets-backed portal pickers, participant notifications,
-approval workflow configuration, email delivery and notification preference administration, CSAT configuration,
-SLA goal distributions, complete public Assets object/schema/import API parity, SLA rule reordering and advanced criteria,
-portal invitation email delivery, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
+Assets-backed portal pickers,
+customer notification email templates and Organization added notifications, CSAT configuration,
+SLA goal distributions, complete public Assets object/schema/import API parity, historical pause replay for recalculated SLAs, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
 remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

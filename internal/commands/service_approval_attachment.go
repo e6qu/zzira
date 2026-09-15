@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -41,7 +43,7 @@ func (s *Service) createServiceApproval(ctx context.Context, actorID, workspaceI
 		return nil, err
 	}
 	if created {
-		if err := s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, approverIDs, "service_approval", "requested your approval on "+request.Issue.Key, false); err != nil {
+		if err := s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, approverIDs, "service_approval", "requested your approval on "+request.Issue.Key, false, models.CustomerNotificationApproval); err != nil {
 			return nil, err
 		}
 	}
@@ -227,11 +229,31 @@ func (s *Service) startStatusApproval(ctx context.Context, actorID, workspaceID 
 			excluded[issue.Reporter.ID] = true
 		}
 	}
-	approverIDs := []string{}
-	for _, id := range userPickerAccountIDs(issue.Fields[configuration.FieldID]) {
-		if !excluded[id] {
-			approverIDs = append(approverIDs, id)
+	// The approvers field names the approvers; while it is empty, the
+	// pre-populated field does.
+	fieldID := configuration.FieldID
+	if len(userPickerAccountIDs(issue.Fields[fieldID])) == 0 && configuration.PrePopulatedFieldID != "" {
+		fieldID = configuration.PrePopulatedFieldID
+	}
+	fieldType := ""
+	if field, fieldErr := s.Store.CustomFieldByID(ctx, workspaceID, fieldID); fieldErr == nil {
+		fieldType = field.Type
+	} else if !errors.Is(fieldErr, pgx.ErrNoRows) {
+		return fieldErr
+	}
+	approverIDs, approverGroups, err := statusApprovalApprovers(fieldType, issue.Fields[fieldID], func(groupID string) ([]string, error) {
+		members, membersErr := s.Store.SiteGroupMembers(ctx, workspaceID, groupID, false)
+		if errors.Is(membersErr, pgx.ErrNoRows) || errors.Is(membersErr, store.ErrPeopleNotFound) {
+			return nil, nil
 		}
+		ids := make([]string, 0, len(members))
+		for _, member := range members {
+			ids = append(ids, member.ID)
+		}
+		return ids, membersErr
+	}, excluded)
+	if err != nil {
+		return err
 	}
 	if len(approverIDs) == 0 {
 		return nil
@@ -240,7 +262,7 @@ func (s *Service) startStatusApproval(ctx context.Context, actorID, workspaceID 
 	if err != nil {
 		return err
 	}
-	rule := models.ServiceApproval{StatusID: issue.Status.ID, ConditionType: configuration.ConditionType, ConditionValue: conditionValue, TransitionApproved: configuration.TransitionApproved, TransitionRejected: configuration.TransitionRejected}
+	rule := models.ServiceApproval{StatusID: issue.Status.ID, ConditionType: configuration.ConditionType, ConditionValue: conditionValue, TransitionApproved: configuration.TransitionApproved, TransitionRejected: configuration.TransitionRejected, ApproverGroups: approverGroups}
 	// Each entry into the status opens its own approval.
 	key := fmt.Sprintf("workflow-status:%s:%d", issue.Status.ID, issue.UpdatedSeq)
 	_, created, err := s.Store.CreateStatusServiceApproval(ctx, workspaceID, issue.ID, actorID, issue.Status.Name, approverIDs, key, rule)
@@ -251,11 +273,46 @@ func (s *Service) startStatusApproval(ctx context.Context, actorID, workspaceID 
 	if err != nil {
 		return err
 	}
-	return s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, approverIDs, "service_approval", "requested your approval on "+issue.Key, false)
+	return s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, approverIDs, "service_approval", "requested your approval on "+issue.Key, false, models.CustomerNotificationApproval)
 }
 
 // userPickerAccountIDs reads the account IDs a user or multi-user picker
 // field stores.
+// statusApprovalApprovers resolves the approvers a status approval's field
+// names: the people of a user picker, or the members of the groups a group
+// picker names, keeping which groups each member came from. Excluded people
+// are left out.
+func statusApprovalApprovers(fieldType string, raw json.RawMessage, members func(groupID string) ([]string, error), excluded map[string]bool) ([]string, map[string][]string, error) {
+	ids, groups := []string{}, map[string][]string{}
+	add := func(id string) {
+		if !excluded[id] && !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	if fieldType != models.CustomFieldGroup && fieldType != models.CustomFieldMultiGroup {
+		for _, id := range userPickerAccountIDs(raw) {
+			add(id)
+		}
+		return ids, groups, nil
+	}
+	for _, groupID := range userPickerAccountIDs(raw) {
+		memberIDs, err := members(groupID)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, id := range memberIDs {
+			if excluded[id] {
+				continue
+			}
+			add(id)
+			if !slices.Contains(groups[id], groupID) {
+				groups[id] = append(groups[id], groupID)
+			}
+		}
+	}
+	return ids, groups, nil
+}
+
 func userPickerAccountIDs(raw json.RawMessage) []string {
 	var single string
 	if json.Unmarshal(raw, &single) == nil && single != "" {

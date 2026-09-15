@@ -14,7 +14,7 @@ func (s *Store) ServiceRequestTypeFields(ctx context.Context, workspaceID, servi
 		  CASE f.field_id WHEN 'summary' THEN 'Summary' WHEN 'description' THEN 'Description' ELSE cf.name END,
 		  CASE f.field_id WHEN 'summary' THEN 'text' WHEN 'description' THEN 'text' ELSE cf.type END,
 		  CASE f.field_id WHEN 'summary' THEN rt.description WHEN 'description' THEN 'Describe the request.' ELSE COALESCE(cf.description,'') END,
-		  f.help_text,f.required,(f.field_id LIKE 'customfield_%'),f.position,NOT f.visible,f.preset_value
+		  f.help_text,f.required,(f.field_id LIKE 'customfield_%'),f.position,NOT f.visible,f.preset_value,COALESCE(f.condition_field_id,''),f.condition_option_ids
 		FROM service_request_type_fields f
 		JOIN service_request_types rt ON rt.id=f.request_type_id
 		JOIN service_desks sd ON sd.id=rt.service_desk_id
@@ -30,7 +30,7 @@ func (s *Store) ServiceRequestTypeFields(ctx context.Context, workspaceID, servi
 	fields := make([]models.ServiceRequestTypeField, 0)
 	for rows.Next() {
 		var field models.ServiceRequestTypeField
-		if err := rows.Scan(&field.ID, &field.RequestTypeID, &field.Name, &field.Type, &field.Description, &field.HelpText, &field.Required, &field.Custom, &field.Position, &field.Hidden, &field.PresetValue); err != nil {
+		if err := rows.Scan(&field.ID, &field.RequestTypeID, &field.Name, &field.Type, &field.Description, &field.HelpText, &field.Required, &field.Custom, &field.Position, &field.Hidden, &field.PresetValue, &field.ConditionFieldID, &field.ConditionOptionIDs); err != nil {
 			return nil, err
 		}
 		fields = append(fields, field)
@@ -59,7 +59,11 @@ func (s *Store) SetServiceRequestTypeFields(ctx context.Context, workspaceID, ac
 		if len(field.PresetValue) > 0 && string(field.PresetValue) != "null" {
 			preset = field.PresetValue
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO service_request_type_fields(request_type_id,field_id,required,help_text,position,visible,preset_value) VALUES($1,$2,$3,$4,$5,$6,$7)`, requestTypeID, field.ID, field.Required, field.HelpText, position, !field.Hidden, preset); err != nil {
+		conditionOptions := field.ConditionOptionIDs
+		if conditionOptions == nil {
+			conditionOptions = []string{}
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO service_request_type_fields(request_type_id,field_id,required,help_text,position,visible,preset_value,condition_field_id,condition_option_ids) VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''),$9)`, requestTypeID, field.ID, field.Required, field.HelpText, position, !field.Hidden, preset, field.ConditionFieldID, conditionOptions); err != nil {
 			return err
 		}
 	}
@@ -111,4 +115,64 @@ func (s *Store) ServiceRequestFieldOptions(ctx context.Context, workspaceID, ser
 		}
 	}
 	return options, rows.Err()
+}
+
+// ServicePortalPickerChoices lists what a group, project, version or team
+// picker on a service desk's portal offers, in the option shape select fields
+// use: the site's groups, the projects the requester can browse, the desk
+// project's versions that are not archived, and the site's teams. Other field
+// types offer nothing.
+func (s *Store) ServicePortalPickerChoices(ctx context.Context, workspaceID, serviceDeskID, userID, fieldType string) ([]ServiceRequestFieldOption, error) {
+	choices := []ServiceRequestFieldOption{}
+	switch fieldType {
+	case models.CustomFieldGroup, models.CustomFieldMultiGroup:
+		groups, err := s.GroupsByWorkspace(ctx, workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		for _, group := range groups {
+			choices = append(choices, ServiceRequestFieldOption{ID: group.ID, Value: group.Name})
+		}
+	case models.CustomFieldProject:
+		projects, err := s.ProjectsWithPermissions(ctx, workspaceID, userID, []string{"BROWSE_PROJECTS"})
+		if err != nil {
+			return nil, err
+		}
+		for _, project := range projects {
+			choices = append(choices, ServiceRequestFieldOption{ID: project.ID, Value: project.Name})
+		}
+	case models.CustomFieldTeam:
+		teams, err := s.AtlassianTeams(ctx, workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		for _, team := range teams {
+			choices = append(choices, ServiceRequestFieldOption{ID: team.ID, Value: team.Name})
+		}
+	case models.CustomFieldVersion, models.CustomFieldMultiVersion:
+		var projectID string
+		if err := s.Pool.QueryRow(ctx, `SELECT project_id FROM service_desks WHERE workspace_id=$1 AND id=$2`, workspaceID, serviceDeskID).Scan(&projectID); err != nil {
+			return nil, err
+		}
+		versions, err := s.ProjectVersions(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		for _, version := range versions {
+			if !version.Archived {
+				choices = append(choices, ServiceRequestFieldOption{ID: version.ID, Value: version.Name})
+			}
+		}
+	}
+	return choices, nil
+}
+
+// IsServicePortalPicker reports a field type whose portal choices come from
+// the site's groups, projects, versions or teams rather than configured options.
+func IsServicePortalPicker(fieldType string) bool {
+	switch fieldType {
+	case models.CustomFieldGroup, models.CustomFieldMultiGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam:
+		return true
+	}
+	return false
 }

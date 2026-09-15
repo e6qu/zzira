@@ -103,6 +103,27 @@ test('admin creates a service project with Jira Service Management request types
   await page.goto('/service');
   await expect(page.getByRole('heading', { name: 'How can we help?', level: 1 })).toBeVisible();
   await accessible(page);
+  // A site administrator brands the help center and announces news on its home page.
+  const helpCenterSettings = page.locator('#help-center-settings');
+  await helpCenterSettings.locator('summary').click();
+  await helpCenterSettings.getByLabel('Help center name').fill('Acme help');
+  await helpCenterSettings.getByLabel('Banner, link and button colour').fill('#0052CC');
+  await helpCenterSettings.getByLabel('Announcement title').fill('Planned maintenance');
+  await helpCenterSettings.getByLabel('Announcement message').fill('Email is offline on Saturday.');
+  await helpCenterSettings.getByRole('button', { name: 'Save help center' }).click();
+  const announcement = page.getByRole('region', { name: 'Planned maintenance' });
+  await expect(announcement).toContainText('Email is offline on Saturday.');
+  await expect(page.locator('.service-hero .eyebrow')).toHaveText('Acme help');
+  await expect(page.locator('.service-hero')).toHaveCSS('background-color', 'rgb(0, 82, 204)');
+  await accessible(page);
+  // Clearing the settings returns the help center to its defaults.
+  await page.locator('#help-center-settings summary').click();
+  for (const label of ['Help center name', 'Banner, link and button colour', 'Announcement title', 'Announcement message']) {
+    await page.locator('#help-center-settings').getByLabel(label).fill('');
+  }
+  await page.locator('#help-center-settings').getByRole('button', { name: 'Save help center' }).click();
+  await expect(page.getByRole('region', { name: 'Planned maintenance' })).toHaveCount(0);
+  await expect(page.locator('.service-hero .eyebrow')).toHaveText('Help center');
   await page.getByRole('link', { name: `Service desk ${key}` }).click();
   await expect(page.getByRole('heading', { name: `Service desk ${key}`, level: 1 })).toBeVisible();
   await page.getByRole('link', { name: /Report an incident/ }).click();
@@ -134,6 +155,18 @@ test('admin creates a service project with Jira Service Management request types
   await incidentUpdates.getByLabel('Update').fill('Checkout is unavailable. The response team is investigating.');
   await incidentUpdates.getByRole('button', { name: 'Publish status update' }).click();
   await expect(page.locator('#incident-updates')).toContainText('Checkout is unavailable. The response team is investigating.');
+  // The response team takes incident roles and stakeholders follow stakeholder updates.
+  await page.locator('#incident-team').getByLabel('Incident commander').selectOption({ label: 'Demo User' });
+  await page.locator('#incident-team').getByRole('button', { name: 'Save Incident commander' }).click();
+  await expect(page.locator('#incident-team').getByLabel('Incident commander')).not.toHaveValue('');
+  await page.locator('#incident-team').getByLabel('Or email address').fill('exec.sponsor@example.test');
+  await page.locator('#incident-team').getByRole('button', { name: 'Add stakeholder' }).click();
+  await expect(page.locator('#incident-team')).toContainText('exec.sponsor@example.test');
+  await page.locator('#incident-updates').getByLabel('Audience').selectOption('stakeholders');
+  await page.locator('#incident-updates').getByLabel('Update').fill('Checkout recovers for most customers.');
+  await page.locator('#incident-updates').getByRole('button', { name: 'Publish status update' }).click();
+  await expect(page.locator('#incident-updates')).toContainText('Checkout recovers for most customers.');
+  await expect(page.locator('#incident-updates').locator('.lozenge').filter({ hasText: 'stakeholders' })).toHaveCount(1);
   await expect(page.getByText('Customers receive an error when completing checkout.')).toBeVisible();
   await page.goto(`/service/portals/${desk.id}`);
   await expect(page.getByRole('link', { name: /Investigate a problem/ })).toBeVisible();
@@ -270,6 +303,70 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.getByRole('heading', { name: dynamicRequestSummary, level: 1 })).toBeVisible();
   await expect(page.locator('.service-request-fields')).toContainText(impactFieldName);
   await expect(page.locator('.service-request-fields')).toContainText('42.5');
+  // Select, multi-select and user picker fields ask for options and people in their own terms.
+  const serviceProject = await (await page.request.get(`/rest/api/3/project/${key}`, { headers: auth })).json();
+  const choiceField = async (name: string, type: string, values: string[]) => {
+    const created = await page.request.post('/rest/api/3/field', { headers: auth, data: { name, type: `com.atlassian.jira.plugin.system.customfieldtypes:${type}` } });
+    expect(created.status()).toBe(201);
+    const id = (await created.json()).id as string;
+    const contexts = await (await page.request.get(`/rest/api/3/field/${id}/context`, { headers: auth })).json();
+    const contextID = String(contexts.values[0].id);
+    expect((await page.request.put(`/rest/api/3/field/${id}/context/${contextID}/project`, { headers: auth, data: { projectIds: [String(serviceProject.id)] } })).status()).toBe(204);
+    if (values.length) expect((await page.request.post(`/rest/api/3/field/${id}/context/${contextID}/option`, { headers: auth, data: { options: values.map(value => ({ value })) } })).status()).toBe(200);
+  };
+  const choiceStamp = Date.now();
+  const platformName = `Affected platform ${choiceStamp}`;
+  const regionsName = `Affected regions ${choiceStamp}`;
+  const contactName = `Escalation contact ${choiceStamp}`;
+  await choiceField(platformName, 'select', ['Web', 'Mobile']);
+  await choiceField(regionsName, 'multiselect', ['EU', 'US']);
+  await choiceField(contactName, 'userpicker', []);
+  // A version picker offers the service project's versions.
+  const releaseName = `Affected release ${choiceStamp}`;
+  const versionName = `Portal release ${choiceStamp}`;
+  expect((await page.request.post('/rest/api/3/version', { headers: auth, data: { projectId: Number(serviceProject.id), name: versionName } })).status()).toBe(201);
+  await choiceField(releaseName, 'version', []);
+  await page.goto(`/service/agent/${desk.id}`);
+  const choicesForm = page.locator('#request-forms form').filter({ has: page.getByRole('heading', { name: 'Report an incident', level: 3 }) });
+  const fieldSettings = (name: string) => choicesForm.locator(`xpath=.//fieldset[legend[normalize-space()="${name}"]]`);
+  for (const name of [platformName, regionsName, contactName, releaseName]) await fieldSettings(name).getByRole('checkbox', { name: 'Show on portal' }).check();
+  // The contact is asked for only when the platform is Mobile.
+  await fieldSettings(contactName).getByLabel('Show only when').selectOption({ label: `${platformName} has one of the options below` });
+  await fieldSettings(contactName).getByRole('group', { name: `Options of ${platformName} that show ${contactName}` }).getByLabel('Mobile').check();
+  await choicesForm.getByRole('button', { name: 'Save Report an incident form' }).click();
+  await page.goto(`/service/portals/${desk.id}/request/${incidentRequestType.id}`);
+  const portalFields = await (await page.request.get(`/rest/servicedeskapi/servicedesk/${desk.id}/requesttype/${incidentRequestType.id}/field`, { headers: auth })).json();
+  const releaseField = portalFields.requestTypeFields.find((field: any) => field.name === releaseName);
+  expect(releaseField.jiraSchema.custom).toBe('com.atlassian.jira.plugin.system.customfieldtypes:version');
+  expect(releaseField.validValues.map((value: any) => value.label)).toContain(versionName);
+  const choicesSummary = `Structured incident ${choiceStamp}`;
+  await page.getByLabel('Summary').fill(choicesSummary);
+  await page.getByLabel('Description').fill('Portal choices route the incident.');
+  await page.getByLabel(impactFieldName).fill('7');
+  await expect(page.getByLabel(contactName)).toBeHidden();
+  await page.getByLabel(platformName).selectOption({ label: 'Web' });
+  await expect(page.getByLabel(contactName)).toBeHidden();
+  await page.getByLabel(platformName).selectOption({ label: 'Mobile' });
+  await expect(page.getByLabel(contactName)).toBeVisible();
+  const regions = page.getByRole('group', { name: regionsName });
+  await regions.getByLabel('EU').check();
+  await regions.getByLabel('US').check();
+  await page.getByLabel(contactName).fill('nobody@example.test');
+  await page.getByLabel(releaseName).selectOption({ label: versionName });
+  await accessible(page);
+  await page.getByRole('button', { name: 'Send request' }).click();
+  // An email that names no member is refused with the answers kept.
+  await expect(page.getByRole('alert')).toHaveText('No active member of this site uses nobody@example.test.');
+  await expect(page.getByLabel(platformName)).not.toHaveValue('');
+  await expect(regions.getByLabel('US')).toBeChecked();
+  await expect(page.getByLabel(releaseName)).not.toHaveValue('');
+  await page.getByLabel(contactName).fill('demo@zzira.dev');
+  await page.getByRole('button', { name: 'Send request' }).click();
+  await expect(page.getByRole('heading', { name: choicesSummary, level: 1 })).toBeVisible();
+  await expect(page.locator('.service-request-fields')).toContainText('Mobile');
+  await expect(page.locator('.service-request-fields')).toContainText('EU, US');
+  await expect(page.locator('.service-request-fields')).toContainText('Demo User');
+  await expect(page.locator('.service-request-fields')).toContainText(versionName);
   await accessible(page);
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -281,6 +378,47 @@ test('admin creates a service project with Jira Service Management request types
   await requestRow.getByRole('button', { name: 'Assign to me' }).click();
   await page.getByRole('link', { name: 'Assigned to me', exact: true }).click();
   await expect(page.getByRole('row').filter({ hasText: requestSummary }).getByRole('button', { name: 'Unassign' })).toBeVisible();
+  // The queue's action bar changes the selected requests together.
+  const bulk = page.locator('#bulk-requests');
+  const assignedRow = page.getByRole('row').filter({ hasText: requestSummary });
+  await page.getByLabel('Select all requests in Assigned to me').check();
+  await expect(assignedRow.getByRole('checkbox')).toBeChecked();
+  await page.getByLabel('Select all requests in Assigned to me').uncheck();
+  await assignedRow.getByRole('checkbox').check();
+  await bulk.getByLabel('Action').selectOption('comment');
+  await bulk.getByLabel('Comment', { exact: true }).fill('Checked by the queue together.');
+  await bulk.getByLabel('Comment visibility').selectOption('internal');
+  await accessible(page);
+  await bulk.getByRole('button', { name: 'Apply to selected requests' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'requests changed' })).toHaveText(/^1 of 1 requests changed\.$/);
+  // Nothing selected is refused with the reason.
+  await page.locator('#bulk-requests').getByRole('button', { name: 'Apply to selected requests' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Select the requests' })).toHaveText('Select the requests to change.');
+  // Moving to a status that keeps the request open leaves it in the queue;
+  // a done status would take it out of this queue of open requests.
+  const statuses = (await page.locator('#bulk-status option').allTextContents()).map(status => status.trim());
+  const openStatus = statuses.find(status => status !== 'Done' && status !== 'Resolved' && status !== 'Closed' && status !== 'Canceled');
+  expect(openStatus, `bulk statuses ${statuses.join(', ')}`).toBeTruthy();
+  await page.getByRole('row').filter({ hasText: requestSummary }).getByRole('checkbox').check();
+  await page.locator('#bulk-requests').getByLabel('Action').selectOption('transition');
+  await page.locator('#bulk-requests').getByLabel('Status').selectOption(openStatus!);
+  await page.locator('#bulk-requests').getByRole('button', { name: 'Apply to selected requests' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'requests changed' })).toHaveText(/^1 of 1 requests changed\.$/);
+  await expect(page.getByRole('row').filter({ hasText: requestSummary })).toContainText(openStatus!);
+  // A request already in the chosen status is named with the reason.
+  await page.getByRole('row').filter({ hasText: requestSummary }).getByRole('checkbox').check();
+  await page.locator('#bulk-requests').getByLabel('Action').selectOption('transition');
+  if (await page.locator('#bulk-status option', { hasText: openStatus! }).count()) {
+    await page.locator('#bulk-requests').getByLabel('Status').selectOption(openStatus!);
+    await page.locator('#bulk-requests').getByRole('button', { name: 'Apply to selected requests' }).click();
+    await expect(page.getByRole('alert').filter({ hasText: 'is already' })).toContainText(`is already ${openStatus}.`);
+    await page.getByRole('row').filter({ hasText: requestSummary }).getByRole('checkbox').check();
+  }
+  await page.locator('#bulk-requests').getByLabel('Action').selectOption('assign');
+  await page.locator('#bulk-requests').getByLabel('Assignee').selectOption('');
+  await page.locator('#bulk-requests').getByRole('button', { name: 'Apply to selected requests' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'requests changed' })).toHaveText(/^1 of 1 requests changed\.$/);
+  await expect(page.getByRole('row').filter({ hasText: requestSummary })).toHaveCount(0);
   const agentSettings = page.locator('#agents');
   await expect(agentSettings.getByRole('heading', { name: 'Agents' })).toBeVisible();
   await agentSettings.getByRole('button', { name: /Add agent Demo User/ }).click();
@@ -318,6 +456,41 @@ test('admin creates a service project with Jira Service Management request types
   await page.locator('#customers').getByRole('button', { name: 'Close portal access' }).click();
   await expect(page.locator('#customers').getByRole('button', { name: 'Open portal access' })).toBeVisible();
   await page.locator('#customers').getByRole('button', { name: 'Open portal access' }).click();
+  // Jira's customer notifications can be turned off and on again per desk.
+  const customerNotifications = page.getByRole('region', { name: 'Customer notifications' });
+  await expect(customerNotifications.getByRole('listitem')).toHaveCount(6);
+  await customerNotifications.getByRole('button', { name: 'Turn off Public comment added' }).click();
+  await expect(page.getByRole('region', { name: 'Customer notifications' }).getByRole('listitem').filter({ hasText: 'Public comment added' })).toContainText('Turned off.');
+  await page.getByRole('region', { name: 'Customer notifications' }).getByRole('button', { name: 'Turn on Public comment added' }).click();
+  await expect(page.getByRole('region', { name: 'Customer notifications' }).getByRole('button', { name: 'Turn off Public comment added' })).toBeVisible();
+  // The portal introduces itself with the text its administrators write.
+  const portalSettings = page.getByRole('region', { name: 'Portal', exact: true });
+  const portalName = await portalSettings.getByLabel('Portal name').inputValue();
+  await portalSettings.getByLabel('Introduction text').fill('Laptops, access and office moves.');
+  await portalSettings.getByLabel('Logo URL').fill('/static/img/avatar-default.svg');
+  await portalSettings.getByLabel('Agents can add announcements to this portal').check();
+  await portalSettings.getByRole('button', { name: 'Save portal' }).click();
+  await expect(page.getByRole('region', { name: 'Portal', exact: true }).getByLabel('Introduction text')).toHaveValue('Laptops, access and office moves.');
+  // With announcements allowed, the portal announces planned work.
+  const portalAnnouncement = page.getByRole('region', { name: 'Portal announcement' });
+  await portalAnnouncement.getByLabel('Announcement title').fill('Planned maintenance');
+  await portalAnnouncement.getByLabel('Announcement message').fill('Laptop imaging is paused on Friday.');
+  await portalAnnouncement.getByRole('button', { name: 'Save announcement' }).click();
+  await expect(page.getByRole('region', { name: 'Portal announcement' }).getByLabel('Announcement title')).toHaveValue('Planned maintenance');
+  await page.goto(`/service/portals/${desk.id}`);
+  await expect(page.getByRole('heading', { name: portalName, level: 1 })).toBeVisible();
+  await expect(page.locator('.service-hero')).toContainText('Laptops, access and office moves.');
+  await expect(page.locator('.service-hero img.service-portal-logo')).toHaveAttribute('src', '/static/img/avatar-default.svg');
+  await expect(page.getByRole('region', { name: 'Planned maintenance' })).toContainText('Laptop imaging is paused on Friday.');
+  await accessible(page);
+  await page.goto(`/service/agent/${desk.id}`);
+  // Clearing the announcement removes it from the portal.
+  await page.getByRole('region', { name: 'Portal announcement' }).getByLabel('Announcement title').fill('');
+  await page.getByRole('region', { name: 'Portal announcement' }).getByLabel('Announcement message').fill('');
+  await page.getByRole('region', { name: 'Portal announcement' }).getByRole('button', { name: 'Save announcement' }).click();
+  await page.goto(`/service/portals/${desk.id}`);
+  await expect(page.getByRole('region', { name: 'Planned maintenance' })).toHaveCount(0);
+  await page.goto(`/service/agent/${desk.id}`);
   const organizationName = `Customer organization ${Date.now()}`;
   const organizationSettings = page.locator('#organizations');
   await organizationSettings.getByPlaceholder('Organization name').fill(organizationName);
@@ -354,6 +527,29 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.locator('#sla-settings .service-sla-goals form').first().getByLabel('Pause while JQL matches')).toHaveValue('status = "To Do"');
   await page.locator('#sla-settings .service-sla-goals form').first().getByLabel('Pause while JQL matches').fill('');
   await page.locator('#sla-settings .service-sla-goals form').first().getByRole('button', { name: 'Save SLA' }).click();
+  // Time to first response also stops when the request is assigned, until the condition is removed again.
+  const firstResponseStop = () => page.locator('#sla-settings .service-sla-goals form').first().getByRole('group', { name: 'Stop counting time when' });
+  await expect(firstResponseStop().getByLabel('Comment: For Customers')).toBeChecked();
+  await firstResponseStop().getByLabel('Assignee: From Unassigned').check();
+  await page.locator('#sla-settings .service-sla-goals form').first().getByRole('button', { name: 'Save SLA' }).click();
+  await expect(firstResponseStop().getByLabel('Assignee: From Unassigned')).toBeChecked();
+  await expect(page.locator('#sla-settings .service-sla-goals form').first().getByRole('group', { name: 'Start counting time when' }).getByLabel('Issue Created')).toBeChecked();
+  await firstResponseStop().getByLabel('Assignee: From Unassigned').uncheck();
+  await page.locator('#sla-settings .service-sla-goals form').first().getByRole('button', { name: 'Save SLA' }).click();
+  await expect(firstResponseStop().getByLabel('Assignee: From Unassigned')).not.toBeChecked();
+  // A manager adds their own SLA and removes it again.
+  const customSLAName = `Time to approve ${String(Date.now()).slice(-6)}`;
+  const createSLA = page.locator('#sla-settings .service-sla-create');
+  await createSLA.getByLabel('SLA name').fill(customSLAName);
+  await createSLA.getByRole('group', { name: 'Start counting time when' }).getByLabel('Issue Created').check();
+  await createSLA.getByRole('group', { name: 'Stop counting time when' }).getByLabel('Resolution: Set').check();
+  await createSLA.getByLabel('Goal in minutes').fill('120');
+  await createSLA.getByRole('button', { name: 'Add SLA' }).click();
+  const customSLAForm = page.locator('#sla-settings .service-sla-goals form').filter({ has: page.getByText(customSLAName, { exact: true }) });
+  await expect(customSLAForm.getByRole('spinbutton')).toHaveValue('120');
+  await expect(customSLAForm.getByRole('group', { name: 'Stop counting time when' }).getByLabel('Resolution: Set')).toBeChecked();
+  await page.getByRole('button', { name: `Delete ${customSLAName}` }).click();
+  await expect(page.getByRole('button', { name: `Delete ${customSLAName}` })).toHaveCount(0);
   const conditionalGoalName = `Incident response ${String(Date.now()).slice(-6)}`;
   const firstResponseConditions = page.locator('#sla-settings .service-conditional-goals section').filter({ has: page.getByRole('heading', { name: 'Time to first response conditions', level: 3 }) });
   const conditionalGoalCreate = firstResponseConditions.locator('.service-conditional-goal-create');
@@ -368,6 +564,19 @@ test('admin creates a service project with Jira Service Management request types
   await conditionalGoalCard.getByLabel('Minutes').fill('90');
   await conditionalGoalCard.getByRole('button', { name: 'Save conditional goal' }).click();
   await expect(page.locator('#sla-settings .service-conditional-goal-list article').filter({ has: page.locator(`input[value="${updatedConditionalGoalName}"]`) })).toBeVisible();
+  // A second matching goal moved above the first takes new requests first.
+  const topGoalName = `Top incident response ${String(Date.now()).slice(-6)}`;
+  const topGoalCreate = page.locator('#sla-settings .service-conditional-goals section').filter({ has: page.getByRole('heading', { name: 'Time to first response conditions', level: 3 }) }).locator('.service-conditional-goal-create');
+  await topGoalCreate.getByLabel('Goal name').fill(topGoalName);
+  await topGoalCreate.getByLabel('JQL condition').fill('labels = incident');
+  await topGoalCreate.getByLabel('Minutes').fill('30');
+  await topGoalCreate.getByRole('button', { name: 'Add conditional goal' }).click();
+  await page.locator('#sla-settings').getByRole('button', { name: `Move up ${topGoalName}` }).click();
+  const firstResponseGoalNames = page.locator('#sla-settings .service-conditional-goals section').filter({ has: page.getByRole('heading', { name: 'Time to first response conditions', level: 3 }) }).locator('.service-conditional-goal-list article input[name="name"]');
+  await expect(firstResponseGoalNames.nth(0)).toHaveValue(topGoalName);
+  await expect(firstResponseGoalNames.nth(1)).toHaveValue(updatedConditionalGoalName);
+  await expect(page.locator('#sla-settings').getByRole('button', { name: `Move up ${topGoalName}` })).toHaveCount(0);
+  await expect(page.locator('#sla-settings').getByRole('button', { name: `Move down ${updatedConditionalGoalName}` })).toHaveCount(0);
   await page.goto(`/service/portals/${desk.id}/request/${incidentRequestType.id}`);
   const conditionalRequestSummary = `Priority incident ${Date.now()}`;
   await page.getByLabel('Summary').fill(conditionalRequestSummary);
@@ -375,7 +584,7 @@ test('admin creates a service project with Jira Service Management request types
   await page.getByLabel(impactFieldName).fill('100');
   await page.getByRole('button', { name: 'Send request' }).click();
   await expect(page.getByRole('heading', { name: conditionalRequestSummary, level: 1 })).toBeVisible();
-  await expect(page.locator('.service-sla-panel')).toContainText(updatedConditionalGoalName);
+  await expect(page.locator('.service-sla-panel')).toContainText(topGoalName);
   await accessible(page);
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -391,7 +600,7 @@ test('admin creates a service project with Jira Service Management request types
   await accessible(page);
   await page.goto(`/service/agent/${desk.id}/reports`);
   await expect(page.getByRole('heading', { name: 'Service reports', level: 1 })).toBeVisible();
-  await expect(page.locator('.service-report-metrics article').filter({ hasText: 'Total requests' })).toContainText('5');
+  await expect(page.locator('.service-report-metrics article').filter({ hasText: 'Total requests' })).toContainText('6');
   await expect(page.getByText('4.0 / 5')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Request types', level: 2 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Channels', level: 2 })).toBeVisible();

@@ -12,6 +12,7 @@ import (
 
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 type CreateServiceRequestInput struct {
@@ -112,6 +113,9 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 			return nil, errors.Join(err, cleanupErr)
 		}
 	}
+	if err := s.notifyServiceRequestCreated(ctx, in.WorkspaceID, in.ServiceDeskID, in.CustomerID, issue.ID); err != nil {
+		return nil, err
+	}
 	// A request created straight into an approval status opens its approval.
 	current, err := s.Store.IssueByIDOrKey(ctx, in.WorkspaceID, issue.ID)
 	if err != nil {
@@ -146,7 +150,7 @@ func (s *Service) UpdateServiceRequestParticipants(ctx context.Context, actorID,
 		return nil, err
 	}
 	if !remove {
-		if err := s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, userIDs, "service_participant", "added you as a participant on "+request.Issue.Key, false); err != nil {
+		if err := s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, userIDs, "service_participant", "added you as a participant on "+request.Issue.Key, false, models.CustomerNotificationParticipant); err != nil {
 			return nil, err
 		}
 	}
@@ -201,12 +205,18 @@ func (s *Service) addServiceRequestComment(ctx context.Context, actorID, workspa
 }
 
 func (s *Service) afterServiceRequestComment(ctx context.Context, actorID, workspaceID string, request *models.ServiceRequest, public, canManage bool) error {
-	if public && canManage {
-		if err := s.Store.CompleteServiceSLA(ctx, workspaceID, request.Issue.ID, "first_response", time.Now().UTC()); err != nil {
+	// A public agent comment is a comment for customers; a customer's own
+	// comment is a comment by customer.
+	if public {
+		event := models.SLAConditionCommentByCustomer
+		if canManage {
+			event = models.SLAConditionCommentForCustomers
+		}
+		if err := s.applyServiceSLAEvents(ctx, actorID, workspaceID, request.ServiceDesk.ID, request.Issue.ID, []string{event}, time.Now().UTC()); err != nil {
 			return err
 		}
 	}
-	return s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_comment", "commented on "+request.Issue.Key, !public)
+	return s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_comment", "commented on "+request.Issue.Key, !public, models.CustomerNotificationPublicComment)
 }
 
 func (s *Service) TransitionServiceRequest(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string) (*models.ServiceRequest, error) {
@@ -226,30 +236,297 @@ func (s *Service) TransitionServiceRequest(ctx context.Context, actorID, workspa
 	if err != nil {
 		return nil, err
 	}
-	if err := s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_status", "moved "+request.Issue.Key+" to "+request.Issue.Status.Name, false); err != nil {
+	if err := s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_status", "moved "+request.Issue.Key+" to "+request.Issue.Status.Name, false, models.CustomerNotificationStatusChanged); err != nil {
 		return nil, err
 	}
 	return request, nil
 }
 
-func (s *Service) syncServiceSLAsAfterIssueChange(ctx context.Context, actorID, workspaceID string, issue *models.Issue, at time.Time) error {
-	serviceDeskID, err := s.Store.ServiceRequestDeskID(ctx, workspaceID, issue.ID)
+// syncServiceSLAsAfterIssueChange applies the SLA condition events a change to
+// a service request's work item produced.
+func (s *Service) syncServiceSLAsAfterIssueChange(ctx context.Context, actorID, workspaceID string, before, after *models.Issue, at time.Time) error {
+	serviceDeskID, err := s.Store.ServiceRequestDeskID(ctx, workspaceID, after.ID)
 	if err != nil || serviceDeskID == "" {
 		return err
 	}
-	if issue.Status.Category == "done" {
-		if err := s.Store.CompleteServiceSLA(ctx, workspaceID, issue.ID, "resolution", at); err != nil {
+	return s.applyServiceSLAEvents(ctx, actorID, workspaceID, serviceDeskID, after.ID, serviceSLAEvents(before, after), at)
+}
+
+// applyServiceSLAEvents stops and starts the request's SLA clocks whose
+// conditions the events meet, reselects goals and settles pauses.
+func (s *Service) applyServiceSLAEvents(ctx context.Context, actorID, workspaceID, serviceDeskID, issueID string, events []string, at time.Time) error {
+	if len(events) > 0 {
+		if _, err := s.Store.ApplyServiceSLAEvents(ctx, workspaceID, serviceDeskID, issueID, events, at); err != nil {
 			return err
 		}
-	} else {
-		if err := s.Store.EnsureResolutionSLA(ctx, workspaceID, issue.ID, at); err != nil {
-			return err
-		}
-		if err := s.Store.ApplyServiceSLAGoals(ctx, workspaceID, actorID, serviceDeskID, issue.ID); err != nil {
+		if err := s.Store.ApplyServiceSLAGoals(ctx, workspaceID, actorID, serviceDeskID, issueID); err != nil {
 			return err
 		}
 	}
-	return s.Store.ReconcileServiceSLAPauses(ctx, workspaceID, actorID, issue.ID, at)
+	return s.Store.ReconcileServiceSLAPauses(ctx, workspaceID, actorID, issueID, at)
+}
+
+// serviceSLAEvents lists the SLA condition events a change to a work item
+// meets: entering a status, and changes to its assignee, due date and
+// resolution.
+func serviceSLAEvents(before, after *models.Issue) []string {
+	assignee := func(issue *models.Issue) string {
+		if issue.Assignee == nil {
+			return ""
+		}
+		return issue.Assignee.ID
+	}
+	resolution := func(issue *models.Issue) string {
+		if issue.Resolution == nil {
+			return ""
+		}
+		return issue.Resolution.ID
+	}
+	events := serviceSLAFieldEvents("status", before.Status.ID, after.Status.ID)
+	events = append(events, serviceSLAFieldEvents("assignee", assignee(before), assignee(after))...)
+	events = append(events, serviceSLAFieldEvents("duedate", before.DueDate, after.DueDate)...)
+	return append(events, serviceSLAFieldEvents("resolution", resolution(before), resolution(after))...)
+}
+
+// serviceSLAFieldEvents lists the SLA condition events one field's change
+// meets, from the value it had to the value it has.
+func serviceSLAFieldEvents(field, from, to string) []string {
+	if from == to {
+		return []string{}
+	}
+	switch field {
+	case "status":
+		return []string{models.ServiceSLAEnteredStatus(to).Key}
+	case "assignee":
+		switch {
+		case from == "":
+			return []string{models.SLAConditionAssigneeFromUnassigned, models.SLAConditionAssigneeChanged}
+		case to == "":
+			return []string{models.SLAConditionAssigneeToUnassigned, models.SLAConditionAssigneeChanged}
+		}
+		return []string{models.SLAConditionAssigneeChanged}
+	case "duedate":
+		switch {
+		case from == "":
+			return []string{models.SLAConditionDueDateSet, models.SLAConditionDueDateChanged}
+		case to == "":
+			return []string{models.SLAConditionDueDateCleared, models.SLAConditionDueDateChanged}
+		}
+		return []string{models.SLAConditionDueDateChanged}
+	case "resolution":
+		if to == "" {
+			return []string{models.SLAConditionResolutionCleared}
+		}
+		return []string{models.SLAConditionResolutionSet}
+	}
+	return []string{}
+}
+
+// serviceSLAChange is one moment in a request's history and the SLA condition
+// events it met.
+type serviceSLAChange struct {
+	At     time.Time
+	Events []string
+}
+
+// serviceSLASpans replays a request's history against an SLA's conditions the
+// way live events apply: a stop condition ends the running cycle, then a start
+// condition begins a new one when none is running.
+func serviceSLASpans(start, stop []string, changes []serviceSLAChange) []store.ServiceSLACycleSpan {
+	spans := []store.ServiceSLACycleSpan{}
+	meets := func(conditions, events []string) bool {
+		for _, event := range events {
+			if slices.Contains(conditions, event) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, change := range changes {
+		running := len(spans) > 0 && spans[len(spans)-1].Stop == nil
+		if running && meets(stop, change.Events) {
+			at := change.At
+			spans[len(spans)-1].Stop = &at
+			running = false
+		}
+		if !running && meets(start, change.Events) {
+			spans = append(spans, store.ServiceSLACycleSpan{Start: change.At})
+		}
+	}
+	return spans
+}
+
+// serviceRequestSLAHistory lists a request's moments that SLA conditions can
+// meet, oldest first: its creation, its field changes and its public comments.
+// A comment counts as for customers when its author manages the request now.
+func (s *Service) serviceRequestSLAHistory(ctx context.Context, workspaceID, issueID string) ([]serviceSLAChange, error) {
+	var created time.Time
+	if err := s.Store.Pool.QueryRow(ctx, `SELECT created_at FROM service_requests WHERE workspace_id=$1 AND issue_id=$2`, workspaceID, issueID).Scan(&created); err != nil {
+		return nil, err
+	}
+	changes := []serviceSLAChange{{At: created, Events: []string{models.SLAConditionIssueCreated}}}
+	entries, err := s.Store.IssueChangelog(ctx, workspaceID, issueID)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		at, parseErr := time.Parse(time.RFC3339, entry.Created)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		change := serviceSLAChange{At: at}
+		for _, item := range entry.Items {
+			change.Events = append(change.Events, serviceSLAFieldEvents(item.Field, item.From, item.To)...)
+		}
+		if len(change.Events) > 0 {
+			changes = append(changes, change)
+		}
+	}
+	comments, err := s.Store.ServiceRequestPublicComments(ctx, issueID)
+	if err != nil {
+		return nil, err
+	}
+	agents := map[string]bool{}
+	for _, comment := range comments {
+		agent, checked := agents[comment.AuthorID]
+		if !checked {
+			if agent, err = s.Store.CanManageServiceRequest(ctx, workspaceID, comment.AuthorID, issueID); err != nil {
+				return nil, err
+			}
+			agents[comment.AuthorID] = agent
+		}
+		event := models.SLAConditionCommentByCustomer
+		if agent {
+			event = models.SLAConditionCommentForCustomers
+		}
+		changes = append(changes, serviceSLAChange{At: comment.At, Events: []string{event}})
+	}
+	slices.SortStableFunc(changes, func(a, b serviceSLAChange) int { return a.At.Compare(b.At) })
+	return changes, nil
+}
+
+// recalculateServiceSLA rebuilds one SLA's cycles for every open request of
+// the desk from the requests' history, as Jira recalculates SLAs after their
+// configuration changes. Completed requests keep their cycles.
+func (s *Service) recalculateServiceSLA(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID string) error {
+	metrics, err := s.Store.ServiceSLAMetrics(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		return err
+	}
+	index := slices.IndexFunc(metrics, func(metric models.ServiceSLAMetric) bool { return metric.ID == metricID })
+	if index < 0 {
+		return fmt.Errorf("SLA metric does not exist")
+	}
+	requestIDs, err := s.Store.OpenServiceRequestIDs(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, requestID := range requestIDs {
+		history, err := s.serviceRequestSLAHistory(ctx, workspaceID, requestID)
+		if err != nil {
+			return err
+		}
+		spans := serviceSLASpans(metrics[index].StartConditions, metrics[index].StopConditions, history)
+		if err := s.Store.ReplaceServiceSLACycles(ctx, workspaceID, serviceDeskID, metricID, requestID, spans); err != nil {
+			return err
+		}
+		if err := s.Store.ApplyServiceSLAGoals(ctx, workspaceID, actorID, serviceDeskID, requestID); err != nil {
+			return err
+		}
+		if err := s.Store.ReconcileServiceSLAPauses(ctx, workspaceID, actorID, requestID, now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// UpdateServiceSLAConditions sets the Jira conditions that start and stop an
+// SLA metric's clock; each side needs at least one condition.
+func (s *Service) UpdateServiceSLAConditions(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID string, start, stop []string) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	start, stop, err := s.serviceSLAConditions(ctx, workspaceID, serviceDeskID, start, stop)
+	if err != nil {
+		return err
+	}
+	if err := s.Store.UpdateServiceSLAConditions(ctx, workspaceID, actorID, serviceDeskID, metricID, start, stop); err != nil {
+		return err
+	}
+	return s.recalculateServiceSLA(ctx, actorID, workspaceID, serviceDeskID, metricID)
+}
+
+// serviceSLAConditions checks start and stop conditions against Jira's
+// catalog and the desk project's statuses, drops repeats and requires at
+// least one of each.
+func (s *Service) serviceSLAConditions(ctx context.Context, workspaceID, serviceDeskID string, start, stop []string) ([]string, []string, error) {
+	desk, err := s.Store.ServiceDesk(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("service desk does not exist: %w", err)
+	}
+	statuses, err := s.Store.StatusesForProject(ctx, workspaceID, desk.ProjectID, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	known := map[string]bool{}
+	for _, condition := range models.ServiceSLAConditions() {
+		known[condition.Key] = true
+	}
+	for _, status := range statuses {
+		known[models.ServiceSLAEnteredStatus(status.ID).Key] = true
+	}
+	normalize := func(side string, conditions []string) ([]string, error) {
+		kept := []string{}
+		for _, condition := range conditions {
+			if condition = strings.TrimSpace(condition); !known[condition] {
+				return nil, fmt.Errorf("%q is not an SLA condition for this service project", condition)
+			}
+			if !slices.Contains(kept, condition) {
+				kept = append(kept, condition)
+			}
+		}
+		if len(kept) == 0 {
+			return nil, fmt.Errorf("an SLA needs at least one %s condition", side)
+		}
+		return kept, nil
+	}
+	if start, err = normalize("start", start); err != nil {
+		return nil, nil, err
+	}
+	if stop, err = normalize("stop", stop); err != nil {
+		return nil, nil, err
+	}
+	return start, stop, nil
+}
+
+// CreateServiceSLAMetric adds a custom SLA to a service desk with its goal and
+// the conditions that start and stop its clock.
+func (s *Service) CreateServiceSLAMetric(ctx context.Context, actorID, workspaceID, serviceDeskID, name string, goalMillis int64, start, stop []string) (models.ServiceSLAMetric, error) {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return models.ServiceSLAMetric{}, err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" || len(name) > 255 {
+		return models.ServiceSLAMetric{}, fmt.Errorf("an SLA name of 1 to 255 characters is required")
+	}
+	start, stop, err := s.serviceSLAConditions(ctx, workspaceID, serviceDeskID, start, stop)
+	if err != nil {
+		return models.ServiceSLAMetric{}, err
+	}
+	metric, err := s.Store.CreateServiceSLAMetric(ctx, workspaceID, actorID, serviceDeskID, name, goalMillis, start, stop)
+	if err != nil {
+		return metric, err
+	}
+	return metric, s.recalculateServiceSLA(ctx, actorID, workspaceID, serviceDeskID, metric.ID)
+}
+
+// DeleteServiceSLAMetric removes a custom SLA from a service desk.
+func (s *Service) DeleteServiceSLAMetric(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID string) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	return s.Store.DeleteServiceSLAMetric(ctx, workspaceID, actorID, serviceDeskID, metricID)
 }
 
 func (s *Service) SetServiceDeskAgent(ctx context.Context, actorID, workspaceID, serviceDeskID, userID string, enabled bool) error {
@@ -370,6 +647,15 @@ func (s *Service) DeleteServiceSLAGoal(ctx context.Context, actorID, workspaceID
 		return err
 	}
 	return s.Store.DeleteServiceSLAGoal(ctx, workspaceID, actorID, serviceDeskID, metricID, goalID)
+}
+
+// MoveServiceSLAGoal moves a conditional SLA goal up or down in the order its
+// metric evaluates goals.
+func (s *Service) MoveServiceSLAGoal(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID, goalID, direction string) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	return s.Store.MoveServiceSLAGoal(ctx, workspaceID, actorID, serviceDeskID, metricID, goalID, direction)
 }
 
 func (s *Service) UpdateServiceCalendar(ctx context.Context, actorID, workspaceID, serviceDeskID, name, timeZone string, weekdays []int16, startMinute, endMinute int16) error {
@@ -507,6 +793,54 @@ func (s *Service) SetServiceRequestTypeFields(ctx context.Context, actorID, work
 	}
 	if !hasSummary {
 		return fmt.Errorf("summary is required on every request type form")
+	}
+	// A field shown only for some answers waits on a visible select or
+	// multi-select field of the same form that is not conditional itself.
+	types := map[string]string{}
+	for _, field := range customFields {
+		types[field.ID] = field.Type
+	}
+	byID := map[string]models.ServiceRequestTypeField{}
+	for _, field := range fields {
+		byID[field.ID] = field
+	}
+	for index := range fields {
+		field := &fields[index]
+		field.ConditionFieldID = strings.TrimSpace(field.ConditionFieldID)
+		if field.ConditionFieldID == "" {
+			field.ConditionOptionIDs = nil
+			continue
+		}
+		source, onForm := byID[field.ConditionFieldID]
+		switch {
+		case field.ID == "summary" || field.Hidden:
+			return fmt.Errorf("%s cannot be shown only for some answers", field.ID)
+		case !onForm || source.Hidden || strings.TrimSpace(source.ConditionFieldID) != "" || source.ID == field.ID:
+			return fmt.Errorf("%s must wait on another visible, unconditional field of the form", field.ID)
+		case types[source.ID] != models.CustomFieldSelect && types[source.ID] != models.CustomFieldMultiSelect:
+			return fmt.Errorf("%s can only wait on a select or multi-select field", field.ID)
+		case len(field.ConditionOptionIDs) == 0 || len(field.ConditionOptionIDs) > 20:
+			return fmt.Errorf("choose between 1 and 20 options that show %s", field.ID)
+		}
+		options, err := s.Store.ServiceRequestFieldOptions(ctx, workspaceID, serviceDeskID, source.ID)
+		if err != nil {
+			return err
+		}
+		offered := map[string]bool{}
+		for _, option := range options {
+			offered[option.ID] = true
+		}
+		seen, ids := map[string]bool{}, []string{}
+		for _, id := range field.ConditionOptionIDs {
+			if !offered[id] {
+				return fmt.Errorf("%s offers no option %q", source.ID, id)
+			}
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+		field.ConditionOptionIDs = ids
 	}
 	return s.Store.SetServiceRequestTypeFields(ctx, workspaceID, actorID, serviceDeskID, requestTypeID, fields)
 }

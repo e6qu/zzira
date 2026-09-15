@@ -29,8 +29,12 @@ type projectNavigationItem struct {
 }
 
 type workspaceNavigation struct {
-	Projects                []projectNavigationItem
-	AppModules              []models.AppModule
+	Projects   []projectNavigationItem
+	AppModules []models.AppModule
+	// Products are the apps the switcher offers, and RecentProjects the
+	// projects it lists under them.
+	Products                []productSwitcherItem
+	RecentProjects          []*models.Project
 	ProjectAppModules       []models.AppModule
 	ProjectAdminAppModules  []models.AppModule
 	AdminAppModules         []models.AppModule
@@ -136,6 +140,40 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 		}
 	}
 	navigation.Current = selectCurrentProject(navigation.Projects, selection)
+	if currentUser != nil {
+		products, productErr := h.Store.AccessibleProducts(r.Context(), workspaceID, currentUser.ID)
+		if productErr != nil {
+			return nil, fmt.Errorf("list products for the app switcher: %w", productErr)
+		}
+		current := productForPath(r.URL.Path)
+		for _, product := range products {
+			url, known := productHomes[product.Key]
+			if !known {
+				continue
+			}
+			navigation.Products = append(navigation.Products, productSwitcherItem{Name: product.Name, URL: url, Current: product.Key == current})
+		}
+		recent, recentErr := h.Store.RecentProjects(r.Context(), workspaceID, currentUser.ID)
+		if recentErr != nil {
+			return nil, fmt.Errorf("list recent projects for the app switcher: %w", recentErr)
+		}
+		if len(recent) > 5 {
+			recent = recent[:5]
+		}
+		navigation.RecentProjects = recent
+	}
+	// App modules show only to people their Connect conditions admit: site
+	// items by who they are, project items in the current project.
+	siteFacts := h.appConditionFactsFor(r.Context(), workspaceID, currentUser, nil, nil)
+	navigation.AppModules = appModulesShown(navigation.AppModules, siteFacts)
+	navigation.AdminAppModules = appModulesShown(navigation.AdminAppModules, siteFacts)
+	var currentProject *models.Project
+	if navigation.Current != nil {
+		currentProject = navigation.Current.Project
+	}
+	projectFacts := h.appConditionFactsFor(r.Context(), workspaceID, currentUser, currentProject, nil)
+	navigation.ProjectAppModules = appModulesShown(navigation.ProjectAppModules, projectFacts)
+	navigation.ProjectAdminAppModules = appModulesShown(navigation.ProjectAdminAppModules, projectFacts)
 	if currentUser != nil && navigation.Current != nil {
 		navigation.CanManageCurrentProject, err = h.Store.CanAdministerProject(r.Context(), workspaceID, currentUser.ID, navigation.Current.Project.ID)
 		if err != nil {
@@ -195,5 +233,52 @@ func (h *Handler) writeWorkspacePageStatus(w http.ResponseWriter, r *http.Reques
 		announcement = &banner
 	}
 	look := siteLookFor(configuration.ApplicationProperties)
-	writePageStatus(w, name, pageData{User: user, Data: data, Active: active, Navigation: navigation, Announcement: announcement, Site: &look}, status)
+	page := pageData{User: user, Data: data, Active: active, Navigation: navigation, Announcement: announcement, Site: &look}
+	if active == "wiki" {
+		spaceID := ""
+		if spaced, ok := data.(interface{ lookAndFeelSpaceID() string }); ok {
+			spaceID = spaced.lookAndFeelSpaceID()
+		}
+		custom, err := h.Store.EffectiveWikiLookAndFeel(r.Context(), workspaceID, spaceID)
+		if err != nil {
+			log.Printf("render %s look and feel: %v", name, err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		page.WikiLook = wikiLookFor(custom)
+	}
+	if active == "service" {
+		center, err := h.Store.ServiceHelpCenter(r.Context(), workspaceID)
+		if err != nil {
+			log.Printf("render %s help center: %v", name, err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		page.ServiceLook = serviceLookFor(center)
+	}
+	writePageStatus(w, name, page, status)
+}
+
+// productSwitcherItem is an app the switcher offers.
+type productSwitcherItem struct {
+	Name, URL string
+	Current   bool
+}
+
+// productHomes is where each product opens.
+var productHomes = map[string]string{
+	"jira-software":           "/projects",
+	"jira-service-management": "/service",
+	"confluence":              "/wiki",
+}
+
+// productForPath is the product a page belongs to.
+func productForPath(path string) string {
+	switch {
+	case path == "/wiki" || strings.HasPrefix(path, "/wiki/"):
+		return "confluence"
+	case path == "/service" || strings.HasPrefix(path, "/service/"):
+		return "jira-service-management"
+	}
+	return "jira-software"
 }

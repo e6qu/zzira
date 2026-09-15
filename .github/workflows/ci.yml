@@ -35,6 +35,8 @@ jobs:
         run: GOOS=js GOARCH=wasm go build ./...
       - name: Vet
         run: go vet ./...
+      - name: Format
+        run: test -z "$(gofmt -l $(git ls-files '*.go'))" || { gofmt -l $(git ls-files '*.go'); exit 1; }
       - name: Verify pinned Cloud API inventory
         run: |
           python3 -m unittest api/conformance/test_inventory.py api/conformance/test_coverage.py

@@ -81,6 +81,34 @@ func (s *Store) WikiLookAndFeel(ctx context.Context, ws, actor, spaceKey string)
 	return settings, nil
 }
 
+// EffectiveWikiLookAndFeel is the custom look and feel wiki pages show: a
+// space's own custom settings when the space selects them, otherwise the
+// site's custom settings, and nothing while the site keeps the defaults.
+// spaceID is empty for pages outside a space.
+func (s *Store) EffectiveWikiLookAndFeel(ctx context.Context, ws, spaceID string) (map[string]any, error) {
+	var selected string
+	var spaceCustom, siteCustom []byte
+	err := s.Pool.QueryRow(ctx, `SELECT
+		COALESCE((SELECT selected FROM wiki_look_and_feel WHERE workspace_id=$1 AND $2<>'' AND space_id=NULLIF($2,'')::bigint),'global'),
+		(SELECT custom FROM wiki_look_and_feel WHERE workspace_id=$1 AND $2<>'' AND space_id=NULLIF($2,'')::bigint),
+		(SELECT custom FROM wiki_look_and_feel WHERE workspace_id=$1 AND space_id IS NULL)`, ws, spaceID).Scan(&selected, &spaceCustom, &siteCustom)
+	if err != nil {
+		return nil, err
+	}
+	custom := siteCustom
+	if selected == "custom" && len(spaceCustom) > 0 {
+		custom = spaceCustom
+	}
+	if len(custom) == 0 {
+		return nil, nil
+	}
+	settings := map[string]any{}
+	if err := json.Unmarshal(custom, &settings); err != nil {
+		return nil, err
+	}
+	return settings, nil
+}
+
 // lookAndFeelSpaceID resolves the space a request names, or nothing for the
 // site. A space nobody can see is not a space to configure.
 func (s *Store) lookAndFeelSpaceID(ctx context.Context, ws, actor, spaceKey string) (any, error) {

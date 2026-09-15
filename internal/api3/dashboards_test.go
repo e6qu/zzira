@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
@@ -131,9 +132,11 @@ func TestDashboardLifecyclePrivacyAndGadgets(t *testing.T) {
 	call(member, "PUT", prop+"/zzira.config", map[string]any{"limit": 51}, 400)
 	call(member, "PUT", prop+"/zzira.config", nil, 400)
 	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "groupBy": "status", "limit": 1}, 201)
-	call(actor, "POST", "/rest/api/3/project", map[string]any{"key": "DG", "name": "Dashboard project", "projectTypeKey": "software", "leadAccountId": actor}, 201)
+	dgProject := call(actor, "POST", "/rest/api/3/project", map[string]any{"key": "DG", "name": "Dashboard project", "projectTypeKey": "software", "leadAccountId": actor}, 201)
+	chartIssues := []string{}
 	for i := 0; i < 3; i++ {
 		issue := call(actor, "POST", "/rest/api/3/issue", map[string]any{"fields": map[string]any{"project": map[string]string{"key": "DG"}, "summary": fmt.Sprintf("Chart work %d", i), "issuetype": map[string]string{"name": "Task"}, "assignee": map[string]string{"accountId": member}}}, 201)
+		chartIssues = append(chartIssues, fmt.Sprint(issue["id"]))
 		if i == 2 {
 			exec(`UPDATE issues SET security_level_id='private-test' WHERE jira_id::text=$1`, issue["id"])
 		}
@@ -159,6 +162,157 @@ func TestDashboardLifecyclePrivacyAndGadgets(t *testing.T) {
 	result, err = st.DashboardGadgetResults(ctx, ws, actor, id, models.DashboardGadget{ID: gid, ModuleKey: "com.zzira:assigned-to-me"})
 	if err != nil || result.Total != 0 {
 		t.Fatalf("owner assignment leaked into viewer: %+v, %v", result, err)
+	}
+	// Labels count once under each label, while totals count each work item once.
+	for index, labels := range []string{"{alpha,beta}", "{alpha}", "{beta}"} {
+		exec(`UPDATE issues SET labels=$1::text[] WHERE jira_id::text=$2`, labels, chartIssues[index])
+	}
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "groupBy": "labels", "yGroupBy": "fixVersion", "limit": 1}, 400)
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "groupBy": "labels", "limit": 1}, 200)
+	counts := func(viewer string) map[string]int {
+		t.Helper()
+		result, err := st.DashboardGadgetResults(ctx, ws, viewer, id, models.DashboardGadget{ID: gid, ModuleKey: "com.zzira:heat-map"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]int{"total": result.Total}
+		for _, count := range result.Counts {
+			out[count.Name] = count.Count
+		}
+		return out
+	}
+	if got := counts(member); fmt.Sprint(got) != fmt.Sprint(map[string]int{"alpha": 2, "beta": 1, "total": 2}) {
+		t.Fatalf("member label counts = %v", got)
+	}
+	if got := counts(actor); fmt.Sprint(got) != fmt.Sprint(map[string]int{"alpha": 2, "beta": 2, "total": 3}) {
+		t.Fatalf("owner label counts = %v", got)
+	}
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "groupBy": "status", "yGroupBy": "labels", "limit": 1}, 200)
+	result, err = st.DashboardGadgetResults(ctx, ws, actor, id, models.DashboardGadget{ID: gid, ModuleKey: "com.zzira:two-dimensional-statistics"})
+	if err != nil || result.Grid == nil || len(result.Grid.Columns) != 1 || len(result.Grid.Rows) != 1 || result.Grid.Rows[0].Name != "alpha" || fmt.Sprint(result.Grid.Rows[0].Counts) != "[2]" || result.Grid.HiddenRows != 1 || fmt.Sprint(result.Grid.ColumnTotals) != "[4]" || result.Grid.Total != 4 || result.Total != 3 {
+		t.Fatalf("two dimensional statistics = %+v %+v, %v", result, result.Grid, err)
+	}
+	result, err = st.DashboardGadgetResults(ctx, ws, member, id, models.DashboardGadget{ID: gid, ModuleKey: "com.zzira:two-dimensional-statistics"})
+	if err != nil || result.Grid == nil || len(result.Grid.Rows) != 1 || result.Grid.Rows[0].Name != "alpha" || result.Grid.HiddenRows != 1 || result.Grid.Total != 3 {
+		t.Fatalf("member two dimensional statistics = %+v %+v, %v", result, result.Grid, err)
+	}
+	// Watched, voted and in-progress lists are evaluated for each viewer.
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "limit": 5}, 200)
+	exec(`DELETE FROM watchers WHERE issue_id IN (SELECT id FROM issues WHERE project_id=(SELECT id FROM projects WHERE workspace_id=$1 AND key='DG'))`, ws)
+	exec(`INSERT INTO watchers(issue_id,user_id) SELECT id,$1 FROM issues WHERE jira_id::text=$2`, member, chartIssues[0])
+	exec(`INSERT INTO issue_votes(issue_id,user_id) SELECT id,$1 FROM issues WHERE jira_id::text=$2`, member, chartIssues[1])
+	exec(`UPDATE issues SET status_id=(SELECT id FROM statuses WHERE category='indeterminate' ORDER BY id LIMIT 1) WHERE jira_id::text=$1`, chartIssues[1])
+	for moduleKey, want := range map[string]map[string]int{
+		"com.zzira:watched-issues": {member: 1, actor: 0},
+		"com.zzira:voted-issues":   {member: 1, actor: 0},
+		"com.zzira:in-progress":    {member: 1, actor: 0},
+	} {
+		for viewer, total := range want {
+			result, err := st.DashboardGadgetResults(ctx, ws, viewer, id, models.DashboardGadget{ID: gid, ModuleKey: moduleKey})
+			if err != nil || result.Total != total || len(result.Issues) != total {
+				t.Fatalf("%s for %s = %+v, %v", moduleKey, viewer, result, err)
+			}
+		}
+	}
+	// The activity stream shows creations, changes and comments the viewer may
+	// see, newest first.
+	call(actor, "PUT", "/rest/api/3/issue/"+chartIssues[0], map[string]any{"fields": map[string]any{"summary": "Chart work renamed"}}, 204)
+	commentBody := func(text string) string {
+		return `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"` + text + `"}]}]}`
+	}
+	exec(`INSERT INTO comments(id,issue_id,workspace_id,author_id,body,created_at) SELECT 'cmt_stream_open_'||$1::text, id, $1, $2, $3::jsonb, now() + interval '1 second' FROM issues WHERE jira_id::text=$4`, ws, actor, commentBody("Open note"), chartIssues[0])
+	exec(`INSERT INTO comments(id,issue_id,workspace_id,author_id,body,created_at,visibility_type,visibility_value) SELECT 'cmt_stream_hidden_'||$1::text, id, $1, $2, $3::jsonb, now() + interval '2 seconds', 'group', '00000000-0000-0000-0000-000000000000' FROM issues WHERE jira_id::text=$4`, ws, actor, commentBody("Hidden note"), chartIssues[1])
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "limit": 50}, 200)
+	stream := func(viewer string) (kinds map[string]int, text string) {
+		t.Helper()
+		result, err := st.DashboardGadgetResults(ctx, ws, viewer, id, models.DashboardGadget{ID: gid, ModuleKey: "com.zzira:activity-stream"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		kinds = map[string]int{}
+		for index, entry := range result.Activity {
+			if index > 0 && entry.At.After(result.Activity[index-1].At) {
+				t.Fatalf("activity is not newest first: %+v", result.Activity)
+			}
+			kinds[entry.Kind]++
+			text += string(entry.Comment)
+			for _, change := range entry.Changes {
+				text += change.Field + ":" + change.ToString + ";"
+			}
+		}
+		return kinds, text
+	}
+	memberKinds, memberText := stream(member)
+	if memberKinds["created"] != 2 || memberKinds["commented"] != 1 || !strings.Contains(memberText, "Open note") || strings.Contains(memberText, "Hidden note") || !strings.Contains(memberText, "summary:Chart work renamed;") {
+		t.Fatalf("member activity = %v %q", memberKinds, memberText)
+	}
+	if ownerKinds, ownerText := stream(actor); ownerKinds["created"] != 3 || ownerKinds["commented"] != 1 || strings.Contains(ownerText, "Hidden note") {
+		t.Fatalf("owner activity = %v %q", ownerKinds, ownerText)
+	}
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "limit": 1}, 200)
+	if result, err := st.DashboardGadgetResults(ctx, ws, member, id, models.DashboardGadget{ID: gid, ModuleKey: "com.zzira:activity-stream"}); err != nil || len(result.Activity) != 1 || result.Activity[0].Kind != "commented" {
+		t.Fatalf("limited activity = %+v, %v", result.Activity, err)
+	}
+	// The calendar shows this month's visible due work and the release dates of
+	// versions in its projects; the road map shows unreleased versions due soon.
+	today := time.Now().UTC()
+	for _, issueID := range []string{chartIssues[0], chartIssues[2]} {
+		exec(`UPDATE issues SET due_date=$1::date WHERE jira_id::text=$2`, today.Format("2006-01-02"), issueID)
+	}
+	due := call(actor, "POST", "/rest/api/3/version", map[string]any{"name": "Calendar release", "projectId": dgProject["id"], "releaseDate": today.Format("2006-01-02")}, 201)
+	late := call(actor, "POST", "/rest/api/3/version", map[string]any{"name": "Late release", "projectId": dgProject["id"], "releaseDate": today.AddDate(0, 0, -1).Format("2006-01-02")}, 201)
+	shipped := call(actor, "POST", "/rest/api/3/version", map[string]any{"name": "Shipped release", "projectId": dgProject["id"], "releaseDate": today.Format("2006-01-02")}, 201)
+	call(actor, "PUT", fmt.Sprintf("/rest/api/3/version/%v", shipped["id"]), map[string]any{"released": true}, 200)
+	call(actor, "POST", "/rest/api/3/version", map[string]any{"name": "Distant release", "projectId": dgProject["id"], "releaseDate": today.AddDate(0, 0, 60).Format("2006-01-02")}, 201)
+	for _, issueID := range []string{chartIssues[0], chartIssues[2]} {
+		call(actor, "PUT", "/rest/api/3/issue/"+issueID, map[string]any{"fields": map[string]any{"fixVersions": []map[string]any{{"id": due["id"]}}}}, 204)
+	}
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "limit": 5}, 200)
+	for viewer, want := range map[string]int{member: 1, actor: 2} {
+		result, err := st.DashboardGadgetResults(ctx, ws, viewer, id, models.DashboardGadget{ID: gid, ModuleKey: "com.zzira:calendar"})
+		if err != nil || result.Calendar == nil || len(result.Calendar.Issues) != want || result.Calendar.More != 0 || result.Calendar.Issues[0].Date != today.Format("2006-01-02") {
+			t.Fatalf("%s calendar = %+v, %v", viewer, result.Calendar, err)
+		}
+		names := map[string]bool{}
+		for _, version := range result.Calendar.Versions {
+			names[version.VersionName] = true
+		}
+		// Yesterday's release shows only while it falls in this month.
+		lateThisMonth := today.AddDate(0, 0, -1).Month() == today.Month()
+		if !names["Calendar release"] || !names["Shipped release"] || names["Distant release"] || names["Late release"] != lateThisMonth {
+			t.Fatalf("%s calendar versions = %v", viewer, names)
+		}
+	}
+	// The bubble chart counts the reporter, assignee and commenters as
+	// participants, and votes, for the work each viewer can see.
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "limit": 10, "bubbleAxis": "sideways"}, 400)
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "limit": 10, "bubbleAxis": "votes"}, 200)
+	for viewer, want := range map[string]int{member: 2, actor: 3} {
+		result, err := st.DashboardGadgetResults(ctx, ws, viewer, id, models.DashboardGadget{ID: gid, ModuleKey: "com.zzira:bubble-chart"})
+		if err != nil || len(result.Bubbles) != want || result.Config.BubbleAxis != "votes" {
+			t.Fatalf("%s bubbles = %+v, %v", viewer, result, err)
+		}
+		votes := 0
+		for _, bubble := range result.Bubbles {
+			votes += bubble.Votes
+			if bubble.Participants != 2 || bubble.UpdatedDays != 0 {
+				t.Fatalf("%s bubble = %+v", viewer, bubble)
+			}
+		}
+		if votes != 1 {
+			t.Fatalf("%s bubble votes = %+v", viewer, result.Bubbles)
+		}
+	}
+	var dgProjectID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM projects WHERE workspace_id=$1 AND key='DG'`, ws).Scan(&dgProjectID); err != nil {
+		t.Fatal(err)
+	}
+	for viewer, want := range map[string]int{member: 1, actor: 2} {
+		versions, err := st.RoadMap(ctx, ws, viewer, dgProjectID, 30, time.Now())
+		if err != nil || len(versions) != 2 || versions[0].Version.ID != fmt.Sprint(late["id"]) || !versions[0].Overdue || versions[0].Total != 0 ||
+			versions[1].Version.ID != fmt.Sprint(due["id"]) || versions[1].Overdue || versions[1].Total != want || versions[1].Progress.ToDo != want || versions[1].Progress.Done != 0 {
+			t.Fatalf("%s road map = %+v, %v", viewer, versions, err)
+		}
 	}
 	call(member, "PUT", gp, map[string]any{"color": "purple", "title": "Team delivery", "position": map[string]int{"column": 1, "row": 999}}, 204)
 	// Concurrent inserts at the same location must produce unique contiguous rows.

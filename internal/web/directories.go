@@ -56,6 +56,10 @@ type profilePageData struct {
 	Reported   []*models.Issue
 	Identities []profileIdentityView
 	Saved      string
+	// NotifyOwnChanges and Autowatch are the signed-in person's own
+	// notification preferences.
+	NotifyOwnChanges bool
+	Autowatch        bool
 }
 
 type profileIdentityView struct {
@@ -368,6 +372,16 @@ func (h *Handler) ProfilePage(w http.ResponseWriter, r *http.Request, accountID 
 	}
 	data := profilePageData{Profile: profile, Self: profile.ID == user.ID, Assigned: assigned, Reported: reported, Saved: r.URL.Query().Get("saved")}
 	if data.Self {
+		if data.NotifyOwnChanges, err = h.Store.UserPreferenceEnabled(r.Context(), wsID, user.ID, store.UserPreferenceNotifyOwnChanges, false); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		autowatchDisabled, err := h.Store.UserPreferenceEnabled(r.Context(), wsID, user.ID, store.UserPreferenceAutowatchDisabled, false)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		data.Autowatch = !autowatchDisabled
 		identities, err := h.Store.OIDCIdentitiesByUser(r.Context(), user.ID)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -400,6 +414,30 @@ func (h *Handler) ProfilePage(w http.ResponseWriter, r *http.Request, accountID 
 		}
 	}
 	h.writeWorkspacePage(w, r, "page_profile", user, wsID, data, "people", "")
+}
+
+// UpdateNotificationPreferences saves the signed-in person's personal
+// notification settings: whether their own changes notify them and whether
+// work they create or comment on is watched automatically.
+func (h *Handler) UpdateNotificationPreferences(w http.ResponseWriter, r *http.Request) {
+	user, wsID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	ownChanges, autowatch := r.PostFormValue("ownChanges"), r.PostFormValue("autowatch")
+	if (ownChanges != "true" && ownChanges != "false") || (autowatch != "enabled" && autowatch != "disabled") {
+		http.Error(w, "choose a setting for your own changes and for autowatch", http.StatusBadRequest)
+		return
+	}
+	if err := h.Store.SetUserPreference(r.Context(), wsID, user.ID, store.UserPreferenceNotifyOwnChanges, ownChanges); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := h.Store.SetUserPreference(r.Context(), wsID, user.ID, store.UserPreferenceAutowatchDisabled, strconv.FormatBool(autowatch == "disabled")); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/people/"+url.PathEscape(user.ID)+"?saved="+url.QueryEscape("Notification preferences saved"), http.StatusSeeOther)
 }
 
 func (h *Handler) UnlinkIdentityProvider(w http.ResponseWriter, r *http.Request) {

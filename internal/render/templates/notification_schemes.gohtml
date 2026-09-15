@@ -29,3 +29,28 @@
 <div class="permission-grant-table notification-rule-table" role="table" aria-label="Project notification recipients"><div class="permission-grant-header" role="row"><span role="columnheader">Event</span><span role="columnheader">Recipient</span></div>{{range .Data.Scheme.Entries}}<div class="permission-grant-row project-permission-row" role="row"><span role="cell"><strong>{{.EventName}}</strong><small>Event {{.Entry.EventID}}</small></span><span role="cell"><strong>{{.RecipientLabel}}</strong><small>{{.Entry.NotificationType}}</small></span></div>{{else}}<div class="empty-state">This scheme has no event recipients.</div>{{end}}</div></section>
 </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
 {{end}}
+{{define "page_notification_helper"}}
+<!doctype html><html lang="en"><head><title>Notification helper · {{(site $).Title}}</title>{{template "head" .}}</head>
+<body class="page-notification-schemes"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
+<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
+<nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/admin">Administration</a><span aria-hidden="true">/</span><span aria-current="page">Notification helper</span></nav>
+<header class="page-header"><div><span class="eyebrow">Jira system</span><h1>Notification helper</h1><p>Find out whether someone is notified of an event on a work item, and why.</p></div></header>
+<section class="surface-card" aria-labelledby="notification-helper-form-title"><h2 id="notification-helper-form-title">What to check</h2>
+<form class="project-details-form" method="get" action="/admin/notification-helper">
+<label for="notification-helper-person">Person</label><select id="notification-helper-person" name="accountId" required><option value="">Choose a person</option>{{range .Data.Members}}<option value="{{.ID}}"{{if eq .ID $.Data.AccountID}} selected{{end}}>{{.DisplayName}}</option>{{end}}</select>
+<label for="notification-helper-issue">Work item key</label><input id="notification-helper-issue" name="issueKey" value="{{.Data.IssueKey}}" required autocomplete="off">
+<label for="notification-helper-event">Event</label><select id="notification-helper-event" name="eventId" required><option value="">Choose an event</option>{{range .Data.Events}}<option value="{{.ID}}"{{if eq .ID $.Data.EventID}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+<div class="project-form-actions"><button class="btn btn-primary" type="submit">Check notification</button></div></form></section>
+{{if .Data.Error}}<div class="alert error" role="alert">{{.Data.Error}}</div>{{end}}
+{{with .Data.Result}}<section class="surface-card" aria-labelledby="notification-helper-result-title">
+<h2 id="notification-helper-result-title">{{.Person}} {{if .Notified}}will be notified{{else}}will not be notified{{end}}</h2>
+<p>{{.EventName}} on <a href="/browse/{{.IssueKey}}">{{.IssueKey}}</a>, under {{if .SchemeName}}{{.SchemeName}}{{else}}no notification scheme{{end}}.</p>
+<h3>Matching rules</h3>{{if .Rules}}<ul>{{range .Rules}}<li>{{.}}</li>{{end}}</ul>{{else}}<p>No rule for this event names {{.Person}}.</p>{{end}}
+{{if .CurrentUserRule}}<p>A Current user rule also notifies whoever makes the change.</p>{{end}}
+<h3>Checks</h3><ul>
+<li><span aria-hidden="true">{{if .Active}}✓{{else}}✗{{end}}</span> {{if .Active}}Is an active member of the site{{else}}Is not an active member of the site{{end}}</li>
+<li><span aria-hidden="true">{{if .CanBrowse}}✓{{else}}✗{{end}}</span> {{if .CanBrowse}}Can browse the project{{else}}Cannot browse the project{{end}}</li>
+<li><span aria-hidden="true">{{if .CanSeeSecurityLevel}}✓{{else}}✗{{end}}</span> {{if .CanSeeSecurityLevel}}Can see the work item's security level{{else}}Cannot see the work item's security level{{end}}</li></ul>
+</section>{{end}}
+</main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
+{{end}}

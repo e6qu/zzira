@@ -374,7 +374,7 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if _, err := handler.Commands.CreateServiceIncidentUpdate(ctx, customerID, workspaceID, issue.ID, "public", "Unauthorized update"); err == nil {
 		t.Fatal("customer published a major incident update")
 	}
-	if _, err := handler.Commands.CreateServiceIncidentUpdate(ctx, actorID, workspaceID, issue.ID, "stakeholders", "Invalid audience"); err == nil {
+	if _, err := handler.Commands.CreateServiceIncidentUpdate(ctx, actorID, workspaceID, issue.ID, "everyone", "Invalid audience"); err == nil {
 		t.Fatal("invalid incident update audience succeeded")
 	}
 	var incidentUpdateAudits int
@@ -384,6 +384,81 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	var customerIncidentNotifications int
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND entity_id=$3 AND kind='service_incident_update'`, workspaceID, customerID, issue.Key).Scan(&customerIncidentNotifications); err != nil || customerIncidentNotifications != 1 {
 		t.Fatalf("customer incident notifications = %d, %v", customerIncidentNotifications, err)
+	}
+	// The response team takes incident roles, and stakeholders follow
+	// stakeholder updates by email.
+	if err := handler.Commands.SetServiceIncidentRole(ctx, actorID, workspaceID, issue.Key, "commander", actorID); err != nil {
+		t.Fatalf("assign incident commander: %v", err)
+	}
+	for name, attempt := range map[string]func() error{
+		"customer holder": func() error {
+			return handler.Commands.SetServiceIncidentRole(ctx, actorID, workspaceID, issue.Key, "communications", customerID)
+		},
+		"unknown role": func() error {
+			return handler.Commands.SetServiceIncidentRole(ctx, actorID, workspaceID, issue.Key, "scribe", actorID)
+		},
+		"customer assigner": func() error {
+			return handler.Commands.SetServiceIncidentRole(ctx, customerID, workspaceID, issue.Key, "technical", actorID)
+		},
+		"invalid email": func() error {
+			return handler.Commands.AddServiceIncidentStakeholder(ctx, actorID, workspaceID, issue.Key, "", "not an address")
+		},
+		"person and email": func() error {
+			return handler.Commands.AddServiceIncidentStakeholder(ctx, actorID, workspaceID, issue.Key, customerID, "both@example.test")
+		},
+		"customer adder": func() error {
+			return handler.Commands.AddServiceIncidentStakeholder(ctx, customerID, workspaceID, issue.Key, "", "late@example.test")
+		},
+	} {
+		if err := attempt(); err == nil {
+			t.Fatalf("%s: incident team change succeeded", name)
+		}
+	}
+	roles, err := st.ServiceIncidentRoles(ctx, workspaceID, actorID, issue.ID)
+	if err != nil || len(roles) != 3 || roles[0].Role != "commander" || roles[0].UserID != actorID || roles[0].AssignedAt == nil || roles[1].UserID != "" || roles[2].Name != "Technical lead" {
+		t.Fatalf("incident roles = %+v, %v", roles, err)
+	}
+	if _, err := st.ServiceIncidentRoles(ctx, workspaceID, customerID, issue.ID); err == nil {
+		t.Fatal("customer read incident roles")
+	}
+	var roleNotifications int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND kind='service_incident_role' AND entity_id=$2`, workspaceID, issue.Key).Scan(&roleNotifications); err != nil || roleNotifications != 0 {
+		t.Fatalf("self-assigned role notifications = %d, %v", roleNotifications, err)
+	}
+	for _, stakeholder := range [][2]string{{customerID, ""}, {"", "Exec.Sponsor@example.test"}, {"", "Exec.Sponsor@example.test"}} {
+		if err := handler.Commands.AddServiceIncidentStakeholder(ctx, actorID, workspaceID, issue.Key, stakeholder[0], stakeholder[1]); err != nil {
+			t.Fatalf("add stakeholder %v: %v", stakeholder, err)
+		}
+	}
+	stakeholders, err := st.ServiceIncidentStakeholders(ctx, workspaceID, actorID, issue.ID)
+	if err != nil || len(stakeholders) != 2 || stakeholders[0].UserID != customerID || stakeholders[1].Email != "Exec.Sponsor@example.test" {
+		t.Fatalf("stakeholders = %+v, %v", stakeholders, err)
+	}
+	if _, err := handler.Commands.CreateServiceIncidentUpdate(ctx, actorID, workspaceID, issue.ID, "stakeholders", "Checkout recovers for most customers."); err != nil {
+		t.Fatalf("publish stakeholder update: %v", err)
+	}
+	var customerEmail string
+	if err := st.Pool.QueryRow(ctx, `SELECT email FROM users WHERE id=$1`, customerID).Scan(&customerEmail); err != nil {
+		t.Fatal(err)
+	}
+	for _, recipient := range []string{"exec.sponsor@example.test", strings.ToLower(customerEmail)} {
+		var sent int
+		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM email_outbox WHERE workspace_id=$1 AND lower(recipient)=$2 AND subject LIKE '%Stakeholder update%' AND body LIKE '%Checkout recovers for most customers.%'`, workspaceID, recipient).Scan(&sent); err != nil || sent != 1 {
+			t.Fatalf("stakeholder emails to %s = %d, %v", recipient, sent, err)
+		}
+	}
+	if updates, err := st.ServiceIncidentUpdates(ctx, workspaceID, customerID, issue.ID); err != nil || len(updates) != 1 {
+		t.Fatalf("customer saw a stakeholder update: %+v, %v", updates, err)
+	}
+	if err := handler.Commands.RemoveServiceIncidentStakeholder(ctx, actorID, workspaceID, issue.Key, stakeholders[1].ID); err != nil {
+		t.Fatalf("remove stakeholder: %v", err)
+	}
+	if remaining, err := st.ServiceIncidentStakeholders(ctx, workspaceID, actorID, issue.ID); err != nil || len(remaining) != 1 {
+		t.Fatalf("stakeholders after removal = %+v, %v", remaining, err)
+	}
+	var teamAudits int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE target_id=$1 AND action IN ('service_major_incident_role_assigned','service_major_incident_stakeholder_added','service_major_incident_stakeholder_removed')`, issue.ID).Scan(&teamAudits); err != nil || teamAudits != 4 {
+		t.Fatalf("incident team audits = %d, %v", teamAudits, err)
 	}
 	incidentEscalationNow := time.Now().UTC().Truncate(time.Second)
 	if _, err := st.Pool.Exec(ctx, `UPDATE service_request_operations SET major_incident_declared_at=$2 WHERE request_issue_id=$1`, issue.ID, incidentEscalationNow.Add(-6*time.Minute)); err != nil {
@@ -834,6 +909,49 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 			t.Fatalf("default SLA fallback = %+v", defaultSLAs[index].OngoingCycle)
 		}
 	}
+	// Moving a conditional goal changes which goal new requests take first.
+	if err := handler.Commands.MoveServiceSLAGoal(ctx, customerID, workspaceID, serviceDeskID, metricByKind["first_response"], keywordGoal.ID, "up"); err == nil {
+		t.Fatal("customer reordered conditional SLA goals")
+	}
+	if err := handler.Commands.MoveServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], keywordGoal.ID, "sideways"); err == nil {
+		t.Fatal("an unknown move direction succeeded")
+	}
+	if err := handler.Commands.MoveServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], incidentGoal.ID, "up"); err != nil {
+		t.Fatalf("moving the first goal up: %v", err)
+	}
+	if err := handler.Commands.MoveServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], keywordGoal.ID, "up"); err != nil {
+		t.Fatalf("move keyword goal up: %v", err)
+	}
+	ordered, err := st.ServiceSLAGoals(ctx, workspaceID, serviceDeskID, metricByKind["first_response"])
+	if err != nil || len(ordered) < 3 || ordered[0].ID != keywordGoal.ID || ordered[1].ID != incidentGoal.ID || ordered[len(ordered)-1].JQL != "" {
+		t.Fatalf("reordered goals = %+v, %v", ordered, err)
+	}
+	reorderedRequest := callAs(customerID, "POST", "/rest/servicedeskapi/request", `{"serviceDeskId":"`+serviceDeskID+`","requestTypeId":"`+incidentTypeID+`","requestFieldValues":{"summary":"Incident after conditional reorder","description":"The keyword goal now comes first.","`+customFieldID+`":7}}`, 201)
+	var reorderedBean map[string]any
+	if err := json.Unmarshal(reorderedRequest.Body.Bytes(), &reorderedBean); err != nil {
+		t.Fatal(err)
+	}
+	reorderedIssue, err := st.IssueByIDOrKey(ctx, workspaceID, reorderedBean["issueKey"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reorderedSLAs, err := st.ServiceSLAs(ctx, workspaceID, reorderedIssue.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	selectedGoal := ""
+	for _, sla := range reorderedSLAs {
+		if sla.Kind == "first_response" && sla.OngoingCycle != nil {
+			selectedGoal = sla.OngoingCycle.GoalID
+		}
+	}
+	if selectedGoal != keywordGoal.ID {
+		t.Fatalf("goal selected after reorder = %q, want %q", selectedGoal, keywordGoal.ID)
+	}
+	// The default goal is not conditional and cannot be moved.
+	if err := handler.Commands.MoveServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], ordered[len(ordered)-1].ID, "up"); err == nil {
+		t.Fatal("the default SLA goal was moved")
+	}
 	if err := handler.Commands.DeleteServiceSLAGoal(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], keywordGoal.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -1026,7 +1144,131 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(transitions.Body.String(), `"id":"21"`) {
 		t.Fatal(transitions.Body.String())
 	}
+	// Time to first response also stops when the request enters In Progress;
+	// a customer's own comment is not a comment for customers, so the clock is
+	// still running until then.
+	serviceDesk, err := st.ServiceDesk(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectStatuses, err := st.StatusesForProject(ctx, workspaceID, serviceDesk.ProjectID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inProgress := ""
+	for _, status := range projectStatuses {
+		if status.Name == "In Progress" {
+			inProgress = models.ServiceSLAEnteredStatus(status.ID).Key
+		}
+	}
+	if inProgress == "" {
+		t.Fatalf("no In Progress status in %+v", projectStatuses)
+	}
+	firstResponseConditions := []string{models.SLAConditionCommentForCustomers, inProgress}
+	if err := handler.Commands.UpdateServiceSLAConditions(ctx, customerID, workspaceID, serviceDeskID, metricByKind["first_response"], []string{models.SLAConditionIssueCreated}, firstResponseConditions); err == nil {
+		t.Fatal("customer configured SLA conditions")
+	}
+	if err := handler.Commands.UpdateServiceSLAConditions(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], []string{"coffee_break"}, firstResponseConditions); err == nil {
+		t.Fatal("unknown SLA condition was accepted")
+	}
+	if err := handler.Commands.UpdateServiceSLAConditions(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], []string{models.SLAConditionIssueCreated}, nil); err == nil {
+		t.Fatal("an SLA without a stop condition was accepted")
+	}
+	if err := handler.Commands.UpdateServiceSLAConditions(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], []string{models.SLAConditionIssueCreated, models.SLAConditionIssueCreated}, firstResponseConditions); err != nil {
+		t.Fatal(err)
+	}
+	ongoingFirstResponse := func() int {
+		t.Helper()
+		var count int
+		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2 AND stopped_at IS NULL`, issue.ID, metricByKind["first_response"]).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	if ongoingFirstResponse() != 1 {
+		t.Fatal("a customer's comment stopped time to first response")
+	}
+	configuredMetrics, err := st.ServiceSLAMetrics(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, metric := range configuredMetrics {
+		if metric.ID == metricByKind["first_response"] && (len(metric.StartConditions) != 1 || !metric.StopsOn(inProgress) || !metric.StopsOn(models.SLAConditionCommentForCustomers)) {
+			t.Fatalf("first response conditions = %+v", metric)
+		}
+	}
+	// A custom SLA counts time from entering In Progress until a resolution is set.
+	if _, err := handler.Commands.CreateServiceSLAMetric(ctx, customerID, workspaceID, serviceDeskID, "Time in progress", time.Hour.Milliseconds(), []string{inProgress}, []string{models.SLAConditionResolutionSet}); err == nil {
+		t.Fatal("customer created an SLA")
+	}
+	if _, err := handler.Commands.CreateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, "Time to first response", time.Hour.Milliseconds(), []string{inProgress}, []string{models.SLAConditionResolutionSet}); !errors.Is(err, store.ErrServiceSLANameTaken) {
+		t.Fatalf("duplicate SLA name err = %v", err)
+	}
+	customSLA, err := handler.Commands.CreateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, "Time in progress", time.Hour.Milliseconds(), []string{inProgress}, []string{models.SLAConditionResolutionSet})
+	if err != nil || customSLA.Kind != "custom" || customSLA.ID == "" {
+		t.Fatalf("custom SLA = %+v, %v", customSLA, err)
+	}
+	if err := handler.Commands.DeleteServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, metricByKind["resolution"]); err == nil {
+		t.Fatal("a built-in SLA was deleted")
+	}
+	customCycles := func(onlyOngoing bool) int {
+		t.Helper()
+		var count int
+		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2 AND ($3=false OR stopped_at IS NULL)`, issue.ID, customSLA.ID, onlyOngoing).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	if customCycles(false) != 0 {
+		t.Fatal("a new SLA started before its start condition")
+	}
 	callAs(customerID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/transition", `{"id":"21","additionalComment":{"body":"Work can begin.","public":true}}`, 204)
+	if customCycles(true) != 1 {
+		t.Fatal("entering In Progress did not start the custom SLA")
+	}
+	searchTotalAs(customerID, `key = `+issueKey+` AND "Time in progress" = running()`, 1)
+	// Changing an SLA's conditions recalculates open requests from their history:
+	// an SLA that starts on a due date never ran, until it starts on entering In
+	// Progress, when its cycle begins at the transition rather than now.
+	lateSLA, err := handler.Commands.CreateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, "Time since planning", time.Hour.Milliseconds(), []string{models.SLAConditionDueDateSet}, []string{models.SLAConditionResolutionSet})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lateCycles int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2`, issue.ID, lateSLA.ID).Scan(&lateCycles); err != nil || lateCycles != 0 {
+		t.Fatalf("cycles before recalculation = %d, %v", lateCycles, err)
+	}
+	var transitionedAt time.Time
+	if err := st.Pool.QueryRow(ctx, `SELECT started_at FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2 AND stopped_at IS NULL`, issue.ID, customSLA.ID).Scan(&transitionedAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.Commands.UpdateServiceSLAConditions(ctx, actorID, workspaceID, serviceDeskID, lateSLA.ID, []string{inProgress}, []string{models.SLAConditionResolutionSet}); err != nil {
+		t.Fatal(err)
+	}
+	var recalculatedStart time.Time
+	if err := st.Pool.QueryRow(ctx, `SELECT started_at FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2 AND stopped_at IS NULL`, issue.ID, lateSLA.ID).Scan(&recalculatedStart); err != nil {
+		t.Fatalf("recalculated cycle: %v", err)
+	}
+	if recalculatedStart.Sub(transitionedAt).Abs() > 2*time.Second {
+		t.Fatalf("recalculated cycle started at %s, the request entered In Progress at %s", recalculatedStart, transitionedAt)
+	}
+	if err := handler.Commands.DeleteServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, lateSLA.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.Commands.DeleteServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, customSLA.ID); err != nil {
+		t.Fatal(err)
+	}
+	if customCycles(false) != 0 {
+		t.Fatal("deleting the custom SLA kept its cycles")
+	}
+	if ongoingFirstResponse() != 0 {
+		t.Fatal("entering In Progress did not stop time to first response")
+	}
+	// Time to first response and the recalculated SLA each changed their conditions once.
+	var conditionAudits int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM organization_audit_events WHERE actor_id=$1 AND action='service.sla.conditions.updated'`, actorID).Scan(&conditionAudits); err != nil || conditionAudits != 2 {
+		t.Fatalf("SLA condition audits = %d, %v", conditionAudits, err)
+	}
 	// Comments appear on a request only when expanded, as in Jira.
 	detail := callAs(customerID, "GET", "/rest/servicedeskapi/request/"+issueKey+"?expand=comment", "", 200)
 	if !strings.Contains(detail.Body.String(), `"status":"In Progress"`) || !strings.Contains(detail.Body.String(), "Work can begin") {
@@ -1043,12 +1285,30 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(listedParticipants.Body.String(), invitedCustomerID) {
 		t.Fatal(listedParticipants.Body.String())
 	}
+	// Participants hear about public updates to the request until they leave it.
+	participantUpdates := func() int {
+		t.Helper()
+		var count int
+		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND kind='service_comment'`, workspaceID, invitedCustomerID).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	beforeParticipantUpdate := participantUpdates()
+	call("POST", "/rest/servicedeskapi/request/"+issueKey+"/comment", `{"body":"We have a fix in review.","public":true}`, 201)
+	if participantUpdates() != beforeParticipantUpdate+1 {
+		t.Fatalf("participant update notifications = %d, want %d", participantUpdates(), beforeParticipantUpdate+1)
+	}
 	removedParticipants := callAs(customerID, "DELETE", "/rest/servicedeskapi/request/"+issueKey+"/participant", `{"accountIds":["`+invitedCustomerID+`"]}`, 200)
 	if strings.Contains(removedParticipants.Body.String(), invitedCustomerID) {
 		t.Fatal(removedParticipants.Body.String())
 	}
 	if _, err := st.ServiceRequest(ctx, workspaceID, invitedCustomerID, issueKey, false); err == nil {
 		t.Fatal("removed participant retained request access")
+	}
+	call("POST", "/rest/servicedeskapi/request/"+issueKey+"/comment", `{"body":"The fix is released.","public":true}`, 201)
+	if participantUpdates() != beforeParticipantUpdate+1 {
+		t.Fatal("a removed participant was still notified")
 	}
 	allRequests := call("GET", "/rest/servicedeskapi/request?requestOwnership=ALL_REQUESTS", "", 200)
 	if !strings.Contains(allRequests.Body.String(), issueKey) {
@@ -1117,6 +1377,115 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	var customerCommentNotificationsAfter int
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND kind='service_comment'`, workspaceID, customerID).Scan(&customerCommentNotificationsAfter); err != nil || customerCommentNotificationsAfter != customerCommentNotificationsBefore {
 		t.Fatalf("private comment customer notifications = %d before, %d after, %v", customerCommentNotificationsBefore, customerCommentNotificationsAfter, err)
+	}
+	// Customer notifications: the reporter was told their request arrived, and
+	// a desk can stop public comments or invitations from reaching customers.
+	var createdConfirmations int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND kind='service_created' AND entity_id=$3`, workspaceID, customerID, issueKey).Scan(&createdConfirmations); err != nil || createdConfirmations != 1 {
+		t.Fatalf("request created confirmations = %d, %v", createdConfirmations, err)
+	}
+	if err := handler.Commands.SetServiceDeskCustomerNotification(ctx, customerID, workspaceID, serviceDeskID, models.CustomerNotificationPublicComment, false); err == nil {
+		t.Fatal("a customer changed customer notifications")
+	}
+	if err := handler.Commands.SetServiceDeskCustomerNotification(ctx, actorID, workspaceID, serviceDeskID, "carrier_pigeon", false); err == nil {
+		t.Fatal("an unknown customer notification was accepted")
+	}
+	if err := handler.Commands.SetServiceDeskCustomerNotification(ctx, actorID, workspaceID, serviceDeskID, models.CustomerNotificationPublicComment, false); err != nil {
+		t.Fatal(err)
+	}
+	customerCommentNotifications := func() int {
+		t.Helper()
+		var count int
+		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND kind='service_comment'`, workspaceID, customerID).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	callAs(agentID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/comment", `{"body":"Muted public update.","public":true}`, 201)
+	if customerCommentNotifications() != customerCommentNotificationsAfter {
+		t.Fatal("a turned-off public comment notification reached the customer")
+	}
+	if err := handler.Commands.SetServiceDeskCustomerNotification(ctx, actorID, workspaceID, serviceDeskID, models.CustomerNotificationPublicComment, true); err != nil {
+		t.Fatal(err)
+	}
+	callAs(agentID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/comment", `{"body":"Audible public update.","public":true}`, 201)
+	if customerCommentNotifications() != customerCommentNotificationsAfter+1 {
+		t.Fatal("a turned-on public comment notification did not reach the customer")
+	}
+	if err := handler.Commands.SetServiceDeskCustomerNotification(ctx, actorID, workspaceID, serviceDeskID, models.CustomerNotificationInvited, false); err != nil {
+		t.Fatal(err)
+	}
+	mutedInvitee := "muted.invitee-" + strings.ToLower(serviceDeskID) + "@example.test"
+	t.Cleanup(func() { exec(`DELETE FROM users WHERE email=$1`, mutedInvitee) })
+	if _, err := handler.Commands.InviteServiceDeskCustomer(ctx, actorID, workspaceID, serviceDeskID, mutedInvitee, "Muted Invitee"); err != nil {
+		t.Fatal(err)
+	}
+	var mutedInvitations int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM email_outbox WHERE workspace_id=$1 AND recipient=$2`, workspaceID, mutedInvitee).Scan(&mutedInvitations); err != nil || mutedInvitations != 0 {
+		t.Fatalf("muted invitations = %d, %v", mutedInvitations, err)
+	}
+	if desk, err := st.ServiceDesk(ctx, workspaceID, serviceDeskID); err != nil || desk.CustomerNotificationEnabled(models.CustomerNotificationInvited) || !desk.CustomerNotificationEnabled(models.CustomerNotificationPublicComment) {
+		t.Fatalf("desk customer notifications = %+v, %v", desk, err)
+	}
+	// Site administrators brand the help center and announce news on its home page.
+	if err := handler.Commands.UpdateServiceHelpCenter(ctx, customerID, workspaceID, models.ServiceHelpCenter{Name: "Acme help"}); err == nil {
+		t.Fatal("a customer customized the help center")
+	}
+	for _, broken := range []models.ServiceHelpCenter{
+		{BannerColour: "blue"},
+		{LogoURL: "javascript:alert(1)"},
+		{AnnouncementMessage: "No title"},
+		{Name: "Two\nlines"},
+	} {
+		if err := handler.Commands.UpdateServiceHelpCenter(ctx, actorID, workspaceID, broken); err == nil {
+			t.Fatalf("invalid help center settings were accepted: %+v", broken)
+		}
+	}
+	branding := models.ServiceHelpCenter{Name: " Acme help ", HomeTitle: "Welcome to Acme support", BannerColour: "#0052CC", BannerTextColour: "#FFFFFF",
+		AnnouncementTitle: "Planned maintenance", AnnouncementMessage: "Email is offline on Saturday."}
+	if err := handler.Commands.UpdateServiceHelpCenter(ctx, actorID, workspaceID, branding); err != nil {
+		t.Fatal(err)
+	}
+	if center, err := st.ServiceHelpCenter(ctx, workspaceID); err != nil || center.Name != "Acme help" || center.HomeTitle != "Welcome to Acme support" || center.BannerColour != "#0052CC" || center.AnnouncementMessage != "Email is offline on Saturday." {
+		t.Fatalf("help center = %+v, %v", center, err)
+	}
+	// Desk administrators name the portal and give it an introduction and logo.
+	if err := handler.Commands.UpdateServiceDeskPortal(ctx, customerID, workspaceID, serviceDeskID, "Help desk", "", ""); err == nil {
+		t.Fatal("a customer changed the portal")
+	}
+	if err := handler.Commands.UpdateServiceDeskPortal(ctx, actorID, workspaceID, serviceDeskID, "Help desk", "", "javascript:alert(1)"); err == nil {
+		t.Fatal("a script URL was accepted as the portal logo")
+	}
+	if err := handler.Commands.UpdateServiceDeskPortal(ctx, actorID, workspaceID, serviceDeskID, "  ", "", ""); err == nil {
+		t.Fatal("a blank portal name was accepted")
+	}
+	if err := handler.Commands.UpdateServiceDeskPortal(ctx, actorID, workspaceID, serviceDeskID, " Workplace help ", " Laptops, access and moves. ", "/static/img/avatar-default.svg"); err != nil {
+		t.Fatal(err)
+	}
+	if desk, err := st.ServiceDesk(ctx, workspaceID, serviceDeskID); err != nil || desk.PortalName != "Workplace help" || desk.PortalDescription != "Laptops, access and moves." || desk.PortalLogoURL != "/static/img/avatar-default.svg" {
+		t.Fatalf("portal = %+v, %v", desk, err)
+	}
+	// Agents add portal announcements only once the desk's administrators allow it.
+	if err := handler.Commands.UpdateServiceDeskAnnouncement(ctx, agentID, workspaceID, serviceDeskID, "Planned maintenance", "Email is offline on Saturday."); err == nil {
+		t.Fatal("an agent added an announcement to a portal that does not allow it")
+	}
+	if err := handler.Commands.SetServiceDeskAnnouncementsEnabled(ctx, agentID, workspaceID, serviceDeskID, true); err == nil {
+		t.Fatal("an agent allowed portal announcements")
+	}
+	if err := handler.Commands.SetServiceDeskAnnouncementsEnabled(ctx, actorID, workspaceID, serviceDeskID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.Commands.UpdateServiceDeskAnnouncement(ctx, customerID, workspaceID, serviceDeskID, "Planned maintenance", ""); err == nil {
+		t.Fatal("a customer added a portal announcement")
+	}
+	if err := handler.Commands.UpdateServiceDeskAnnouncement(ctx, agentID, workspaceID, serviceDeskID, "", "A message without a title"); err == nil {
+		t.Fatal("an announcement without a title was accepted")
+	}
+	if err := handler.Commands.UpdateServiceDeskAnnouncement(ctx, agentID, workspaceID, serviceDeskID, " Planned maintenance ", " Email is offline on Saturday. "); err != nil {
+		t.Fatal(err)
+	}
+	if desk, err := st.ServiceDesk(ctx, workspaceID, serviceDeskID); err != nil || !desk.AnnouncementsEnabled || desk.AnnouncementTitle != "Planned maintenance" || desk.AnnouncementMessage != "Email is offline on Saturday." {
+		t.Fatalf("portal announcement = %+v, %v", desk, err)
 	}
 	regularAgentComments := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/comment", "", 200)
 	if !strings.Contains(regularAgentComments.Body.String(), "Agent-only investigation detail") {

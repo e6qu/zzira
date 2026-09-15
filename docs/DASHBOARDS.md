@@ -43,17 +43,65 @@ The built-in catalog contains:
 - `com.zzira:resolution-time`
 - `com.zzira:velocity`
 - `com.zzira:sprint-burndown`
+- `com.zzira:two-dimensional-statistics`
+- `com.zzira:heat-map`
+- `com.zzira:watched-issues`
+- `com.zzira:voted-issues`
+- `com.zzira:in-progress`
+- `com.zzira:recently-created`
+- `com.zzira:average-age`
+- `com.zzira:time-since`
+- `com.zzira:days-remaining`
+- `com.zzira:sprint-health`
+- `com.zzira:activity-stream`
+- `com.zzira:calendar`
+- `com.zzira:road-map`
+- `com.zzira:bubble-chart`
 
 Gadgets accept direct JQL or a saved filter through the reserved
-`zzira.config` item property. Lists return up to 50 results. Statistics and pie
-charts calculate their full permission-filtered total and group by status,
-priority, work type or assignee. Pie charts include an equivalent data table.
+`zzira.config` item property. Lists return up to 50 results. Statistics, pie
+charts and heat maps calculate their full permission-filtered total and group
+by status, priority, work type, assignee, reporter, resolution, project or
+label. Work with several labels counts once under each label, while the total
+counts each work item once. Pie charts include an equivalent data table, and
+heat maps size each value by its share. Two dimensional filter statistics count
+the same work by one grouping across its columns and another down its rows,
+with row and column totals, showing the largest rows up to the result limit.
 Assigned-to-me adds `assignee = currentUser()` when each viewer loads it.
+Watched work items, Voted work items and Work in progress likewise add
+`issue in watchedIssues()`, `issue in votedIssues()` and
+`assignee = currentUser() AND statusCategory = indeterminate`.
+The activity stream lists, newest first and up to the result limit, the
+creation, field changes and comments of the work its JQL or filter matches that
+the viewer can see; a comment restricted to a group or project role appears
+only to its members. The calendar shows the current month, in weeks starting on
+Monday, with the matching work due each day (up to 200, with a count of the
+rest) and the release dates of unarchived versions in those work items'
+projects. The bubble chart plots the most recently updated matching work, up to
+the result limit, by days since its last update across and, per its
+`bubbleAxis`, participants or votes up, sizing each bubble by the other and
+shading it darker the more recently it changed. Participants are the reporter,
+the assignee and everyone who commented, as in Jira. A table lists the same
+values.
 Report gadgets draw the matching report instead of a query. Created vs.
 resolved and Resolution time keep a `projectKey`, a `days` window of 7, 30 or
 90 and, for created vs. resolved, `cumulative` running totals; Velocity and
 Sprint burndown keep a scrum board's `boardId`, and the burndown follows the
-board's active sprint. Each viewer sees the report counted from their own
+board's active sprint. Recently created, Average age and Time since also keep a
+`projectKey` and `days` window. Recently created splits each day's new work by
+whether it is resolved now. Average age averages the age of work unresolved at
+the end of each day, or now for today. Time since counts work whose `dateField`
+(`created`, `updated` or `resolved`) fell on each day. Like created vs.
+resolved, these use each item's current resolution. Days remaining in sprint and
+Sprint health keep a scrum board's `boardId` and follow its active sprint:
+days remaining counts whole days to the planned end, or days overdue. Sprint
+health shows the share of planned time elapsed, the share of the board's
+estimation statistic complete (by work items when nothing is estimated), and
+work added or removed after the start as a share of the work committed at the
+start. Road map keeps a `projectKey` and `days` window and lists up to 20 of the
+project's unreleased, unarchived versions due within the window or already
+overdue, soonest first, with how much of the fix-version work the viewer can
+see is done. Each viewer sees the report counted from their own
 access to the work, with its values as a table. A gadget not yet configured,
 a project that turned Reports off, or a board that is not a scrum board says
 so instead. The configuration form offers only projects and scrum boards the
@@ -71,11 +119,27 @@ through an authenticated endpoint that signs the validated app-relative image
 request. A `configurable` item shows Configure to people who can edit the
 dashboard, which sends it Connect's `jira_dashboard_item_edit` event, and a
 `refreshable` item shows Refresh, which reloads it with a newly signed frame.
-Items may be offered and shown only under `user_is_logged_in`,
-`user_is_admin` or `user_is_sysadmin` conditions, inverted or grouped with
-`AND` or `OR`. Items use Connect's JavaScript API to resize, rename
+Items may be offered and shown only under Connect conditions, inverted or
+grouped with `AND` or `OR`; see [APPS.md](APPS.md#connect-conditions) for the
+evaluated conditions. Items use Connect's JavaScript API to resize, rename
 themselves and call product APIs within their app's scopes; see
 [APPS.md](APPS.md).
+
+## Wallboards
+
+View as wallboard, at `/dashboards/{id}/wallboard`, shows a dashboard full
+screen without navigation for a team display, in the viewer's theme. As in
+Jira, consecutive gadgets of one colour in a column form a group that shows one
+gadget at a time and moves to the next every 30 seconds, while gadgets of
+different colours show together. Gadgets are read-only there, and the page
+reloads when the dashboard's automatic refresh interval passes.
+
+The site has one wallboard slide show at `/dashboards/slideshow`. Anyone who can
+edit a dashboard configures it from that dashboard: between 1 and 50
+dashboards they can view, 5 to 3600 seconds per dashboard (30 by default) and
+an optional random order. Each viewer sees only the chosen dashboards they can
+view, and the slide show reloads after each full pass so it draws the latest
+work. Both pages offer a Pause rotation control and an exit link.
 
 ## Dashboard emails
 

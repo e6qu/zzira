@@ -152,3 +152,42 @@ type ResolutionTimeReport struct {
 	Resolved       int
 	AverageSeconds int64
 }
+
+// RecentlyCreatedDay is the work created on a day, split by whether it is
+// resolved now.
+type RecentlyCreatedDay struct {
+	Date                 string
+	Resolved, Unresolved int
+}
+
+// RecentlyCreatedReport is Jira's recently created chart.
+type RecentlyCreatedReport struct {
+	Days              []RecentlyCreatedDay
+	Created, Resolved int
+}
+
+// AverageAgeDay is the work unresolved at the end of a day and how old it was
+// on average.
+type AverageAgeDay struct {
+	Date           string
+	Unresolved     int
+	AverageSeconds int64
+}
+
+// AverageAgeReport is Jira's average age chart.
+type AverageAgeReport struct {
+	Days []AverageAgeDay
+}
+
+// TimeSinceDay counts the work whose date fell on a day.
+type TimeSinceDay struct {
+	Date  string
+	Count int
+}
+
+// TimeSinceReport is Jira's time since chart for one date field.
+type TimeSinceReport struct {
+	Field string
+	Days  []TimeSinceDay
+	Total int
+}

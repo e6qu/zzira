@@ -194,6 +194,21 @@ func NormalizeGadgetConfig(c *models.GadgetConfig) error {
 	if c.GroupBy == "" {
 		c.GroupBy = "status"
 	}
+	if c.YGroupBy == "" {
+		c.YGroupBy = "assignee"
+	}
+	if c.DateField == "" {
+		c.DateField = "created"
+	}
+	if c.BubbleAxis == "" {
+		c.BubbleAxis = "participants"
+	}
+	if c.BubbleAxis != "participants" && c.BubbleAxis != "votes" {
+		return fmt.Errorf("%w: the bubble chart counts participants or votes", ErrDashboardValidation)
+	}
+	if models.TimeSinceFieldName(c.DateField) == "" {
+		return fmt.Errorf("%w: choose the created, updated or resolved date", ErrDashboardValidation)
+	}
 	if c.Limit == 0 {
 		c.Limit = 10
 	}
@@ -209,9 +224,7 @@ func NormalizeGadgetConfig(c *models.GadgetConfig) error {
 	if len(c.JQL) > 16000 || (c.JQL != "" && c.FilterID != "") || c.Limit < 1 || c.Limit > 50 {
 		return fmt.Errorf("%w: choose JQL or a saved filter and a result limit from 1 to 50", ErrDashboardValidation)
 	}
-	switch c.GroupBy {
-	case "status", "priority", "issuetype", "assignee":
-	default:
+	if models.GadgetGroupingName(c.GroupBy) == "" || models.GadgetGroupingName(c.YGroupBy) == "" {
 		return fmt.Errorf("%w: unsupported grouping", ErrDashboardValidation)
 	}
 	if _, err := jql.Parse(c.JQL); strings.TrimSpace(c.JQL) != "" && err != nil {

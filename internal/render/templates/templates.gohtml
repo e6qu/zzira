@@ -1,7 +1,7 @@
 {{define "head"}}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-{{with (site $).FaviconURL}}<link rel="icon" href="{{.}}">{{end}}
+{{with (site $).FaviconURL}}<link rel="icon" href="{{.}}">{{end}}{{with (site $).FaviconHiResURL}}<link rel="icon" sizes="64x64" href="{{.}}"><link rel="apple-touch-icon" href="{{.}}">{{end}}{{with (site $).HeroButtonBackground}}<style>@media (prefers-color-scheme: light){:root:not([data-theme="dark"]) .btn-primary{background:{{.}};border-color:{{.}}}}:root[data-theme="light"] .btn-primary{background:{{.}};border-color:{{.}}}</style>{{end}}
 <meta name="color-scheme" content="light dark">
 <script>
   (function () {
@@ -21,12 +21,12 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=27">
+<link rel="stylesheet" href="/static/css/workspace.css?v=36">
 <link rel="preload" href="/static/zzira-worker.wasm?v=4" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
 <script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js?v=31" defer></script>
+<script src="/static/app.js?v=33" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -42,7 +42,14 @@
   <button class="icon-button nav-toggle" type="button" data-nav-toggle aria-label="Collapse sidebar" aria-expanded="true" aria-controls="workspace-navigation">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
   </button>
-  <a class="logo" href="/" aria-label="{{(site $).Title}} home">{{with (site $).LogoURL}}<img class="logo-image" src="{{.}}" alt="" width="30" height="30">{{else}}<span class="logo-mark" aria-hidden="true">Z</span>{{end}}<span{{with (site $).NavigationHighlight}} style="color:{{.}}"{{end}}>{{(site $).Title}}</span></a>
+  {{with .Navigation}}{{if .Products}}<details class="app-switcher">
+    <summary aria-label="Switch apps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h3v3H5zM10.5 5h3v3h-3zM16 5h3v3h-3zM5 10.5h3v3H5zM10.5 10.5h3v3h-3zM16 10.5h3v3h-3zM5 16h3v3H5zM10.5 16h3v3h-3zM16 16h3v3h-3z"/></svg></summary>
+    <div class="user-popover app-switcher-popover">
+      <nav aria-label="Switch to"><h2 class="app-switcher-heading">Switch to</h2>{{range .Products}}<a href="{{.URL}}" {{if .Current}}aria-current="page"{{end}}>{{.Name}}</a>{{end}}{{if .CanAdmin}}<a href="/admin">Administration</a>{{end}}</nav>
+      {{if .RecentProjects}}<nav aria-label="Recent projects"><h2 class="app-switcher-heading">Recent projects</h2>{{range .RecentProjects}}<a href="/projects/{{.Key}}">{{.Name}}</a>{{end}}</nav>{{end}}
+    </div>
+  </details>{{end}}{{end}}
+  <a class="logo" href="/" aria-label="{{(site $).Title}} home">{{with (site $).LogoURL}}<img class="logo-image" src="{{.}}" alt="" width="30" height="30">{{else}}<span class="logo-mark" aria-hidden="true">Z</span>{{end}}{{if (site $).ShowTitle}}<span{{with (site $).NavigationHighlight}} style="color:{{.}}"{{end}}>{{(site $).Title}}</span>{{end}}</a>
   <form class="global-search" method="get" action="{{with .Navigation}}{{with .Current}}{{.WorkURL}}{{else}}/projects{{end}}{{else}}/projects{{end}}" role="search">
     <label class="sr-only" for="global-jql-query">Search issues with JQL</label>
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
@@ -344,8 +351,8 @@
           <span id="comment-editor-label" class="sr-only">Add a comment</span>
           <div id="comment-editor" class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="comment-editor-label" data-rich-editor data-target-name="adf"
                data-placeholder="Add a comment…"></div>
-          <input type="hidden" name="adf">
-          <div class="form-actions"><small class="muted">Use the toolbar to format your update.</small><button type="submit" class="btn btn-primary">Add comment</button></div>
+          <input type="hidden" name="adf">{{with .Members}}<template data-mention-people>{{range .}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}</template>{{end}}
+          <div class="form-actions"><small class="muted">Use the toolbar to format your update, and type @ to mention someone.</small><button type="submit" class="btn btn-primary">Add comment</button></div>
         </form>
         {{if and .CanTriage .TimeTrackingEnabled}}<form class="worklog-form" method="post" action="/issues/{{.Issue.Key}}/worklogs" hx-post="/issues/{{.Issue.Key}}/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
           <fieldset><legend>Or log work</legend><label for="worklog-time">Time spent</label>
@@ -931,6 +938,7 @@
     <header class="profile-hero"><span class="profile-avatar" aria-hidden="true">{{initials .Data.Profile.DisplayName}}</span><div><span class="eyebrow">{{if .Data.Self}}Your profile{{else}}Team member{{end}}</span><h1>{{.Data.Profile.DisplayName}}</h1><p>{{.Data.Profile.Email}}{{if .Data.Profile.TimeZone}} · {{.Data.Profile.TimeZone}}{{end}}</p></div></header>
     {{if .Data.Saved}}<div class="alert success" role="status">{{.Data.Saved}}</div>{{end}}
     {{if .Data.Self}}<section class="surface-card profile-identities" aria-labelledby="profile-identities-title"><div class="section-heading"><div><span class="eyebrow">Security</span><h2 id="profile-identities-title">Connected sign-in accounts</h2><p>Review the external identities that can open this account.</p></div></div><ul>{{range .Data.Identities}}<li><div><strong>{{.DisplayName}}</strong><small>{{.Issuer}}</small>{{if .Connected}}<span>{{.Email}}</span><code>{{.Subject}}</code><span>Connected {{.CreatedAt}}</span>{{else}}<span>Not connected</span>{{end}}</div>{{if .Connected}}{{if .CanUnlink}}<form method="post" action="/profile/identities/{{.ProviderKey}}/unlink"><button class="btn btn-danger" type="submit">Disconnect {{.DisplayName}}</button></form>{{else}}<small>Keep one provider connected</small>{{end}}{{else}}<a class="btn" href="/auth/{{.ProviderKey}}/link">Connect {{.DisplayName}}</a>{{end}}</li>{{else}}<li class="empty-state"><strong>No external sign-in accounts</strong><small>Your password is the only configured sign-in method.</small></li>{{end}}</ul></section>{{end}}
+    {{if .Data.Self}}<section class="surface-card profile-notifications" aria-labelledby="profile-notifications-title"><div class="section-heading"><div><span class="eyebrow">Notifications</span><h2 id="profile-notifications-title">Email notifications</h2><p>Choose whether your own changes reach you and which work you follow.</p></div></div><form class="project-details-form" method="post" action="/profile/notifications"><label for="profile-own-changes">My changes</label><select id="profile-own-changes" name="ownChanges"><option value="false"{{if not .Data.NotifyOwnChanges}} selected{{end}}>Do not notify me</option><option value="true"{{if .Data.NotifyOwnChanges}} selected{{end}}>Notify me</option></select><label for="profile-autowatch">Autowatch</label><select id="profile-autowatch" name="autowatch"><option value="enabled"{{if .Data.Autowatch}} selected{{end}}>Watch work items I create or comment on</option><option value="disabled"{{if not .Data.Autowatch}} selected{{end}}>Do not watch automatically</option></select><div class="project-form-actions"><button class="btn btn-primary" type="submit">Save notification preferences</button></div></form></section>{{end}}
     <div class="profile-work-grid">
       <section class="surface-card" aria-labelledby="assigned-work-title"><div class="section-heading"><div><span class="eyebrow">Ownership</span><h2 id="assigned-work-title">Assigned work <span class="section-count">{{len .Data.Assigned}}</span></h2></div></div><ul class="compact-work-list">{{range .Data.Assigned}}<li><a href="/browse/{{.Key}}"><strong>{{.Key}}</strong><span>{{.Summary}}</span></a><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></li>{{else}}<li class="empty-state"><strong>No assigned work</strong></li>{{end}}</ul></section>
       <section class="surface-card" aria-labelledby="reported-work-title"><div class="section-heading"><div><span class="eyebrow">Created</span><h2 id="reported-work-title">Reported work <span class="section-count">{{len .Data.Reported}}</span></h2></div></div><ul class="compact-work-list">{{range .Data.Reported}}<li><a href="/browse/{{.Key}}"><strong>{{.Key}}</strong><span>{{.Summary}}</span></a><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></li>{{else}}<li class="empty-state"><strong>No reported work</strong></li>{{end}}</ul></section>

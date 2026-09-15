@@ -2,9 +2,11 @@ package web
 
 import (
 	"errors"
+	"github.com/jackc/pgx/v5"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -271,4 +273,90 @@ func (h *Handler) ProjectNotificationsPage(w http.ResponseWriter, r *http.Reques
 	}
 	cards := notificationCards(events, []*models.NotificationScheme{scheme}, []*models.Project{project}, members, groups, roles, fields, []store.NotificationSchemeMapping{{SchemeID: scheme.ID, ProjectID: project.ID}})
 	h.writeWorkspacePage(w, r, "page_project_notifications", user, workspaceID, projectNotificationsData{Project: project, Scheme: cards[0]}, "project-notifications", project.Key)
+}
+
+type notificationHelperResult struct {
+	store.NotificationDiagnosis
+	Person, IssueKey string
+	// Rules names the matching scheme rules the way the scheme pages do.
+	Rules []string
+}
+
+type notificationHelperData struct {
+	Members   []*models.User
+	Events    []store.NotificationEventDefinition
+	AccountID string
+	IssueKey  string
+	EventID   int64
+	Error     string
+	Result    *notificationHelperResult
+}
+
+// NotificationHelperPage is Jira's notification helper: an administrator picks
+// a person, a work item and an event and learns whether the person would be
+// notified, which scheme rules name them and what could stop the notification.
+func (h *Handler) NotificationHelperPage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	ctx, query := r.Context(), r.URL.Query()
+	members, err := h.Store.MembersByWorkspace(ctx, workspaceID)
+	if err != nil {
+		http.Error(w, "Could not load the notification helper.", http.StatusInternalServerError)
+		return
+	}
+	events, err := h.Store.IssueEvents(ctx, workspaceID)
+	if err != nil {
+		http.Error(w, "Could not load the notification helper.", http.StatusInternalServerError)
+		return
+	}
+	data := notificationHelperData{Members: members, Events: events, AccountID: query.Get("accountId"), IssueKey: strings.TrimSpace(query.Get("issueKey"))}
+	data.EventID, _ = strconv.ParseInt(query.Get("eventId"), 10, 64)
+	if data.AccountID != "" || data.IssueKey != "" || query.Get("eventId") != "" {
+		var person *models.User
+		for _, member := range members {
+			if member.ID == data.AccountID {
+				person = member
+			}
+		}
+		var issue *models.Issue
+		if data.IssueKey != "" {
+			if issue, err = h.Store.IssueByIDOrKey(ctx, workspaceID, data.IssueKey); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				http.Error(w, "Could not load the notification helper.", http.StatusInternalServerError)
+				return
+			}
+		}
+		switch {
+		case person == nil:
+			data.Error = "Choose a person to check."
+		case issue == nil:
+			data.Error = "No work item has the key " + data.IssueKey + "."
+		default:
+			diagnosis, diagnoseErr := h.Store.DiagnoseIssueNotification(ctx, workspaceID, person.ID, issue.ID, data.EventID)
+			if errors.Is(diagnoseErr, store.ErrNotificationSchemeValidation) {
+				data.Error = "Choose an event."
+				break
+			}
+			if diagnoseErr != nil {
+				http.Error(w, "Could not load the notification helper.", http.StatusInternalServerError)
+				return
+			}
+			result := &notificationHelperResult{NotificationDiagnosis: diagnosis, Person: person.DisplayName, IssueKey: issue.Key}
+			if len(diagnosis.Rules) > 0 {
+				groups, groupsErr := h.Store.GroupsByWorkspace(ctx, workspaceID)
+				roles, rolesErr := h.Store.ProjectRoles(ctx, workspaceID)
+				fields, fieldsErr := h.Store.CustomFieldsForWorkspace(ctx, workspaceID)
+				if err = errors.Join(groupsErr, rolesErr, fieldsErr); err != nil {
+					http.Error(w, "Could not load the notification helper.", http.StatusInternalServerError)
+					return
+				}
+				for _, rule := range diagnosis.Rules {
+					result.Rules = append(result.Rules, notificationRecipientLabel(rule, members, groups, roles, fields))
+				}
+			}
+			data.Result = result
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_notification_helper", user, workspaceID, data, "admin", "")
 }

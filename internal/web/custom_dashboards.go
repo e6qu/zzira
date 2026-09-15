@@ -17,8 +17,10 @@ import (
 )
 
 type dashboardSlice struct {
-	Name, Color  string
-	Count        int
+	Name, Color string
+	Count       int
+	// Weight sizes a heat map value from 1 to 5 by its count.
+	Weight       int
 	Percent      float64
 	Dash, Offset string
 }
@@ -27,10 +29,18 @@ type dashboardTile struct {
 	AppModule *models.AppModule
 	// Configurable and Refreshable are what a Connect dashboard item offers.
 	Configurable, Refreshable bool
-	Results                   store.GadgetResults
-	Slices                    []dashboardSlice
-	Report                    *gadgetReport
-	Error                     string
+	// DashboardID and Writable are the dashboard the gadget is on and whether
+	// the viewer may edit it.
+	DashboardID string
+	Writable    bool
+	// Activity and Calendar are the activity stream and calendar for people.
+	Activity []activityView
+	Calendar *calendarView
+	Bubbles  *bubbleView
+	Results  store.GadgetResults
+	Slices   []dashboardSlice
+	Report   *gadgetReport
+	Error    string
 }
 type customDashboardsData struct {
 	Dashboards                        []*models.Dashboard
@@ -46,12 +56,17 @@ type customDashboardsData struct {
 	CurrentUserID                     string
 	ReportWindows                     []int
 	Catalog                           []models.GadgetDefinition
+	Groupings, TimeSinceFields        []models.GadgetGrouping
 	Columns                           [][]dashboardTile
 	ColumnOptions                     []int
 	Editing, Adding, Owner, AppGadget bool
-	Gadget                            *models.DashboardGadget
-	Config                            models.GadgetConfig
-	Error, Query, Filter              string
+	// Slideshow is the site's wallboard slide show, which people who can edit
+	// a dashboard configure from it.
+	Slideshow            store.WallboardSlideshow
+	SlideshowOpen        bool
+	Gadget               *models.DashboardGadget
+	Config               models.GadgetConfig
+	Error, Query, Filter string
 }
 
 func dashboardWebError(err error) (int, string) {
@@ -168,7 +183,7 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, msg, status)
 		return
 	}
-	data := customDashboardsData{Dashboard: d, Details: store.DashboardDetails{Name: d.Name, Description: d.Description, SharePermissions: d.SharePermissions, EditPermissions: d.EditPermissions}, Owner: d.OwnerID == user.ID, Editing: r.URL.Query().Get("edit") == "1", Adding: r.URL.Query().Get("add") == "1", Catalog: models.GadgetCatalog()}
+	data := customDashboardsData{Dashboard: d, Details: store.DashboardDetails{Name: d.Name, Description: d.Description, SharePermissions: d.SharePermissions, EditPermissions: d.EditPermissions}, Owner: d.OwnerID == user.ID, Editing: r.URL.Query().Get("edit") == "1", Adding: r.URL.Query().Get("add") == "1", Catalog: models.GadgetCatalog(), Groupings: models.GadgetGroupings, TimeSinceFields: models.TimeSinceFields}
 	appGadgets, err := h.Store.AppModulesByLocation(r.Context(), ws, "jira.dashboard")
 	if err != nil {
 		http.Error(w, "Could not load app gadgets.", 500)
@@ -221,6 +236,18 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 				opErr = store.ErrDashboardValidation
 			} else {
 				opErr = h.Store.DeleteDashboardSubscription(r.Context(), ws, user.ID, id, subscriptionID)
+			}
+		case "slideshow":
+			interval, e := strconv.Atoi(r.PostFormValue("interval"))
+			data.Slideshow = store.WallboardSlideshow{DashboardIDs: r.PostForm["slideshowDashboard"], IntervalSeconds: interval, RandomOrder: r.PostFormValue("randomOrder") == "true"}
+			data.SlideshowOpen = true
+			switch {
+			case !d.Writable:
+				opErr = store.ErrDashboardPermission
+			case e != nil:
+				opErr = fmt.Errorf("%w: the slide show interval must be a number of seconds", store.ErrDashboardValidation)
+			default:
+				opErr = h.Store.SaveDashboardWallboardSlideshow(r.Context(), ws, user.ID, data.Slideshow)
 			}
 		case "favourite":
 			opErr = h.Store.SetDashboardFavourite(r.Context(), ws, user.ID, id, r.PostFormValue("favourite") == "true")
@@ -291,33 +318,9 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost && r.PostFormValue("gadget") != "" {
 		editID = r.PostFormValue("gadget")
 	}
-	colors := []string{"#1769e0", "#6658d3", "#168568", "#c26914", "#be4565", "#577081"}
-	for _, g := range gadgets {
-		tile := dashboardTile{Gadget: g}
-		if strings.HasPrefix(g.ModuleKey, "app:") {
-			tile.AppModule, err = h.Store.ActiveDashboardAppModule(r.Context(), ws, g.ModuleKey)
-			if err != nil {
-				tile.Error = "This app gadget is unavailable. Ask an administrator to resume or reinstall the app."
-			} else if configurable, refreshable, conditions := appRuntime.DashboardItemOptions(tile.AppModule.Body); !appRuntime.ConnectConditionsMet(conditions, h.appConditionFacts(r, ws, user.ID)) {
-				tile.AppModule, tile.Error = nil, "This app gadget is not available to you."
-			} else {
-				tile.Configurable, tile.Refreshable = configurable, refreshable
-			}
-		} else {
-			tile.Results, err = h.Store.DashboardGadgetResults(r.Context(), ws, user.ID, id, g)
-			if err != nil {
-				tile.Error = "This gadget could not load its query. Check its configuration and saved filter."
-			} else if g.ReportGadget() {
-				tile.Report, tile.Error = h.gadgetReport(r, ws, user.ID, g.ModuleKey, tile.Results.Config)
-			} else {
-				offset := 0.0
-				for i, c := range tile.Results.Counts {
-					percent := float64(c.Count) * 100 / float64(tile.Results.Total)
-					tile.Slices = append(tile.Slices, dashboardSlice{Name: c.Name, Count: c.Count, Color: colors[i%len(colors)], Percent: percent, Dash: fmt.Sprintf("%.4f %.4f", percent, 100-percent), Offset: fmt.Sprintf("%.4f", -offset)})
-					offset += percent
-				}
-			}
-		}
+	tiles := h.dashboardTiles(r, ws, user.ID, id, gadgets, d.Writable)
+	for index, g := range gadgets {
+		tile := tiles[index]
 		data.Columns[g.Position.Column] = append(data.Columns[g.Position.Column], tile)
 		if strconv.FormatInt(g.ID, 10) == editID && d.Writable {
 			copy := g
@@ -363,6 +366,18 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.ReportWindows = analysisWindows
+	if !data.SlideshowOpen {
+		if data.Slideshow, err = h.Store.DashboardWallboardSlideshow(r.Context(), ws); err != nil {
+			http.Error(w, "Could not load the wallboard slide show.", 500)
+			return
+		}
+	}
+	if d.Writable {
+		if data.Dashboards, err = h.Store.Dashboards(r.Context(), ws, user.ID); err != nil {
+			http.Error(w, "Could not load dashboards.", 500)
+			return
+		}
+	}
 	data.CurrentUserID = user.ID
 	if data.Subscriptions, err = h.Store.DashboardSubscriptions(r.Context(), ws, user.ID, id); err != nil {
 		http.Error(w, "Could not load dashboard emails.", 500)
@@ -370,6 +385,17 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	h.writeWorkspacePageStatus(w, r, "page_custom_dashboard", user, ws, data, "dashboards", "", status)
 }
+
+// InSlideshow reports whether a dashboard is chosen for the slide show.
+func (d customDashboardsData) InSlideshow(id string) bool {
+	for _, chosen := range d.Slideshow.DashboardIDs {
+		if chosen == id {
+			return true
+		}
+	}
+	return false
+}
+
 func (d customDashboardsData) ShareSelected(kind, id string) bool {
 	list := d.Details.SharePermissions
 	if kind == "edit" {
@@ -395,9 +421,9 @@ func (d customDashboardsData) ShareSelected(kind, id string) bool {
 // or board, window and running totals.
 func gadgetConfigForm(r *http.Request) (models.GadgetConfig, error) {
 	c := models.GadgetConfig{
-		JQL: r.PostFormValue("jql"), FilterID: r.PostFormValue("filterId"), GroupBy: r.PostFormValue("groupBy"),
+		JQL: r.PostFormValue("jql"), FilterID: r.PostFormValue("filterId"), GroupBy: r.PostFormValue("groupBy"), YGroupBy: r.PostFormValue("yGroupBy"),
 		ProjectKey: strings.TrimSpace(r.PostFormValue("projectKey")), BoardID: strings.TrimSpace(r.PostFormValue("boardId")),
-		Cumulative: r.PostFormValue("cumulative") == "true",
+		Cumulative: r.PostFormValue("cumulative") == "true", DateField: r.PostFormValue("dateField"), BubbleAxis: r.PostFormValue("bubbleAxis"),
 	}
 	for field, target := range map[string]*int{"limit": &c.Limit, "days": &c.Days} {
 		if value := r.PostFormValue(field); value != "" {
@@ -421,6 +447,12 @@ type gadgetReport struct {
 	Velocity        *velocityReportView
 	Sprint          *models.Sprint
 	Burndown        *sprintReportView
+	RecentlyCreated *recentlyCreatedView
+	AverageAge      *averageAgeView
+	TimeSince       *timeSinceView
+	DaysRemaining   *daysRemainingView
+	SprintHealth    *models.SprintHealth
+	RoadMap         *roadMapView
 }
 
 // gadgetReport draws a report gadget from its configured project or board,
@@ -436,7 +468,7 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 	}
 	const failed = "This report could not be calculated."
 	switch moduleKey {
-	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time":
+	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since", "com.zzira:road-map":
 		if config.ProjectKey == "" {
 			return nil, "Configure this gadget to choose a project."
 		}
@@ -445,18 +477,44 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 			return nil, "This project's reports are not available."
 		}
 		report.Project = project
-		if moduleKey == "com.zzira:created-vs-resolved" {
-			data, err := h.Store.CreatedVsResolved(ctx, ws, userID, project.ID, config.Days, time.Now())
+		now := time.Now()
+		switch moduleKey {
+		case "com.zzira:created-vs-resolved":
+			data, err := h.Store.CreatedVsResolved(ctx, ws, userID, project.ID, config.Days, now)
 			if err != nil {
 				return nil, failed
 			}
 			report.CreatedResolved = newCreatedResolvedView(data, config.Cumulative, look.DateDay)
-		} else {
-			data, err := h.Store.ResolutionTime(ctx, ws, userID, project.ID, config.Days, time.Now())
+		case "com.zzira:resolution-time":
+			data, err := h.Store.ResolutionTime(ctx, ws, userID, project.ID, config.Days, now)
 			if err != nil {
 				return nil, failed
 			}
 			report.Resolution = newResolutionTimeView(data, look.DateDay)
+		case "com.zzira:recently-created":
+			data, err := h.Store.RecentlyCreated(ctx, ws, userID, project.ID, config.Days, now)
+			if err != nil {
+				return nil, failed
+			}
+			report.RecentlyCreated = newRecentlyCreatedView(data, look.DateDay)
+		case "com.zzira:road-map":
+			data, err := h.Store.RoadMap(ctx, ws, userID, project.ID, config.Days, now)
+			if err != nil {
+				return nil, failed
+			}
+			report.RoadMap = newRoadMapView(data, look.DateDay)
+		case "com.zzira:average-age":
+			data, err := h.Store.AverageAge(ctx, ws, userID, project.ID, config.Days, now)
+			if err != nil {
+				return nil, failed
+			}
+			report.AverageAge = newAverageAgeView(data, look.DateDay)
+		default:
+			data, err := h.Store.TimeSince(ctx, ws, userID, project.ID, config.DateField, config.Days, now)
+			if err != nil {
+				return nil, failed
+			}
+			report.TimeSince = newTimeSinceView(data, look.DateDay)
 		}
 	default:
 		if config.BoardID == "" {
@@ -485,11 +543,22 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 				break
 			}
 		}
-		if report.Sprint != nil {
-			data, err := h.Store.SprintReport(ctx, ws, userID, board, report.Sprint, time.Now())
-			if err != nil {
-				return nil, failed
-			}
+		if report.Sprint == nil {
+			break
+		}
+		now := time.Now()
+		if moduleKey == "com.zzira:days-remaining" {
+			report.DaysRemaining = newDaysRemainingView(report.Sprint, now, look.DateDay)
+			break
+		}
+		data, err := h.Store.SprintReport(ctx, ws, userID, board, report.Sprint, now)
+		if err != nil {
+			return nil, failed
+		}
+		if moduleKey == "com.zzira:sprint-health" {
+			health := models.NewSprintHealth(data, now)
+			report.SprintHealth = &health
+		} else {
 			report.Burndown = newSprintReportView(data, siteDateLayouts{day: look.DateDay, complete: look.DateComplete})
 		}
 	}
@@ -501,4 +570,50 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 func (h *Handler) appConditionFacts(r *http.Request, workspaceID, userID string) appRuntime.ConnectConditionFacts {
 	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, userID)
 	return appRuntime.ConnectConditionFacts{LoggedIn: true, SiteAdmin: err == nil && admin}
+}
+
+// dashboardTiles loads what each gadget shows for someone: an app gadget's
+// module, or a native gadget's results, chart slices or report.
+func (h *Handler) dashboardTiles(r *http.Request, ws, userID, id string, gadgets []models.DashboardGadget, writable bool) []dashboardTile {
+	colors := []string{"#1769e0", "#6658d3", "#168568", "#c26914", "#be4565", "#577081"}
+	tiles := make([]dashboardTile, 0, len(gadgets))
+	var err error
+	for _, g := range gadgets {
+		tile := dashboardTile{Gadget: g, DashboardID: id, Writable: writable}
+		if strings.HasPrefix(g.ModuleKey, "app:") {
+			tile.AppModule, err = h.Store.ActiveDashboardAppModule(r.Context(), ws, g.ModuleKey)
+			if err != nil {
+				tile.Error = "This app gadget is unavailable. Ask an administrator to resume or reinstall the app."
+			} else if configurable, refreshable, conditions := appRuntime.DashboardItemOptions(tile.AppModule.Body); !appRuntime.ConnectConditionsMet(conditions, h.appConditionFacts(r, ws, userID)) {
+				tile.AppModule, tile.Error = nil, "This app gadget is not available to you."
+			} else {
+				tile.Configurable, tile.Refreshable = configurable, refreshable
+			}
+		} else {
+			tile.Results, err = h.Store.DashboardGadgetResults(r.Context(), ws, userID, id, g)
+			if err != nil {
+				tile.Error = "This gadget could not load its query. Check its configuration and saved filter."
+			} else if g.ReportGadget() {
+				tile.Report, tile.Error = h.gadgetReport(r, ws, userID, g.ModuleKey, tile.Results.Config)
+			} else if tile.Results.Calendar != nil {
+				tile.Calendar = newCalendarView(tile.Results.Calendar, time.Now())
+			} else if g.ModuleKey == "com.zzira:bubble-chart" {
+				tile.Bubbles = newBubbleView(tile.Results.Bubbles, tile.Results.Config.BubbleAxis)
+			} else if g.ModuleKey == "com.zzira:activity-stream" {
+				tile.Activity = newActivityViews(tile.Results.Activity, h.siteLook(r, ws).DateComplete)
+			} else {
+				offset, largest := 0.0, 1
+				for _, c := range tile.Results.Counts {
+					largest = max(largest, c.Count)
+				}
+				for i, c := range tile.Results.Counts {
+					percent := float64(c.Count) * 100 / float64(tile.Results.Total)
+					tile.Slices = append(tile.Slices, dashboardSlice{Name: c.Name, Count: c.Count, Weight: 1 + 4*c.Count/largest, Color: colors[i%len(colors)], Percent: percent, Dash: fmt.Sprintf("%.4f %.4f", percent, 100-percent), Offset: fmt.Sprintf("%.4f", -offset)})
+					offset += percent
+				}
+			}
+		}
+		tiles = append(tiles, tile)
+	}
+	return tiles
 }

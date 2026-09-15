@@ -181,3 +181,66 @@ func (s *Store) ApplyServiceSLAGoals(ctx context.Context, workspaceID, actorID, 
 	}
 	return nil
 }
+
+// MoveServiceSLAGoal moves a conditional goal one place up or down among its
+// metric's conditional goals, which are then numbered in their new order. The
+// default goal always stays last, and a goal already at the end stays put.
+func (s *Store) MoveServiceSLAGoal(ctx context.Context, workspaceID, actorID, serviceDeskID, metricID, goalID, direction string) error {
+	if direction != "up" && direction != "down" {
+		return fmt.Errorf("move a conditional SLA goal up or down")
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	rows, err := tx.Query(ctx, `
+		SELECT g.id,g.name,g.jql,g.goal_millis FROM service_sla_goals g
+		JOIN service_sla_metrics m ON m.id=g.metric_id JOIN service_desks sd ON sd.id=m.service_desk_id
+		WHERE sd.workspace_id=$1 AND sd.id=$2 AND m.id=$3 AND g.jql<>''
+		ORDER BY g.position,g.id::bigint FOR UPDATE OF g`, workspaceID, serviceDeskID, metricID)
+	if err != nil {
+		return err
+	}
+	goals := []models.ServiceSLAGoal{}
+	for rows.Next() {
+		goal := models.ServiceSLAGoal{MetricID: metricID}
+		if err := rows.Scan(&goal.ID, &goal.Name, &goal.JQL, &goal.GoalMillis); err != nil {
+			rows.Close()
+			return err
+		}
+		goals = append(goals, goal)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	index := -1
+	for position, goal := range goals {
+		if goal.ID == goalID {
+			index = position
+		}
+	}
+	if index < 0 {
+		return fmt.Errorf("conditional SLA goal does not exist")
+	}
+	target := index - 1
+	if direction == "down" {
+		target = index + 1
+	}
+	if target < 0 || target >= len(goals) {
+		return tx.Commit(ctx)
+	}
+	goals[index], goals[target] = goals[target], goals[index]
+	for position, goal := range goals {
+		if _, err := tx.Exec(ctx, `UPDATE service_sla_goals SET position=$2 WHERE id=$1`, goal.ID, position); err != nil {
+			return err
+		}
+	}
+	moved := goals[target]
+	moved.Position = target
+	if err := writeServiceSLAGoalAudit(ctx, tx, workspaceID, actorID, serviceDeskID, "service.sla.goal.moved", &moved); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}

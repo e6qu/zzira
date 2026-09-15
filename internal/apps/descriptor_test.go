@@ -154,7 +154,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-content","name":"Bad content","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":[],"modules":{"jiraIssueContents":[{"key":"content","name":{"value":"Content"},"tooltip":{"value":"Add"},"icon":{"url":"/icon.svg"},"target":{"type":"web_panel","url":"/content"},"contentPresentConditions":[{"condition":"user_is_admin"}]}]}}`)); err == nil {
 		t.Fatal("accepted unsupported issue-content presence conditions")
 	}
-	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-project-page","name":"Bad project page","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraProjectPages":[{"key":"project","name":{"value":"Project"},"url":"/project","iconUrl":"/icon.svg","conditions":[{"condition":"user_is_admin"}]}]}}`)); err == nil {
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-project-page","name":"Bad project page","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraProjectPages":[{"key":"project","name":{"value":"Project"},"url":"/project","iconUrl":"/icon.svg","conditions":[{"condition":"entity_property_equal_to"}]}]}}`)); err == nil {
 		t.Fatal("accepted unsupported project-page conditions")
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-project-admin","name":"Bad project admin","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraProjectAdminTabPanels":[{"key":"project","name":{"value":"Project"},"url":"/project","location":"projectgroup9"}]}}`)); err == nil {
@@ -166,13 +166,13 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-dashboard","name":"Bad dashboard","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraDashboardItems":[{"key":"item","name":{"value":"Item"},"description":{"value":"Item"},"url":"/item","thumbnailUrl":"/item.svg","configurable":true,"conditions":[{"condition":"entity_property_equal_to"}]}]}}`)); err == nil {
 		t.Fatal("accepted an unsupported dashboard item condition")
 	}
-	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-context","name":"Bad context","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraIssueContexts":[{"key":"context","name":{"value":"Context"},"icon":{"url":"/context.svg"},"content":{"type":"label","label":{"value":"Context"}},"target":{"type":"web_panel","url":"/context"},"conditions":[{"condition":"user_is_logged_in"}]}]}}`)); err == nil {
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-context","name":"Bad context","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraIssueContexts":[{"key":"context","name":{"value":"Context"},"icon":{"url":"/context.svg"},"content":{"type":"label","label":{"value":"Context"}},"target":{"type":"web_panel","url":"/context"},"conditions":[{"condition":"entity_property_equal_to"}]}]}}`)); err == nil {
 		t.Fatal("accepted unsupported issue context conditions")
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-tab","name":"Bad tab","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraIssueTabPanels":[{"key":"activity","name":{"value":"Activity"},"url":"https://outside.example.test/activity"}]}}`)); err == nil {
 		t.Fatal("accepted an absolute issue-tab URL")
 	}
-	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-tab","name":"Bad tab","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraIssueTabPanels":[{"key":"activity","name":{"value":"Activity"},"url":"/activity","conditions":[{"condition":"user_is_logged_in"}]}]}}`)); err == nil {
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-tab","name":"Bad tab","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraIssueTabPanels":[{"key":"activity","name":{"value":"Activity"},"url":"/activity","conditions":[{"condition":"entity_property_equal_to"}]}]}}`)); err == nil {
 		t.Fatal("accepted unsupported issue-tab conditions")
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-admin","name":"Bad admin","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"adminPages":[{"key":"admin","name":{"value":"Admin"},"url":"/admin","fullPage":true}]}}`)); err == nil {

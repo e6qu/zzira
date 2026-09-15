@@ -7,11 +7,13 @@ import (
 	"github.com/e6qu/zzira/internal/store"
 	"math"
 	"net/http"
+	"net/url"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
@@ -22,6 +24,9 @@ import (
 
 type serviceTransitionView struct{ ID, Name, To string }
 
+// serviceSLAGoalOrder is where a conditional SLA goal stands in its order.
+type serviceSLAGoalOrder struct{ First, Last bool }
+
 type serviceRequestFieldChoice struct {
 	models.ServiceRequestTypeField
 	Enabled bool
@@ -30,6 +35,15 @@ type serviceRequestFieldChoice struct {
 type serviceRequestTypeFormView struct {
 	RequestType models.ServiceRequestType
 	Fields      []serviceRequestFieldChoice
+	// ChoiceFields are the select and multi-select fields a field can be shown
+	// for, with their options.
+	ChoiceFields []serviceRequestChoiceField
+}
+
+// serviceRequestChoiceField is a select or multi-select field and its options.
+type serviceRequestChoiceField struct {
+	ID, Name string
+	Options  []store.ServiceRequestFieldOption
 }
 
 type serviceRequestFieldValueView struct {
@@ -46,62 +60,90 @@ type serviceReportDayView struct {
 }
 
 type servicePageData struct {
-	ReportActions         reportActions
-	ReportCompare         bool
-	ReportComparison      map[string]string
-	Desks                 []models.ServiceDesk
-	Desk                  *models.ServiceDesk
-	RequestTypes          []models.ServiceRequestType
-	RequestType           *models.ServiceRequestType
-	Requests              []*models.ServiceRequest
-	Request               *models.ServiceRequest
-	Queues                []models.ServiceQueue
-	Queue                 *models.ServiceQueue
-	Comments              []models.ServiceRequestComment
-	Attachments           []models.ServiceRequestAttachment
-	Links                 []models.IssueLinkView
-	LinkTypes             []models.LinkType
-	Approvals             []models.ServiceApproval
-	Feedback              *models.ServiceRequestFeedback
-	Participants          []*models.User
-	Members               []*models.User
-	Agents                map[string]bool
-	Calendar              *models.ServiceCalendar
-	CalendarHolidays      []serviceCalendarHolidayView
-	Report                *models.ServiceReport
-	ReportDays            []serviceReportDayView
-	ReportFilter          models.ServiceReportFilter
-	ReportChannels        []string
-	SLAMetrics            []models.ServiceSLAMetric
+	// BulkStatuses are the statuses selected queue requests can move to,
+	// DeskAgents the people requests can be assigned to, and BulkNotice and
+	// BulkProblem what the last bulk action did.
+	BulkStatuses     []string
+	DeskAgents       []*models.User
+	BulkNotice       string
+	BulkProblem      string
+	ReportActions    reportActions
+	ReportCompare    bool
+	ReportComparison map[string]string
+	Desks            []models.ServiceDesk
+	Desk             *models.ServiceDesk
+	RequestTypes     []models.ServiceRequestType
+	RequestType      *models.ServiceRequestType
+	Requests         []*models.ServiceRequest
+	Request          *models.ServiceRequest
+	Queues           []models.ServiceQueue
+	Queue            *models.ServiceQueue
+	Comments         []models.ServiceRequestComment
+	Attachments      []models.ServiceRequestAttachment
+	Links            []models.IssueLinkView
+	LinkTypes        []models.LinkType
+	Approvals        []models.ServiceApproval
+	Feedback         *models.ServiceRequestFeedback
+	Participants     []*models.User
+	Members          []*models.User
+	Agents           map[string]bool
+	Calendar         *models.ServiceCalendar
+	CalendarHolidays []serviceCalendarHolidayView
+	Report           *models.ServiceReport
+	ReportDays       []serviceReportDayView
+	ReportFilter     models.ServiceReportFilter
+	ReportChannels   []string
+	SLAMetrics       []models.ServiceSLAMetric
+	// SLAConditions are the conditions an SLA's clock can start and stop on,
+	// including entering each of the desk project's statuses.
+	SLAConditions []models.ServiceSLACondition
+	// CustomerNotifications are Jira's customer notifications with whether
+	// the desk sends each.
+	CustomerNotifications []serviceCustomerNotificationView
 	SLAGoals              map[string][]models.ServiceSLAGoal
-	SLAs                  []models.ServiceSLA
-	Customers             []*models.User
-	Organizations         []models.ServiceOrganization
-	DeskOrganizations     map[string]bool
-	OrganizationUsers     map[string][]*models.User
-	KnowledgeArticles     []models.ServiceKnowledgeArticle
-	KnowledgeSpaces       []*models.WikiSpace
-	KnowledgeSpaceLinks   map[string]bool
-	RequestTypeForms      []serviceRequestTypeFormView
-	RequestTypeFields     []models.ServiceRequestTypeField
-	RequestFieldValues    []serviceRequestFieldValueView
-	OperationsSettings    *models.ServiceOperationsSettings
-	OperationsProfile     *models.ServiceOperationsProfile
-	ChangeWindows         []models.ServiceChangeWindow
-	ChangeConflicts       []models.ServiceChangeWindow
-	DependencyEdges       []models.ServiceDependencyEdge
-	DependencyNodeCount   int
-	IncidentUpdates       []models.ServiceIncidentUpdate
-	EscalationSteps       []models.ServiceEscalationStep
-	AssetInventory        *models.ServiceAssetInventory
-	RequestAssets         []models.ServiceRequestAsset
-	FieldValues           map[string]string
-	Transitions           []serviceTransitionView
-	CanAdmin              bool
-	CanSiteAdmin          bool
-	DeploymentGate        *store.ServiceDeploymentGate
-	DeploymentProviders   []*models.AppInstallation
-	CanAgent              bool
+	// SLAGoalOrder says which conditional goals start and end their metric's order.
+	SLAGoalOrder        map[string]serviceSLAGoalOrder
+	SLAs                []models.ServiceSLA
+	Customers           []*models.User
+	Organizations       []models.ServiceOrganization
+	DeskOrganizations   map[string]bool
+	OrganizationUsers   map[string][]*models.User
+	KnowledgeArticles   []models.ServiceKnowledgeArticle
+	KnowledgeSpaces     []*models.WikiSpace
+	KnowledgeSpaceLinks map[string]bool
+	RequestTypeForms    []serviceRequestTypeFormView
+	RequestTypeFields   []models.ServiceRequestTypeField
+	RequestFieldValues  []serviceRequestFieldValueView
+	OperationsSettings  *models.ServiceOperationsSettings
+	OperationsProfile   *models.ServiceOperationsProfile
+	ChangeWindows       []models.ServiceChangeWindow
+	ChangeConflicts     []models.ServiceChangeWindow
+	DependencyEdges     []models.ServiceDependencyEdge
+	DependencyNodeCount int
+	IncidentUpdates     []models.ServiceIncidentUpdate
+	EscalationSteps     []models.ServiceEscalationStep
+	// IncidentRoles and IncidentStakeholders are a major incident's response
+	// team and the people who follow its stakeholder updates.
+	IncidentRoles        []models.ServiceIncidentRole
+	IncidentStakeholders []models.ServiceIncidentStakeholder
+	AssetInventory       *models.ServiceAssetInventory
+	RequestAssets        []models.ServiceRequestAsset
+	FieldValues          map[string]string
+	// FieldOptions are the options each select field on a portal form offers,
+	// and FieldChoices the answers a refused form keeps.
+	FieldOptions map[string][]store.ServiceRequestFieldOption
+	FieldChoices map[string][]string
+	Transitions  []serviceTransitionView
+	CanAdmin     bool
+	CanSiteAdmin bool
+	// HelpCenter is the help center's branding and announcement.
+	HelpCenter          models.ServiceHelpCenter
+	DeploymentGate      *store.ServiceDeploymentGate
+	DeploymentProviders []*models.AppInstallation
+	CanAgent            bool
+	// CanAnnounce shows the portal announcement form to the desk's agents and
+	// administrators while the portal lets agents add announcements.
+	CanAnnounce           bool
 	CanManageParticipants bool
 	CurrentUserID         string
 	Subscribed            bool
@@ -159,6 +201,7 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		data.Desk = desk
+		data.CanAnnounce = desk.AnnouncementsEnabled
 		now := time.Now().UTC()
 		data.ChangeWindows, err = h.Store.ServiceChangeCalendar(r.Context(), workspaceID, user.ID, deskID, now.AddDate(0, 0, -7), now.AddDate(0, 0, 90))
 		if err != nil {
@@ -227,7 +270,27 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Could not load SLA goals.", http.StatusInternalServerError)
 				return
 			}
+			slaDesk, err := h.Store.ServiceDesk(r.Context(), workspaceID, deskID)
+			if err != nil {
+				http.Error(w, "Could not load SLA conditions.", http.StatusInternalServerError)
+				return
+			}
+			slaStatuses, err := h.Store.StatusesForProject(r.Context(), workspaceID, slaDesk.ProjectID, true)
+			if err != nil {
+				http.Error(w, "Could not load SLA conditions.", http.StatusInternalServerError)
+				return
+			}
+			for _, notification := range models.ServiceCustomerNotifications() {
+				data.CustomerNotifications = append(data.CustomerNotifications, serviceCustomerNotificationView{ServiceCustomerNotification: notification, Enabled: slaDesk.CustomerNotificationEnabled(notification.Key)})
+			}
+			data.SLAConditions = models.ServiceSLAConditions()
+			for _, status := range slaStatuses {
+				condition := models.ServiceSLAEnteredStatus(status.ID)
+				condition.Name = "Entered Status: " + status.Name
+				data.SLAConditions = append(data.SLAConditions, condition)
+			}
 			data.SLAGoals = make(map[string][]models.ServiceSLAGoal, len(data.SLAMetrics))
+			data.SLAGoalOrder = map[string]serviceSLAGoalOrder{}
 			for _, metric := range data.SLAMetrics {
 				goals, err := h.Store.ServiceSLAGoals(r.Context(), workspaceID, deskID, metric.ID)
 				if err != nil {
@@ -235,6 +298,15 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				data.SLAGoals[metric.ID] = goals
+				conditional := []string{}
+				for _, goal := range goals {
+					if goal.JQL != "" {
+						conditional = append(conditional, goal.ID)
+					}
+				}
+				for index, id := range conditional {
+					data.SLAGoalOrder[id] = serviceSLAGoalOrder{First: index == 0, Last: index == len(conditional)-1}
+				}
 			}
 			data.KnowledgeSpaces, err = h.Store.WikiSpaces(r.Context(), workspaceID, user.ID)
 			if err != nil {
@@ -259,6 +331,18 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				http.Error(w, "Could not load service form fields.", http.StatusInternalServerError)
 				return
+			}
+			choiceFields := []serviceRequestChoiceField{}
+			for _, customField := range customFields {
+				if customField.Type != models.CustomFieldSelect && customField.Type != models.CustomFieldMultiSelect {
+					continue
+				}
+				options, err := h.Store.ServiceRequestFieldOptions(r.Context(), workspaceID, deskID, customField.ID)
+				if err != nil {
+					http.Error(w, "Could not load service form options.", http.StatusInternalServerError)
+					return
+				}
+				choiceFields = append(choiceFields, serviceRequestChoiceField{ID: customField.ID, Name: customField.Name, Options: options})
 			}
 			for _, requestType := range data.RequestTypes {
 				configured, err := h.Store.ServiceRequestTypeFields(r.Context(), workspaceID, deskID, requestType.ID)
@@ -287,7 +371,7 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 					}
 					choices = append(choices, serviceRequestFieldChoice{ServiceRequestTypeField: field, Enabled: enabled})
 				}
-				data.RequestTypeForms = append(data.RequestTypeForms, serviceRequestTypeFormView{RequestType: requestType, Fields: choices})
+				data.RequestTypeForms = append(data.RequestTypeForms, serviceRequestTypeFormView{RequestType: requestType, Fields: choices, ChoiceFields: choiceFields})
 			}
 		}
 		data.Queues, err = h.Store.ServiceQueues(r.Context(), workspaceID, deskID)
@@ -305,6 +389,26 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 				http.NotFound(w, r)
 				return
 			}
+			statuses := map[string]bool{}
+			for _, request := range data.Requests {
+				transitions, err := h.servicePageTransitions(r, workspaceID, user.ID, request)
+				if err != nil {
+					http.Error(w, "Could not load request transitions.", http.StatusInternalServerError)
+					return
+				}
+				for _, transition := range transitions {
+					statuses[transition.To] = true
+				}
+			}
+			for status := range statuses {
+				data.BulkStatuses = append(data.BulkStatuses, status)
+			}
+			sort.Strings(data.BulkStatuses)
+			if data.DeskAgents, err = h.Store.ServiceDeskAgents(r.Context(), workspaceID, deskID); err != nil {
+				http.Error(w, "Could not load service desk agents.", http.StatusInternalServerError)
+				return
+			}
+			data.BulkNotice, data.BulkProblem = r.URL.Query().Get("bulk"), r.URL.Query().Get("bulkError")
 		}
 		data.Customers, err = h.Store.ServiceDeskCustomers(r.Context(), workspaceID, deskID, "")
 		if err != nil {
@@ -583,6 +687,49 @@ func (h *Handler) ServiceEscalationSettings(w http.ResponseWriter, r *http.Reque
 	redirectLocal(w, r, "/service/agent/"+deskID+"#escalation-policy")
 }
 
+type serviceCustomerNotificationView struct {
+	models.ServiceCustomerNotification
+	Enabled bool
+}
+
+// ServicePortalSettings saves a portal's name, introduction text and logo.
+func (h *Handler) ServicePortalSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	deskID := r.PathValue("desk")
+	if err := h.Commands.UpdateServiceDeskPortal(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("name"), r.PostFormValue("description"), r.PostFormValue("logoUrl")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := h.Commands.SetServiceDeskAnnouncementsEnabled(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("announcementsEnabled") == "true"); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#portal-settings")
+}
+
+// ServicePortalAnnouncement saves or clears the portal's announcement.
+func (h *Handler) ServicePortalAnnouncement(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	deskID := r.PathValue("desk")
+	if err := h.Commands.UpdateServiceDeskAnnouncement(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("title"), r.PostFormValue("message")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"#portal-announcement")
+}
+
 func (h *Handler) ServiceCustomerSettings(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
@@ -595,6 +742,11 @@ func (h *Handler) ServiceCustomerSettings(w http.ResponseWriter, r *http.Request
 	switch r.PostFormValue("action") {
 	case "access":
 		if err := h.Commands.SetServiceDeskCustomerAccess(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("open") == "true"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	case "notification":
+		if err := h.Commands.SetServiceDeskCustomerNotification(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("notification"), r.PostFormValue("enabled") == "true"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -766,6 +918,25 @@ func (h *Handler) ServiceRequestTypeFieldSettings(w http.ResponseWriter, r *http
 	fields := make([]models.ServiceRequestTypeField, 0, len(r.PostForm["fieldId"]))
 	for _, fieldID := range r.PostForm["fieldId"] {
 		field := models.ServiceRequestTypeField{ID: fieldID, Required: required[fieldID], HelpText: r.PostFormValue("help_" + fieldID), Hidden: hidden[fieldID]}
+		// The form lists every choice field's options; only those of the chosen
+		// field show this one.
+		if condition := strings.TrimSpace(r.PostFormValue("condition_" + fieldID)); condition != "" {
+			field.ConditionFieldID = condition
+			options, err := h.Store.ServiceRequestFieldOptions(r.Context(), workspaceID, r.PathValue("desk"), condition)
+			if err != nil {
+				http.Error(w, "Could not load service form options.", http.StatusInternalServerError)
+				return
+			}
+			offered := map[string]bool{}
+			for _, option := range options {
+				offered[option.ID] = true
+			}
+			for _, id := range r.PostForm["condition_options_"+fieldID] {
+				if offered[id] {
+					field.ConditionOptionIDs = append(field.ConditionOptionIDs, id)
+				}
+			}
+		}
 		// A hidden field's preset is typed as the value a customer would give:
 		// JSON when it parses, otherwise text.
 		if preset := strings.TrimSpace(r.PostFormValue("preset_" + fieldID)); preset != "" {
@@ -863,6 +1034,46 @@ func (h *Handler) ServiceSLASettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if r.PostFormValue("conditions") != "" {
+		if err := h.Commands.UpdateServiceSLAConditions(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PathValue("metric"), r.PostForm["startCondition"], r.PostForm["stopCondition"]); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#sla-settings")
+}
+
+// ServiceSLACreate adds a custom SLA to a service desk.
+func (h *Handler) ServiceSLACreate(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	goalMinutes, err := strconv.ParseInt(r.PostFormValue("goalMinutes"), 10, 64)
+	if err != nil || goalMinutes < 1 {
+		http.Error(w, "SLA goal must be a positive number of minutes.", http.StatusBadRequest)
+		return
+	}
+	if _, err := h.Commands.CreateServiceSLAMetric(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PostFormValue("name"), goalMinutes*time.Minute.Milliseconds(), r.PostForm["startCondition"], r.PostForm["stopCondition"]); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#sla-settings")
+}
+
+// ServiceSLADelete removes a custom SLA from a service desk.
+func (h *Handler) ServiceSLADelete(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if err := h.Commands.DeleteServiceSLAMetric(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PathValue("metric")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#sla-settings")
 }
 
@@ -886,9 +1097,12 @@ func (h *Handler) ServiceSLAGoalSettings(w http.ResponseWriter, r *http.Request)
 	deskID, metricID, goalID := r.PathValue("desk"), r.PathValue("metric"), r.PostFormValue("goalId")
 	action := r.PostFormValue("action")
 	err = nil
-	if action == "delete" {
+	switch action {
+	case "delete":
 		err = h.Commands.DeleteServiceSLAGoal(r.Context(), user.ID, workspaceID, deskID, metricID, goalID)
-	} else {
+	case "move":
+		err = h.Commands.MoveServiceSLAGoal(r.Context(), user.ID, workspaceID, deskID, metricID, goalID, r.PostFormValue("direction"))
+	default:
 		goalMinutes, parseErr := strconv.ParseInt(r.PostFormValue("goalMinutes"), 10, 64)
 		if parseErr != nil || goalMinutes < 1 {
 			http.Error(w, "SLA goal must be a positive number of minutes.", http.StatusBadRequest)
@@ -949,7 +1163,37 @@ func (h *Handler) ServiceHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load your customer organizations.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_service_home", user, workspaceID, servicePageData{Desks: desks, Requests: requests, Organizations: organizations}, "service", "")
+	center, err := h.Store.ServiceHelpCenter(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "Could not load the help center.", http.StatusInternalServerError)
+		return
+	}
+	siteAdmin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	if err != nil {
+		http.Error(w, "Could not authorize help center administration.", http.StatusInternalServerError)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_service_home", user, workspaceID, servicePageData{Desks: desks, Requests: requests, Organizations: organizations, HelpCenter: center, CanSiteAdmin: siteAdmin}, "service", "")
+}
+
+// ServiceHelpCenterSettings saves the help center's branding and announcement.
+func (h *Handler) ServiceHelpCenterSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	center := models.ServiceHelpCenter{Name: r.PostFormValue("name"), HomeTitle: r.PostFormValue("homeTitle"), LogoURL: r.PostFormValue("logoUrl"), BannerURL: r.PostFormValue("bannerUrl"),
+		BannerColour: r.PostFormValue("bannerColour"), BannerTextColour: r.PostFormValue("bannerTextColour"),
+		NavigationBackgroundColour: r.PostFormValue("navigationBackgroundColour"), NavigationTextColour: r.PostFormValue("navigationTextColour"),
+		AnnouncementTitle: r.PostFormValue("announcementTitle"), AnnouncementMessage: r.PostFormValue("announcementMessage")}
+	if err := h.Commands.UpdateServiceHelpCenter(r.Context(), user.ID, workspaceID, center); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service#help-center-settings")
 }
 
 func (h *Handler) ServicePortal(w http.ResponseWriter, r *http.Request) {
@@ -1042,45 +1286,119 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load request fields.", http.StatusInternalServerError)
 		return
 	}
-	data := servicePageData{Desk: desk, RequestType: requestType, RequestTypeFields: fields, FieldValues: map[string]string{}}
+	data := servicePageData{Desk: desk, RequestType: requestType, RequestTypeFields: fields, FieldValues: map[string]string{},
+		FieldOptions: map[string][]store.ServiceRequestFieldOption{}, FieldChoices: map[string][]string{}}
+	for _, field := range fields {
+		switch field.Type {
+		case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect:
+			options, err := h.Store.ServiceRequestFieldOptions(r.Context(), workspaceID, desk.ID, field.ID)
+			if err != nil {
+				http.Error(w, "Could not load request field options.", http.StatusInternalServerError)
+				return
+			}
+			data.FieldOptions[field.ID] = options
+		default:
+			if store.IsServicePortalPicker(field.Type) {
+				choices, err := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, desk.ID, user.ID, field.Type)
+				if err != nil {
+					http.Error(w, "Could not load request field options.", http.StatusInternalServerError)
+					return
+				}
+				data.FieldOptions[field.ID] = choices
+			}
+		}
+	}
 	status := http.StatusOK
 	if r.Method == http.MethodPost {
 		if !parseForm(w, r) {
 			return
 		}
-		customFields := map[string]json.RawMessage{}
-		for _, field := range fields {
-			value := r.PostFormValue("field_" + field.ID)
-			data.FieldValues[field.ID] = value
-			if field.Required && strings.TrimSpace(value) == "" {
-				data.Error, status = field.Name+" is required.", http.StatusBadRequest
-				break
+		// A user picker names a member by email, so the portal never lists the
+		// site's people.
+		memberByEmail := func(email string) (string, error) {
+			id, _, _, err := h.Store.UserByEmail(r.Context(), email)
+			if err != nil {
+				id, _, _, err = h.Store.UserByEmail(r.Context(), strings.ToLower(email))
 			}
-			switch field.ID {
-			case "summary":
-				data.Summary = strings.TrimSpace(value)
-			case "description":
-				data.Description = value
-			default:
-				if strings.TrimSpace(value) == "" {
+			if err == nil {
+				if _, memberErr := h.Store.MemberByID(r.Context(), workspaceID, id); memberErr == nil {
+					return id, nil
+				}
+			}
+			return "", fmt.Errorf("No active member of this site uses %s.", email)
+		}
+		customFields := map[string]json.RawMessage{}
+		var descriptionADF json.RawMessage
+		chosen := map[string][]string{}
+		for _, field := range fields {
+			if field.Type == models.CustomFieldSelect || field.Type == models.CustomFieldMultiSelect {
+				chosen[field.ID] = r.PostForm["field_"+field.ID]
+			}
+		}
+		for _, field := range fields {
+			// A hidden field takes its preset value, as REST request creation does.
+			if field.Hidden {
+				if len(field.PresetValue) == 0 || string(field.PresetValue) == "null" {
 					continue
 				}
-				encoded, encodeErr := encodeServiceRequestField(field, value)
-				if encodeErr != nil {
-					data.Error, status = encodeErr.Error(), http.StatusBadRequest
-					break
+				if field.ID == "description" {
+					var text string
+					if json.Unmarshal(field.PresetValue, &text) == nil {
+						data.Description = text
+					} else {
+						descriptionADF = field.PresetValue
+					}
+				} else if field.Custom {
+					customFields[field.ID] = field.PresetValue
 				}
-				customFields[field.ID] = encoded
+				continue
 			}
-			if data.Error != "" {
-				break
+			// A field the other answers keep hidden is neither required nor sent.
+			if !field.ShownFor(chosen) {
+				continue
+			}
+			submitted := r.PostForm["field_"+field.ID]
+			child := r.PostFormValue("field_" + field.ID + "_child")
+			data.FieldValues[field.ID] = r.PostFormValue("field_" + field.ID)
+			data.FieldChoices[field.ID] = submitted
+			if child != "" {
+				data.FieldChoices[field.ID+"_child"] = []string{child}
+			}
+			// The first problem is reported, but every answer is still kept so a
+			// refused form comes back as the customer filled it in.
+			problem := ""
+			switch field.ID {
+			case "summary", "description":
+				value := r.PostFormValue("field_" + field.ID)
+				switch {
+				case field.Required && strings.TrimSpace(value) == "":
+					problem = field.Name + " is required."
+				case field.ID == "summary":
+					data.Summary = strings.TrimSpace(value)
+				default:
+					data.Description = value
+				}
+			default:
+				encoded, present, err := encodeServicePortalField(field, submitted, child, data.FieldOptions[field.ID], memberByEmail)
+				switch {
+				case err != nil:
+					problem = err.Error()
+				case !present && field.Required:
+					problem = field.Name + " is required."
+				case present:
+					customFields[field.ID] = encoded
+				}
+			}
+			if data.Error == "" {
+				data.Error = problem
 			}
 		}
 		if data.Error != "" {
+			status = http.StatusBadRequest
 			h.writeWorkspacePageStatus(w, r, "page_service_request_form", user, workspaceID, data, "service", desk.ProjectID, status)
 			return
 		}
-		request, err := h.Commands.CreateServiceRequest(r.Context(), commands.CreateServiceRequestInput{ActorID: user.ID, WorkspaceID: workspaceID, ServiceDeskID: desk.ID, RequestTypeID: requestType.ID, Channel: "portal", Summary: data.Summary, Description: data.Description, Fields: customFields})
+		request, err := h.Commands.CreateServiceRequest(r.Context(), commands.CreateServiceRequestInput{ActorID: user.ID, WorkspaceID: workspaceID, ServiceDeskID: desk.ID, RequestTypeID: requestType.ID, Channel: "portal", Summary: data.Summary, Description: data.Description, DescriptionADF: descriptionADF, Fields: customFields})
 		if err == nil {
 			redirectLocal(w, r, "/service/requests/"+request.Issue.Key)
 			return
@@ -1090,15 +1408,177 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 	h.writeWorkspacePageStatus(w, r, "page_service_request_form", user, workspaceID, data, "service", desk.ProjectID, status)
 }
 
-func encodeServiceRequestField(field models.ServiceRequestTypeField, value string) (json.RawMessage, error) {
-	if field.Type == models.CustomFieldNumber {
-		number, err := strconv.ParseFloat(value, 64)
-		if err != nil || math.IsInf(number, 0) || math.IsNaN(number) {
-			return nil, fmt.Errorf("%s must be a finite number", field.Name)
+// Chosen reports whether a refused portal form chose a value for a field.
+func (d servicePageData) Chosen(fieldID, value string) bool {
+	for _, chosen := range d.FieldChoices[fieldID] {
+		if chosen == value {
+			return true
 		}
-		return json.Marshal(number)
 	}
-	return json.Marshal(value)
+	return false
+}
+
+// encodeServicePortalField reads a portal answer as the Jira value its field
+// stores: option ids for select fields, where a cascading select's child must
+// belong to its parent, members found by email for user pickers, and lists for
+// multi-value fields. present is false when the customer left it blank.
+func encodeServicePortalField(field models.ServiceRequestTypeField, submitted []string, child string, options []store.ServiceRequestFieldOption, memberByEmail func(string) (string, error)) (json.RawMessage, bool, error) {
+	values := []string{}
+	for _, value := range submitted {
+		if value = strings.TrimSpace(value); value != "" {
+			values = append(values, value)
+		}
+	}
+	if len(values) == 0 {
+		return nil, false, nil
+	}
+	option := func(id string) (store.ServiceRequestFieldOption, bool) {
+		for _, candidate := range options {
+			if candidate.ID == id {
+				return candidate, true
+			}
+		}
+		return store.ServiceRequestFieldOption{}, false
+	}
+	split := func(separators string) []string {
+		return strings.FieldsFunc(strings.Join(values, " "), func(r rune) bool { return unicode.IsSpace(r) || strings.ContainsRune(separators, r) })
+	}
+	var encoded any
+	switch field.Type {
+	case models.CustomFieldNumber:
+		number, err := strconv.ParseFloat(values[0], 64)
+		if err != nil || math.IsInf(number, 0) || math.IsNaN(number) {
+			return nil, true, fmt.Errorf("%s must be a finite number.", field.Name)
+		}
+		encoded = number
+	case models.CustomFieldDate:
+		if _, err := time.Parse("2006-01-02", values[0]); err != nil {
+			return nil, true, fmt.Errorf("%s must be a date.", field.Name)
+		}
+		encoded = values[0]
+	case models.CustomFieldSelect, models.CustomFieldGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldTeam:
+		if _, ok := option(values[0]); !ok {
+			return nil, true, fmt.Errorf("Choose one of the options for %s.", field.Name)
+		}
+		encoded = values[0]
+	case models.CustomFieldMultiSelect, models.CustomFieldMultiGroup, models.CustomFieldMultiVersion:
+		ids, seen := []string{}, map[string]bool{}
+		for _, value := range values {
+			if _, ok := option(value); !ok {
+				return nil, true, fmt.Errorf("Choose from the options for %s.", field.Name)
+			}
+			if !seen[value] {
+				seen[value] = true
+				ids = append(ids, value)
+			}
+		}
+		encoded = ids
+	case models.CustomFieldCascadingSelect:
+		parent, ok := option(values[0])
+		if !ok {
+			return nil, true, fmt.Errorf("Choose one of the options for %s.", field.Name)
+		}
+		value := map[string]string{"parent": parent.ID}
+		if child = strings.TrimSpace(child); child != "" {
+			belongs := false
+			for _, candidate := range parent.Children {
+				belongs = belongs || candidate.ID == child
+			}
+			if !belongs {
+				return nil, true, fmt.Errorf("Choose a %s detail that belongs to %s.", field.Name, parent.Value)
+			}
+			value["child"] = child
+		}
+		encoded = value
+	case models.CustomFieldLabels:
+		encoded = split(",")
+	case models.CustomFieldUser, models.CustomFieldMultiUser:
+		emails := split(",;")
+		if field.Type == models.CustomFieldUser && len(emails) > 1 {
+			return nil, true, fmt.Errorf("Enter one email address for %s.", field.Name)
+		}
+		ids, seen := []string{}, map[string]bool{}
+		for _, email := range emails {
+			id, err := memberByEmail(email)
+			if err != nil {
+				return nil, true, err
+			}
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+		if field.Type == models.CustomFieldUser {
+			encoded = ids[0]
+		} else {
+			encoded = ids
+		}
+	default:
+		encoded = values[0]
+	}
+	raw, err := json.Marshal(encoded)
+	return raw, true, err
+}
+
+// serviceFieldIDs lists the ids a stored field value names.
+func serviceFieldIDs(value any) []string {
+	ids := []string{}
+	switch typed := value.(type) {
+	case string:
+		ids = append(ids, typed)
+	case []any:
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				ids = append(ids, text)
+			}
+		}
+	case map[string]any:
+		for _, key := range []string{"parent", "child"} {
+			if text, ok := typed[key].(string); ok && text != "" {
+				ids = append(ids, text)
+			}
+		}
+	}
+	return ids
+}
+
+// serviceFieldDisplay writes a stored field value for people: options and
+// members by name, and lists joined.
+func serviceFieldDisplay(fieldType string, value any, catalog store.CustomFieldValueCatalog, pickerNames map[string]string) string {
+	name := func(id string) string {
+		if option, ok := catalog.Options[id]; ok {
+			return option.Value
+		}
+		if user, ok := catalog.Users[id]; ok {
+			return user.DisplayName
+		}
+		if group, ok := catalog.Groups[id]; ok {
+			return group.Name
+		}
+		if picked, ok := pickerNames[id]; ok {
+			return picked
+		}
+		return id
+	}
+	names := func() []string {
+		out := []string{}
+		for _, id := range serviceFieldIDs(value) {
+			if fieldType == models.CustomFieldLabels {
+				out = append(out, id)
+			} else {
+				out = append(out, name(id))
+			}
+		}
+		return out
+	}
+	switch fieldType {
+	case models.CustomFieldSelect, models.CustomFieldUser, models.CustomFieldMultiSelect, models.CustomFieldMultiUser, models.CustomFieldLabels,
+		models.CustomFieldGroup, models.CustomFieldMultiGroup, models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam:
+		return strings.Join(names(), ", ")
+	case models.CustomFieldCascadingSelect:
+		return strings.Join(names(), " - ")
+	}
+	return fmt.Sprint(value)
 }
 
 func (h *Handler) serviceRequestForPage(r *http.Request, workspaceID, userID, issueIDOrKey string) (*models.ServiceRequest, bool, error) {
@@ -1222,6 +1702,9 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 	}
 	incidentUpdates := []models.ServiceIncidentUpdate{}
 	escalationSteps := []models.ServiceEscalationStep{}
+	incidentRoles := []models.ServiceIncidentRole{}
+	incidentStakeholders := []models.ServiceIncidentStakeholder{}
+	incidentAgents := []*models.User{}
 	if operations != nil && operations.Kind == "incident" {
 		incidentUpdates, err = h.Store.ServiceIncidentUpdates(r.Context(), workspaceID, user.ID, request.Issue.ID)
 		if err != nil {
@@ -1232,6 +1715,17 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 			escalationSteps, err = h.Store.ServiceIncidentEscalationStatus(r.Context(), workspaceID, user.ID, request.Issue.ID)
 			if err != nil {
 				http.Error(w, "Could not load incident escalation status.", http.StatusInternalServerError)
+				return
+			}
+			if incidentRoles, err = h.Store.ServiceIncidentRoles(r.Context(), workspaceID, user.ID, request.Issue.ID); err == nil {
+				if incidentStakeholders, err = h.Store.ServiceIncidentStakeholders(r.Context(), workspaceID, user.ID, request.Issue.ID); err == nil {
+					// Incident roles go to anyone who can manage the request: its
+					// desk's agents and site administrators.
+					incidentAgents, err = h.incidentRoleCandidates(r, workspaceID, request.Issue.ID)
+				}
+			}
+			if err != nil {
+				http.Error(w, "Could not load the incident team.", http.StatusInternalServerError)
 				return
 			}
 		}
@@ -1277,7 +1771,9 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load request fields.", http.StatusInternalServerError)
 		return
 	}
-	requestFields := make([]serviceRequestFieldValueView, 0)
+	decodedFields := map[string]any{}
+	optionIDs, userIDs, groupIDs := []string{}, []string{}, []string{}
+	pickerNames := map[string]string{}
 	for _, field := range configuredFields {
 		if !field.Custom {
 			continue
@@ -1291,7 +1787,35 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Could not render request fields.", http.StatusInternalServerError)
 			return
 		}
-		requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: fmt.Sprint(value)})
+		decodedFields[field.ID] = value
+		switch field.Type {
+		case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect:
+			optionIDs = append(optionIDs, serviceFieldIDs(value)...)
+		case models.CustomFieldUser, models.CustomFieldMultiUser:
+			userIDs = append(userIDs, serviceFieldIDs(value)...)
+		case models.CustomFieldGroup, models.CustomFieldMultiGroup:
+			groupIDs = append(groupIDs, serviceFieldIDs(value)...)
+		case models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam:
+			choices, choicesErr := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, request.ServiceDesk.ID, user.ID, field.Type)
+			if choicesErr != nil {
+				http.Error(w, "Could not render request fields.", http.StatusInternalServerError)
+				return
+			}
+			for _, choice := range choices {
+				pickerNames[choice.ID] = choice.Value
+			}
+		}
+	}
+	fieldCatalog, err := h.Store.LoadCustomFieldValueCatalog(r.Context(), workspaceID, optionIDs, userIDs, groupIDs)
+	if err != nil {
+		http.Error(w, "Could not render request fields.", http.StatusInternalServerError)
+		return
+	}
+	requestFields := make([]serviceRequestFieldValueView, 0)
+	for _, field := range configuredFields {
+		if value, ok := decodedFields[field.ID]; ok {
+			requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: serviceFieldDisplay(field.Type, value, fieldCatalog, pickerNames)})
+		}
 	}
 	var assetInventory *models.ServiceAssetInventory
 	requestAssets := []models.ServiceRequestAsset{}
@@ -1312,7 +1836,7 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load the service desk.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Desk: desk, Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, IncidentUpdates: incidentUpdates, EscalationSteps: escalationSteps, AssetInventory: assetInventory, RequestAssets: requestAssets, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: desk.FeedbackEnabled && request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Desk: desk, Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, IncidentUpdates: incidentUpdates, EscalationSteps: escalationSteps, IncidentRoles: incidentRoles, IncidentStakeholders: incidentStakeholders, DeskAgents: incidentAgents, AssetInventory: assetInventory, RequestAssets: requestAssets, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: desk.FeedbackEnabled && request.Customer.ID == user.ID && request.Issue.Status.Category == "done"}, "service", request.Issue.ProjectID)
 }
 
 func (h *Handler) ServiceRequestLink(w http.ResponseWriter, r *http.Request) {
@@ -1523,6 +2047,59 @@ func (h *Handler) ServiceIncidentUpdate(w http.ResponseWriter, r *http.Request) 
 	redirectLocal(w, r, "/service/requests/"+r.PathValue("key")+"#incident-updates")
 }
 
+// incidentRoleCandidates lists the members who may hold a request's major
+// incident roles.
+func (h *Handler) incidentRoleCandidates(r *http.Request, workspaceID, issueID string) ([]*models.User, error) {
+	members, err := h.Store.MembersByWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	candidates := []*models.User{}
+	for _, member := range members {
+		canManage, err := h.Store.CanManageServiceRequest(r.Context(), workspaceID, member.ID, issueID)
+		if err != nil {
+			return nil, err
+		}
+		if canManage {
+			candidates = append(candidates, member)
+		}
+	}
+	return candidates, nil
+}
+
+// ServiceIncidentRole gives a major incident role to an agent or clears it.
+func (h *Handler) ServiceIncidentRole(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if err := h.Commands.SetServiceIncidentRole(r.Context(), user.ID, workspaceID, r.PathValue("key"), r.PostFormValue("role"), r.PostFormValue("user_id")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/requests/"+r.PathValue("key")+"#incident-team")
+}
+
+// ServiceIncidentStakeholder adds or removes a major incident's stakeholder.
+func (h *Handler) ServiceIncidentStakeholder(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	key := r.PathValue("key")
+	var err error
+	if r.PostFormValue("action") == "remove" {
+		err = h.Commands.RemoveServiceIncidentStakeholder(r.Context(), user.ID, workspaceID, key, r.PostFormValue("stakeholder_id"))
+	} else {
+		err = h.Commands.AddServiceIncidentStakeholder(r.Context(), user.ID, workspaceID, key, r.PostFormValue("user_id"), r.PostFormValue("email"))
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/requests/"+key+"#incident-team")
+}
+
 func (h *Handler) ServiceRequestNotification(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
@@ -1590,4 +2167,127 @@ func (h *Handler) ServiceRequestTransition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key)
+}
+
+// ServiceQueueBulk applies one action to the requests an agent selects in a
+// queue, as Jira Service Management's queue action bar does: assigning them
+// to an agent or leaving them unassigned, moving each to a status through a
+// transition its workflow offers, or commenting on them as an internal note or
+// a reply to the customer. Requests it cannot change are named with the
+// reason, and the rest are changed.
+func (h *Handler) ServiceQueueBulk(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	deskID := r.PathValue("desk")
+	agent, err := h.Store.IsServiceAgent(r.Context(), workspaceID, deskID, user.ID)
+	if err != nil || !agent {
+		http.Error(w, "Service agent access is required.", http.StatusForbidden)
+		return
+	}
+	back := func(notice, problem string) {
+		query := url.Values{"queue": {r.PostFormValue("queue")}}
+		if notice != "" {
+			query.Set("bulk", notice)
+		}
+		if problem != "" {
+			if len(problem) > 1500 {
+				problem = problem[:1500] + "…"
+			}
+			query.Set("bulkError", problem)
+		}
+		redirectLocal(w, r, "/service/agent/"+url.PathEscape(deskID)+"?"+query.Encode())
+	}
+	keys := r.PostForm["request"]
+	if len(keys) == 0 {
+		back("", "Select the requests to change.")
+		return
+	}
+	if len(keys) > 100 {
+		back("", "Change at most 100 requests at a time.")
+		return
+	}
+	action := r.PostFormValue("action")
+	assignee := r.PostFormValue("assignee")
+	status := strings.TrimSpace(r.PostFormValue("status"))
+	body := strings.TrimSpace(r.PostFormValue("body"))
+	switch action {
+	case "assign":
+		if assignee != "" {
+			agents, err := h.Store.ServiceDeskAgents(r.Context(), workspaceID, deskID)
+			if err != nil {
+				http.Error(w, "Could not load service desk agents.", http.StatusInternalServerError)
+				return
+			}
+			found := false
+			for _, candidate := range agents {
+				found = found || candidate.ID == assignee
+			}
+			if !found {
+				back("", "Assign requests to an agent of this service desk.")
+				return
+			}
+		}
+	case "transition":
+		if status == "" {
+			back("", "Choose the status to move the requests to.")
+			return
+		}
+	case "comment":
+		if body == "" {
+			back("", "Write the comment to add to the requests.")
+			return
+		}
+	default:
+		back("", "Choose an action for the selected requests.")
+		return
+	}
+	changed := 0
+	problems := []string{}
+	for _, key := range keys {
+		request, err := h.Store.ServiceRequest(r.Context(), workspaceID, user.ID, key, true)
+		if err != nil || request.ServiceDesk.ID != deskID {
+			problems = append(problems, key+" is not a request of this service desk.")
+			continue
+		}
+		switch action {
+		case "assign":
+			value := assignee
+			_, _, err = h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{ActorID: user.ID, WorkspaceID: workspaceID, IssueIDOrKey: request.Issue.ID, AssigneeID: &value})
+		case "transition":
+			if request.Issue.Status.Name == status {
+				problems = append(problems, request.Issue.Key+" is already "+status+".")
+				continue
+			}
+			transitions, transitionErr := h.servicePageTransitions(r, workspaceID, user.ID, request)
+			if transitionErr != nil {
+				http.Error(w, "Could not load request transitions.", http.StatusInternalServerError)
+				return
+			}
+			transitionID := ""
+			for _, transition := range transitions {
+				if transition.To == status && transitionID == "" {
+					transitionID = transition.ID
+				}
+			}
+			if transitionID == "" {
+				problems = append(problems, request.Issue.Key+" cannot move from "+request.Issue.Status.Name+" to "+status+".")
+				continue
+			}
+			_, err = h.Commands.TransitionServiceRequest(r.Context(), user.ID, workspaceID, request.Issue.ID, transitionID)
+		case "comment":
+			_, err = h.Commands.AddServiceRequestComment(r.Context(), user.ID, workspaceID, request.Issue.ID, json.RawMessage(nil), body, r.PostFormValue("visibility") == "public")
+		}
+		if err != nil {
+			problems = append(problems, request.Issue.Key+": "+err.Error())
+			continue
+		}
+		changed++
+	}
+	notice := ""
+	if changed > 0 {
+		notice = fmt.Sprintf("%d of %d requests changed.", changed, len(keys))
+	}
+	back(notice, strings.Join(problems, " "))
 }

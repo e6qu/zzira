@@ -379,6 +379,23 @@ func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string
 			configured = fields
 		}
 	}
+	// A field shown only for some answers counts only while those answers are
+	// given.
+	chosen := map[string][]string{}
+	for _, field := range configured {
+		if field.Type != models.CustomFieldSelect && field.Type != models.CustomFieldMultiSelect {
+			continue
+		}
+		raw, present := input.RequestFieldValues[field.ID]
+		if !present || len(raw) == 0 || string(raw) == "null" {
+			continue
+		}
+		options, err := h.Store.ServiceRequestFieldOptions(r.Context(), workspaceID, input.ServiceDeskID, field.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		chosen[field.ID] = serviceChosenOptionIDs(raw, options)
+	}
 	allowed := make(map[string]models.ServiceRequestTypeField, len(configured))
 	for _, field := range configured {
 		// A hidden field takes its preset value, never a submitted one.
@@ -387,6 +404,12 @@ func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string
 		}
 		allowed[field.ID] = field
 		raw, present := input.RequestFieldValues[field.ID]
+		if !field.ShownFor(chosen) {
+			if present && len(raw) > 0 && string(raw) != "null" {
+				errors[field.ID] = "This field is not shown for the answers given."
+			}
+			continue
+		}
 		if field.Required {
 			text, isText := decodeServiceText(raw)
 			if !present || len(raw) == 0 || string(raw) == "null" || (isText && strings.TrimSpace(text) == "") {
@@ -422,6 +445,39 @@ func (h *Handler) validateServiceRequestBody(r *http.Request, workspaceID string
 		}
 	}
 	return errors, configured, nil
+}
+
+// serviceChosenOptionIDs reads the option ids a select or multi-select answer
+// chooses: ids, {"id"} or {"value"} objects, alone or in a list.
+func serviceChosenOptionIDs(raw json.RawMessage, options []store.ServiceRequestFieldOption) []string {
+	items := []json.RawMessage{}
+	if json.Unmarshal(raw, &items) != nil {
+		items = []json.RawMessage{raw}
+	}
+	ids := []string{}
+	for _, item := range items {
+		var text string
+		var number json.Number
+		var object struct {
+			ID    json.RawMessage `json:"id"`
+			Value string          `json:"value"`
+		}
+		switch {
+		case json.Unmarshal(item, &text) == nil:
+			ids = append(ids, text)
+		case json.Unmarshal(item, &number) == nil:
+			ids = append(ids, number.String())
+		case json.Unmarshal(item, &object) == nil && len(object.ID) > 0:
+			ids = append(ids, strings.Trim(string(object.ID), `"`))
+		case object.Value != "":
+			for _, option := range options {
+				if option.Value == object.Value {
+					ids = append(ids, option.ID)
+				}
+			}
+		}
+	}
+	return ids
 }
 
 func serviceRequestFieldValueError(field models.ServiceRequestTypeField, raw json.RawMessage) string {
@@ -870,12 +926,17 @@ func serviceRequestFieldSchema(field models.ServiceRequestTypeField) map[string]
 		models.CustomFieldGroup: {"group", "grouppicker"}, models.CustomFieldMultiGroup: {"array", "multigrouppicker"},
 		models.CustomFieldLabels: {"array", "labels"}, models.CustomFieldProject: {"project", "project"},
 		models.CustomFieldVersion: {"version", "version"}, models.CustomFieldMultiVersion: {"array", "multiversion"},
+		models.CustomFieldTeam: {"team", ""},
 	}
 	kind, ok := types[field.Type]
 	if !ok {
 		kind = [2]string{"string", field.Type}
 	}
 	schema := map[string]any{"type": kind[0], "custom": "com.atlassian.jira.plugin.system.customfieldtypes:" + kind[1]}
+	if field.Type == models.CustomFieldTeam {
+		// Jira's team field comes from Atlassian Teams, not the system field types.
+		schema["custom"] = "com.atlassian.teams:rm-teams-custom-field-team"
+	}
 	if id, err := strconv.ParseInt(strings.TrimPrefix(field.ID, "customfield_"), 10, 64); err == nil {
 		schema["customId"] = id
 	}
@@ -935,6 +996,14 @@ func (h *Handler) serviceRequestTypeFields(r *http.Request, workspaceID, actorID
 					children = append(children, map[string]any{"value": child.ID, "label": child.Value, "children": []any{}})
 				}
 				validValues = append(validValues, map[string]any{"value": option.ID, "label": option.Value, "children": children})
+			}
+		} else if store.IsServicePortalPicker(field.Type) {
+			choices, err := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, serviceDeskID, actorID, field.Type)
+			if err != nil {
+				return nil, err
+			}
+			for _, choice := range choices {
+				validValues = append(validValues, map[string]any{"value": choice.ID, "label": choice.Value, "children": []any{}})
 			}
 		}
 		presetValues := []string{}

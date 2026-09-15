@@ -113,8 +113,8 @@
           <span id="comment-editor-label" class="sr-only">Add a comment</span>
           <div id="comment-editor" class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="comment-editor-label" data-rich-editor data-target-name="adf"
                data-placeholder="Add a comment…"></div>
-          <input type="hidden" name="adf">
-          <div class="form-actions"><small class="muted">Use the toolbar to format your update.</small><button type="submit" class="btn btn-primary">Add comment</button></div>
+          <input type="hidden" name="adf"><template data-mention-people><option value="usr_1">Demo User</option></template>
+          <div class="form-actions"><small class="muted">Use the toolbar to format your update, and type @ to mention someone.</small><button type="submit" class="btn btn-primary">Add comment</button></div>
         </form>
         <form class="worklog-form" method="post" action="/issues/ZZ-1/worklogs" hx-post="/issues/ZZ-1/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
           <fieldset><legend>Or log work</legend><label for="worklog-time">Time spent</label>

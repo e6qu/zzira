@@ -615,3 +615,101 @@ func (s *Store) ProjectsWithPermissions(ctx context.Context, workspaceID, userID
 	sort.SliceStable(result, func(i, j int) bool { return strings.ToLower(result[i].Name) < strings.ToLower(result[j].Name) })
 	return result, nil
 }
+
+// PermissionDiagnosis explains whether a person holds a project permission on
+// a work item, as Jira's permission helper does.
+type PermissionDiagnosis struct {
+	SchemeName string
+	Permission PermissionDefinition
+	Allowed    bool
+	Active     bool
+	// Administrator reports access through the site or organization
+	// administrator role or the Administer Jira global permission, which hold
+	// whatever the scheme grants.
+	Administrator bool
+	// Grants are the scheme's grants of the permission the person holds.
+	Grants []models.PermissionGrant
+	// SecurityLevelHidden reports a work item whose security level the person
+	// cannot see; it stays hidden from them even with Browse projects.
+	SecurityLevelHidden bool
+}
+
+// DiagnoseProjectPermission works out why a person does or does not hold a
+// project permission on a work item. Each grant is tried on its own inside a
+// savepoint that is rolled back, so the explanation comes from exactly the
+// check that decides access.
+func (s *Store) DiagnoseProjectPermission(ctx context.Context, workspaceID, userID, issueID, permission string) (PermissionDiagnosis, error) {
+	var diagnosis PermissionDiagnosis
+	definition, ok := PermissionDefinitionByKey(permission)
+	if !ok || definition.Type != "PROJECT" {
+		return diagnosis, fmt.Errorf("%w: %s is not a project permission", ErrPermissionSchemeValidation, permission)
+	}
+	diagnosis.Permission = definition
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return diagnosis, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var projectID, securityLevelID string
+	var schemeID int64
+	if err = tx.QueryRow(ctx, `SELECT i.project_id,COALESCE(i.security_level_id,''),COALESCE(ps.id,0),COALESCE(ps.name,'')
+		FROM issues i LEFT JOIN project_permission_schemes pps ON pps.project_id=i.project_id
+		LEFT JOIN permission_schemes ps ON ps.workspace_id=pps.workspace_id AND ps.id=pps.scheme_id
+		WHERE i.workspace_id=$1 AND i.id=$2`, workspaceID, issueID).Scan(&projectID, &securityLevelID, &schemeID, &diagnosis.SchemeName); err != nil {
+		return diagnosis, err
+	}
+	holds := func() (bool, error) {
+		allowed, _, checkErr := hasProjectPermissionTx(ctx, tx, workspaceID, userID, projectID, issueID, permission)
+		return allowed, checkErr
+	}
+	if diagnosis.Allowed, err = holds(); err != nil {
+		return diagnosis, err
+	}
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.workspace_id=$1 AND u.id=$2 AND u.active)`, workspaceID, userID).Scan(&diagnosis.Active); err != nil {
+		return diagnosis, err
+	}
+	grants, err := permissionSchemeGrantsTx(ctx, tx, workspaceID, schemeID)
+	if err != nil {
+		return diagnosis, err
+	}
+	// holdsWith answers the check with only the given grant of the permission
+	// left in the scheme, or none when grantID is 0.
+	holdsWith := func(grantID int64) (bool, error) {
+		if _, execErr := tx.Exec(ctx, `SAVEPOINT permission_helper`); execErr != nil {
+			return false, execErr
+		}
+		if _, execErr := tx.Exec(ctx, `DELETE FROM permission_scheme_grants WHERE workspace_id=$1 AND scheme_id=$2 AND permission_key=$3 AND id<>$4`, workspaceID, schemeID, permission, grantID); execErr != nil {
+			return false, execErr
+		}
+		allowed, checkErr := holds()
+		if _, execErr := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT permission_helper`); checkErr == nil {
+			checkErr = execErr
+		}
+		return allowed, checkErr
+	}
+	if diagnosis.Administrator, err = holdsWith(0); err != nil {
+		return diagnosis, err
+	}
+	if !diagnosis.Administrator {
+		for _, grant := range grants {
+			if grant.Permission != permission {
+				continue
+			}
+			held, heldErr := holdsWith(grant.ID)
+			if heldErr != nil {
+				return diagnosis, heldErr
+			}
+			if held {
+				diagnosis.Grants = append(diagnosis.Grants, grant)
+			}
+		}
+	}
+	if permission == "BROWSE_PROJECTS" && securityLevelID != "" {
+		var visible bool
+		if err = tx.QueryRow(ctx, `SELECT jira_issue_security_visible($1,$2,$3,$4,$5)`, workspaceID, projectID, issueID, userID, securityLevelID).Scan(&visible); err != nil {
+			return diagnosis, err
+		}
+		diagnosis.SecurityLevelHidden = !visible
+	}
+	return diagnosis, nil
+}

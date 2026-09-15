@@ -68,7 +68,12 @@ test('issue triage journey: inline fields, labels API, watchers, votes, links, a
     return (await updatedBean.json()).fields.duedate;
   }).toBe('2026-12-01');
 
+  // Creating the work item autowatched it for its creator.
   const watchButton = page.locator(`form[action="/issues/${key}/watch"] .watch-button`);
+  await expect(watchButton).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('.issue-summary').click();
+  await page.keyboard.press('w');
+  await expect(watchButton).toHaveAttribute('aria-pressed', 'false');
   await page.locator('.issue-summary').click();
   await page.keyboard.press('w');
   await expect(watchButton).toHaveAttribute('aria-pressed', 'true');

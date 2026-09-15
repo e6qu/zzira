@@ -120,3 +120,48 @@ func TestSMTPFromEnvRejectsPartialConfiguration(t *testing.T) {
 		t.Fatal("partial SMTP configuration was accepted")
 	}
 }
+
+func TestMessagePayloadAlternatives(t *testing.T) {
+	plain, err := messagePayload("noreply@zzira.test", Message{Recipient: "a@example.test", Subject: "Invitation", Body: "Hi"})
+	if err != nil || !strings.Contains(plain, "Content-Type: text/plain; charset=UTF-8\r\n\r\nHi") || strings.Contains(plain, "multipart") {
+		t.Fatalf("plain payload = %q err=%v", plain, err)
+	}
+	long := strings.Repeat("word ", 40)
+	rich, err := messagePayload("noreply@zzira.test", Message{Recipient: "a@example.test", Subject: "[ZZ-1] Ship — soon", Body: "ZZ-1 — Ship\n/browse/ZZ-1", HTMLBody: "<p>" + long + "</p>"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rich, "Subject: =?utf-8?q?") || strings.Contains(rich, "Subject: [ZZ-1] Ship —") {
+		t.Fatalf("subject was not encoded: %q", rich)
+	}
+	boundary := rich[strings.Index(rich, `boundary="`)+len(`boundary="`):]
+	boundary = boundary[:strings.Index(boundary, `"`)]
+	plainAt, htmlAt, closeAt := strings.Index(rich, "--"+boundary+"\r\nContent-Type: text/plain"), strings.Index(rich, "--"+boundary+"\r\nContent-Type: text/html"), strings.Index(rich, "--"+boundary+"--\r\n")
+	if plainAt < 0 || htmlAt < plainAt || closeAt < htmlAt {
+		t.Fatalf("parts out of order: %q", rich)
+	}
+	if !strings.Contains(rich, "ZZ-1 =E2=80=94 Ship") || !strings.Contains(rich, "=\r\n") {
+		t.Fatalf("parts were not quoted-printable: %q", rich)
+	}
+	for _, line := range strings.Split(rich[plainAt:closeAt], "\r\n") {
+		if strings.HasPrefix(line, "--"+boundary) || strings.HasPrefix(line, "Content-") {
+			continue
+		}
+		if len(line) > 76 {
+			t.Fatalf("line longer than 76 characters: %q", line)
+		}
+	}
+}
+
+func TestAbsoluteLinks(t *testing.T) {
+	const base = "https://zzira.example/"
+	if got := absoluteLinks(base, `<a href="/browse/ZZ-1">ZZ-1</a> <a href="//cdn.example/x">x</a> <a href="https://other.example/">o</a>`, true); got != `<a href="https://zzira.example/browse/ZZ-1">ZZ-1</a> <a href="//cdn.example/x">x</a> <a href="https://other.example/">o</a>` {
+		t.Fatalf("html links = %q", got)
+	}
+	if got := absoluteLinks(base, "created ZZ-1\n\nZZ-1 — Ship\n/browse/ZZ-1\n/not a path", false); got != "created ZZ-1\n\nZZ-1 — Ship\nhttps://zzira.example/browse/ZZ-1\n/not a path" {
+		t.Fatalf("text links = %q", got)
+	}
+	if got := absoluteLinks("", "/browse/ZZ-1", false); got != "/browse/ZZ-1" {
+		t.Fatalf("no base URL changed the body: %q", got)
+	}
+}

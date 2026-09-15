@@ -1,11 +1,22 @@
 package render
 
-import "github.com/e6qu/zzira/internal/models"
+import (
+	"github.com/e6qu/zzira/internal/models"
+)
 
 // SiteLook is the look and feel a site's application properties set.
 type SiteLook struct {
 	Title, LogoURL, FaviconURL                string
 	NavigationBackground, NavigationHighlight string
+	// ShowTitle shows the application title beside the logo, as Jira's
+	// "Show application title" setting does; the logo link always names it.
+	ShowTitle bool
+	// FaviconHiResURL is the high-resolution favicon for devices that ask
+	// for a larger icon.
+	FaviconHiResURL string
+	// HeroButtonBackground colours primary buttons with Jira's hero button
+	// background; it is set only to a plain colour white labels can be read on.
+	HeroButtonBackground string
 	// DateComplete and DateDay are Go layouts for displayed times and days.
 	DateComplete, DateDay string
 }

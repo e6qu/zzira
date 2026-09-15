@@ -118,17 +118,121 @@ func GadgetCatalog() []GadgetDefinition {
 		{"com.zzira:resolution-time", "Resolution time", "How long a project's work takes from creation to resolution.", ""},
 		{"com.zzira:velocity", "Velocity chart", "Commitment against completed work for a scrum board's recent sprints.", ""},
 		{"com.zzira:sprint-burndown", "Sprint burndown", "Remaining work in a scrum board's active sprint.", ""},
+		{"com.zzira:two-dimensional-statistics", "Two dimensional filter statistics", "Count work across two groupings, such as status by assignee.", ""},
+		{"com.zzira:heat-map", "Heat map", "See which values carry the most work, sized by their share.", ""},
+		{"com.zzira:watched-issues", "Watched work items", "The work each viewer watches.", ""},
+		{"com.zzira:voted-issues", "Voted work items", "The work each viewer voted for.", ""},
+		{"com.zzira:in-progress", "Work in progress", "Each viewer's assigned work that is in progress.", ""},
+		{"com.zzira:recently-created", "Recently created chart", "Work created each day in a project, split by whether it is resolved.", ""},
+		{"com.zzira:average-age", "Average age chart", "How old a project's unresolved work was at the end of each day.", ""},
+		{"com.zzira:time-since", "Time since chart", "Work created, updated or resolved each day in a project.", ""},
+		{"com.zzira:days-remaining", "Days remaining in sprint", "How long is left in a scrum board's active sprint.", ""},
+		{"com.zzira:sprint-health", "Sprint health", "Time elapsed, work complete and scope change in a scrum board's active sprint.", ""},
+		{"com.zzira:activity-stream", "Activity stream", "Recent creations, changes and comments on work from a filter or JQL.", ""},
+		{"com.zzira:calendar", "Calendar", "This month's due work and release dates from a filter or JQL.", ""},
+		{"com.zzira:road-map", "Road map", "A project's unreleased versions due soon, with their progress.", ""},
+		{"com.zzira:bubble-chart", "Bubble chart", "Work from a filter or JQL by how recently it changed, its participants and its votes.", ""},
 	}
+}
+
+// GadgetGrouping is a field that chart gadgets count work by.
+type GadgetGrouping struct {
+	Key, Name string
+}
+
+// GadgetGroupings are the fields chart gadgets can group work by.
+var GadgetGroupings = []GadgetGrouping{
+	{"status", "Status"}, {"priority", "Priority"}, {"issuetype", "Work type"}, {"assignee", "Assignee"},
+	{"reporter", "Reporter"}, {"resolution", "Resolution"}, {"project", "Project"}, {"labels", "Labels"},
+}
+
+// GadgetGroupingName names a grouping for people, or "" when it is unknown.
+func GadgetGroupingName(key string) string {
+	for _, grouping := range GadgetGroupings {
+		if grouping.Key == key {
+			return grouping.Name
+		}
+	}
+	return ""
+}
+
+// GadgetScopeJQL is the JQL a list gadget adds for whoever views it, such as
+// the viewer's own assignments.
+func GadgetScopeJQL(moduleKey string) string {
+	switch moduleKey {
+	case "com.zzira:assigned-to-me":
+		return "assignee = currentUser()"
+	case "com.zzira:watched-issues":
+		return "issue in watchedIssues()"
+	case "com.zzira:voted-issues":
+		return "issue in votedIssues()"
+	case "com.zzira:in-progress":
+		return "assignee = currentUser() AND statusCategory = indeterminate"
+	}
+	return ""
+}
+
+// ListGadget reports whether a gadget lists work items rather than counting
+// them.
+func ListGadget(moduleKey string) bool {
+	return moduleKey == "com.zzira:filter-results" || GadgetScopeJQL(moduleKey) != ""
+}
+
+// ListGadget reports whether the gadget lists work items.
+func (g DashboardGadget) ListGadget() bool {
+	return ListGadget(g.ModuleKey)
 }
 
 // ReportGadget reports whether a gadget draws a project or board report
 // rather than the results of a work item query.
 func ReportGadget(moduleKey string) bool {
 	switch moduleKey {
-	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:velocity", "com.zzira:sprint-burndown":
+	case "com.zzira:velocity", "com.zzira:sprint-burndown", "com.zzira:days-remaining", "com.zzira:sprint-health":
+		return true
+	}
+	return ProjectReportGadget(moduleKey)
+}
+
+// ProjectReportGadget reports whether a gadget draws a report for a project
+// over a window of days, rather than for a scrum board.
+func ProjectReportGadget(moduleKey string) bool {
+	switch moduleKey {
+	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since", "com.zzira:road-map":
 		return true
 	}
 	return false
+}
+
+// ChartGadget reports whether a gadget counts query results by a grouping.
+func ChartGadget(moduleKey string) bool {
+	switch moduleKey {
+	case "com.zzira:activity-stream", "com.zzira:calendar", "com.zzira:bubble-chart":
+		return false
+	}
+	return !ListGadget(moduleKey) && !ReportGadget(moduleKey)
+}
+
+// ChartGadget reports whether the gadget counts work by a grouping.
+func (g DashboardGadget) ChartGadget() bool {
+	return ChartGadget(g.ModuleKey)
+}
+
+// ProjectReportGadget reports whether the gadget draws a project report.
+func (g DashboardGadget) ProjectReportGadget() bool {
+	return ProjectReportGadget(g.ModuleKey)
+}
+
+// TimeSinceFields are the dates the time since chart counts work by.
+var TimeSinceFields = []GadgetGrouping{{"created", "Created"}, {"updated", "Updated"}, {"resolved", "Resolved"}}
+
+// TimeSinceFieldName names a time since date for people, or "" when unknown.
+func TimeSinceFieldName(key string) string {
+	for _, field := range TimeSinceFields {
+		if field.Key == key {
+			return field.Name
+		}
+	}
+	return ""
 }
 
 // ReportGadget reports whether the gadget draws a report.
@@ -139,12 +243,27 @@ func (g DashboardGadget) ReportGadget() bool {
 // GadgetConfig is a gadget's settings: a work item query for list and chart
 // gadgets, or the project or board and time window a report gadget draws.
 type GadgetConfig struct {
-	JQL        string `json:"jql"`
-	FilterID   string `json:"filterId"`
-	GroupBy    string `json:"groupBy"`
+	JQL      string `json:"jql"`
+	FilterID string `json:"filterId"`
+	GroupBy  string `json:"groupBy"`
+	// YGroupBy is the second grouping of two dimensional statistics, counted
+	// down its rows.
+	YGroupBy   string `json:"yGroupBy,omitempty"`
 	Limit      int    `json:"limit"`
 	ProjectKey string `json:"projectKey,omitempty"`
 	BoardID    string `json:"boardId,omitempty"`
 	Days       int    `json:"days,omitempty"`
 	Cumulative bool   `json:"cumulative,omitempty"`
+	// DateField is the date the time since chart counts: created, updated or
+	// resolved.
+	DateField string `json:"dateField,omitempty"`
+	// BubbleAxis is what the bubble chart's vertical axis counts, participants
+	// or votes; bubbles are sized by the other.
+	BubbleAxis string `json:"bubbleAxis,omitempty"`
 }
+
+// GroupLabel names the chart grouping for people.
+func (c GadgetConfig) GroupLabel() string { return GadgetGroupingName(c.GroupBy) }
+
+// YGroupLabel names the second grouping for people.
+func (c GadgetConfig) YGroupLabel() string { return GadgetGroupingName(c.YGroupBy) }

@@ -2,7 +2,10 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"sort"
 	"strings"
 	"time"
@@ -39,7 +42,7 @@ func (s *Store) ServiceCalendar(ctx context.Context, workspaceID, serviceDeskID 
 
 func (s *Store) ServiceSLAMetrics(ctx context.Context, workspaceID, serviceDeskID string) ([]models.ServiceSLAMetric, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT m.id,m.service_desk_id,m.calendar_id,m.name,m.kind,m.pause_jql,m.goal_millis,m.position
+		SELECT m.id,m.service_desk_id,m.calendar_id,m.name,m.kind,m.pause_jql,m.goal_millis,m.position,m.start_conditions,m.stop_conditions
 		FROM service_sla_metrics m JOIN service_desks sd ON sd.id=m.service_desk_id
 		WHERE sd.workspace_id=$1 AND sd.id=$2 ORDER BY m.position,m.id::bigint`, workspaceID, serviceDeskID)
 	if err != nil {
@@ -49,7 +52,7 @@ func (s *Store) ServiceSLAMetrics(ctx context.Context, workspaceID, serviceDeskI
 	metrics := make([]models.ServiceSLAMetric, 0)
 	for rows.Next() {
 		var metric models.ServiceSLAMetric
-		if err := rows.Scan(&metric.ID, &metric.ServiceDeskID, &metric.CalendarID, &metric.Name, &metric.Kind, &metric.PauseJQL, &metric.GoalMillis, &metric.Position); err != nil {
+		if err := rows.Scan(&metric.ID, &metric.ServiceDeskID, &metric.CalendarID, &metric.Name, &metric.Kind, &metric.PauseJQL, &metric.GoalMillis, &metric.Position, &metric.StartConditions, &metric.StopConditions); err != nil {
 			return nil, err
 		}
 		metrics = append(metrics, metric)
@@ -59,7 +62,7 @@ func (s *Store) ServiceSLAMetrics(ctx context.Context, workspaceID, serviceDeskI
 
 func (s *Store) ServiceSLAMetricsForWorkspace(ctx context.Context, workspaceID string) ([]models.ServiceSLAMetric, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT m.id,m.service_desk_id,m.calendar_id,m.name,m.kind,m.pause_jql,m.goal_millis,m.position
+		SELECT m.id,m.service_desk_id,m.calendar_id,m.name,m.kind,m.pause_jql,m.goal_millis,m.position,m.start_conditions,m.stop_conditions
 		FROM service_sla_metrics m JOIN service_desks sd ON sd.id=m.service_desk_id
 		WHERE sd.workspace_id=$1 ORDER BY lower(m.name),m.position,m.id::bigint`, workspaceID)
 	if err != nil {
@@ -69,7 +72,7 @@ func (s *Store) ServiceSLAMetricsForWorkspace(ctx context.Context, workspaceID s
 	metrics := make([]models.ServiceSLAMetric, 0)
 	for rows.Next() {
 		var metric models.ServiceSLAMetric
-		if err := rows.Scan(&metric.ID, &metric.ServiceDeskID, &metric.CalendarID, &metric.Name, &metric.Kind, &metric.PauseJQL, &metric.GoalMillis, &metric.Position); err != nil {
+		if err := rows.Scan(&metric.ID, &metric.ServiceDeskID, &metric.CalendarID, &metric.Name, &metric.Kind, &metric.PauseJQL, &metric.GoalMillis, &metric.Position, &metric.StartConditions, &metric.StopConditions); err != nil {
 			return nil, err
 		}
 		metrics = append(metrics, metric)
@@ -212,31 +215,218 @@ func (s *Store) DeleteServiceCalendarHoliday(ctx context.Context, workspaceID, a
 	return tx.Commit(ctx)
 }
 
-func (s *Store) CompleteServiceSLA(ctx context.Context, workspaceID, requestIssueID, kind string, at time.Time) error {
-	_, err := s.Pool.Exec(ctx, `
-		UPDATE service_sla_cycles c SET stopped_at=$4
-		FROM service_sla_metrics m,service_requests sr
-		WHERE c.metric_id=m.id AND c.request_issue_id=sr.issue_id
-		  AND sr.workspace_id=$1 AND sr.issue_id=$2 AND m.kind=$3 AND c.stopped_at IS NULL`, workspaceID, requestIssueID, kind, at)
-	return err
-}
-
 func (s *Store) ServiceRequestDeskID(ctx context.Context, workspaceID, requestIssueID string) (string, error) {
 	var serviceDeskID string
 	err := s.Pool.QueryRow(ctx, `SELECT COALESCE((SELECT service_desk_id FROM service_requests WHERE workspace_id=$1 AND issue_id=$2),'')`, workspaceID, requestIssueID).Scan(&serviceDeskID)
 	return serviceDeskID, err
 }
 
-func (s *Store) EnsureResolutionSLA(ctx context.Context, workspaceID, requestIssueID string, at time.Time) error {
-	_, err := s.Pool.Exec(ctx, `
+// ApplyServiceSLAEvents settles a request's SLA clocks after events such as a
+// status change or a comment for customers, as Jira's SLA conditions do: each
+// ongoing cycle whose stop conditions an event meets stops, then each metric
+// with no ongoing cycle whose start conditions an event meets starts a new
+// cycle on its default goal. It reports whether any cycle stopped or started.
+func (s *Store) ApplyServiceSLAEvents(ctx context.Context, workspaceID, serviceDeskID, requestIssueID string, events []string, at time.Time) (bool, error) {
+	if len(events) == 0 {
+		return false, nil
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	stopped, err := tx.Exec(ctx, `
+		UPDATE service_sla_cycles c SET stopped_at=$4
+		FROM service_sla_metrics m,service_requests sr
+		WHERE c.metric_id=m.id AND c.request_issue_id=sr.issue_id AND c.stopped_at IS NULL
+		  AND sr.workspace_id=$1 AND sr.service_desk_id=$2 AND sr.issue_id=$3 AND m.stop_conditions && $5::text[]`, workspaceID, serviceDeskID, requestIssueID, at, events)
+	if err != nil {
+		return false, err
+	}
+	started, err := tx.Exec(ctx, `
 		INSERT INTO service_sla_cycles(request_issue_id,metric_id,cycle_number,started_at,goal_id,goal_name,goal_millis)
-		SELECT sr.issue_id,m.id,COALESCE((SELECT max(c.cycle_number)+1 FROM service_sla_cycles c WHERE c.request_issue_id=sr.issue_id AND c.metric_id=m.id),1),$3,g.id,g.name,g.goal_millis
-		FROM service_requests sr JOIN service_sla_metrics m ON m.service_desk_id=sr.service_desk_id AND m.kind='resolution'
+		SELECT sr.issue_id,m.id,COALESCE((SELECT max(c.cycle_number)+1 FROM service_sla_cycles c WHERE c.request_issue_id=sr.issue_id AND c.metric_id=m.id),1),$4,g.id,g.name,g.goal_millis
+		FROM service_requests sr JOIN service_sla_metrics m ON m.service_desk_id=sr.service_desk_id
 		JOIN service_sla_goals g ON g.metric_id=m.id AND g.jql=''
-		WHERE sr.workspace_id=$1 AND sr.issue_id=$2
+		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND sr.issue_id=$3 AND m.start_conditions && $5::text[]
 		  AND NOT EXISTS(SELECT 1 FROM service_sla_cycles c WHERE c.request_issue_id=sr.issue_id AND c.metric_id=m.id AND c.stopped_at IS NULL)
-		ON CONFLICT DO NOTHING`, workspaceID, requestIssueID, at)
-	return err
+		ON CONFLICT DO NOTHING`, workspaceID, serviceDeskID, requestIssueID, at, events)
+	if err != nil {
+		return false, err
+	}
+	return stopped.RowsAffected()+started.RowsAffected() > 0, tx.Commit(ctx)
+}
+
+// ErrServiceSLANameTaken is a new SLA named like another SLA of the desk.
+var ErrServiceSLANameTaken = errors.New("another SLA of this service desk has that name")
+
+// CreateServiceSLAMetric adds a custom SLA to a service desk on its calendar,
+// after the desk's existing SLAs. Its default goal comes from the goal
+// trigger, and it applies to the events that follow.
+func (s *Store) CreateServiceSLAMetric(ctx context.Context, workspaceID, actorID, serviceDeskID, name string, goalMillis int64, start, stop []string) (models.ServiceSLAMetric, error) {
+	metric := models.ServiceSLAMetric{ServiceDeskID: serviceDeskID, Name: name, Kind: "custom", GoalMillis: goalMillis, StartConditions: start, StopConditions: stop}
+	if goalMillis < time.Minute.Milliseconds() || goalMillis > (365*24*time.Hour).Milliseconds() {
+		return metric, fmt.Errorf("SLA goal must be between one minute and 365 days")
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return metric, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	err = tx.QueryRow(ctx, `
+		INSERT INTO service_sla_metrics(service_desk_id,calendar_id,name,kind,goal_millis,position,start_conditions,stop_conditions)
+		SELECT sd.id,c.id,$3,'custom',$4,COALESCE((SELECT max(position)+1 FROM service_sla_metrics WHERE service_desk_id=sd.id),0),$5,$6
+		FROM service_desks sd JOIN service_calendars c ON c.service_desk_id=sd.id
+		WHERE sd.workspace_id=$1 AND sd.id=$2
+		RETURNING id,calendar_id,position`, workspaceID, serviceDeskID, name, goalMillis, start, stop).Scan(&metric.ID, &metric.CalendarID, &metric.Position)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return metric, fmt.Errorf("service desk does not exist")
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return metric, ErrServiceSLANameTaken
+	}
+	if err != nil {
+		return metric, err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT si.organization_id,$2,'service.sla.created','service_sla',$4,jsonb_build_object('serviceDeskId',$3::text,'name',$5::text)
+		FROM sites si WHERE si.workspace_id=$1`, workspaceID, actorID, serviceDeskID, metric.ID, name); err != nil {
+		return metric, err
+	}
+	return metric, tx.Commit(ctx)
+}
+
+// DeleteServiceSLAMetric removes a custom SLA with its goals and cycles; the
+// built-in SLAs stay.
+func (s *Store) DeleteServiceSLAMetric(ctx context.Context, workspaceID, actorID, serviceDeskID, metricID string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var name, kind string
+	if err := tx.QueryRow(ctx, `
+		SELECT m.name,m.kind FROM service_sla_metrics m JOIN service_desks sd ON sd.id=m.service_desk_id
+		WHERE sd.workspace_id=$1 AND sd.id=$2 AND m.id=$3`, workspaceID, serviceDeskID, metricID).Scan(&name, &kind); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("SLA metric does not exist")
+		}
+		return err
+	}
+	if kind != "custom" {
+		return fmt.Errorf("%s is built in and cannot be deleted", name)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM service_sla_metrics WHERE id=$1`, metricID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT si.organization_id,$2,'service.sla.deleted','service_sla',$4,jsonb_build_object('serviceDeskId',$3::text,'name',$5::text)
+		FROM sites si WHERE si.workspace_id=$1`, workspaceID, actorID, serviceDeskID, metricID, name); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// ServiceSLACycleSpan is one recalculated cycle: when it started and, unless
+// it is still running, when it stopped.
+type ServiceSLACycleSpan struct {
+	Start time.Time
+	Stop  *time.Time
+}
+
+// ServiceRequestPublicComment is a public comment on a request: who wrote it
+// and when.
+type ServiceRequestPublicComment struct {
+	AuthorID string
+	At       time.Time
+}
+
+// ServiceRequestPublicComments lists a request's public comments in the order
+// they were written.
+func (s *Store) ServiceRequestPublicComments(ctx context.Context, requestIssueID string) ([]ServiceRequestPublicComment, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT c.author_id,c.created_at FROM service_request_comments src JOIN comments c ON c.id=src.comment_id
+		WHERE src.request_issue_id=$1 AND src.public ORDER BY c.created_at,c.id`, requestIssueID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (ServiceRequestPublicComment, error) {
+		var comment ServiceRequestPublicComment
+		err := row.Scan(&comment.AuthorID, &comment.At)
+		return comment, err
+	})
+}
+
+// OpenServiceRequestIDs lists the requests of a service desk that are not done.
+func (s *Store) OpenServiceRequestIDs(ctx context.Context, workspaceID, serviceDeskID string) ([]string, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT sr.issue_id FROM service_requests sr JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
+		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND st.category<>'done' ORDER BY sr.created_at,sr.issue_id`, workspaceID, serviceDeskID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
+// ReplaceServiceSLACycles swaps a request's cycles of one SLA for recalculated
+// ones on the SLA's default goal; their pauses go with the old cycles.
+func (s *Store) ReplaceServiceSLACycles(ctx context.Context, workspaceID, serviceDeskID, metricID, requestIssueID string, spans []ServiceSLACycleSpan) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var known bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM service_requests sr JOIN service_sla_metrics m ON m.service_desk_id=sr.service_desk_id
+		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND sr.issue_id=$3 AND m.id=$4)`, workspaceID, serviceDeskID, requestIssueID, metricID).Scan(&known); err != nil {
+		return err
+	}
+	if !known {
+		return fmt.Errorf("SLA metric or request does not belong to the service desk")
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2`, requestIssueID, metricID); err != nil {
+		return err
+	}
+	for index, span := range spans {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO service_sla_cycles(request_issue_id,metric_id,cycle_number,started_at,stopped_at,goal_id,goal_name,goal_millis)
+			SELECT $1,m.id,$3,$4,$5,g.id,g.name,g.goal_millis FROM service_sla_metrics m
+			JOIN service_sla_goals g ON g.metric_id=m.id AND g.jql='' WHERE m.id=$2`, requestIssueID, metricID, index+1, span.Start, span.Stop); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// UpdateServiceSLAConditions replaces the conditions that start and stop an
+// SLA metric's clock. They apply to the events that follow.
+func (s *Store) UpdateServiceSLAConditions(ctx context.Context, workspaceID, actorID, serviceDeskID, metricID string, start, stop []string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	result, err := tx.Exec(ctx, `
+		UPDATE service_sla_metrics m SET start_conditions=$4,stop_conditions=$5
+		FROM service_desks sd WHERE sd.id=m.service_desk_id
+		  AND sd.workspace_id=$1 AND sd.id=$2 AND m.id=$3`, workspaceID, serviceDeskID, metricID, start, stop)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("SLA metric does not exist")
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT si.organization_id,$2,'service.sla.conditions.updated','service_sla',$4,jsonb_build_object('serviceDeskId',$3::text,'startConditions',to_jsonb($5::text[]),'stopConditions',to_jsonb($6::text[]))
+		FROM sites si WHERE si.workspace_id=$1`, workspaceID, actorID, serviceDeskID, metricID, start, stop); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func serviceCalendarDay(calendar *models.ServiceCalendar, value time.Time, location *time.Location) bool {

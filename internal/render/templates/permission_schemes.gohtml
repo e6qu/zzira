@@ -31,3 +31,28 @@
 <div class="permission-grant-table" role="table" aria-label="Project permission grants"><div class="permission-grant-header" role="row"><span role="columnheader">Permission</span><span role="columnheader">Granted to</span></div>{{range .Data.Scheme.Grants}}<div class="permission-grant-row project-permission-row" role="row"><span role="cell"><strong>{{.PermissionName}}</strong><small>{{.Grant.Permission}}</small></span><span role="cell"><strong>{{.HolderLabel}}</strong><small>{{.Grant.HolderType}}</small></span></div>{{else}}<div class="empty-state">No project permissions are granted.</div>{{end}}</div></section>
 </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
 {{end}}
+{{define "page_permission_helper"}}
+<!doctype html><html lang="en"><head><title>Permission helper · {{(site $).Title}}</title>{{template "head" .}}</head>
+<body class="page-permission-schemes"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
+<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
+<nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/admin">Administration</a><span aria-hidden="true">/</span><span aria-current="page">Permission helper</span></nav>
+<header class="page-header"><div><span class="eyebrow">Jira system</span><h1>Permission helper</h1><p>Find out whether someone holds a project permission on a work item, and which grants give it to them.</p></div></header>
+<section class="surface-card" aria-labelledby="permission-helper-form-title"><h2 id="permission-helper-form-title">What to check</h2>
+<form class="project-details-form" method="get" action="/admin/permission-helper">
+<label for="permission-helper-person">Person</label><select id="permission-helper-person" name="accountId" required><option value="">Choose a person</option>{{range .Data.Members}}<option value="{{.ID}}"{{if eq .ID $.Data.AccountID}} selected{{end}}>{{.DisplayName}}</option>{{end}}</select>
+<label for="permission-helper-issue">Work item key</label><input id="permission-helper-issue" name="issueKey" value="{{.Data.IssueKey}}" required autocomplete="off">
+<label for="permission-helper-permission">Permission</label><select id="permission-helper-permission" name="permission" required><option value="">Choose a permission</option>{{range .Data.Permissions}}<option value="{{.Key}}"{{if eq .Key $.Data.Permission}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+<div class="project-form-actions"><button class="btn btn-primary" type="submit">Check permission</button></div></form></section>
+{{if .Data.Error}}<div class="alert error" role="alert">{{.Data.Error}}</div>{{end}}
+{{with .Data.Result}}<section class="surface-card" aria-labelledby="permission-helper-result-title">
+<h2 id="permission-helper-result-title">{{.Person}} {{if .Allowed}}has{{else}}does not have{{end}} {{.Permission.Name}}</h2>
+<p>{{.Permission.Description}} Checked on <a href="/browse/{{.IssueKey}}">{{.IssueKey}}</a>, under {{if .SchemeName}}{{.SchemeName}}{{else}}no permission scheme{{end}}.</p>
+<h3>Why</h3><ul>
+{{if .Administrator}}<li>Holds it as a site or organization administrator, or through the Administer Jira global permission, whatever the scheme grants.</li>{{end}}
+{{range .Grants}}<li>Granted to {{.}}</li>{{end}}
+{{if and (not .Administrator) (not .Grants)}}<li>No grant of {{.Permission.Name}} includes {{.Person}}.</li>{{end}}
+{{if not .Active}}<li>{{.Person}} is not an active member of the site, so only grants to anyone apply.</li>{{end}}
+{{if .SecurityLevelHidden}}<li>The work item's security level hides it from {{.Person}}.</li>{{end}}
+</ul></section>{{end}}
+</main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
+{{end}}

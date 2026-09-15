@@ -160,6 +160,22 @@ func TestSiteSettings(t *testing.T) {
 	if after := object(call(member, "GET", "/settings/lookandfeel?spaceKey=SET", nil, 200)); after["selected"] != "custom" {
 		t.Fatalf("the selection did not stick: %v", after)
 	}
+	// Wiki pages show the custom look: pages outside a space show the site's,
+	// and a space that selects custom settings without its own shows the site's
+	// too.
+	var setSpaceID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id::text FROM wiki_spaces WHERE workspace_id=$1 AND key='SET'`, ws).Scan(&setSpaceID); err != nil {
+		t.Fatal(err)
+	}
+	for _, spaceID := range []string{"", setSpaceID} {
+		effective, err := st.EffectiveWikiLookAndFeel(ctx, ws, spaceID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if effectiveHeadings, _ := effective["headings"].(map[string]any); effectiveHeadings["color"] != "#FF0000" {
+			t.Fatalf("wiki pages in space %q show %v", spaceID, effective)
+		}
+	}
 	// The site's own look is the global one, so there is nothing to choose.
 	call(admin, "PUT", "/settings/lookandfeel", map[string]any{"lookAndFeelType": "custom"}, 400)
 	call(admin, "PUT", "/settings/lookandfeel", map[string]any{"spaceKey": "SET", "lookAndFeelType": "sideways"}, 400)
@@ -186,5 +202,10 @@ func TestSiteSettings(t *testing.T) {
 	}
 	if selection := object(call(admin, "GET", "/settings/lookandfeel?spaceKey=SET", nil, 200)); selection["selected"] != "theme" {
 		t.Fatalf("resetting the site's custom settings changed a space's selection: %v", selection)
+	}
+	if effective, err := st.EffectiveWikiLookAndFeel(ctx, ws, ""); err != nil {
+		t.Fatal(err)
+	} else if effectiveHeadings, _ := effective["headings"].(map[string]any); effectiveHeadings["color"] == "#FF0000" {
+		t.Fatalf("wiki pages kept the reset custom look: %v", effective)
 	}
 }

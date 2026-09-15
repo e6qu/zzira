@@ -161,6 +161,58 @@ func TestServiceRequestTypeFieldsAndHiddenPresets(t *testing.T) {
 		t.Fatalf("hidden field value = %q err=%v (request %v)", source, err, created)
 	}
 
+	// A field shown only when Impact is High is required only while shown and
+	// refused while the answers keep it hidden.
+	lowID := fmt.Sprint(options[1].(map[string]any)["id"])
+	reasonID := fmt.Sprint(object(call(http.MethodPost, "/rest/api/3/field", `{"name":"Escalation reason `+fmt.Sprint(stamp)+`","type":"com.atlassian.jira.plugin.system.customfieldtypes:textfield"}`, http.StatusCreated))["id"])
+	fieldIDs = append(fieldIDs, reasonID)
+	conditional := append(slices.Clone(form), models.ServiceRequestTypeField{ID: reasonID, Required: true, ConditionFieldID: impactID, ConditionOptionIDs: []string{highID, highID}})
+	if err = h.Commands.SetServiceRequestTypeFields(ctx, adminID, workspaceID, serviceDeskID, requestTypeID, conditional); err != nil {
+		t.Fatal(err)
+	}
+	for name, attempt := range map[string][]models.ServiceRequestTypeField{
+		"hidden source":  {{ID: "summary"}, {ID: impactID}, {ID: sourceID, Hidden: true, PresetValue: json.RawMessage(`"Portal"`)}, {ID: reasonID, ConditionFieldID: sourceID, ConditionOptionIDs: []string{highID}}},
+		"text source":    {{ID: "summary"}, {ID: impactID}, {ID: sourceID}, {ID: reasonID, ConditionFieldID: sourceID, ConditionOptionIDs: []string{highID}}},
+		"itself":         {{ID: "summary"}, {ID: impactID}, {ID: reasonID, ConditionFieldID: reasonID, ConditionOptionIDs: []string{highID}}},
+		"no options":     {{ID: "summary"}, {ID: impactID}, {ID: reasonID, ConditionFieldID: impactID}},
+		"foreign option": {{ID: "summary"}, {ID: impactID}, {ID: reasonID, ConditionFieldID: impactID, ConditionOptionIDs: []string{"999999"}}},
+		"off the form":   {{ID: "summary"}, {ID: reasonID, ConditionFieldID: impactID, ConditionOptionIDs: []string{highID}}},
+		"summary":        {{ID: "summary", ConditionFieldID: impactID, ConditionOptionIDs: []string{highID}}, {ID: impactID}},
+		"chained":        {{ID: "summary"}, {ID: impactID, ConditionFieldID: reasonID, ConditionOptionIDs: []string{highID}}, {ID: reasonID, ConditionFieldID: impactID, ConditionOptionIDs: []string{highID}}},
+	} {
+		if err := h.Commands.SetServiceRequestTypeFields(ctx, adminID, workspaceID, serviceDeskID, requestTypeID, attempt); err == nil {
+			t.Fatalf("%s condition was accepted", name)
+		}
+	}
+	saved, err := st.ServiceRequestTypeFields(ctx, workspaceID, serviceDeskID, requestTypeID)
+	if err != nil || len(saved) != 4 || saved[3].ID != reasonID || saved[3].ConditionFieldID != impactID || !slices.Equal(saved[3].ConditionOptionIDs, []string{highID}) {
+		t.Fatalf("saved conditional form = %+v, %v", saved, err)
+	}
+	answer := func(impact, reason string) string {
+		extra := ""
+		if reason != "" {
+			extra = `,"` + reasonID + `":"` + reason + `"`
+		}
+		return `{"serviceDeskId":"` + serviceDeskID + `","requestTypeId":"` + requestTypeID + `","requestFieldValues":{"summary":"Conditional request","` + impactID + `":` + impact + extra + `}}`
+	}
+	if refused := callAs(customerID, http.MethodPost, "/rest/servicedeskapi/request", answer(`{"id":"`+lowID+`"}`, "Outage"), http.StatusBadRequest); !strings.Contains(refused, reasonID) || !strings.Contains(refused, "not shown") {
+		t.Fatalf("answering a hidden conditional field = %s", refused)
+	}
+	for _, impact := range []string{`{"id":"` + highID + `"}`, `{"value":"High"}`, `"` + highID + `"`} {
+		if refused := callAs(customerID, http.MethodPost, "/rest/servicedeskapi/request", answer(impact, ""), http.StatusBadRequest); !strings.Contains(refused, reasonID) {
+			t.Fatalf("skipping a shown required field with impact %s = %s", impact, refused)
+		}
+	}
+	callAs(customerID, http.MethodPost, "/rest/servicedeskapi/request", answer(`{"id":"`+lowID+`"}`, ""), http.StatusCreated)
+	shown := object(callAs(customerID, http.MethodPost, "/rest/servicedeskapi/request", answer(`{"value":"High"}`, "Outage"), http.StatusCreated))
+	var reason string
+	if err = st.Pool.QueryRow(ctx, `SELECT fields->>$3 FROM issues WHERE workspace_id=$1 AND key=$2`, workspaceID, shown["issueKey"], reasonID).Scan(&reason); err != nil || reason != "Outage" {
+		t.Fatalf("shown conditional answer = %q, %v", reason, err)
+	}
+	if err = h.Commands.SetServiceRequestTypeFields(ctx, adminID, workspaceID, serviceDeskID, requestTypeID, form); err != nil {
+		t.Fatal(err)
+	}
+
 	// Request type searches leave out types in no group unless asked.
 	exec(`UPDATE service_request_types SET group_ids='{}' WHERE id=$1`, requestTypeID)
 	var requestTypeName string
