@@ -430,9 +430,8 @@ compensated by a logged issue deletion, so no orphaned ticket remains.
 
 The implemented operations are assessed as partial. JQL support follows the
 documented ZZIRA search subset, including array-aware label matching;
-Assets-backed portal pickers, participant notifications,
+Assets-backed portal pickers,
 approval workflow configuration, email delivery and notification preference administration, CSAT configuration,
-SLA goal distributions, complete public Assets object/schema/import API parity, SLA recalculation for requests that predate a new SLA,
-portal invitation email delivery, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
+SLA goal distributions, complete public Assets object/schema/import API parity, SLA recalculation for requests that predate a new SLA, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
 remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

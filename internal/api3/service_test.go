@@ -1256,12 +1256,30 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if !strings.Contains(listedParticipants.Body.String(), invitedCustomerID) {
 		t.Fatal(listedParticipants.Body.String())
 	}
+	// Participants hear about public updates to the request until they leave it.
+	participantUpdates := func() int {
+		t.Helper()
+		var count int
+		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND kind='service_comment'`, workspaceID, invitedCustomerID).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	beforeParticipantUpdate := participantUpdates()
+	call("POST", "/rest/servicedeskapi/request/"+issueKey+"/comment", `{"body":"We have a fix in review.","public":true}`, 201)
+	if participantUpdates() != beforeParticipantUpdate+1 {
+		t.Fatalf("participant update notifications = %d, want %d", participantUpdates(), beforeParticipantUpdate+1)
+	}
 	removedParticipants := callAs(customerID, "DELETE", "/rest/servicedeskapi/request/"+issueKey+"/participant", `{"accountIds":["`+invitedCustomerID+`"]}`, 200)
 	if strings.Contains(removedParticipants.Body.String(), invitedCustomerID) {
 		t.Fatal(removedParticipants.Body.String())
 	}
 	if _, err := st.ServiceRequest(ctx, workspaceID, invitedCustomerID, issueKey, false); err == nil {
 		t.Fatal("removed participant retained request access")
+	}
+	call("POST", "/rest/servicedeskapi/request/"+issueKey+"/comment", `{"body":"The fix is released.","public":true}`, 201)
+	if participantUpdates() != beforeParticipantUpdate+1 {
+		t.Fatal("a removed participant was still notified")
 	}
 	allRequests := call("GET", "/rest/servicedeskapi/request?requestOwnership=ALL_REQUESTS", "", 200)
 	if !strings.Contains(allRequests.Body.String(), issueKey) {
