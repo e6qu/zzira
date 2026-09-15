@@ -1,5 +1,13 @@
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
+import * as fs from 'fs';
+import * as path from 'path';
+
+function apiAuthHeader(): string {
+  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
+  const token = process.env.ZZIRA_API_TOKEN ?? tokens['demo@zzira.dev'];
+  return 'Basic ' + Buffer.from(`demo@zzira.dev:${token}`).toString('base64');
+}
 
 async function accessible(page: Page) {
   await page.addScriptTag({ content: axe.source });
@@ -89,3 +97,49 @@ test('people editing the same page keep each other\'s changes as they type', asy
   await expect(ana.getByRole('heading', { name: title, level: 1 })).toBeVisible();
   await expect(ana.locator('main')).toContainText('Draft: Plan. Approved. Next.');
 });
+
+test('people editing the same blog post keep each other\'s changes as they type', async ({ browser, request }) => {
+  test.setTimeout(120_000);
+  const demo = await browser.newPage();
+  await login(demo, 'demo@zzira.dev', 'demo1234');
+  const stamp = Date.now().toString(36).toUpperCase();
+  await demo.goto('/wiki');
+  await demo.locator('.wiki-create-space > summary').click();
+  await demo.getByLabel('Space name').fill(`News ${stamp}`);
+  await demo.getByLabel('Space key').fill(`N${stamp}`);
+  await demo.getByLabel('Description', { exact: true }).fill('Live blog journey');
+  await demo.getByRole('button', { name: 'Create space', exact: true }).click();
+  await expect(demo).toHaveURL(/\/wiki\/spaces\/\d+$/);
+  const spaceID = new URL(demo.url()).pathname.split('/').pop()!;
+  const created = await request.post('/wiki/api/v2/blogposts', {
+    headers: { Authorization: apiAuthHeader(), 'X-Atlassian-Token': 'no-check' },
+    data: { spaceId: spaceID, status: 'current', title: `Weekly ${stamp}`, body: { representation: 'storage', value: '<p>Notes.</p>' } },
+  });
+  expect(created.status(), await created.text()).toBe(200);
+  const postURL = `/wiki/spaces/${spaceID}/blogposts/${(await created.json()).id}`;
+
+  const ana = await browser.newPage();
+  await login(ana, 'ana@zzira.dev', 'ana12345');
+  await demo.goto(`${postURL}?edit=true`);
+  await ana.goto(`${postURL}?edit=true`);
+  const demoBody = demo.getByLabel('Content', { exact: true });
+  const anaBody = ana.getByLabel('Content', { exact: true });
+  await expect(demo.locator('[data-wiki-live-sync]')).toContainText('Live editing is on');
+  await expect(ana.locator('[data-wiki-live-sync]')).toContainText('Live editing is on');
+
+  // One writes inside the paragraph's start and the other before its end.
+  await demoBody.evaluate((field: HTMLTextAreaElement) => { field.focus(); field.setSelectionRange(3, 3); });
+  await anaBody.evaluate((field: HTMLTextAreaElement) => { field.focus(); field.setSelectionRange(field.value.length - 4, field.value.length - 4); });
+  await Promise.all([
+    demo.keyboard.type('Draft: ', { delay: 40 }),
+    ana.keyboard.type(' Approved.', { delay: 40 }),
+  ]);
+  await expect(demoBody).toHaveValue('<p>Draft: Notes. Approved.</p>', { timeout: 20_000 });
+  await expect(anaBody).toHaveValue('<p>Draft: Notes. Approved.</p>', { timeout: 20_000 });
+  await accessible(ana);
+
+  await demo.getByRole('button', { name: 'Save blog post', exact: true }).click();
+  await expect(demo).toHaveURL(new RegExp(`${postURL}$`));
+  await expect(demo.locator('main')).toContainText('Draft: Notes. Approved.');
+});
+

@@ -15,9 +15,8 @@ is editing. The answer is the content's live state:
   once. It is kept in an unlogged table because nothing in it needs to
   survive a restart.
 - **Editing together.** An editor is told when someone else is editing the
-  same content. On a published page their changes merge as they type (see
-  below); a blog post still relies on the optimistic version check, which
-  refuses a save made against an older version.
+  same content. On a published page or blog post their changes merge as they
+  type (see below).
 - **Updates.** The first report sets the version and comment count the open
   page started from.
   - A later, higher version tells a reader the content was updated, with a
@@ -31,8 +30,9 @@ without interrupting.
 
 ## Live editing
 
-Everyone editing a published page shares one live document, exchanged at
-`POST /wiki/spaces/{space}/pages/{page}/live` with
+Everyone editing a published page or blog post shares one live document,
+exchanged at `POST /wiki/spaces/{space}/pages/{page}/live` (or
+`…/blogposts/{blogpost}/live`) with
 `{"session":"…","revision":3,"changes":[{"position":12,"delete":0,"insert":"today"}]}`.
 
 - **Changes.** A change replaces `delete` UTF-16 code units at `position` of
@@ -45,10 +45,11 @@ Everyone editing a published page shares one live document, exchanged at
   top, so an insertion at the same place goes after the one already there and
   text someone else inserted is never deleted. An editor from another session,
   or too far behind the 2,000 changes kept, gets the whole `body` instead.
-- **Drafts.** Every merged text that is valid storage becomes the page's
+- **Drafts.** Every merged text that is valid storage becomes the content's
   shared draft, so reopening the editor or publishing keeps it; text mid-way
-  through markup is shared but not drafted.
-- **Sessions.** Publishing a new version restarts the session from the page
+  through markup is shared but not drafted. Deleting the content ends its
+  live document.
+- **Sessions.** Publishing a new version restarts the session from the content
   (a new `session` at revision 0), and discarding the draft closes it; editors
   still open load the new text and carry their unsent edits over. The editor
   keeps its version field on the session's `version`, so publishing after
@@ -59,5 +60,6 @@ Everyone editing a published page shares one live document, exchanged at
   Input methods finish composing before anything is merged. A status line says
   live editing is on, or that it is reconnecting and nothing typed is lost.
 
-Only people who can edit the page may join; anyone else is 403 or 404.
+Only people who can edit the page or blog post may join; anyone else is 403
+or 404.
 
