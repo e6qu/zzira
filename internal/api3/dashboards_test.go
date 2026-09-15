@@ -283,6 +283,26 @@ func TestDashboardLifecyclePrivacyAndGadgets(t *testing.T) {
 			t.Fatalf("%s calendar versions = %v", viewer, names)
 		}
 	}
+	// The bubble chart counts the reporter, assignee and commenters as
+	// participants, and votes, for the work each viewer can see.
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "limit": 10, "bubbleAxis": "sideways"}, 400)
+	call(member, "PUT", prop+"/zzira.config", map[string]any{"jql": "project = DG", "limit": 10, "bubbleAxis": "votes"}, 200)
+	for viewer, want := range map[string]int{member: 2, actor: 3} {
+		result, err := st.DashboardGadgetResults(ctx, ws, viewer, id, models.DashboardGadget{ID: gid, ModuleKey: "com.zzira:bubble-chart"})
+		if err != nil || len(result.Bubbles) != want || result.Config.BubbleAxis != "votes" {
+			t.Fatalf("%s bubbles = %+v, %v", viewer, result, err)
+		}
+		votes := 0
+		for _, bubble := range result.Bubbles {
+			votes += bubble.Votes
+			if bubble.Participants != 2 || bubble.UpdatedDays != 0 {
+				t.Fatalf("%s bubble = %+v", viewer, bubble)
+			}
+		}
+		if votes != 1 {
+			t.Fatalf("%s bubble votes = %+v", viewer, result.Bubbles)
+		}
+	}
 	var dgProjectID string
 	if err := st.Pool.QueryRow(ctx, `SELECT id FROM projects WHERE workspace_id=$1 AND key='DG'`, ws).Scan(&dgProjectID); err != nil {
 		t.Fatal(err)

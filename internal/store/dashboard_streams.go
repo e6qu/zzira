@@ -200,3 +200,33 @@ func (s *Store) RoadMap(ctx context.Context, workspaceID, userID, projectID stri
 	}
 	return out, nil
 }
+
+// BubbleIssue is work on the bubble chart gadget: how many days ago it was
+// last updated, how many people took part in it and how many voted for it.
+type BubbleIssue struct {
+	Key, Summary        string
+	UpdatedDays         int
+	Participants, Votes int
+}
+
+// bubbleChart reads the most recently updated work a gadget's query matches
+// that someone can see. Participants are the reporter, the assignee and
+// everyone who commented, as in Jira.
+func (s *Store) bubbleChart(ctx context.Context, where string, args []any, limit int) ([]BubbleIssue, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT i.key, i.summary, GREATEST(0, floor(EXTRACT(EPOCH FROM now() - i.updated_at) / 86400))::int,
+		       (SELECT count(DISTINCT person) FROM (SELECT i.reporter_id AS person UNION SELECT i.assignee_id UNION SELECT c.author_id FROM comments c WHERE c.issue_id=i.id) people WHERE person IS NOT NULL),
+		       (SELECT count(*) FROM issue_votes v WHERE v.issue_id=i.id) `+searchJoin+` WHERE `+where+` ORDER BY i.updated_at DESC, i.key LIMIT `+strconv.Itoa(limit), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []BubbleIssue{}
+	for rows.Next() {
+		var bubble BubbleIssue
+		if err := rows.Scan(&bubble.Key, &bubble.Summary, &bubble.UpdatedDays, &bubble.Participants, &bubble.Votes); err != nil {
+			return nil, err
+		}
+		out = append(out, bubble)
+	}
+	return out, rows.Err()
+}

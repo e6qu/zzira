@@ -56,6 +56,7 @@ The built-in catalog contains:
 - `com.zzira:activity-stream`
 - `com.zzira:calendar`
 - `com.zzira:road-map`
+- `com.zzira:bubble-chart`
 
 Gadgets accept direct JQL or a saved filter through the reserved
 `zzira.config` item property. Lists return up to 50 results. Statistics, pie
@@ -76,7 +77,12 @@ the viewer can see; a comment restricted to a group or project role appears
 only to its members. The calendar shows the current month, in weeks starting on
 Monday, with the matching work due each day (up to 200, with a count of the
 rest) and the release dates of unarchived versions in those work items'
-projects.
+projects. The bubble chart plots the most recently updated matching work, up to
+the result limit, by days since its last update across and, per its
+`bubbleAxis`, participants or votes up, sizing each bubble by the other and
+shading it darker the more recently it changed. Participants are the reporter,
+the assignee and everyone who commented, as in Jira. A table lists the same
+values.
 Report gadgets draw the matching report instead of a query. Created vs.
 resolved and Resolution time keep a `projectKey`, a `days` window of 7, 30 or
 90 and, for created vs. resolved, `cumulative` running totals; Velocity and

@@ -131,6 +131,7 @@ func GadgetCatalog() []GadgetDefinition {
 		{"com.zzira:activity-stream", "Activity stream", "Recent creations, changes and comments on work from a filter or JQL.", ""},
 		{"com.zzira:calendar", "Calendar", "This month's due work and release dates from a filter or JQL.", ""},
 		{"com.zzira:road-map", "Road map", "A project's unreleased versions due soon, with their progress.", ""},
+		{"com.zzira:bubble-chart", "Bubble chart", "Work from a filter or JQL by how recently it changed, its participants and its votes.", ""},
 	}
 }
 
@@ -204,7 +205,11 @@ func ProjectReportGadget(moduleKey string) bool {
 
 // ChartGadget reports whether a gadget counts query results by a grouping.
 func ChartGadget(moduleKey string) bool {
-	return !ListGadget(moduleKey) && !ReportGadget(moduleKey) && moduleKey != "com.zzira:activity-stream" && moduleKey != "com.zzira:calendar"
+	switch moduleKey {
+	case "com.zzira:activity-stream", "com.zzira:calendar", "com.zzira:bubble-chart":
+		return false
+	}
+	return !ListGadget(moduleKey) && !ReportGadget(moduleKey)
 }
 
 // ChartGadget reports whether the gadget counts work by a grouping.
@@ -252,6 +257,9 @@ type GadgetConfig struct {
 	// DateField is the date the time since chart counts: created, updated or
 	// resolved.
 	DateField string `json:"dateField,omitempty"`
+	// BubbleAxis is what the bubble chart's vertical axis counts, participants
+	// or votes; bubbles are sized by the other.
+	BubbleAxis string `json:"bubbleAxis,omitempty"`
 }
 
 // GroupLabel names the chart grouping for people.

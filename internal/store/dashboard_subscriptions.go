@@ -235,6 +235,17 @@ func (r *DashboardSubscriptionRunner) gadgetSummary(ctx context.Context, ws, rec
 		}
 		latest := results.Activity[0]
 		return []string{fmt.Sprintf("%s: %d recent events, the latest by %s on %s  %s/browse/%s", title, len(results.Activity), latest.Actor, latest.IssueKey, base, latest.IssueKey)}
+	case "com.zzira:bubble-chart":
+		if len(results.Bubbles) == 0 {
+			return []string{title + ": no work items match this query."}
+		}
+		busiest := results.Bubbles[0]
+		for _, bubble := range results.Bubbles {
+			if bubble.Participants > busiest.Participants {
+				busiest = bubble
+			}
+		}
+		return []string{fmt.Sprintf("%s: %d work items, the most participants (%d) on %s  %s/browse/%s", title, len(results.Bubbles), busiest.Participants, busiest.Key, base, busiest.Key)}
 	case "com.zzira:calendar":
 		if results.Calendar == nil {
 			return []string{title}

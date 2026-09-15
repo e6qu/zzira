@@ -256,7 +256,7 @@ test('chart gadgets count work across two groupings, by weight and for each view
   expect((await page.request.delete(`/rest/api/3/dashboard/${id}`, { headers: auth })).status()).toBe(204);
 });
 
-test('activity stream, calendar and road map gadgets follow recent work, due dates and releases', async ({ page }) => {
+test('activity stream, calendar, road map and bubble chart gadgets follow recent work, due dates, releases and participation', async ({ page }) => {
   await login(page);
   const auth = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
   const stamp = Date.now();
@@ -282,6 +282,7 @@ test('activity stream, calendar and road map gadgets follow recent work, due dat
   await gadget('com.zzira:activity-stream', 0, { jql: `key = ${key}`, limit: 5 });
   await gadget('com.zzira:calendar', 1, { jql: `key = ${key}` });
   await gadget('com.zzira:road-map', 1, { projectKey: 'ZZ', days: 30 });
+  await gadget('com.zzira:bubble-chart', 0, { jql: `key = ${key}`, limit: 10 });
 
   await page.goto(`/dashboards/${id}`);
   const activity = page.getByRole('region', { name: 'Activity stream', exact: true });
@@ -296,7 +297,16 @@ test('activity stream, calendar and road map gadgets follow recent work, due dat
   const release = roadMap.getByRole('listitem').filter({ hasText: `Stream release ${stamp}` });
   await expect(release).toContainText('0 of 1 work items done');
   await expect(release.getByRole('progressbar', { name: `Stream release ${stamp} work done`, exact: true })).toBeVisible();
+  // The demo user reported and commented, so the work has one participant.
+  const bubbles = page.locator('.dashboard-gadget').filter({ has: page.getByRole('heading', { name: 'Bubble chart', exact: true }) });
+  await expect(bubbles.getByRole('img', { name: '1 work items by days since last update and Participants, sized by Votes', exact: true })).toBeVisible();
+  await bubbles.getByText('View work items').click();
+  await expect(bubbles.getByRole('row', { name: new RegExp(`^${key}`) }).getByRole('cell')).toHaveText(['0', '1', '0']);
   await accessible(page);
+  await page.getByRole('link', { name: 'Configure Bubble chart', exact: true }).click();
+  await page.getByLabel('Vertical axis', { exact: true }).selectOption('votes');
+  await page.getByRole('button', { name: 'Save gadget query' }).click();
+  await expect(bubbles.getByRole('img', { name: '1 work items by days since last update and Votes, sized by Participants', exact: true })).toBeVisible();
 
   await page.getByRole('link', { name: 'Configure Activity stream', exact: true }).click();
   await expect(page.getByLabel('Maximum events', { exact: true })).toHaveValue('5');

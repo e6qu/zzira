@@ -28,6 +28,8 @@ type GadgetResults struct {
 	// calendar's month.
 	Activity []ActivityEntry
 	Calendar *GadgetCalendar
+	// Bubbles is the bubble chart's work.
+	Bubbles []BubbleIssue
 }
 
 func (s *Store) DashboardGadgetResults(ctx context.Context, ws, user, id string, g models.DashboardGadget) (GadgetResults, error) {
@@ -110,6 +112,9 @@ func (s *Store) DashboardGadgetResults(ctx context.Context, ws, user, id string,
 		return out, err
 	case "com.zzira:calendar":
 		out.Calendar, err = s.gadgetCalendar(ctx, where, args, time.Now())
+		return out, err
+	case "com.zzira:bubble-chart":
+		out.Bubbles, err = s.bubbleChart(ctx, where, args, out.Config.Limit)
 		return out, err
 	}
 	// The total counts each work item once, even when it carries several labels.

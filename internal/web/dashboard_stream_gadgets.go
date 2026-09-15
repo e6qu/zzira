@@ -1,6 +1,7 @@
 package web
 
 import (
+	"math"
 	"time"
 
 	"github.com/e6qu/zzira/internal/store"
@@ -87,6 +88,63 @@ func newRoadMapView(versions []store.RoadMapVersion, layout string) *roadMapView
 	for _, version := range versions {
 		row := roadMapRow{Name: version.Version.Name, ReleaseLabel: displayDay(version.Version.ReleaseDate, layout), Overdue: version.Overdue, Done: version.Progress.Done, Total: version.Total, Maximum: max(version.Total, 1)}
 		view.Rows = append(view.Rows, row)
+	}
+	return view
+}
+
+// bubblePoint is work drawn on the bubble chart.
+type bubblePoint struct {
+	store.BubbleIssue
+	X, Y, R float64
+	// Shade darkens work updated more recently, from 1 to 4.
+	Shade int
+}
+
+// bubbleView plots work by days since its last update across, participants
+// or votes up, and the other as the bubble's size.
+type bubbleView struct {
+	Width, Height, Left, Right, Top, Bottom float64
+	Points                                  []bubblePoint
+	VerticalName, SizeName                  string
+	MaxDays, MaxVertical                    int
+}
+
+func newBubbleView(bubbles []store.BubbleIssue, axis string) *bubbleView {
+	view := &bubbleView{Width: 640, Height: 260, Left: 40, Right: 610, Top: 24, Bottom: 230, VerticalName: "Participants", SizeName: "Votes"}
+	if axis == "votes" {
+		view.VerticalName, view.SizeName = "Votes", "Participants"
+	}
+	measures := func(bubble store.BubbleIssue) (int, int) {
+		if axis == "votes" {
+			return bubble.Votes, bubble.Participants
+		}
+		return bubble.Participants, bubble.Votes
+	}
+	maxSize := 0
+	for _, bubble := range bubbles {
+		vertical, size := measures(bubble)
+		view.MaxDays, view.MaxVertical, maxSize = max(view.MaxDays, bubble.UpdatedDays), max(view.MaxVertical, vertical), max(maxSize, size)
+	}
+	span := func(value, maximum int, from, to float64) float64 {
+		if maximum == 0 {
+			return from
+		}
+		return math.Round((from+(to-from)*float64(value)/float64(maximum))*10) / 10
+	}
+	for _, bubble := range bubbles {
+		vertical, size := measures(bubble)
+		point := bubblePoint{BubbleIssue: bubble, X: span(bubble.UpdatedDays, view.MaxDays, view.Left, view.Right), Y: span(vertical, view.MaxVertical, view.Bottom, view.Top), R: span(size, maxSize, 6, 20)}
+		switch {
+		case bubble.UpdatedDays <= 1:
+			point.Shade = 4
+		case bubble.UpdatedDays <= 7:
+			point.Shade = 3
+		case bubble.UpdatedDays <= 30:
+			point.Shade = 2
+		default:
+			point.Shade = 1
+		}
+		view.Points = append(view.Points, point)
 	}
 	return view
 }

@@ -36,6 +36,7 @@ type dashboardTile struct {
 	// Activity and Calendar are the activity stream and calendar for people.
 	Activity []activityView
 	Calendar *calendarView
+	Bubbles  *bubbleView
 	Results  store.GadgetResults
 	Slices   []dashboardSlice
 	Report   *gadgetReport
@@ -422,7 +423,7 @@ func gadgetConfigForm(r *http.Request) (models.GadgetConfig, error) {
 	c := models.GadgetConfig{
 		JQL: r.PostFormValue("jql"), FilterID: r.PostFormValue("filterId"), GroupBy: r.PostFormValue("groupBy"), YGroupBy: r.PostFormValue("yGroupBy"),
 		ProjectKey: strings.TrimSpace(r.PostFormValue("projectKey")), BoardID: strings.TrimSpace(r.PostFormValue("boardId")),
-		Cumulative: r.PostFormValue("cumulative") == "true", DateField: r.PostFormValue("dateField"),
+		Cumulative: r.PostFormValue("cumulative") == "true", DateField: r.PostFormValue("dateField"), BubbleAxis: r.PostFormValue("bubbleAxis"),
 	}
 	for field, target := range map[string]*int{"limit": &c.Limit, "days": &c.Days} {
 		if value := r.PostFormValue(field); value != "" {
@@ -596,6 +597,8 @@ func (h *Handler) dashboardTiles(r *http.Request, ws, userID, id string, gadgets
 				tile.Report, tile.Error = h.gadgetReport(r, ws, userID, g.ModuleKey, tile.Results.Config)
 			} else if tile.Results.Calendar != nil {
 				tile.Calendar = newCalendarView(tile.Results.Calendar, time.Now())
+			} else if g.ModuleKey == "com.zzira:bubble-chart" {
+				tile.Bubbles = newBubbleView(tile.Results.Bubbles, tile.Results.Config.BubbleAxis)
 			} else if g.ModuleKey == "com.zzira:activity-stream" {
 				tile.Activity = newActivityViews(tile.Results.Activity, h.siteLook(r, ws).DateComplete)
 			} else {

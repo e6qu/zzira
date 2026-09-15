@@ -200,6 +200,12 @@ func NormalizeGadgetConfig(c *models.GadgetConfig) error {
 	if c.DateField == "" {
 		c.DateField = "created"
 	}
+	if c.BubbleAxis == "" {
+		c.BubbleAxis = "participants"
+	}
+	if c.BubbleAxis != "participants" && c.BubbleAxis != "votes" {
+		return fmt.Errorf("%w: the bubble chart counts participants or votes", ErrDashboardValidation)
+	}
 	if models.TimeSinceFieldName(c.DateField) == "" {
 		return fmt.Errorf("%w: choose the created, updated or resolved date", ErrDashboardValidation)
 	}

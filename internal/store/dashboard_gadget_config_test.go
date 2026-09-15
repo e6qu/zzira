@@ -93,7 +93,14 @@ func TestChartGadgetsGroupAndScopeWork(t *testing.T) {
 		}
 	}
 	// Streams and reports neither list nor count work by a grouping.
-	for _, key := range []string{"com.zzira:activity-stream", "com.zzira:calendar", "com.zzira:road-map", "com.zzira:filter-results", "com.zzira:velocity"} {
+	bubbles := models.GadgetConfig{}
+	if err := NormalizeGadgetConfig(&bubbles); err != nil || bubbles.BubbleAxis != "participants" {
+		t.Fatalf("default bubble axis = %+v, %v", bubbles, err)
+	}
+	if err := NormalizeGadgetConfig(&models.GadgetConfig{BubbleAxis: "age"}); !errors.Is(err, ErrDashboardValidation) {
+		t.Fatalf("unknown bubble axis error = %v", err)
+	}
+	for _, key := range []string{"com.zzira:activity-stream", "com.zzira:calendar", "com.zzira:road-map", "com.zzira:filter-results", "com.zzira:velocity", "com.zzira:bubble-chart"} {
 		if !catalog[key] || models.ChartGadget(key) {
 			t.Fatalf("%s is counted as a chart gadget", key)
 		}
