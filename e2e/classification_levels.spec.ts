@@ -10,6 +10,9 @@ async function login(page: Page) {
 }
 
 async function accessible(page: Page) {
+  // Axe counts controls under the sticky header as covered, so pages are
+  // checked from the top rather than wherever an anchor scrolled them.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => (await (window as any).axe.run(document, {
     runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] },
