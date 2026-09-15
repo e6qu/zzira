@@ -105,7 +105,8 @@ issue ID or key is accepted and in the bulk JQL match resource; internal
 
 ZZIRA exposes the pinned GET/POST reference-data resources and returns only
 fields, operators, and functions supported by its compiler. Each custom field
-carries its `cf[N]` id and the operators and value type of its field type. Its
+carries its `cf[N]` id, its field type's value type, and the operators its
+searcher allows (its field type's operators when it has no searcher). Its
 `value` is the field name while that name is unique, and `cf[N]` otherwise.
 The POST resource keeps only custom fields whose contexts apply to the given
 `projectIds`, ignoring invalid ids and always listing system fields. With

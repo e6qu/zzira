@@ -312,6 +312,17 @@ func jqlCustomFieldReference(field *models.CustomField) jqlFieldReference {
 	default:
 		reference.Types, reference.Operators, reference.Orderable = []string{"TEXT"}, []string{"~", "!~", "is", "is not"}, "false"
 	}
+	// A searcher narrows the operators to those it supports.
+	if operators := models.SearcherOperators(field.SearcherKey); operators != nil {
+		spelled := map[string]string{"notin": "not in", "empty": "is", "notempty": "is not"}
+		reference.Operators = make([]string, 0, len(operators))
+		for _, operator := range operators {
+			if name, ok := spelled[operator]; ok {
+				operator = name
+			}
+			reference.Operators = append(reference.Operators, operator)
+		}
+	}
 	return reference
 }
 

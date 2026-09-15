@@ -885,6 +885,8 @@ type FieldResolver struct {
 	// EntityProperties are the indexed issue property values apps declare, by
 	// their JQL name: issue.property[key].path, or the app's alias.
 	EntityProperties map[string]EntityPropertyField
+	// FieldOperators are the operators a custom field's searcher allows.
+	FieldOperators map[string][]string
 }
 
 // EntityPropertyField is an indexed value inside an issue property: the value
@@ -977,6 +979,16 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 		res.DateFields = map[string]bool{}
 	}
 	for _, f := range fields {
+		if operators := models.SearcherOperators(f.SearcherKey); operators != nil {
+			if res.FieldOperators == nil {
+				res.FieldOperators = map[string][]string{}
+			}
+			res.FieldOperators[f.ID] = operators
+			res.FieldOperators[strings.ToLower(f.Name)] = operators
+			if f.AppKey != "" {
+				res.FieldOperators[strings.ToLower(f.AppKey+"__"+f.AppModuleKey)] = operators
+			}
+		}
 		col := `i.fields->>'` + f.ID + `'`
 		if f.Type == models.CustomFieldNumber {
 			col = `NULLIF(i.fields->>'` + f.ID + `','')::numeric`
@@ -1246,6 +1258,11 @@ func (c *compiler) clause(cl Clause) string {
 			}
 		}
 		return "(" + strings.Join(parts, joiner) + ")"
+	}
+	// A custom field's searcher decides which operators may search it.
+	if allowed, ok := c.res.FieldOperators[cl.Field]; ok && !slices.Contains(allowed, cl.Op) {
+		c.err = &SyntaxError{0, "operator " + cl.Op + " is not supported by " + cl.Field}
+		return ""
 	}
 	if containsJQLFunction(cl.Values, "breached", "completed", "everBreached", "paused", "remaining", "running", "withinCalendarHours") {
 		return c.slaClause(cl)

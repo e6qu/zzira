@@ -150,7 +150,11 @@ func (s *Store) UpdateCustomField(ctx context.Context, workspaceID, fieldID stri
 		field.Description = *description
 	}
 	if searcherKey != nil {
-		field.SearcherKey = *searcherKey
+		key := models.NormalizeSearcherKey(*searcherKey)
+		if key != "" && !models.ValidCustomFieldSearcher(field.Type, key) {
+			return nil, fmt.Errorf("%w: the searcher %q is not valid for this field's type", ErrFieldValidation, *searcherKey)
+		}
+		field.SearcherKey = key
 	}
 	if _, err = s.Pool.Exec(ctx, `UPDATE custom_fields SET name=$2,description=$3,searcher_key=$4 WHERE id=$1`,
 		fieldID, field.Name, field.Description, field.SearcherKey); err != nil {

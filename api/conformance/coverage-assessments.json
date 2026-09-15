@@ -8411,9 +8411,11 @@
         "internal/api3/projects_test.go",
         "internal/api3/api3_jql_test.go",
         "internal/api3/api3_jql_precomputations_test.go",
-        "docs/JQL.md"
+        "docs/JQL.md",
+        "internal/api3/field_searchers_test.go",
+        "internal/models/searchers.go"
       ],
-      "notes": "Returns reserved words, supported system fields and functions, active installed-app functions and every custom field with its cf[N] id, field-type operators and value type, and whether values are suggested; a custom field's value is its name while that name is unique and cf[N] otherwise. Issue property values apps index appear as issue.property[key].path fields and aliases with their types' operators."
+      "notes": "Returns reserved words, supported system fields and functions, active installed-app functions and every custom field with its cf[N] id, field-type operators and value type, and whether values are suggested; a custom field's value is its name while that name is unique and cf[N] otherwise. Issue property values apps index appear as issue.property[key].path fields and aliases with their types' operators. A custom field's operators follow its searcher."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/jql/autocompletedata/suggestions",
@@ -9650,9 +9652,11 @@
         "internal/api3/custom_field_types_test.go",
         "internal/api3/custom_field_pickers_test.go",
         "internal/api3/fields_test.go",
-        "docs/ISSUE_FIELDS.md"
+        "docs/ISSUE_FIELDS.md",
+        "internal/api3/field_searchers_test.go",
+        "internal/models/searchers.go"
       ],
-      "notes": "Creates custom fields by short name or Jira type key for text, URL, number, date and time, date, select, multi-select, cascading select, user, multi-user, group, multi-group, labels, project, version and multi-version, keeping the type key; other types are refused."
+      "notes": "Creates custom fields by short name or Jira type key for text, URL, number, date and time, date, select, multi-select, cascading select, user, multi-user, group, multi-group, labels, project, version and multi-version, keeping the type key; other types are refused. A searcherKey must suit the field's type and is stored with the field."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/field/{fieldId}/context",
@@ -10639,9 +10643,11 @@
       "status": "partial",
       "evidence": [
         "internal/api3/fields_test.go",
-        "docs/ISSUE_FIELDS.md"
+        "docs/ISSUE_FIELDS.md",
+        "internal/api3/field_searchers_test.go",
+        "internal/models/searchers.go"
       ],
-      "notes": "Renaming and re-describing a field is tested, including the refused empty name and the 404 for an unknown field; the searcher key is stored but does not yet change how a field is searched."
+      "notes": "Renaming and re-describing a field is tested, including the refused empty name and the 404 for an unknown field. The searcher key must be one Jira allows for the field's type (400 otherwise) and decides the JQL operators that search the field and that autocomplete offers: exact number and exact text match values, while number, date and version ranges also compare."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/field/{fieldId}/context/defaultValue",
