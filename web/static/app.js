@@ -1015,6 +1015,7 @@
         if (t) out.push(t);
       } else if (n.nodeType === Node.ELEMENT_NODE) {
         if (n.tagName === 'BR') { out.push({ type: 'hardBreak' }); return; }
+        if (n.dataset.mentionId) { out.push({ type: 'mention', attrs: { id: n.dataset.mentionId, text: n.textContent } }); return; }
         serializeInline(n.childNodes, marksFromNode(n, marks), out);
       }
     });
@@ -1057,20 +1058,27 @@
     return { type: 'paragraph', content };
   }
 
+  // Blocks are the editor's direct children that are block elements; runs of
+  // text and inline elements between them (typed text, bold, a mention) form
+  // one paragraph. Chromium types straight into the editor as bare text nodes.
+  const blockTags = /^(P|DIV|UL|OL|H[1-6]|PRE|BLOCKQUOTE)$/;
   function domToADF(root) {
     const blocks = [];
+    let inline = [];
+    const flush = () => {
+      if (inline.some((node) => node.nodeType === Node.ELEMENT_NODE || node.textContent.trim())) {
+        const content = [];
+        serializeInline(inline, [], content);
+        blocks.push({ type: 'paragraph', content });
+      }
+      inline = [];
+    };
     root.childNodes.forEach((node) => {
-      // Plain typing in a contenteditable creates a direct text node in
-      // Chromium; querySelectorAll(':scope > *') misses it and used to turn
-      // a real comment into an empty ADF paragraph.
-      if (node.nodeType === Node.TEXT_NODE) {
-        if (node.textContent.trim()) {
-          const content = [];
-          serializeInline([node], [], content);
-          blocks.push({ type: 'paragraph', content });
-        }
+      if (node.nodeType === Node.TEXT_NODE || (node.nodeType === Node.ELEMENT_NODE && !blockTags.test(node.tagName))) {
+        inline.push(node);
         return;
       }
+      flush();
       if (node.nodeType !== Node.ELEMENT_NODE) return;
       const el = node;
       if (el.tagName === 'DIV' && !el.querySelector('p,div,ul,ol,h1,h2,h3,h4,h5,h6,pre,blockquote')) {
@@ -1082,8 +1090,97 @@
         blocks.push(serializeBlock(el));
       }
     });
+    flush();
     if (!blocks.length) blocks.push({ type: 'paragraph' });
     return { type: 'doc', version: 1, content: blocks };
+  }
+
+  // Typing @ in a comment offers the site's people; choosing one inserts a
+  // mention, which notifies that person when the comment is saved.
+  const mentionQuery = /(^|\s)@([^\s@]{0,40})$/;
+  function attachMentionPicker(editor, people) {
+    const list = document.createElement('ul');
+    list.id = `${editor.id}-mentions`;
+    list.className = 'issue-mention-list';
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-label', 'People to mention');
+    list.hidden = true;
+    editor.after(list);
+    editor.setAttribute('aria-autocomplete', 'list');
+    editor.setAttribute('aria-controls', list.id);
+    let matches = [];
+    let active = 0;
+    const close = () => {
+      list.hidden = true;
+      editor.removeAttribute('aria-activedescendant');
+    };
+    const caretQuery = () => {
+      const selection = document.getSelection();
+      if (!selection.rangeCount || !selection.isCollapsed || !editor.contains(selection.anchorNode) || selection.anchorNode.nodeType !== Node.TEXT_NODE) return null;
+      const match = mentionQuery.exec(selection.anchorNode.textContent.slice(0, selection.anchorOffset));
+      return match ? match[2] : null;
+    };
+    const highlight = (index) => {
+      active = index;
+      [...list.children].forEach((option, i) => option.setAttribute('aria-selected', String(i === index)));
+      editor.setAttribute('aria-activedescendant', `${list.id}-${index}`);
+    };
+    const choose = (index) => {
+      const person = matches[index];
+      const selection = document.getSelection();
+      if (!person || !selection.rangeCount) return;
+      const text = selection.anchorNode;
+      const caret = selection.anchorOffset;
+      const range = document.createRange();
+      range.setStart(text, text.textContent.lastIndexOf('@', caret - 1));
+      range.setEnd(text, caret);
+      range.deleteContents();
+      const mention = document.createElement('span');
+      mention.className = 'mention';
+      mention.contentEditable = 'false';
+      mention.dataset.mentionId = person.id;
+      mention.textContent = `@${person.name}`;
+      const space = document.createTextNode('\u00a0');
+      range.insertNode(space);
+      range.insertNode(mention);
+      selection.collapse(space, 1);
+      close();
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    editor.addEventListener('input', () => {
+      const query = caretQuery();
+      if (query === null) { close(); return; }
+      const needle = query.toLowerCase();
+      matches = people.filter((person) => person.name.toLowerCase().includes(needle)).slice(0, 8);
+      if (!matches.length) { close(); return; }
+      list.replaceChildren(...matches.map((person, index) => {
+        const option = document.createElement('li');
+        option.id = `${list.id}-${index}`;
+        option.setAttribute('role', 'option');
+        option.textContent = person.name;
+        option.addEventListener('mousedown', (event) => {
+          event.preventDefault();
+          choose(index);
+        });
+        return option;
+      }));
+      list.hidden = false;
+      highlight(0);
+    });
+    editor.addEventListener('blur', close);
+    editor.addEventListener('keydown', (event) => {
+      if (list.hidden) return;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        highlight((active + (event.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length);
+      } else if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        choose(active);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        close();
+      }
+    });
   }
 
   function initRichEditors(scope) {
@@ -1102,6 +1199,8 @@
           });
         });
       }
+      const people = form && form.querySelector('template[data-mention-people]');
+      if (people) attachMentionPicker(editor, [...people.content.querySelectorAll('option')].map((option) => ({ id: option.value, name: option.textContent })));
       // paste normalization: plain text only
       editor.addEventListener('paste', (e) => {
         e.preventDefault();

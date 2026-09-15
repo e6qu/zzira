@@ -360,9 +360,9 @@ body.nav-collapsed .project-switcher-panel a { padding-inline: 9px; }
 .wiki-live { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 8px 0; padding: 8px 12px; border: 1px solid var(--ds-border); border-radius: var(--ds-radius); background: var(--ds-surface-sunken); color: var(--ds-text); }
 .wiki-live-notice:empty, .wiki-live-people:empty { display: none; }
 .wiki-live-notice a { font-weight: 600; }
-.wiki-mention-list { list-style: none; margin: 4px 0 0; padding: 4px; max-width: min(320px, 100%); border: 1px solid var(--ds-border); border-radius: var(--ds-radius); background: var(--ds-surface-raised); box-shadow: var(--ds-shadow); }
-.wiki-mention-list [role=option] { padding: 6px 10px; border-radius: var(--ds-radius); cursor: pointer; color: var(--ds-text); }
-.wiki-mention-list [aria-selected=true] { background: var(--ds-primary-soft); }
+.wiki-mention-list, .issue-mention-list { list-style: none; margin: 4px 0 0; padding: 4px; max-width: min(320px, 100%); border: 1px solid var(--ds-border); border-radius: var(--ds-radius); background: var(--ds-surface-raised); box-shadow: var(--ds-shadow); }
+.wiki-mention-list [role=option], .issue-mention-list [role=option] { padding: 6px 10px; border-radius: var(--ds-radius); cursor: pointer; color: var(--ds-text); }
+.wiki-mention-list [aria-selected=true], .issue-mention-list [aria-selected=true] { background: var(--ds-primary-soft); }
 .wiki-document { min-height: 200px; line-height: 1.7; overflow-wrap: anywhere; }
 .wiki-document pre, .wiki-editor pre { white-space: pre-wrap; }
 .wiki-document table, .wiki-editor table { border-collapse: collapse; max-width: 100%; }

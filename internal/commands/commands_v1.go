@@ -214,6 +214,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	if err = s.enforceCustomFieldContexts(ctx, in.WorkspaceID, issue.ProjectID, issue.IssueType.ID, in.Fields); err != nil {
 		return nil, nil, err
 	}
+	previousDescription := issue.Description
 	issue, action, err := s.Store.UpdateIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, update)
 	if err != nil {
 		return nil, nil, err
@@ -236,6 +237,11 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	if !in.SuppressNotifications {
 		if err := s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, eventID, notificationKind, notificationVerb); err != nil {
 			return issue, action, err
+		}
+		if in.Description != nil {
+			if err := s.deliverMentions(ctx, in.WorkspaceID, in.ActorID, issue.ID, action, previousDescription, issue.Description, nil); err != nil {
+				return issue, action, err
+			}
 		}
 	}
 	if in.StatusID != nil {
@@ -883,6 +889,9 @@ func (s *Service) AddComment(ctx context.Context, in AddCommentInput) (*models.C
 		return nil, nil, err
 	}
 	if err = s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, 6, "issue_commented", "commented on"); err != nil {
+		return comment, action, err
+	}
+	if err = s.deliverMentions(ctx, in.WorkspaceID, in.ActorID, issue.ID, action, nil, comment.Body, comment); err != nil {
 		return comment, action, err
 	}
 	if err = s.Store.AutowatchIssue(ctx, in.WorkspaceID, in.ActorID, issue.ID); err != nil {

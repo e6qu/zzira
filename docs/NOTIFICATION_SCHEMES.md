@@ -81,9 +81,18 @@ through `/rest/api/3/mypreferences`. *My changes* (`user.notify.own.changes`,
 default "Do not notify me") decides whether implicit recipients such as
 reporter, assignee and watchers include the person who made the change.
 *Autowatch* (`user.autowatch.disabled`, default enabled) makes a member a
-watcher of work items they create or comment on. The assessment remains
-partial while mentions, notification diagnostics and rich email rendering
-remain. The `user`, `group`, `projectRole`, `field`
+watcher of work items they create or comment on, unless the site turns
+watching off.
+
+Mentioning someone tells them, whatever the notification scheme says. A
+description or comment whose ADF names a person in a `mention` node notifies
+that person the first time the mention appears, with an inbox item and an
+email; keeping a mention while editing tells nobody again, and mentioning
+yourself notifies nobody. The person must be an active member who can browse
+the work item at its security level and, for a restricted comment, belong to
+its group or project role. Typing @ in the issue page's comment editor offers
+the project's people and inserts the mention. The assessment remains partial
+while notification diagnostics and rich email rendering remain. The `user`, `group`, `projectRole`, `field`
 and `all` expansions add each recipient's details. Jira's deprecated
 direct email-address recipient is stored and delivered, but it does not create
 an in-app identity. Exact self links on every paged response and all Jira error

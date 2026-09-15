@@ -353,8 +353,13 @@ func userPreferenceEnabled(ctx context.Context, q rowQuerier, workspaceID, accou
 }
 
 // AutowatchIssue adds a member as a watcher of work they created or commented
-// on, unless they turned Jira's autowatch preference off.
+// on, unless the site turned watching off or they turned Jira's autowatch
+// preference off.
 func (s *Store) AutowatchIssue(ctx context.Context, workspaceID, accountID, issueID string) error {
+	configuration, err := s.JiraSiteConfiguration(ctx, workspaceID)
+	if err != nil || !configuration.WatchingEnabled {
+		return err
+	}
 	disabled, err := s.UserPreferenceEnabled(ctx, workspaceID, accountID, UserPreferenceAutowatchDisabled, false)
 	if err != nil || disabled {
 		return err

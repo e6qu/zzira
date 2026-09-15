@@ -271,6 +271,9 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if err = s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, eventID, notificationKind, "created"); err != nil {
 		return issue, action, err
 	}
+	if err = s.deliverMentions(ctx, in.WorkspaceID, in.ActorID, issue.ID, action, nil, issue.Description, nil); err != nil {
+		return issue, action, err
+	}
 	if err = s.Store.AutowatchIssue(ctx, in.WorkspaceID, in.ActorID, issue.ID); err != nil {
 		return issue, action, err
 	}
@@ -281,6 +284,15 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 		}
 	}
 	return issue, action, nil
+}
+
+// deliverMentions notifies the people a description or comment newly
+// mentions.
+func (s *Service) deliverMentions(ctx context.Context, workspaceID, actorID, issueID string, action *models.Action, previous, document json.RawMessage, comment *models.Comment) error {
+	if action == nil {
+		return nil
+	}
+	return s.Store.DeliverIssueMentions(ctx, workspaceID, actorID, issueID, action.Seq, previous, document, comment)
 }
 
 func (s *Service) deliverIssueEvent(ctx context.Context, workspaceID, actorID string, issue *models.Issue, action *models.Action, eventID int64, kind, verb string) error {

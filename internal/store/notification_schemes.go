@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/jackc/pgx/v5"
 )
@@ -647,53 +648,14 @@ func deliverIssueNotificationTx(ctx context.Context, tx pgx.Tx, workspaceID, act
 				continue
 			}
 		}
-		allowed, _, permissionErr := hasProjectPermissionTx(ctx, tx, workspaceID, userID, projectID, issueID, "BROWSE_PROJECTS")
-		if permissionErr != nil {
-			return permissionErr
+		email, notifyErr := notifyIssueUserTx(ctx, tx, workspaceID, actorID, actorName, projectID, issueID, securityLevelID, userID, kind, message, subject, body,
+			fmt.Sprintf("issue-notification:%s:%d:%d:%s", workspaceID, actionSeq, eventID, userID))
+		if notifyErr != nil {
+			return notifyErr
 		}
-		if !allowed {
-			continue
+		if email != "" {
+			delete(externalEmails, strings.ToLower(email))
 		}
-		if securityLevelID != "" {
-			var visible bool
-			if err = tx.QueryRow(ctx, `SELECT jira_issue_security_visible($1,$2,$3,$4,$5)`, workspaceID, projectID, issueID, userID, securityLevelID).Scan(&visible); err != nil {
-				return err
-			}
-			if !visible {
-				continue
-			}
-		}
-		var email string
-		if err = tx.QueryRow(ctx, `SELECT u.email FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.workspace_id=$1 AND u.id=$2 AND u.active`, workspaceID, userID).Scan(&email); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				continue
-			}
-			return err
-		}
-		notification := &models.Notification{ID: NewID("ntf"), WorkspaceID: workspaceID, TargetUser: userID, ActorID: actorID, ActorName: actorName, Kind: kind, EntityType: models.EntityIssue, EntityID: issueID, Message: message}
-		if err = tx.QueryRow(ctx, `INSERT INTO notifications(id,workspace_id,user_id,actor_id,kind,entity_type,entity_id,message) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"')`, notification.ID, workspaceID, userID, actorID, kind, models.EntityIssue, issueID, message).Scan(&notification.Created); err != nil {
-			return err
-		}
-		seq, seqErr := nextSeq(ctx, tx, workspaceID)
-		if seqErr != nil {
-			return seqErr
-		}
-		payload, marshalErr := json.Marshal(models.NotificationPayload{Notification: *notification})
-		if marshalErr != nil {
-			return marshalErr
-		}
-		if err = appendAction(ctx, tx, &models.Action{WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityNotification, EntityID: notification.ID, Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID}); err != nil {
-			return err
-		}
-		if collector := bulkNotifications(ctx); collector != nil {
-			collector.add(email, subject)
-		} else {
-			dedupe := fmt.Sprintf("issue-notification:%s:%d:%d:%s", workspaceID, actionSeq, eventID, userID)
-			if _, err = tx.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,dedupe_key) VALUES($1,$2,$3,$4,$5) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, workspaceID, email, subject, body, dedupe); err != nil {
-				return err
-			}
-		}
-		delete(externalEmails, strings.ToLower(email))
 	}
 	for email := range externalEmails {
 		if collector := bulkNotifications(ctx); collector != nil {
@@ -706,4 +668,101 @@ func deliverIssueNotificationTx(ctx context.Context, tx pgx.Tx, workspaceID, act
 		}
 	}
 	return nil
+}
+
+// notifyIssueUserTx puts one work item notification in a member's inbox and
+// queues its email, provided they are an active member who can browse the work
+// item at its security level. It returns the address it used, or "" when the
+// person was skipped.
+func notifyIssueUserTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID, actorName, projectID, issueID, securityLevelID, userID, kind, message, subject, body, dedupe string) (string, error) {
+	allowed, _, err := hasProjectPermissionTx(ctx, tx, workspaceID, userID, projectID, issueID, "BROWSE_PROJECTS")
+	if err != nil || !allowed {
+		return "", err
+	}
+	if securityLevelID != "" {
+		var visible bool
+		if err = tx.QueryRow(ctx, `SELECT jira_issue_security_visible($1,$2,$3,$4,$5)`, workspaceID, projectID, issueID, userID, securityLevelID).Scan(&visible); err != nil || !visible {
+			return "", err
+		}
+	}
+	var email string
+	if err = tx.QueryRow(ctx, `SELECT u.email FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.workspace_id=$1 AND u.id=$2 AND u.active`, workspaceID, userID).Scan(&email); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", nil
+		}
+		return "", err
+	}
+	notification := &models.Notification{ID: NewID("ntf"), WorkspaceID: workspaceID, TargetUser: userID, ActorID: actorID, ActorName: actorName, Kind: kind, EntityType: models.EntityIssue, EntityID: issueID, Message: message}
+	if err = tx.QueryRow(ctx, `INSERT INTO notifications(id,workspace_id,user_id,actor_id,kind,entity_type,entity_id,message) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"')`, notification.ID, workspaceID, userID, actorID, kind, models.EntityIssue, issueID, message).Scan(&notification.Created); err != nil {
+		return "", err
+	}
+	seq, err := nextSeq(ctx, tx, workspaceID)
+	if err != nil {
+		return "", err
+	}
+	payload, err := json.Marshal(models.NotificationPayload{Notification: *notification})
+	if err != nil {
+		return "", err
+	}
+	if err = appendAction(ctx, tx, &models.Action{WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityNotification, EntityID: notification.ID, Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID}); err != nil {
+		return "", err
+	}
+	if collector := bulkNotifications(ctx); collector != nil {
+		collector.add(email, subject)
+	} else if _, err = tx.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,dedupe_key) VALUES($1,$2,$3,$4,$5) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, workspaceID, email, subject, body, dedupe); err != nil {
+		return "", err
+	}
+	return email, nil
+}
+
+// DeliverIssueMentions tells the people a work item description or comment
+// newly mentions, whatever the notification scheme says, as Jira does. People
+// already mentioned before the change, the author, and anyone who cannot see
+// the work item or a restricted comment are skipped.
+func (s *Store) DeliverIssueMentions(ctx context.Context, workspaceID, actorID, issueID string, actionSeq int64, previous, document json.RawMessage, comment *models.Comment) error {
+	before := map[string]bool{}
+	for _, accountID := range adf.MentionedAccounts(previous) {
+		before[accountID] = true
+	}
+	var mentioned []string
+	for _, accountID := range adf.MentionedAccounts(document) {
+		if !before[accountID] && accountID != actorID {
+			mentioned = append(mentioned, accountID)
+		}
+	}
+	if len(mentioned) == 0 {
+		return nil
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var projectID, issueKey, summary, securityLevelID, actorName string
+	if err = tx.QueryRow(ctx, `SELECT project_id,key,summary,COALESCE(security_level_id,'') FROM issues WHERE workspace_id=$1 AND id=$2`, workspaceID, issueID).Scan(&projectID, &issueKey, &summary, &securityLevelID); err != nil {
+		return err
+	}
+	_ = tx.QueryRow(ctx, `SELECT display_name FROM users WHERE id=$1`, actorID).Scan(&actorName)
+	message := "mentioned you on " + issueKey
+	if comment != nil {
+		message = "mentioned you in a comment on " + issueKey
+	}
+	subject := fmt.Sprintf("[%s] %s mentioned you: %s", issueKey, actorName, summary)
+	body := message + "\n\n" + issueKey + " — " + summary + "\n/browse/" + issueKey
+	for _, userID := range mentioned {
+		if comment != nil {
+			visible, visibleErr := s.CommentVisibleTo(ctx, workspaceID, projectID, userID, comment)
+			if visibleErr != nil {
+				return visibleErr
+			}
+			if !visible {
+				continue
+			}
+		}
+		if _, err = notifyIssueUserTx(ctx, tx, workspaceID, actorID, actorName, projectID, issueID, securityLevelID, userID, "issue_mentioned", message, subject, body,
+			fmt.Sprintf("issue-mention:%s:%d:%s", workspaceID, actionSeq, userID)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }

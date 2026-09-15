@@ -211,6 +211,54 @@ func TestNotificationSchemeContractAndDelivery(t *testing.T) {
 		t.Fatalf("own change inbox = %d, want %d", adminInbox(), before+1)
 	}
 
+	// A mention notifies the newly mentioned person once, whatever the scheme
+	// says; mentioning yourself notifies nobody.
+	mentionDoc := func(text string, accounts ...string) string {
+		content := []string{`{"type":"text","text":"` + text + ` "}`}
+		for _, account := range accounts {
+			content = append(content, `{"type":"mention","attrs":{"id":"`+account+`","text":"@person"}}`)
+		}
+		return `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[` + strings.Join(content, ",") + `]}]}`
+	}
+	mentions := func(userID string) int {
+		t.Helper()
+		var count int
+		if countErr := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND kind='issue_mentioned'`, workspaceID, userID).Scan(&count); countErr != nil {
+			t.Fatal(countErr)
+		}
+		return count
+	}
+	var mentioned struct {
+		Key string `json:"key"`
+	}
+	decode := func(response *httptest.ResponseRecorder, into any) {
+		t.Helper()
+		if decodeErr := json.Unmarshal(response.Body.Bytes(), into); decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+	}
+	decode(call(adminID, http.MethodPost, "/rest/api/3/issue", `{"fields":{"project":{"key":"`+projectKey+`"},"summary":"Mention in description","issuetype":{"name":"Task"},"description":`+mentionDoc("Please review", recipientID, adminID)+`}}`, http.StatusCreated), &mentioned)
+	if mentions(recipientID) != 1 || mentions(adminID) != 0 {
+		t.Fatalf("description mentions: recipient=%d admin=%d", mentions(recipientID), mentions(adminID))
+	}
+	var mentionComment struct {
+		ID string `json:"id"`
+	}
+	decode(call(adminID, http.MethodPost, "/rest/api/3/issue/"+mentioned.Key+"/comment", `{"body":`+mentionDoc("Over to you", recipientID)+`}`, http.StatusCreated), &mentionComment)
+	if mentions(recipientID) != 2 {
+		t.Fatalf("comment mention count = %d", mentions(recipientID))
+	}
+	var mentionEmails int
+	if err = st.Pool.QueryRow(ctx, `SELECT count(*) FROM email_outbox WHERE workspace_id=$1 AND recipient=$2 AND subject LIKE '%mentioned you%'`, workspaceID, recipientID+"@example.test").Scan(&mentionEmails); err != nil || mentionEmails != 2 {
+		t.Fatalf("mention emails = %d err=%v", mentionEmails, err)
+	}
+	// Keeping a mention while editing tells nobody again.
+	call(adminID, http.MethodPut, "/rest/api/3/issue/"+mentioned.Key+"/comment/"+mentionComment.ID, `{"body":`+mentionDoc("Still yours", recipientID)+`}`, http.StatusOK)
+	call(adminID, http.MethodPut, "/rest/api/3/issue/"+mentioned.Key, `{"fields":{"description":`+mentionDoc("Reviewed", recipientID)+`}}`, http.StatusNoContent)
+	if mentions(recipientID) != 2 {
+		t.Fatalf("unchanged mentions notified again: %d", mentions(recipientID))
+	}
+
 	call(adminID, http.MethodDelete, schemePath, "", http.StatusBadRequest)
 	if err = st.AssignNotificationScheme(ctx, workspaceID, adminID, projectID, defaultSchemeID); err != nil {
 		t.Fatal(err)

@@ -21,12 +21,12 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=32">
+<link rel="stylesheet" href="/static/css/workspace.css?v=33">
 <link rel="preload" href="/static/zzira-worker.wasm?v=4" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
 <script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js?v=31" defer></script>
+<script src="/static/app.js?v=33" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -351,8 +351,8 @@
           <span id="comment-editor-label" class="sr-only">Add a comment</span>
           <div id="comment-editor" class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="comment-editor-label" data-rich-editor data-target-name="adf"
                data-placeholder="Add a comment…"></div>
-          <input type="hidden" name="adf">
-          <div class="form-actions"><small class="muted">Use the toolbar to format your update.</small><button type="submit" class="btn btn-primary">Add comment</button></div>
+          <input type="hidden" name="adf">{{with .Members}}<template data-mention-people>{{range .}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}</template>{{end}}
+          <div class="form-actions"><small class="muted">Use the toolbar to format your update, and type @ to mention someone.</small><button type="submit" class="btn btn-primary">Add comment</button></div>
         </form>
         {{if and .CanTriage .TimeTrackingEnabled}}<form class="worklog-form" method="post" action="/issues/{{.Issue.Key}}/worklogs" hx-post="/issues/{{.Issue.Key}}/worklogs" hx-target="#issue-root" hx-swap="outerHTML">
           <fieldset><legend>Or log work</legend><label for="worklog-time">Time spent</label>
