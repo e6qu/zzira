@@ -77,6 +77,22 @@ evaluated conditions. Items use Connect's JavaScript API to resize, rename
 themselves and call product APIs within their app's scopes; see
 [APPS.md](APPS.md).
 
+## Wallboards
+
+View as wallboard, at `/dashboards/{id}/wallboard`, shows a dashboard full
+screen without navigation for a team display, in the viewer's theme. As in
+Jira, consecutive gadgets of one colour in a column form a group that shows one
+gadget at a time and moves to the next every 30 seconds, while gadgets of
+different colours show together. Gadgets are read-only there, and the page
+reloads when the dashboard's automatic refresh interval passes.
+
+The site has one wallboard slide show at `/dashboards/slideshow`. Anyone who can
+edit a dashboard configures it from that dashboard: between 1 and 50
+dashboards they can view, 5 to 3600 seconds per dashboard (30 by default) and
+an optional random order. Each viewer sees only the chosen dashboards they can
+view, and the slide show reloads after each full pass so it draws the latest
+work. Both pages offer a Pause rotation control and an exit link.
+
 ## Dashboard emails
 
 Anyone who can view a dashboard can have it emailed every day or every Monday

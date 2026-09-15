@@ -122,3 +122,75 @@ test('create, configure, share, refresh, copy and delete a dashboard', async ({ 
   await page.getByRole('button', { name: 'Delete dashboard permanently' }).click();
   expect((await page.request.get(`/rest/api/3/dashboard/${id}`)).status()).toBe(404);
 });
+
+test('a team shows dashboards as a wallboard and a slide show', async ({ page }) => {
+  await login(page);
+  const auth = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const dashboard = async (name: string, gadgets: { title: string; color: string }[]) => {
+    const created = await page.request.post('/rest/api/3/dashboard', { headers: auth, data: { name, sharePermissions: [], editPermissions: [] } });
+    expect(created.status()).toBe(200);
+    const id = (await created.json()).id as string;
+    for (const [row, gadget] of gadgets.entries()) {
+      const added = await page.request.post(`/rest/api/3/dashboard/${id}/gadget`, { headers: auth, data: { moduleKey: 'com.zzira:assigned-to-me', title: gadget.title, color: gadget.color, position: { column: 0, row } } });
+      expect(added.status()).toBe(200);
+    }
+    return id;
+  };
+  const first = await dashboard(`Wall A ${stamp}`, [{ title: 'Blue first', color: 'blue' }, { title: 'Blue second', color: 'blue' }, { title: 'Red alone', color: 'red' }]);
+  const second = await dashboard(`Wall B ${stamp}`, [{ title: 'Second board gadget', color: 'green' }]);
+  await page.clock.install();
+  await page.goto(`/dashboards/${first}`);
+  await page.getByRole('link', { name: 'View as wallboard', exact: true }).click();
+  await expect(page).toHaveURL(`/dashboards/${first}/wallboard`);
+  // The wallboard hides navigation; gadgets sharing a colour take turns.
+  await expect(page.locator('.nav-dashboards')).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(`Wall A ${stamp}`);
+  await expect(page.getByRole('heading', { name: 'Blue first', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Blue second', exact: true })).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Red alone', exact: true })).toBeVisible();
+  await expect(page.locator('.wallboard-position').first()).toHaveText('1 of 2');
+  await accessible(page);
+  await page.clock.runFor(30_000);
+  await expect(page.getByRole('heading', { name: 'Blue first', exact: true })).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Blue second', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Red alone', exact: true })).toBeVisible();
+  const pause = page.getByRole('button', { name: 'Pause rotation', exact: true });
+  await pause.click();
+  await expect(page.getByRole('button', { name: 'Resume rotation', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#wallboard-status')).toHaveText('Rotation paused.');
+  await page.clock.runFor(60_000);
+  await expect(page.getByRole('heading', { name: 'Blue second', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Resume rotation', exact: true }).click();
+  await page.clock.runFor(30_000);
+  await expect(page.getByRole('heading', { name: 'Blue first', exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.getByRole('link', { name: 'Exit wallboard', exact: true }).click();
+  await expect(page).toHaveURL(`/dashboards/${first}`);
+
+  // Someone who can edit a dashboard configures the site's slide show from it.
+  await page.locator('.dashboard-footer summary').filter({ hasText: 'Configure wallboard slide show' }).click();
+  const chosen = page.getByRole('group', { name: 'Dashboards in the slide show', exact: true });
+  await page.getByLabel('Seconds per dashboard', { exact: true }).fill('10');
+  await page.getByRole('button', { name: 'Save slide show', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('choose between 1 and 50 dashboards');
+  await expect(page.getByLabel('Seconds per dashboard', { exact: true })).toHaveValue('10');
+  await chosen.getByLabel(`Wall A ${stamp}`, { exact: true }).check();
+  await chosen.getByLabel(`Wall B ${stamp}`, { exact: true }).check();
+  await accessible(page);
+  await page.getByRole('button', { name: 'Save slide show', exact: true }).click();
+  await expect(page).toHaveURL(`/dashboards/${first}`);
+  await page.getByRole('link', { name: 'View wallboard slide show', exact: true }).click();
+  await expect(page).toHaveURL('/dashboards/slideshow');
+  await expect(page.getByRole('heading', { level: 2, name: `Wall A ${stamp}`, exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: `Wall B ${stamp}`, exact: true })).toBeHidden();
+  await accessible(page);
+  await page.clock.runFor(10_000);
+  await expect(page.getByRole('heading', { level: 2, name: `Wall A ${stamp}`, exact: true })).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Second board gadget', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Exit slide show', exact: true }).click();
+  await expect(page).toHaveURL('/dashboards');
+  for (const id of [first, second]) expect((await page.request.delete(`/rest/api/3/dashboard/${id}`, { headers: auth })).status()).toBe(204);
+});

@@ -640,6 +640,8 @@ func main() {
 	mux.HandleFunc("GET /dashboards/{id}", webHandler.CustomDashboard)
 	mux.HandleFunc("POST /dashboards/{id}", webHandler.CustomDashboard)
 	mux.HandleFunc("GET /dashboards/{id}/content", webHandler.CustomDashboard)
+	mux.HandleFunc("GET /dashboards/{id}/wallboard", webHandler.DashboardWallboard)
+	mux.HandleFunc("GET /dashboards/slideshow", webHandler.DashboardWallboardSlideshow)
 	mux.HandleFunc("GET /dashboard", webHandler.DashboardPage)
 	mux.HandleFunc("GET /notifications", webHandler.NotificationsPage)
 	mux.HandleFunc("POST /notifications/read-all", webHandler.MarkAllNotificationsReadPage)

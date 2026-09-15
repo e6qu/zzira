@@ -27,10 +27,14 @@ type dashboardTile struct {
 	AppModule *models.AppModule
 	// Configurable and Refreshable are what a Connect dashboard item offers.
 	Configurable, Refreshable bool
-	Results                   store.GadgetResults
-	Slices                    []dashboardSlice
-	Report                    *gadgetReport
-	Error                     string
+	// DashboardID and Writable are the dashboard the gadget is on and whether
+	// the viewer may edit it.
+	DashboardID string
+	Writable    bool
+	Results     store.GadgetResults
+	Slices      []dashboardSlice
+	Report      *gadgetReport
+	Error       string
 }
 type customDashboardsData struct {
 	Dashboards                        []*models.Dashboard
@@ -49,9 +53,13 @@ type customDashboardsData struct {
 	Columns                           [][]dashboardTile
 	ColumnOptions                     []int
 	Editing, Adding, Owner, AppGadget bool
-	Gadget                            *models.DashboardGadget
-	Config                            models.GadgetConfig
-	Error, Query, Filter              string
+	// Slideshow is the site's wallboard slide show, which people who can edit
+	// a dashboard configure from it.
+	Slideshow            store.WallboardSlideshow
+	SlideshowOpen        bool
+	Gadget               *models.DashboardGadget
+	Config               models.GadgetConfig
+	Error, Query, Filter string
 }
 
 func dashboardWebError(err error) (int, string) {
@@ -222,6 +230,18 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 			} else {
 				opErr = h.Store.DeleteDashboardSubscription(r.Context(), ws, user.ID, id, subscriptionID)
 			}
+		case "slideshow":
+			interval, e := strconv.Atoi(r.PostFormValue("interval"))
+			data.Slideshow = store.WallboardSlideshow{DashboardIDs: r.PostForm["slideshowDashboard"], IntervalSeconds: interval, RandomOrder: r.PostFormValue("randomOrder") == "true"}
+			data.SlideshowOpen = true
+			switch {
+			case !d.Writable:
+				opErr = store.ErrDashboardPermission
+			case e != nil:
+				opErr = fmt.Errorf("%w: the slide show interval must be a number of seconds", store.ErrDashboardValidation)
+			default:
+				opErr = h.Store.SaveDashboardWallboardSlideshow(r.Context(), ws, user.ID, data.Slideshow)
+			}
 		case "favourite":
 			opErr = h.Store.SetDashboardFavourite(r.Context(), ws, user.ID, id, r.PostFormValue("favourite") == "true")
 		case "presentation":
@@ -291,33 +311,9 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost && r.PostFormValue("gadget") != "" {
 		editID = r.PostFormValue("gadget")
 	}
-	colors := []string{"#1769e0", "#6658d3", "#168568", "#c26914", "#be4565", "#577081"}
-	for _, g := range gadgets {
-		tile := dashboardTile{Gadget: g}
-		if strings.HasPrefix(g.ModuleKey, "app:") {
-			tile.AppModule, err = h.Store.ActiveDashboardAppModule(r.Context(), ws, g.ModuleKey)
-			if err != nil {
-				tile.Error = "This app gadget is unavailable. Ask an administrator to resume or reinstall the app."
-			} else if configurable, refreshable, conditions := appRuntime.DashboardItemOptions(tile.AppModule.Body); !appRuntime.ConnectConditionsMet(conditions, h.appConditionFacts(r, ws, user.ID)) {
-				tile.AppModule, tile.Error = nil, "This app gadget is not available to you."
-			} else {
-				tile.Configurable, tile.Refreshable = configurable, refreshable
-			}
-		} else {
-			tile.Results, err = h.Store.DashboardGadgetResults(r.Context(), ws, user.ID, id, g)
-			if err != nil {
-				tile.Error = "This gadget could not load its query. Check its configuration and saved filter."
-			} else if g.ReportGadget() {
-				tile.Report, tile.Error = h.gadgetReport(r, ws, user.ID, g.ModuleKey, tile.Results.Config)
-			} else {
-				offset := 0.0
-				for i, c := range tile.Results.Counts {
-					percent := float64(c.Count) * 100 / float64(tile.Results.Total)
-					tile.Slices = append(tile.Slices, dashboardSlice{Name: c.Name, Count: c.Count, Color: colors[i%len(colors)], Percent: percent, Dash: fmt.Sprintf("%.4f %.4f", percent, 100-percent), Offset: fmt.Sprintf("%.4f", -offset)})
-					offset += percent
-				}
-			}
-		}
+	tiles := h.dashboardTiles(r, ws, user.ID, id, gadgets, d.Writable)
+	for index, g := range gadgets {
+		tile := tiles[index]
 		data.Columns[g.Position.Column] = append(data.Columns[g.Position.Column], tile)
 		if strconv.FormatInt(g.ID, 10) == editID && d.Writable {
 			copy := g
@@ -363,6 +359,18 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.ReportWindows = analysisWindows
+	if !data.SlideshowOpen {
+		if data.Slideshow, err = h.Store.DashboardWallboardSlideshow(r.Context(), ws); err != nil {
+			http.Error(w, "Could not load the wallboard slide show.", 500)
+			return
+		}
+	}
+	if d.Writable {
+		if data.Dashboards, err = h.Store.Dashboards(r.Context(), ws, user.ID); err != nil {
+			http.Error(w, "Could not load dashboards.", 500)
+			return
+		}
+	}
 	data.CurrentUserID = user.ID
 	if data.Subscriptions, err = h.Store.DashboardSubscriptions(r.Context(), ws, user.ID, id); err != nil {
 		http.Error(w, "Could not load dashboard emails.", 500)
@@ -370,6 +378,17 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	h.writeWorkspacePageStatus(w, r, "page_custom_dashboard", user, ws, data, "dashboards", "", status)
 }
+
+// InSlideshow reports whether a dashboard is chosen for the slide show.
+func (d customDashboardsData) InSlideshow(id string) bool {
+	for _, chosen := range d.Slideshow.DashboardIDs {
+		if chosen == id {
+			return true
+		}
+	}
+	return false
+}
+
 func (d customDashboardsData) ShareSelected(kind, id string) bool {
 	list := d.Details.SharePermissions
 	if kind == "edit" {
@@ -501,4 +520,41 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 func (h *Handler) appConditionFacts(r *http.Request, workspaceID, userID string) appRuntime.ConnectConditionFacts {
 	admin, err := h.Store.IsAdmin(r.Context(), workspaceID, userID)
 	return appRuntime.ConnectConditionFacts{LoggedIn: true, SiteAdmin: err == nil && admin}
+}
+
+// dashboardTiles loads what each gadget shows for someone: an app gadget's
+// module, or a native gadget's results, chart slices or report.
+func (h *Handler) dashboardTiles(r *http.Request, ws, userID, id string, gadgets []models.DashboardGadget, writable bool) []dashboardTile {
+	colors := []string{"#1769e0", "#6658d3", "#168568", "#c26914", "#be4565", "#577081"}
+	tiles := make([]dashboardTile, 0, len(gadgets))
+	var err error
+	for _, g := range gadgets {
+		tile := dashboardTile{Gadget: g, DashboardID: id, Writable: writable}
+		if strings.HasPrefix(g.ModuleKey, "app:") {
+			tile.AppModule, err = h.Store.ActiveDashboardAppModule(r.Context(), ws, g.ModuleKey)
+			if err != nil {
+				tile.Error = "This app gadget is unavailable. Ask an administrator to resume or reinstall the app."
+			} else if configurable, refreshable, conditions := appRuntime.DashboardItemOptions(tile.AppModule.Body); !appRuntime.ConnectConditionsMet(conditions, h.appConditionFacts(r, ws, userID)) {
+				tile.AppModule, tile.Error = nil, "This app gadget is not available to you."
+			} else {
+				tile.Configurable, tile.Refreshable = configurable, refreshable
+			}
+		} else {
+			tile.Results, err = h.Store.DashboardGadgetResults(r.Context(), ws, userID, id, g)
+			if err != nil {
+				tile.Error = "This gadget could not load its query. Check its configuration and saved filter."
+			} else if g.ReportGadget() {
+				tile.Report, tile.Error = h.gadgetReport(r, ws, userID, g.ModuleKey, tile.Results.Config)
+			} else {
+				offset := 0.0
+				for i, c := range tile.Results.Counts {
+					percent := float64(c.Count) * 100 / float64(tile.Results.Total)
+					tile.Slices = append(tile.Slices, dashboardSlice{Name: c.Name, Count: c.Count, Color: colors[i%len(colors)], Percent: percent, Dash: fmt.Sprintf("%.4f %.4f", percent, 100-percent), Offset: fmt.Sprintf("%.4f", -offset)})
+					offset += percent
+				}
+			}
+		}
+		tiles = append(tiles, tile)
+	}
+	return tiles
 }
