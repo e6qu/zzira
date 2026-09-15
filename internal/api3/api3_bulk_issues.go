@@ -171,6 +171,9 @@ func (h *Handler) submitBulkTransition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	seen := map[string]bool{}
+	// Transitioning needs the Transition issues permission in every project
+	// holding a selected work item.
+	transitionable := map[string]bool{}
 	items := make([]store.BulkIssueTransitionTaskItem, 0)
 	for _, input := range request.Inputs {
 		if strings.TrimSpace(input.TransitionID) == "" || len(input.Selected) == 0 {
@@ -181,6 +184,19 @@ func (h *Handler) submitBulkTransition(w http.ResponseWriter, r *http.Request) {
 			issue, issueErr := h.resolveIssue(r, workspaceID, strings.TrimSpace(idOrKey))
 			if issueErr != nil || seen[issue.ID] {
 				bulkOperationError(w, http.StatusBadRequest, "Some selected issues are invalid, inaccessible, or repeated")
+				return
+			}
+			allowed, known := transitionable[issue.ProjectID]
+			if !known {
+				permitted, permissionErr := h.hasProjectPermission(r.Context(), workspaceID, actorID, issue.ProjectID, "", "TRANSITION_ISSUES")
+				if permissionErr != nil {
+					jiraError(w, http.StatusInternalServerError, "Could not check the bulk transition permission.")
+					return
+				}
+				allowed, transitionable[issue.ProjectID] = permitted, permitted
+			}
+			if !allowed {
+				bulkOperationError(w, http.StatusForbidden, "You don't have permission to transition work items in the project of "+issue.Key+".")
 				return
 			}
 			beans, err := h.issueTransitionBeans(r.Context(), workspaceID, actorID, issue)

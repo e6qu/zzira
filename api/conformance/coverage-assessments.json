@@ -8040,9 +8040,10 @@
       "evidence": [
         "internal/api3/api3_filters_test.go",
         "e2e/filters.spec.ts",
-        "docs/FILTERS.md"
+        "docs/FILTERS.md",
+        "internal/web/custom_dashboards.go"
       ],
-      "notes": "Per-user private/authenticated defaults and Jira GLOBAL normalization are persisted and integration-tested; cross-product dashboard default coupling remains."
+      "notes": "Per-user private/authenticated defaults and Jira GLOBAL normalization are persisted and integration-tested; the default also applies to new dashboards: the dashboard create form starts shared with everyone signed in when the default is AUTHENTICATED, while the REST dashboard create requires explicit sharePermissions as documented."
     },
     {
       "operationId": "jira-v3:GET:/rest/api/3/filter/favourite",
@@ -9565,9 +9566,10 @@
         "internal/commands/bulk_issues.go",
         "internal/api3/bulk_move_test.go",
         "e2e/v2.spec.ts",
-        "docs/BULK_ISSUES.md"
+        "docs/BULK_ISSUES.md",
+        "internal/api3/bulk_transition_permissions_test.go"
       ],
-      "notes": "Queues validated transition groups for up to 1,000 unique visible issues, rechecks execution-time visibility, delegates conditions/validators/post-functions to the ordinary REST transition engine and records transactional replay markers with per-item results; the documented input is issue ids and a transition id per workflow; sendBulkNotification (default true) sends one bulk change email per recipient in place of per-item emails; exact permission granularity remains; callers need Jira's global Bulk change permission."
+      "notes": "Queues validated transition groups for up to 1,000 unique visible issues, rechecks execution-time visibility, delegates conditions/validators/post-functions to the ordinary REST transition engine and records transactional replay markers with per-item results; the documented input is issue ids and a transition id per workflow; sendBulkNotification (default true) sends one bulk change email per recipient in place of per-item emails; a caller lacking the Transition issues permission in a selected work item's project receives 403; callers need Jira's global Bulk change permission."
     },
     {
       "operationId": "jira-v3:POST:/rest/api/3/bulk/issues/unwatch",
@@ -10785,9 +10787,10 @@
       "evidence": [
         "internal/api3/api3_filters_test.go",
         "e2e/filters.spec.ts",
-        "docs/FILTERS.md"
+        "docs/FILTERS.md",
+        "internal/web/custom_dashboards.go"
       ],
-      "notes": "Per-user private/authenticated defaults and Jira GLOBAL normalization are persisted and integration-tested; cross-product dashboard default coupling remains."
+      "notes": "Per-user private/authenticated defaults and Jira GLOBAL normalization are persisted and integration-tested; the default also applies to new dashboards: the dashboard create form starts shared with everyone signed in when the default is AUTHENTICATED, while the REST dashboard create requires explicit sharePermissions as documented."
     },
     {
       "operationId": "jira-v3:PUT:/rest/api/3/filter/{id}",
