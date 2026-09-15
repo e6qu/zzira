@@ -41,6 +41,21 @@ type FilterSubscription struct {
 	LastResultCount *int
 }
 
+// DashboardSubscription emails a dashboard on a schedule to recipients who
+// each receive it as they see it.
+type DashboardSubscription struct {
+	ID              int64
+	DashboardID     string
+	UserID          string
+	CronExpression  string
+	Recipients      []string
+	Enabled         bool
+	NextRunAt       string
+	LastRunAt       string
+	LastError       string
+	LastResultCount *int
+}
+
 type ProjectComponent struct {
 	ID                  string `json:"id"`
 	ProjectID           string `json:"projectId"`

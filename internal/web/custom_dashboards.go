@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -25,6 +26,7 @@ type dashboardTile struct {
 	AppModule *models.AppModule
 	Results   store.GadgetResults
 	Slices    []dashboardSlice
+	Report    *gadgetReport
 	Error     string
 }
 type customDashboardsData struct {
@@ -36,6 +38,10 @@ type customDashboardsData struct {
 	Projects                          []*models.Project
 	Roles                             []*models.ProjectRole
 	Filters                           []*models.Filter
+	Boards                            []*models.Board
+	Subscriptions                     []models.DashboardSubscription
+	CurrentUserID                     string
+	ReportWindows                     []int
 	Catalog                           []models.GadgetDefinition
 	Columns                           [][]dashboardTile
 	ColumnOptions                     []int
@@ -201,6 +207,15 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 				redirectLocal(w, r, "/dashboards")
 				return
 			}
+		case "subscribe":
+			_, opErr = h.Store.SaveDashboardSubscription(r.Context(), ws, user.ID, id, r.PostFormValue("schedule"), r.PostForm["recipient"])
+		case "unsubscribe":
+			subscriptionID, parseErr := strconv.ParseInt(r.PostFormValue("subscriptionId"), 10, 64)
+			if parseErr != nil {
+				opErr = store.ErrDashboardValidation
+			} else {
+				opErr = h.Store.DeleteDashboardSubscription(r.Context(), ws, user.ID, id, subscriptionID)
+			}
 		case "favourite":
 			opErr = h.Store.SetDashboardFavourite(r.Context(), ws, user.ID, id, r.PostFormValue("favourite") == "true")
 		case "presentation":
@@ -235,15 +250,18 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 				_, opErr = h.Store.SaveDashboardGadget(r.Context(), ws, user.ID, id, gid, store.GadgetUpdate{Title: &title, Color: &color, Position: &models.GadgetPosition{Column: col, Row: row}})
 			}
 		case "configure":
-			limit, e := strconv.Atoi(r.PostFormValue("limit"))
+			c, e := gadgetConfigForm(r)
 			if e != nil || gid <= 0 {
 				opErr = store.ErrDashboardValidation
-			} else {
-				c := models.GadgetConfig{JQL: r.PostFormValue("jql"), FilterID: r.PostFormValue("filterId"), GroupBy: r.PostFormValue("groupBy"), Limit: limit}
-				raw, _ := json.Marshal(c)
-				_, opErr = h.Store.SetDashboardProperty(r.Context(), ws, user.ID, id, gid, "zzira.config", raw)
-				data.Config = c
+				break
 			}
+			data.Config = c
+			check := c
+			if opErr = store.NormalizeGadgetConfig(&check); opErr != nil {
+				break
+			}
+			raw, _ := json.Marshal(c)
+			_, opErr = h.Store.SetDashboardProperty(r.Context(), ws, user.ID, id, gid, "zzira.config", raw)
 		default:
 			opErr = store.ErrDashboardValidation
 		}
@@ -279,6 +297,8 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 			tile.Results, err = h.Store.DashboardGadgetResults(r.Context(), ws, user.ID, id, g)
 			if err != nil {
 				tile.Error = "This gadget could not load its query. Check its configuration and saved filter."
+			} else if g.ReportGadget() {
+				tile.Report, tile.Error = h.gadgetReport(r, ws, user.ID, g.ModuleKey, tile.Results.Config)
 			} else {
 				offset := 0.0
 				for i, c := range tile.Results.Counts {
@@ -316,6 +336,28 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load filters.", 500)
 		return
 	}
+	// Report gadgets choose among the scrum boards of projects the viewer can
+	// browse.
+	boards, err := h.Store.BoardsByWorkspace(r.Context(), ws)
+	if err != nil {
+		http.Error(w, "Could not load boards.", 500)
+		return
+	}
+	browsable := map[string]bool{}
+	for _, project := range data.Projects {
+		browsable[project.ID] = true
+	}
+	for _, board := range boards {
+		if board.Type == "scrum" && browsable[board.ProjectID] {
+			data.Boards = append(data.Boards, board)
+		}
+	}
+	data.ReportWindows = analysisWindows
+	data.CurrentUserID = user.ID
+	if data.Subscriptions, err = h.Store.DashboardSubscriptions(r.Context(), ws, user.ID, id); err != nil {
+		http.Error(w, "Could not load dashboard emails.", 500)
+		return
+	}
 	h.writeWorkspacePageStatus(w, r, "page_custom_dashboard", user, ws, data, "dashboards", "", status)
 }
 func (d customDashboardsData) ShareSelected(kind, id string) bool {
@@ -336,4 +378,110 @@ func (d customDashboardsData) ShareSelected(kind, id string) bool {
 		}
 	}
 	return false
+}
+
+// gadgetConfigForm reads a gadget's settings from its configuration form: a
+// query gadget's JQL, filter, grouping and limit, or a report gadget's project
+// or board, window and running totals.
+func gadgetConfigForm(r *http.Request) (models.GadgetConfig, error) {
+	c := models.GadgetConfig{
+		JQL: r.PostFormValue("jql"), FilterID: r.PostFormValue("filterId"), GroupBy: r.PostFormValue("groupBy"),
+		ProjectKey: strings.TrimSpace(r.PostFormValue("projectKey")), BoardID: strings.TrimSpace(r.PostFormValue("boardId")),
+		Cumulative: r.PostFormValue("cumulative") == "true",
+	}
+	for field, target := range map[string]*int{"limit": &c.Limit, "days": &c.Days} {
+		if value := r.PostFormValue(field); value != "" {
+			parsed, err := strconv.Atoi(value)
+			if err != nil {
+				return c, err
+			}
+			*target = parsed
+		}
+	}
+	return c, nil
+}
+
+// gadgetReport is a report gadget drawn for the person viewing the dashboard.
+type gadgetReport struct {
+	Project         *models.Project
+	Board           *models.Board
+	Days            int
+	CreatedResolved *createdResolvedView
+	Resolution      *resolutionTimeView
+	Velocity        *velocityReportView
+	Sprint          *models.Sprint
+	Burndown        *sprintReportView
+}
+
+// gadgetReport draws a report gadget from its configured project or board,
+// counting only work the viewer can browse. A project that turned Reports
+// off, or a board that is not a scrum board, draws nothing.
+func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, config models.GadgetConfig) (*gadgetReport, string) {
+	ctx := r.Context()
+	look := h.siteLook(r, ws)
+	report := &gadgetReport{Days: config.Days}
+	reportsOn := func(projectID string) bool {
+		enabled, err := h.Store.ProjectFeatureEnabled(ctx, projectID, "jsw.classic.reports")
+		return err == nil && enabled
+	}
+	const failed = "This report could not be calculated."
+	switch moduleKey {
+	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time":
+		if config.ProjectKey == "" {
+			return nil, "Configure this gadget to choose a project."
+		}
+		project, err := h.Store.ProjectByIDOrKey(ctx, ws, config.ProjectKey)
+		if err != nil || !reportsOn(project.ID) {
+			return nil, "This project's reports are not available."
+		}
+		report.Project = project
+		if moduleKey == "com.zzira:created-vs-resolved" {
+			data, err := h.Store.CreatedVsResolved(ctx, ws, userID, project.ID, config.Days, time.Now())
+			if err != nil {
+				return nil, failed
+			}
+			report.CreatedResolved = newCreatedResolvedView(data, config.Cumulative, look.DateDay)
+		} else {
+			data, err := h.Store.ResolutionTime(ctx, ws, userID, project.ID, config.Days, time.Now())
+			if err != nil {
+				return nil, failed
+			}
+			report.Resolution = newResolutionTimeView(data, look.DateDay)
+		}
+	default:
+		if config.BoardID == "" {
+			return nil, "Configure this gadget to choose a scrum board."
+		}
+		board, err := h.Store.BoardByIDInWorkspace(ctx, ws, config.BoardID)
+		if err != nil || board.Type != "scrum" || !reportsOn(board.ProjectID) {
+			return nil, "This board's reports are not available."
+		}
+		report.Board = board
+		if moduleKey == "com.zzira:velocity" {
+			data, err := h.Store.VelocityReport(ctx, ws, userID, board)
+			if err != nil {
+				return nil, failed
+			}
+			report.Velocity = newVelocityReportView(data)
+			break
+		}
+		sprints, err := h.Store.SprintsByBoard(ctx, board.ID)
+		if err != nil {
+			return nil, failed
+		}
+		for _, sprint := range sprints {
+			if sprint.State == "active" {
+				report.Sprint = sprint
+				break
+			}
+		}
+		if report.Sprint != nil {
+			data, err := h.Store.SprintReport(ctx, ws, userID, board, report.Sprint, time.Now())
+			if err != nil {
+				return nil, failed
+			}
+			report.Burndown = newSprintReportView(data, siteDateLayouts{day: look.DateDay, complete: look.DateComplete})
+		}
+	}
+	return report, ""
 }

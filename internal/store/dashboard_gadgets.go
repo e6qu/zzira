@@ -197,6 +197,15 @@ func NormalizeGadgetConfig(c *models.GadgetConfig) error {
 	if c.Limit == 0 {
 		c.Limit = 10
 	}
+	if c.Days == 0 {
+		c.Days = 30
+	}
+	if c.Days != 7 && c.Days != 30 && c.Days != 90 {
+		return fmt.Errorf("%w: choose a 7, 30 or 90 day report window", ErrDashboardValidation)
+	}
+	if len(c.ProjectKey) > 255 || len(c.BoardID) > 128 {
+		return fmt.Errorf("%w: choose an existing project or board", ErrDashboardValidation)
+	}
 	if len(c.JQL) > 16000 || (c.JQL != "" && c.FilterID != "") || c.Limit < 1 || c.Limit > 50 {
 		return fmt.Errorf("%w: choose JQL or a saved filter and a result limit from 1 to 50", ErrDashboardValidation)
 	}

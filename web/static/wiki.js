@@ -152,13 +152,15 @@ const startLive = (element) => {
     const others = state.present || [];
     const coEditors = others.filter((person) => person.editing);
     if (editing && coEditors.length) {
-      people.textContent = `${describe(coEditors)} ${coEditors.length === 1 ? 'is' : 'are'} also editing. Save often; a save made after theirs asks you to merge.`;
+      people.textContent = element.dataset.liveEditing === 'true'
+        ? `${describe(coEditors)} ${coEditors.length === 1 ? 'is' : 'are'} also editing. Your changes merge as you type.`
+        : `${describe(coEditors)} ${coEditors.length === 1 ? 'is' : 'are'} also editing. Save often; a save made after theirs asks you to merge.`;
     } else {
       people.textContent = others.length ? `Also here: ${describe(others)}` : '';
     }
     notice.replaceChildren();
     if (state.version > baseline.version) {
-      notice.append(editing ? 'A newer version has been published since you started editing. ' : 'This has been updated. ');
+      if (!(editing && element.dataset.liveEditing === 'true')) notice.append(editing ? 'A newer version has been published since you started editing. ' : 'This has been updated. ');
       if (!editing) {
         const link = document.createElement('a');
         link.href = window.location.pathname;
@@ -180,6 +182,239 @@ const startLive = (element) => {
   window.addEventListener('pagehide', () => clearInterval(timer));
 };
 
+
+// Live editing. Everyone editing a published page shares one document: each
+// editor sends its unsent change against the latest revision it holds. When
+// someone else's change got there first, the server returns what this editor
+// missed; the editor applies it to the text it last synced and rebases its own
+// change on top, so both edits survive. Positions are UTF-16 offsets into the
+// page's storage markup, as JavaScript strings measure them.
+const liveDiff = (before, after) => {
+  if (before === after) return null;
+  const limit = Math.min(before.length, after.length);
+  let start = 0;
+  while (start < limit && before.charCodeAt(start) === after.charCodeAt(start)) start += 1;
+  let end = 0;
+  while (end < limit - start && before.charCodeAt(before.length - 1 - end) === after.charCodeAt(after.length - 1 - end)) end += 1;
+  // Never split a surrogate pair at either edge of the change.
+  const low = (text, index) => index > 0 && index < text.length && text.charCodeAt(index) >= 0xdc00 && text.charCodeAt(index) <= 0xdfff;
+  while (start > 0 && (low(before, start) || low(after, start))) start -= 1;
+  while (end > 0 && (low(before, before.length - end) || low(after, after.length - end))) end -= 1;
+  return { position: start, delete: before.length - start - end, insert: after.slice(start, after.length - end) };
+};
+
+const liveApply = (text, change) => text.slice(0, change.position) + change.insert + text.slice(change.position + change.delete);
+
+// liveRebase moves a local change so it applies after a change that was
+// applied before it. Text the other change inserted is never deleted, and an
+// insertion at the same place goes after theirs.
+const liveRebase = (local, applied) => {
+  const aStart = local.position;
+  const aEnd = local.position + local.delete;
+  const bStart = applied.position;
+  const bEnd = applied.position + applied.delete;
+  const inserted = applied.insert.length;
+  if (aEnd <= bStart && aStart < bStart) return [local];
+  if (local.delete === 0 && aStart === bStart) return [{ ...local, position: bStart + inserted }];
+  if (aStart >= bEnd) return [{ ...local, position: aStart - applied.delete + inserted }];
+  const changes = [];
+  const after = aEnd > bEnd ? aEnd - bEnd : 0;
+  if (aStart < bStart) {
+    if (after) changes.push({ position: bStart + inserted, delete: after, insert: '' });
+    changes.push({ position: aStart, delete: bStart - aStart, insert: local.insert });
+  } else {
+    changes.push({ position: bStart + inserted, delete: after, insert: local.insert });
+  }
+  return changes.filter((change) => change.delete || change.insert);
+};
+
+// liveMerge applies the changes this editor missed to the text it synced and
+// carries its own unsent edits over.
+const liveMerge = (synced, local, changes) => {
+  let base = synced;
+  let current = local;
+  for (const change of changes) {
+    const next = liveApply(base, change);
+    const pending = liveDiff(base, current);
+    current = pending ? liveRebase(pending, change).reduce(liveApply, next) : next;
+    base = next;
+  }
+  return { synced: base, local: current };
+};
+
+// renderStorage draws the storage markup the rich editor keeps, the way the
+// server renders it, or returns null for markup the editor cannot hold.
+const renderStorage = (storage) => {
+  const allowed = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'strong', 'em', 'b', 'i', 'u', 's', 'a', 'br', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td']);
+  const parsed = new DOMParser().parseFromString(`<root xmlns:ac="urn:ac" xmlns:ri="urn:ri">${storage}</root>`, 'application/xml');
+  if (parsed.getElementsByTagName('parsererror').length) return null;
+  const draw = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent);
+    if (node.nodeType !== Node.ELEMENT_NODE) return null;
+    if (node.prefix === 'ac' && node.localName === 'link') {
+      const user = [...node.children].find((child) => child.localName === 'user');
+      const label = [...node.children].find((child) => child.localName === 'plain-text-link-body');
+      if (!user) return null;
+      const link = document.createElement('a');
+      link.href = `/people/${encodeURIComponent(user.getAttribute('ri:account-id') || '')}`;
+      link.textContent = `@${(label?.textContent || 'user').trim()}`;
+      return link;
+    }
+    if (node.prefix || !allowed.has(node.localName)) return undefined;
+    const element = document.createElement(node.localName);
+    if (node.localName === 'a' && node.getAttribute('href')) element.setAttribute('href', node.getAttribute('href'));
+    for (const child of node.childNodes) {
+      const drawn = draw(child);
+      if (drawn === undefined) return undefined;
+      if (drawn) element.append(drawn);
+    }
+    return element;
+  };
+  const nodes = [];
+  for (const child of parsed.documentElement.childNodes) {
+    const drawn = draw(child);
+    if (drawn === undefined) return null;
+    if (drawn) nodes.push(drawn);
+  }
+  return nodes;
+};
+
+const caretOffset = (root) => {
+  const selection = document.getSelection();
+  if (!selection.rangeCount || !root.contains(selection.anchorNode)) return null;
+  const range = document.createRange();
+  range.selectNodeContents(root);
+  range.setEnd(selection.anchorNode, selection.anchorOffset);
+  return range.toString().length;
+};
+
+const placeCaret = (root, offset) => {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let remaining = offset;
+  let node = walker.nextNode();
+  while (node) {
+    if (remaining <= node.textContent.length) {
+      document.getSelection().collapse(node, remaining);
+      return;
+    }
+    remaining -= node.textContent.length;
+    node = walker.nextNode();
+  }
+  document.getSelection().selectAllChildren(root);
+  document.getSelection().collapseToEnd();
+};
+
+// movedOffset keeps a caret beside the same text when the text before it
+// changes length.
+const movedOffset = (before, after, offset) => {
+  let prefix = 0;
+  while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) prefix += 1;
+  return offset <= prefix ? offset : Math.max(prefix, Math.min(after.length, offset + after.length - before.length));
+};
+
+const startLiveEditing = (status, text, form) => {
+  let session = '';
+  let revision = -1;
+  let synced = null;
+  let initial = text.get();
+  let busy = false;
+  let composing = false;
+  let stopped = false;
+  let offline = false;
+  const say = (message) => {
+    status.hidden = false;
+    if (status.textContent !== message) status.textContent = message;
+  };
+  const sync = async () => {
+    if (busy || composing || stopped) return;
+    busy = true;
+    try {
+      const sent = text.get();
+      const change = synced === null ? null : liveDiff(synced, sent);
+      const response = await fetch(status.dataset.liveUrl, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ session, revision, changes: change ? [change] : [] }),
+      });
+      if (!response.ok) throw new Error(`live editing answered ${response.status}`);
+      const state = await response.json();
+      if (stopped) return;
+      const current = text.get();
+      if (typeof state.body === 'string') {
+        // The whole document: this editor is new, restarted or far behind.
+        if (synced === null && current === initial && initial !== state.body) {
+          // The page opened with text of its own, such as a save the server
+          // refused, so that text is kept and shared as this editor's change.
+          synced = state.body;
+        } else {
+          const base = synced === null ? initial : synced;
+          const merged = liveMerge(base, current, [liveDiff(base, state.body)].filter(Boolean));
+          synced = state.body;
+          if (merged.local !== current) text.set(merged.local);
+        }
+      } else if (state.applied) {
+        synced = sent;
+      } else if (state.changes.length) {
+        const merged = liveMerge(synced, current, state.changes);
+        synced = merged.synced;
+        if (merged.local !== current) text.set(merged.local);
+      }
+      session = state.session;
+      revision = state.revision;
+      // Publishing saves the version after the one the session started from,
+      // which moves on when someone else publishes meanwhile.
+      const version = form.querySelector('input[name=version]');
+      if (version && state.version) version.value = String(state.version + 1);
+      if (offline || status.hidden) say('Live editing is on: changes merge with everyone editing this page as you type.');
+      offline = false;
+      if (liveDiff(synced, text.get())) window.setTimeout(sync, 50);
+    } catch {
+      if (!offline) say('Live editing is reconnecting. Your changes are kept and merge when it is back.');
+      offline = true;
+    } finally {
+      busy = false;
+    }
+  };
+  let pending = 0;
+  const soon = () => {
+    window.clearTimeout(pending);
+    pending = window.setTimeout(sync, 250);
+  };
+  text.element.addEventListener('input', soon);
+  text.element.addEventListener('compositionstart', () => { composing = true; });
+  text.element.addEventListener('compositionend', () => { composing = false; soon(); });
+  const timer = window.setInterval(sync, 1000);
+  form.addEventListener('submit', () => { stopped = true; window.clearInterval(timer); });
+  window.addEventListener('pagehide', () => window.clearInterval(timer));
+  sync();
+};
+
+const textareaText = (textarea) => ({
+  element: textarea,
+  get: () => textarea.value,
+  set: (value) => {
+    const focused = document.activeElement === textarea;
+    const start = movedOffset(textarea.value, value, textarea.selectionStart);
+    const end = movedOffset(textarea.value, value, textarea.selectionEnd);
+    textarea.value = value;
+    if (focused) textarea.setSelectionRange(start, end);
+  },
+});
+
+const richText = (editor, serialize) => ({
+  element: editor,
+  get: () => [...editor.childNodes].map(serialize).join(''),
+  set: (storage) => {
+    const nodes = renderStorage(storage);
+    if (!nodes) return;
+    const focused = document.activeElement === editor;
+    const offset = focused ? caretOffset(editor) : null;
+    const before = editor.textContent;
+    editor.replaceChildren(...nodes);
+    if (focused && offset !== null) placeCaret(editor, movedOffset(before, editor.textContent, offset));
+  },
+});
+
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-wiki-live]').forEach(startLive);
   const peopleTemplate = document.querySelector('#wiki-mention-people');
@@ -188,7 +423,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (picker) document.querySelectorAll('textarea[data-wiki-mentions]').forEach((textarea) => picker.attach(textarea, textareaMentions(textarea)));
 
   const editor = document.querySelector('[data-wiki-editor]');
-  if (!editor) return;
+  const liveSync = document.querySelector('[data-wiki-live-sync]');
+  if (!editor) {
+    const textarea = liveSync && liveSync.closest('form').querySelector('textarea[name=body]');
+    if (textarea) startLiveEditing(liveSync, textareaText(textarea), liveSync.closest('form'));
+    return;
+  }
   const form = editor.closest('form');
   const source = form.querySelector('[name=body]');
   const toolbar = form.querySelector('[data-wiki-toolbar]');
@@ -237,4 +477,5 @@ document.addEventListener('DOMContentLoaded', () => {
   form.addEventListener('submit', () => {
     source.value = [...editor.childNodes].map(serialize).join('');
   });
+  if (liveSync) startLiveEditing(liveSync, richText(editor, serialize), form);
 });

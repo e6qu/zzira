@@ -258,17 +258,18 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await page.locator('[data-theme-toggle]').click();
   await checkWikiAccessibility(page);
   await page.locator('[data-theme-toggle]').click();
+  // An editor left open while someone else publishes is brought up to date
+  // by live editing instead of being refused later.
   const stale = await context.newPage();
   await stale.goto(pageURL + '/edit');
+  await expect(stale.locator('[data-wiki-live-sync]')).toContainText('Live editing is on');
   await page.getByRole('link', { name: 'Edit page', exact: true }).click();
   await page.getByRole('textbox', { name: 'Page content' }).fill('Run checks before publishing.');
   await page.getByLabel('What changed?').fill('Added release checks');
   await page.getByRole('button', { name: 'Save page', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Remove label release-ready', exact: true })).toBeVisible();
-  await stale.getByRole('textbox', { name: 'Page content' }).fill('My unsaved changes');
-  await stale.getByRole('button', { name: 'Save page', exact: true }).click();
-  await expect(stale.getByRole('alert')).toContainText('page changed');
-  await expect(stale.getByRole('textbox', { name: 'Page content' })).toHaveText('My unsaved changes');
+  // The page holds a task list, so it is edited as storage in a text area.
+  await expect(stale.getByRole('textbox', { name: 'Page content' })).toHaveValue('Run checks before publishing.', { timeout: 20_000 });
   await stale.close();
   await page.getByText('Page history', { exact: true }).click();
   await expect(page.locator('.wiki-history')).toContainText('Added release checks');

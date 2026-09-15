@@ -202,6 +202,7 @@ func main() {
 	}
 	go (&automation.Runner{Service: automationSvc}).Run(ctx, workspaceID)
 	go (&store.FilterSubscriptionRunner{Store: st, BaseURL: baseURL}).Run(ctx, workspaceID)
+	go (&store.DashboardSubscriptionRunner{Store: st, BaseURL: baseURL}).Run(ctx, workspaceID)
 	go (&store.WikiNotificationEmailRunner{Store: st, BaseURL: baseURL}).Run(ctx)
 	go (&store.APITaskRunner{Store: st, BulkIssueExecutor: cmdSvc}).Run(ctx, workspaceID)
 	go (&store.ProjectTrashRunner{Store: st}).Run(ctx, workspaceID)
@@ -383,7 +384,9 @@ func main() {
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/metadata", webHandler.WikiPageMetadata)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/watch", webHandler.WikiPageWatch)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/presence", webHandler.WikiPagePresence)
+	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/live", webHandler.WikiPageLive)
 	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/presence", webHandler.WikiBlogPostPresence)
+	mux.HandleFunc("POST /wiki/spaces/{space}/blogposts/{blogpost}/live", webHandler.WikiBlogPostLive)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/labels/{label}/watch", webHandler.WikiLabelWatch)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/restrictions", webHandler.WikiPageRestrictions)
 	mux.HandleFunc("POST /wiki/spaces/{space}/pages/{page}/attachments", webHandler.WikiAttachmentCreate)

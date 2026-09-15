@@ -22,10 +22,13 @@ platform REST v3 contract:
 | GET `/rest/api/3/dashboard/{id}/items/{itemId}/properties` | Sorted property key listing |
 | GET/PUT/DELETE `/rest/api/3/dashboard/{id}/items/{itemId}/properties/{propertyKey}` | JSON property lifecycle with Jira key and value bounds |
 
-The unimplemented operation is `PUT /rest/api/3/dashboard/bulk/edit`. Group and
-project share permissions, archived/deleted search, anonymous dashboards, admin
-permission extension and dashboard layout/favourite REST extensions also remain
-compatibility gaps.
+`PUT /rest/api/3/dashboard/bulk/edit` changes permissions, changes owners and
+deletes, with a per-dashboard error map. Dashboards share with everyone signed
+in, people, groups, projects and project roles, and `extendAdminPermissions`
+lets a site administrator update a dashboard they neither own nor were shared.
+Searching archived or deleted dashboards answers 400, because dashboards here
+are only ever active; anonymous dashboards and REST extensions for this site's
+layout and favourite settings remain compatibility gaps.
 
 ## Native gadgets and presentation
 
@@ -35,12 +38,25 @@ The built-in catalog contains:
 - `com.zzira:issue-statistics`
 - `com.zzira:pie-chart`
 - `com.zzira:assigned-to-me`
+- `com.zzira:created-vs-resolved`
+- `com.zzira:resolution-time`
+- `com.zzira:velocity`
+- `com.zzira:sprint-burndown`
 
 Gadgets accept direct JQL or a saved filter through the reserved
 `zzira.config` item property. Lists return up to 50 results. Statistics and pie
 charts calculate their full permission-filtered total and group by status,
 priority, work type or assignee. Pie charts include an equivalent data table.
 Assigned-to-me adds `assignee = currentUser()` when each viewer loads it.
+Report gadgets draw the matching report instead of a query. Created vs.
+resolved and Resolution time keep a `projectKey`, a `days` window of 7, 30 or
+90 and, for created vs. resolved, `cumulative` running totals; Velocity and
+Sprint burndown keep a scrum board's `boardId`, and the burndown follows the
+board's active sprint. Each viewer sees the report counted from their own
+access to the work, with its values as a table. A gadget not yet configured,
+a project that turned Reports off, or a board that is not a scrum board says
+so instead. The configuration form offers only projects and scrum boards the
+editor can browse. See [REPORTS.md](REPORTS.md) for how each report counts.
 Active `jira:dashboardGadget` modules from installed apps also join the browser
 catalog. Their escaped host-rendered body can be placed, titled, colored,
 positioned, copied and removed like a built-in gadget. Stable module IDs keep
@@ -54,6 +70,22 @@ through an authenticated endpoint that signs the validated app-relative image
 request. Configuration callbacks, refresh opt-in and conditions are not
 implemented yet, so descriptors that request behavioral options are rejected
 explicitly.
+
+## Dashboard emails
+
+Anyone who can view a dashboard can have it emailed every day or every Monday
+at 08:00 UTC from **Email this dashboard**, to themselves or to members who can
+view it too; a recipient who cannot is refused when the email is scheduled.
+Each recipient receives the dashboard as they see it: its name and link, then
+a line per gadget — a list gadget's count and first five work items, a chart
+gadget's count by its grouping, a report gadget's created and resolved counts,
+average resolution time, average velocity or the active sprint's remaining
+work, and a pointer to the dashboard for app gadgets or gadgets still to be
+configured. Deliveries are durable runs claimed one at a time and retried with
+backoff; a recipient who can no longer view the dashboard fails the run with
+that reason, which the panel shows, and people already sent to are not sent
+again. The panel lists the viewer's own dashboard emails with their next
+delivery and removes them.
 
 The browser supports Jira-style one, two and three-column layouts (`A`, `AA`,
 `AB`, `BA`, `AAA`), gadget reordering, eight accent colors, favourites, manual
