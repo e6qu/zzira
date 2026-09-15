@@ -41,7 +41,7 @@ func (s *Service) createServiceApproval(ctx context.Context, actorID, workspaceI
 		return nil, err
 	}
 	if created {
-		if err := s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, approverIDs, "service_approval", "requested your approval on "+request.Issue.Key, false); err != nil {
+		if err := s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, approverIDs, "service_approval", "requested your approval on "+request.Issue.Key, false, models.CustomerNotificationApproval); err != nil {
 			return nil, err
 		}
 	}
@@ -251,7 +251,7 @@ func (s *Service) startStatusApproval(ctx context.Context, actorID, workspaceID 
 	if err != nil {
 		return err
 	}
-	return s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, approverIDs, "service_approval", "requested your approval on "+issue.Key, false)
+	return s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, approverIDs, "service_approval", "requested your approval on "+issue.Key, false, models.CustomerNotificationApproval)
 }
 
 // userPickerAccountIDs reads the account IDs a user or multi-user picker

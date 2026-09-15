@@ -97,7 +97,10 @@ type servicePageData struct {
 	// SLAConditions are the conditions an SLA's clock can start and stop on,
 	// including entering each of the desk project's statuses.
 	SLAConditions []models.ServiceSLACondition
-	SLAGoals      map[string][]models.ServiceSLAGoal
+	// CustomerNotifications are Jira's customer notifications with whether
+	// the desk sends each.
+	CustomerNotifications []serviceCustomerNotificationView
+	SLAGoals              map[string][]models.ServiceSLAGoal
 	// SLAGoalOrder says which conditional goals start and end their metric's order.
 	SLAGoalOrder        map[string]serviceSLAGoalOrder
 	SLAs                []models.ServiceSLA
@@ -270,6 +273,9 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				http.Error(w, "Could not load SLA conditions.", http.StatusInternalServerError)
 				return
+			}
+			for _, notification := range models.ServiceCustomerNotifications() {
+				data.CustomerNotifications = append(data.CustomerNotifications, serviceCustomerNotificationView{ServiceCustomerNotification: notification, Enabled: slaDesk.CustomerNotificationEnabled(notification.Key)})
 			}
 			data.SLAConditions = models.ServiceSLAConditions()
 			for _, status := range slaStatuses {
@@ -675,6 +681,11 @@ func (h *Handler) ServiceEscalationSettings(w http.ResponseWriter, r *http.Reque
 	redirectLocal(w, r, "/service/agent/"+deskID+"#escalation-policy")
 }
 
+type serviceCustomerNotificationView struct {
+	models.ServiceCustomerNotification
+	Enabled bool
+}
+
 func (h *Handler) ServiceCustomerSettings(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
@@ -687,6 +698,11 @@ func (h *Handler) ServiceCustomerSettings(w http.ResponseWriter, r *http.Request
 	switch r.PostFormValue("action") {
 	case "access":
 		if err := h.Commands.SetServiceDeskCustomerAccess(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("open") == "true"); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	case "notification":
+		if err := h.Commands.SetServiceDeskCustomerNotification(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("notification"), r.PostFormValue("enabled") == "true"); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

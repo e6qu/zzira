@@ -426,12 +426,24 @@ fallback. Managers also configure per-metric pause JQL in this workspace.
 Recursive SLA-dependent pause conditions are rejected. Failed metadata association is
 compensated by a logged issue deletion, so no orphaned ticket remains.
 
+## Customer notifications
+
+Service desk administrators choose which of Jira's customer notifications the
+desk sends, from the Customers section of the agent workspace: Customer
+invited, Request created, Public comment added, Customer-visible status
+changed, Participant added and Approval required. Every notification starts
+on. A turned-off notification stops reaching customers, both in their
+notifications and by email, while agents keep their own updates. Request
+created confirms to the reporter that the request arrived. Service projects
+link customer organizations to the desk rather than sharing single requests,
+so there is no Organization added notification to send.
+
 ## Remaining fidelity
 
 The implemented operations are assessed as partial. JQL support follows the
 documented ZZIRA search subset, including array-aware label matching;
 Assets-backed portal pickers,
-approval workflow configuration, email delivery and notification preference administration, CSAT configuration,
+approval workflow configuration, customer notification email templates and Organization added notifications, CSAT configuration,
 SLA goal distributions, complete public Assets object/schema/import API parity, SLA recalculation for requests that predate a new SLA, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
 remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

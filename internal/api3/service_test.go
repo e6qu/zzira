@@ -1349,6 +1349,55 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND kind='service_comment'`, workspaceID, customerID).Scan(&customerCommentNotificationsAfter); err != nil || customerCommentNotificationsAfter != customerCommentNotificationsBefore {
 		t.Fatalf("private comment customer notifications = %d before, %d after, %v", customerCommentNotificationsBefore, customerCommentNotificationsAfter, err)
 	}
+	// Customer notifications: the reporter was told their request arrived, and
+	// a desk can stop public comments or invitations from reaching customers.
+	var createdConfirmations int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND kind='service_created' AND entity_id=$3`, workspaceID, customerID, issueKey).Scan(&createdConfirmations); err != nil || createdConfirmations != 1 {
+		t.Fatalf("request created confirmations = %d, %v", createdConfirmations, err)
+	}
+	if err := handler.Commands.SetServiceDeskCustomerNotification(ctx, customerID, workspaceID, serviceDeskID, models.CustomerNotificationPublicComment, false); err == nil {
+		t.Fatal("a customer changed customer notifications")
+	}
+	if err := handler.Commands.SetServiceDeskCustomerNotification(ctx, actorID, workspaceID, serviceDeskID, "carrier_pigeon", false); err == nil {
+		t.Fatal("an unknown customer notification was accepted")
+	}
+	if err := handler.Commands.SetServiceDeskCustomerNotification(ctx, actorID, workspaceID, serviceDeskID, models.CustomerNotificationPublicComment, false); err != nil {
+		t.Fatal(err)
+	}
+	customerCommentNotifications := func() int {
+		t.Helper()
+		var count int
+		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND kind='service_comment'`, workspaceID, customerID).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	callAs(agentID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/comment", `{"body":"Muted public update.","public":true}`, 201)
+	if customerCommentNotifications() != customerCommentNotificationsAfter {
+		t.Fatal("a turned-off public comment notification reached the customer")
+	}
+	if err := handler.Commands.SetServiceDeskCustomerNotification(ctx, actorID, workspaceID, serviceDeskID, models.CustomerNotificationPublicComment, true); err != nil {
+		t.Fatal(err)
+	}
+	callAs(agentID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/comment", `{"body":"Audible public update.","public":true}`, 201)
+	if customerCommentNotifications() != customerCommentNotificationsAfter+1 {
+		t.Fatal("a turned-on public comment notification did not reach the customer")
+	}
+	if err := handler.Commands.SetServiceDeskCustomerNotification(ctx, actorID, workspaceID, serviceDeskID, models.CustomerNotificationInvited, false); err != nil {
+		t.Fatal(err)
+	}
+	mutedInvitee := "muted.invitee-" + strings.ToLower(serviceDeskID) + "@example.test"
+	t.Cleanup(func() { exec(`DELETE FROM users WHERE email=$1`, mutedInvitee) })
+	if _, err := handler.Commands.InviteServiceDeskCustomer(ctx, actorID, workspaceID, serviceDeskID, mutedInvitee, "Muted Invitee"); err != nil {
+		t.Fatal(err)
+	}
+	var mutedInvitations int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM email_outbox WHERE workspace_id=$1 AND recipient=$2`, workspaceID, mutedInvitee).Scan(&mutedInvitations); err != nil || mutedInvitations != 0 {
+		t.Fatalf("muted invitations = %d, %v", mutedInvitations, err)
+	}
+	if desk, err := st.ServiceDesk(ctx, workspaceID, serviceDeskID); err != nil || desk.CustomerNotificationEnabled(models.CustomerNotificationInvited) || !desk.CustomerNotificationEnabled(models.CustomerNotificationPublicComment) {
+		t.Fatalf("desk customer notifications = %+v, %v", desk, err)
+	}
 	regularAgentComments := callAs(agentID, "GET", "/rest/servicedeskapi/request/"+issueKey+"/comment", "", 200)
 	if !strings.Contains(regularAgentComments.Body.String(), "Agent-only investigation detail") {
 		t.Fatal(regularAgentComments.Body.String())

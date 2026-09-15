@@ -289,6 +289,21 @@ func (s *Store) SetServiceDeskAttachmentsEnabled(ctx context.Context, workspaceI
 	return err
 }
 
+// SetServiceDeskCustomerNotification turns one of Jira's customer
+// notifications on or off for a service desk.
+func (s *Store) SetServiceDeskCustomerNotification(ctx context.Context, workspaceID, serviceDeskID, key string, enabled bool) error {
+	result, err := s.Pool.Exec(ctx, `UPDATE service_desks SET disabled_customer_notifications=CASE WHEN $4 THEN array_remove(disabled_customer_notifications,$3)
+		ELSE array_append(array_remove(disabled_customer_notifications,$3),$3) END
+		WHERE workspace_id=$1 AND id=$2`, workspaceID, serviceDeskID, key, enabled)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("service desk does not exist")
+	}
+	return nil
+}
+
 func (s *Store) SetServiceDeskFeedbackEnabled(ctx context.Context, workspaceID, serviceDeskID string, enabled bool) error {
 	result, err := s.Pool.Exec(ctx, `UPDATE service_desks SET feedback_enabled=$3 WHERE workspace_id=$1 AND id=$2`, workspaceID, serviceDeskID, enabled)
 	if err == nil && result.RowsAffected() == 0 {

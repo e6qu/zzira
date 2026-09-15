@@ -435,6 +435,13 @@ test('admin creates a service project with Jira Service Management request types
   await page.locator('#customers').getByRole('button', { name: 'Close portal access' }).click();
   await expect(page.locator('#customers').getByRole('button', { name: 'Open portal access' })).toBeVisible();
   await page.locator('#customers').getByRole('button', { name: 'Open portal access' }).click();
+  // Jira's customer notifications can be turned off and on again per desk.
+  const customerNotifications = page.getByRole('region', { name: 'Customer notifications' });
+  await expect(customerNotifications.getByRole('listitem')).toHaveCount(6);
+  await customerNotifications.getByRole('button', { name: 'Turn off Public comment added' }).click();
+  await expect(page.getByRole('region', { name: 'Customer notifications' }).getByRole('listitem').filter({ hasText: 'Public comment added' })).toContainText('Turned off.');
+  await page.getByRole('region', { name: 'Customer notifications' }).getByRole('button', { name: 'Turn on Public comment added' }).click();
+  await expect(page.getByRole('region', { name: 'Customer notifications' }).getByRole('button', { name: 'Turn off Public comment added' })).toBeVisible();
   const organizationName = `Customer organization ${Date.now()}`;
   const organizationSettings = page.locator('#organizations');
   await organizationSettings.getByPlaceholder('Organization name').fill(organizationName);

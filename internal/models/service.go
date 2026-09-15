@@ -19,6 +19,43 @@ type ServiceDesk struct {
 	CustomerAccessOpen bool
 	AttachmentsEnabled bool
 	FeedbackEnabled    bool
+	// DisabledCustomerNotifications are the customer notifications the desk
+	// does not send.
+	DisabledCustomerNotifications []string
+}
+
+// CustomerNotificationEnabled reports whether the desk sends one of Jira's
+// customer notifications.
+func (d ServiceDesk) CustomerNotificationEnabled(key string) bool {
+	return !slices.Contains(d.DisabledCustomerNotifications, key)
+}
+
+// Jira's customer notifications, which a service desk turns on or off. They
+// reach customers; agents keep their own updates.
+const (
+	CustomerNotificationInvited        = "customer_invited"
+	CustomerNotificationRequestCreated = "request_created"
+	CustomerNotificationPublicComment  = "public_comment_added"
+	CustomerNotificationStatusChanged  = "status_changed"
+	CustomerNotificationParticipant    = "participant_added"
+	CustomerNotificationApproval       = "approval_required"
+)
+
+// ServiceCustomerNotification is one customer notification as Jira names it.
+type ServiceCustomerNotification struct {
+	Key, Name, Description string
+}
+
+// ServiceCustomerNotifications lists the customer notifications in Jira's order.
+func ServiceCustomerNotifications() []ServiceCustomerNotification {
+	return []ServiceCustomerNotification{
+		{CustomerNotificationInvited, "Customer invited", "Emails people invited to the help center."},
+		{CustomerNotificationRequestCreated, "Request created", "Confirms to the reporter that their request was received."},
+		{CustomerNotificationPublicComment, "Public comment added", "Tells the customers involved about comments they can see."},
+		{CustomerNotificationStatusChanged, "Customer-visible status changed", "Tells the customers involved when the request moves to another status."},
+		{CustomerNotificationParticipant, "Participant added", "Tells people they were added to a request."},
+		{CustomerNotificationApproval, "Approval required", "Tells approvers that a request needs their decision."},
+	}
 }
 
 type ServiceOrganization struct {

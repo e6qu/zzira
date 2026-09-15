@@ -159,11 +159,14 @@ func (s *Service) InviteServiceDeskCustomer(ctx context.Context, actorID, worksp
 	if err := s.Store.SetServiceDeskCustomers(ctx, workspaceID, serviceDeskID, []string{customer.ID}, true); err != nil {
 		return nil, err
 	}
-	// An invitation is an email, as Jira sends.
-	subject := "You're invited to the " + desk.PortalName + " help center"
-	body := "Hi " + customer.DisplayName + ",\n\nYou can now raise and follow requests with " + desk.PortalName + ".\n/service/portals/" + desk.ID
-	if err := s.Store.QueueEmail(ctx, workspaceID, customer.Email, subject, body); err != nil {
-		return nil, err
+	// An invitation is an email, as Jira sends, unless the desk turned the
+	// Customer invited notification off.
+	if desk.CustomerNotificationEnabled(models.CustomerNotificationInvited) {
+		subject := "You're invited to the " + desk.PortalName + " help center"
+		body := "Hi " + customer.DisplayName + ",\n\nYou can now raise and follow requests with " + desk.PortalName + ".\n/service/portals/" + desk.ID
+		if err := s.Store.QueueEmail(ctx, workspaceID, customer.Email, subject, body); err != nil {
+			return nil, err
+		}
 	}
 	return customer, nil
 }
@@ -189,6 +192,20 @@ func (s *Service) SetServiceDeskAttachmentsEnabled(ctx context.Context, actorID,
 		return err
 	}
 	return s.Store.SetServiceDeskAttachmentsEnabled(ctx, workspaceID, serviceDeskID, enabled)
+}
+
+// SetServiceDeskCustomerNotification turns one of Jira's customer notifications
+// on or off for a service desk.
+func (s *Service) SetServiceDeskCustomerNotification(ctx context.Context, actorID, workspaceID, serviceDeskID, key string, enabled bool) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	for _, notification := range models.ServiceCustomerNotifications() {
+		if notification.Key == key {
+			return s.Store.SetServiceDeskCustomerNotification(ctx, workspaceID, serviceDeskID, key, enabled)
+		}
+	}
+	return fmt.Errorf("%q is not a customer notification", key)
 }
 
 // SetServiceDeskFeedbackEnabled turns customer satisfaction feedback on or off

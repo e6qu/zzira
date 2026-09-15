@@ -112,6 +112,9 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 			return nil, errors.Join(err, cleanupErr)
 		}
 	}
+	if err := s.notifyServiceRequestCreated(ctx, in.WorkspaceID, in.ServiceDeskID, in.CustomerID, issue.ID); err != nil {
+		return nil, err
+	}
 	// A request created straight into an approval status opens its approval.
 	current, err := s.Store.IssueByIDOrKey(ctx, in.WorkspaceID, issue.ID)
 	if err != nil {
@@ -146,7 +149,7 @@ func (s *Service) UpdateServiceRequestParticipants(ctx context.Context, actorID,
 		return nil, err
 	}
 	if !remove {
-		if err := s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, userIDs, "service_participant", "added you as a participant on "+request.Issue.Key, false); err != nil {
+		if err := s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, userIDs, "service_participant", "added you as a participant on "+request.Issue.Key, false, models.CustomerNotificationParticipant); err != nil {
 			return nil, err
 		}
 	}
@@ -212,7 +215,7 @@ func (s *Service) afterServiceRequestComment(ctx context.Context, actorID, works
 			return err
 		}
 	}
-	return s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_comment", "commented on "+request.Issue.Key, !public)
+	return s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_comment", "commented on "+request.Issue.Key, !public, models.CustomerNotificationPublicComment)
 }
 
 func (s *Service) TransitionServiceRequest(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string) (*models.ServiceRequest, error) {
@@ -232,7 +235,7 @@ func (s *Service) TransitionServiceRequest(ctx context.Context, actorID, workspa
 	if err != nil {
 		return nil, err
 	}
-	if err := s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_status", "moved "+request.Issue.Key+" to "+request.Issue.Status.Name, false); err != nil {
+	if err := s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_status", "moved "+request.Issue.Key+" to "+request.Issue.Status.Name, false, models.CustomerNotificationStatusChanged); err != nil {
 		return nil, err
 	}
 	return request, nil
