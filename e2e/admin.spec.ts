@@ -1,5 +1,14 @@
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
+import * as fs from 'fs';
+import * as path from 'path';
+
+function apiAuthHeader(): string {
+  const email = 'demo@zzira.dev';
+  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
+  const token = process.env.ZZIRA_API_TOKEN ?? tokens[email];
+  return 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
+}
 
 async function login(page: Page, email = 'demo@zzira.dev', password = 'demo1234') {
   await page.goto('/login');
@@ -93,6 +102,16 @@ test('site admin manages a directory group and its audited membership', async ({
   await expect(page).toHaveURL(/\/admin\?saved=Policy\+enabled$/);
   policy = page.locator('.admin-policy').filter({ hasText: policyName });
   await expect(policy).toContainText('enabled');
+
+  // The application title brands every page.
+  const titleAuth = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  expect((await page.request.put('/rest/api/3/application-properties/jira.title', { headers: titleAuth, data: { id: 'jira.title', value: 'Acme Delivery' } })).status()).toBe(200);
+  await page.reload();
+  await expect(page).toHaveTitle(/Acme Delivery/);
+  await expect(page.locator('.global-header .logo')).toContainText('Acme Delivery');
+  expect((await page.request.put('/rest/api/3/application-properties/jira.title', { headers: titleAuth, data: { id: 'jira.title', value: 'ZZIRA' } })).status()).toBe(200);
+  await page.reload();
+  await expect(page).toHaveTitle(/ZZIRA/);
 
   // Products run on plans; free plans cap their users.
   await page.getByLabel('Confluence plan').selectOption('premium');
