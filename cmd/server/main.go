@@ -439,6 +439,8 @@ func main() {
 		webHandler.ProjectOverview(w, r, r.PathValue("key"))
 	})
 	mux.HandleFunc("GET /people", webHandler.PeoplePage)
+	mux.HandleFunc("GET /plans", webHandler.PlansPage)
+	mux.HandleFunc("GET /plans/{id}", webHandler.PlanPage)
 	mux.HandleFunc("GET /teams", webHandler.TeamsPage)
 	mux.HandleFunc("POST /teams", webHandler.TeamsPage)
 	mux.HandleFunc("GET /teams/{id}", webHandler.TeamPage)

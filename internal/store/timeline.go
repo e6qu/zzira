@@ -12,11 +12,17 @@ import (
 // StartDateFieldID returns the workspace's Jira Start date field, or an empty
 // id when the site has none.
 func (s *Store) StartDateFieldID(ctx context.Context, workspaceID string) (string, error) {
+	return s.siteDateFieldID(ctx, workspaceID, "Start date")
+}
+
+// siteDateFieldID returns the site's own date field with the given name, or an
+// empty id when it has none.
+func (s *Store) siteDateFieldID(ctx context.Context, workspaceID, name string) (string, error) {
 	var id string
 	err := s.Pool.QueryRow(ctx, `
 		SELECT id FROM custom_fields
-		WHERE workspace_id=$1 AND app_installation_id IS NULL AND name='Start date' AND type=$2 AND trashed_at IS NULL
-		ORDER BY id LIMIT 1`, workspaceID, models.CustomFieldDate).Scan(&id)
+		WHERE workspace_id=$1 AND app_installation_id IS NULL AND name=$3 AND type=$2 AND trashed_at IS NULL
+		ORDER BY id LIMIT 1`, workspaceID, models.CustomFieldDate, name).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
 	}

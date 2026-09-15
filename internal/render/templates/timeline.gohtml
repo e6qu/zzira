@@ -20,3 +20,29 @@
 {{end}}
 </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
 {{end}}
+
+{{define "page_plans"}}
+<!doctype html><html lang="en"><head><title>Plans · {{(site $).Title}}</title>{{template "head" .}}</head><body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
+<header class="page-header"><div><span class="eyebrow">Plan</span><h1>Plans</h1><p>Plan work across projects, boards and filters, with the teams that deliver it.</p></div></header>
+{{if .Data.Plans}}<section class="surface-card" aria-labelledby="plans-heading"><h2 class="sr-only" id="plans-heading">Your plans</h2><div class="table-scroll" tabindex="0" aria-label="Plans"><table><caption class="sr-only">Plans you can view</caption><thead><tr><th scope="col">Plan</th><th scope="col">Sources</th><th scope="col">Access</th></tr></thead><tbody>{{range .Data.Plans}}<tr><th scope="row"><a href="/plans/{{.Plan.ID}}">{{.Plan.Name}}</a></th><td>{{len .Plan.IssueSources}}</td><td>{{if .Edit}}Can edit{{else}}Can view{{end}}</td></tr>{{end}}</tbody></table></div></section>
+{{else}}<section class="surface-card empty-state"><strong>No plans to show</strong><small>Plans that you lead, or that share view or edit access with you or your groups, appear here.</small></section>{{end}}
+</main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
+{{end}}
+
+{{define "page_plan"}}
+<!doctype html><html lang="en"><head><title>{{.Data.Plan.Name}} · Plans · {{(site $).Title}}</title>{{template "head" .}}</head><body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
+<nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/plans">Plans</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Plan.Name}}</span></nav>
+<header class="page-header"><div><span class="eyebrow">Plan · {{if .Data.Edit}}Can edit{{else}}Can view{{end}}</span><h1>{{.Data.Plan.Name}}</h1><p>Scheduled by {{if .Data.Work.StartFieldName}}{{.Data.Work.StartFieldName}}{{else}}no start field{{end}} and {{if .Data.Work.EndFieldName}}{{.Data.Work.EndFieldName}}{{else}}no end field{{end}}.</p></div></header>
+{{with .Data.Timeline}}{{if not .Rows}}<section class="surface-card empty-state"><strong>No work in this plan</strong><small>The plan's boards, projects and filters give no work you can view, or its exclusion rules leave it all out.</small></section>
+{{else}}<section class="surface-card timeline-card" aria-labelledby="plan-work-title"><h2 class="sr-only" id="plan-work-title">Planned work</h2>
+<div class="table-scroll timeline-scroll" tabindex="0" aria-label="Scrollable plan timeline"><table class="timeline-table">
+<caption class="sr-only">Planned work with start and end dates</caption>
+<thead><tr><th scope="col">Work</th><th scope="col">Start</th><th scope="col">End</th><th scope="col" class="timeline-months-cell"><span class="sr-only">Schedule</span><svg class="timeline-scale" viewBox="0 0 {{.Width}} 24" width="{{.Width}}" height="24" aria-hidden="true">{{range .Months}}<line x1="{{.X}}" y1="0" x2="{{.X}}" y2="24" class="timeline-gridline"/><text x="{{.X}}" dx="6" y="16" class="chart-label">{{.Label}}</text>{{end}}</svg></th></tr></thead>
+<tbody>{{range .Rows}}<tr class="{{if .Child}}timeline-child{{else}}timeline-epic{{end}}">
+<th scope="row"><span class="timeline-work"><a href="/browse/{{.Item.Issue.Key}}">{{.Item.Issue.Key}}</a><span>{{.Item.Issue.Summary}}</span><span class="lozenge {{statusClass .Item.Issue.Status.Category}}">{{.Item.Issue.Status.Name}}</span></span></th>
+<td>{{if .StartLabel}}{{.StartLabel}}{{else}}<span class="muted">None</span>{{end}}</td><td>{{if .DueLabel}}{{.DueLabel}}{{else}}<span class="muted">None</span>{{end}}</td>
+<td class="timeline-bar-cell"><svg viewBox="0 0 {{$.Data.Timeline.Width}} 28" width="{{$.Data.Timeline.Width}}" height="28" aria-hidden="true">{{range $.Data.Timeline.Months}}<line x1="{{.X}}" y1="0" x2="{{.X}}" y2="28" class="timeline-gridline"/>{{end}}{{if $.Data.Timeline.ShowToday}}<line x1="{{$.Data.Timeline.TodayX}}" y1="0" x2="{{$.Data.Timeline.TodayX}}" y2="28" class="timeline-today"/>{{end}}{{with .Bar}}<rect x="{{.X}}" y="6" width="{{.Width}}" height="16" rx="4" class="timeline-bar{{if .Open}} timeline-bar-open{{end}}"/>{{end}}</svg>{{if .Unscheduled}}<span class="sr-only">Not scheduled</span>{{end}}</td>
+</tr>{{end}}</tbody></table></div></section>{{end}}{{end}}
+<section class="surface-card sprint-report-work" aria-labelledby="plan-teams-title"><h2 id="plan-teams-title">Teams</h2>{{if .Data.Work.Teams}}<div class="table-scroll" tabindex="0" aria-label="Plan teams"><table><caption class="sr-only">Plan teams</caption><thead><tr><th scope="col">Team</th><th scope="col">Planning style</th><th scope="col">Sprint length</th><th scope="col">Capacity</th><th scope="col">Members</th></tr></thead><tbody>{{range .Data.Work.Teams}}<tr><th scope="row">{{if .Name}}{{.Name}}{{else}}Atlassian team {{.AtlassianTeamID}}{{end}}</th><td>{{.PlanningStyle}}</td><td>{{with .SprintLength}}{{.}} weeks{{else}}-{{end}}</td><td>{{with .Capacity}}{{.}}{{else}}-{{end}}</td><td>{{len .MemberIDs}}</td></tr>{{end}}</tbody></table></div>{{else}}<p class="muted">No teams are assigned to this plan.</p>{{end}}</section>
+</main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
+{{end}}

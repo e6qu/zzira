@@ -7,11 +7,13 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 // timelineBar is where a scheduled work item sits on the timeline.
@@ -222,4 +224,83 @@ func (h *Handler) ScheduleTimelineItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	back("notice", fmt.Sprintf("%s scheduled.", issue.Key))
+}
+
+type planListRow struct {
+	Plan store.Plan
+	Edit bool
+}
+
+type plansPageData struct {
+	Plans []planListRow
+}
+
+// PlansPage lists the active plans the user can view.
+func (h *Handler) PlansPage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	plans, _, err := h.Store.Plans(r.Context(), workspaceID, false, false, 0, 100)
+	if err != nil {
+		http.Error(w, "Could not load plans.", http.StatusInternalServerError)
+		return
+	}
+	data := plansPageData{}
+	for _, plan := range plans {
+		if plan.Status != "" && plan.Status != "Active" {
+			continue
+		}
+		view, edit, err := h.Store.PlanAccess(r.Context(), workspaceID, user.ID, plan)
+		if err != nil {
+			http.Error(w, "Could not load plans.", http.StatusInternalServerError)
+			return
+		}
+		if view {
+			data.Plans = append(data.Plans, planListRow{Plan: plan, Edit: edit})
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_plans", user, workspaceID, data, "plans", "")
+}
+
+type planPageData struct {
+	Plan     store.Plan
+	Edit     bool
+	Work     store.PlanWork
+	Timeline timelineData
+}
+
+// PlanPage shows a plan's work across months and its teams.
+func (h *Handler) PlanPage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	planID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	plan, err := h.Store.Plan(r.Context(), workspaceID, planID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	view, edit, err := h.Store.PlanAccess(r.Context(), workspaceID, user.ID, plan)
+	if err != nil {
+		http.Error(w, "Could not load the plan.", http.StatusInternalServerError)
+		return
+	}
+	if !view || (plan.Status != "" && plan.Status != "Active") {
+		http.NotFound(w, r)
+		return
+	}
+	work, err := h.Store.PlanWork(r.Context(), workspaceID, user.ID, plan, time.Now())
+	if err != nil {
+		http.Error(w, "Could not load the work in the plan.", http.StatusInternalServerError)
+		return
+	}
+	data := planPageData{Plan: plan, Edit: edit, Work: work,
+		Timeline: newTimelineData(nil, models.ProjectTimeline{Epics: work.Items}, time.Now(), h.siteLook(r, workspaceID).DateDay)}
+	h.writeWorkspacePage(w, r, "page_plan", user, workspaceID, data, "plans", "")
 }
