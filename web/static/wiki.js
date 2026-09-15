@@ -342,10 +342,16 @@ const startLiveEditing = (status, text, form) => {
       const current = text.get();
       if (typeof state.body === 'string') {
         // The whole document: this editor is new, restarted or far behind.
-        const base = synced === null ? initial : synced;
-        const merged = liveMerge(base, current, [liveDiff(base, state.body)].filter(Boolean));
-        synced = state.body;
-        if (merged.local !== current) text.set(merged.local);
+        if (synced === null && current === initial && initial !== state.body) {
+          // The page opened with text of its own, such as a save the server
+          // refused, so that text is kept and shared as this editor's change.
+          synced = state.body;
+        } else {
+          const base = synced === null ? initial : synced;
+          const merged = liveMerge(base, current, [liveDiff(base, state.body)].filter(Boolean));
+          synced = state.body;
+          if (merged.local !== current) text.set(merged.local);
+        }
       } else if (state.applied) {
         synced = sent;
       } else if (state.changes.length) {
