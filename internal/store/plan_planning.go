@@ -607,3 +607,29 @@ func (s *Store) PlanHoursPerDay(ctx context.Context, workspaceID string) float64
 func (planning PlanPlanning) Timeline(issueID string) *models.TimelineItem {
 	return planning.timelineItem(issueID)
 }
+
+// PlanSourceNames names each of a plan's issue sources for people choosing a
+// team's source: a board, project or saved filter by its name.
+func (s *Store) PlanSourceNames(ctx context.Context, workspaceID string, plan Plan) (map[int64]string, error) {
+	names := map[int64]string{}
+	for _, source := range plan.IssueSources {
+		var name string
+		var err error
+		switch source.Type {
+		case "Board":
+			err = s.Pool.QueryRow(ctx, `SELECT b.name FROM boards b JOIN projects p ON p.id=b.project_id WHERE p.workspace_id=$1 AND b.jira_id=$2`, workspaceID, source.Value).Scan(&name)
+		case "Project":
+			err = s.Pool.QueryRow(ctx, `SELECT name||' ('||key||')' FROM projects WHERE workspace_id=$1 AND id=$2`, workspaceID, strconv.FormatInt(source.Value, 10)).Scan(&name)
+		case "Filter":
+			err = s.Pool.QueryRow(ctx, `SELECT name FROM filters WHERE workspace_id=$1 AND jira_id=$2`, workspaceID, source.Value).Scan(&name)
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			name, err = "Removed", nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		names[source.ID] = source.Type + ": " + name
+	}
+	return names, nil
+}

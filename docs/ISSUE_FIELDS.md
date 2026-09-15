@@ -81,6 +81,7 @@ field keeps the Jira type key it was created with; responses report it as
 | `project` | a project | `project` |
 | `version` | a version of the work item's project | `version` |
 | `multiversion` | versions of the work item's project | `array` of `version` |
+| `com.atlassian.teams:rm-teams-custom-field-team` | an Atlassian team of the site | `team` |
 
 A key for a type this product does not have, such as `daterange` or
 `numberrange`, is refused rather than stored as a different type.

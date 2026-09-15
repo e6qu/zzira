@@ -20,6 +20,11 @@ type planTeamOption struct {
 	Name string
 }
 
+type planSourceOption struct {
+	ID   int64
+	Name string
+}
+
 type planPageData struct {
 	Plan      store.Plan
 	Edit      bool
@@ -30,6 +35,7 @@ type planPageData struct {
 	Scenario  store.PlanScenario
 	Colors    []string
 	Teams     []planTeamOption
+	Sources   []planSourceOption
 	Blocking  map[string][]store.PlanDependency
 	BlockedBy map[string][]store.PlanDependency
 	Notice    string
@@ -128,6 +134,14 @@ func (h *Handler) PlanPage(w http.ResponseWriter, r *http.Request) {
 		Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
 	for _, capacity := range planning.Capacity {
 		data.Teams = append(data.Teams, planTeamOption{ID: capacity.Team.ID, Name: capacity.Name})
+	}
+	names, err := h.Store.PlanSourceNames(r.Context(), workspaceID, plan)
+	if err != nil {
+		http.Error(w, "Could not load the plan's sources.", http.StatusInternalServerError)
+		return
+	}
+	for _, source := range plan.IssueSources {
+		data.Sources = append(data.Sources, planSourceOption{ID: source.ID, Name: names[source.ID]})
 	}
 	for _, dependency := range planning.Dependencies {
 		data.Blocking[dependency.Blocker.Issue.ID] = append(data.Blocking[dependency.Blocker.Issue.ID], dependency)
@@ -665,4 +679,67 @@ func (h *Handler) savePlanChanges(r *http.Request, userID, workspaceID string, p
 		}
 	}
 	return saved, ""
+}
+
+// PlanTeamSettings changes how a team plans in the plan: its planning style,
+// the issue source whose board gives its sprints, its capacity and its
+// sprint length.
+func (h *Handler) PlanTeamSettings(w http.ResponseWriter, r *http.Request) {
+	if !parseForm(w, r) {
+		return
+	}
+	_, workspaceID, plan, edit, _, scenario, ok := h.planContext(w, r)
+	if !ok {
+		return
+	}
+	if !edit {
+		http.Error(w, "You cannot edit this plan.", http.StatusForbidden)
+		return
+	}
+	teamID, _ := strconv.ParseInt(r.PostFormValue("team"), 10, 64)
+	teams, _, err := h.Store.PlanTeams(r.Context(), workspaceID, plan.ID, 0, 100)
+	if err != nil {
+		http.Error(w, "Could not load the plan's teams.", http.StatusInternalServerError)
+		return
+	}
+	var team *store.PlanTeam
+	for index := range teams {
+		if teams[index].ID == teamID {
+			team = &teams[index]
+		}
+	}
+	if team == nil {
+		planBack(w, r, plan, scenario.ID, "", "error", "Choose a team of the plan.")
+		return
+	}
+	team.PlanningStyle = r.PostFormValue("planningStyle")
+	team.IssueSourceID, team.Capacity, team.SprintLength = nil, nil, nil
+	if value, err := strconv.ParseInt(r.PostFormValue("issueSource"), 10, 64); err == nil && value > 0 {
+		team.IssueSourceID = &value
+	}
+	if text := strings.TrimSpace(r.PostFormValue("capacity")); text != "" {
+		value, err := strconv.ParseFloat(text, 64)
+		if err != nil {
+			planBack(w, r, plan, scenario.ID, "", "error", "The capacity must be a number.")
+			return
+		}
+		team.Capacity = &value
+	}
+	if text := strings.TrimSpace(r.PostFormValue("sprintLength")); text != "" {
+		value, err := strconv.ParseInt(text, 10, 64)
+		if err != nil {
+			planBack(w, r, plan, scenario.ID, "", "error", "The sprint length must be a whole number of weeks.")
+			return
+		}
+		team.SprintLength = &value
+	}
+	if _, err := h.Store.SavePlanTeam(r.Context(), workspaceID, plan.ID, *team, false); err != nil {
+		if message := planErrorMessage(err); message != "" {
+			planBack(w, r, plan, scenario.ID, "", "error", message)
+			return
+		}
+		http.Error(w, "Could not save the team.", http.StatusInternalServerError)
+		return
+	}
+	planBack(w, r, plan, scenario.ID, "", "notice", "Team settings saved.")
 }

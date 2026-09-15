@@ -44,6 +44,13 @@ func init() {
 			}
 			return fmt.Sprint(value)
 		},
+		// deref64 reads an optional whole number.
+		"deref64": func(value *int64) int64 {
+			if value == nil {
+				return 0
+			}
+			return *value
+		},
 		// planMax is the top of a capacity meter: the capacity, or the planned
 		// work when it is more.
 		"planMax": func(capacity, planned float64) float64 {
