@@ -309,13 +309,24 @@ func (s *Service) UpdateServiceSLAConditions(ctx context.Context, actorID, works
 	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
+	start, stop, err := s.serviceSLAConditions(ctx, workspaceID, serviceDeskID, start, stop)
+	if err != nil {
+		return err
+	}
+	return s.Store.UpdateServiceSLAConditions(ctx, workspaceID, actorID, serviceDeskID, metricID, start, stop)
+}
+
+// serviceSLAConditions checks start and stop conditions against Jira's
+// catalog and the desk project's statuses, drops repeats and requires at
+// least one of each.
+func (s *Service) serviceSLAConditions(ctx context.Context, workspaceID, serviceDeskID string, start, stop []string) ([]string, []string, error) {
 	desk, err := s.Store.ServiceDesk(ctx, workspaceID, serviceDeskID)
 	if err != nil {
-		return fmt.Errorf("service desk does not exist: %w", err)
+		return nil, nil, fmt.Errorf("service desk does not exist: %w", err)
 	}
 	statuses, err := s.Store.StatusesForProject(ctx, workspaceID, desk.ProjectID, true)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	known := map[string]bool{}
 	for _, condition := range models.ServiceSLAConditions() {
@@ -340,12 +351,37 @@ func (s *Service) UpdateServiceSLAConditions(ctx context.Context, actorID, works
 		return kept, nil
 	}
 	if start, err = normalize("start", start); err != nil {
-		return err
+		return nil, nil, err
 	}
 	if stop, err = normalize("stop", stop); err != nil {
+		return nil, nil, err
+	}
+	return start, stop, nil
+}
+
+// CreateServiceSLAMetric adds a custom SLA to a service desk with its goal and
+// the conditions that start and stop its clock.
+func (s *Service) CreateServiceSLAMetric(ctx context.Context, actorID, workspaceID, serviceDeskID, name string, goalMillis int64, start, stop []string) (models.ServiceSLAMetric, error) {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return models.ServiceSLAMetric{}, err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" || len(name) > 255 {
+		return models.ServiceSLAMetric{}, fmt.Errorf("an SLA name of 1 to 255 characters is required")
+	}
+	start, stop, err := s.serviceSLAConditions(ctx, workspaceID, serviceDeskID, start, stop)
+	if err != nil {
+		return models.ServiceSLAMetric{}, err
+	}
+	return s.Store.CreateServiceSLAMetric(ctx, workspaceID, actorID, serviceDeskID, name, goalMillis, start, stop)
+}
+
+// DeleteServiceSLAMetric removes a custom SLA from a service desk.
+func (s *Service) DeleteServiceSLAMetric(ctx context.Context, actorID, workspaceID, serviceDeskID, metricID string) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
 		return err
 	}
-	return s.Store.UpdateServiceSLAConditions(ctx, workspaceID, actorID, serviceDeskID, metricID, start, stop)
+	return s.Store.DeleteServiceSLAMetric(ctx, workspaceID, actorID, serviceDeskID, metricID)
 }
 
 func (s *Service) SetServiceDeskAgent(ctx context.Context, actorID, workspaceID, serviceDeskID, userID string, enabled bool) error {

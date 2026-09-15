@@ -288,6 +288,8 @@ func main() {
 	mux.HandleFunc("POST /service/agent/{desk}/calendar/holidays", webHandler.ServiceCalendarHolidaySettings)
 	mux.HandleFunc("POST /service/agent/{desk}/sla/{metric}", webHandler.ServiceSLASettings)
 	mux.HandleFunc("POST /service/agent/{desk}/sla/{metric}/goals", webHandler.ServiceSLAGoalSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/slas", webHandler.ServiceSLACreate)
+	mux.HandleFunc("POST /service/agent/{desk}/sla/{metric}/delete", webHandler.ServiceSLADelete)
 	mux.HandleFunc("POST /service/agent/{desk}/requests/{key}/assign", webHandler.ServiceAgentAssign)
 	mux.HandleFunc("POST /service/agent/{desk}/bulk", webHandler.ServiceQueueBulk)
 	mux.HandleFunc("GET /admin", webHandler.AdminPage)

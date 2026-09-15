@@ -887,6 +887,23 @@ type FieldResolver struct {
 	EntityProperties map[string]EntityPropertyField
 	// FieldOperators are the operators a custom field's searcher allows.
 	FieldOperators map[string][]string
+	// SLAFields are the lower-cased names of the site's SLAs, which the SLA
+	// functions search.
+	SLAFields map[string]bool
+}
+
+// WithSLAFields adds the names of a site's SLAs to the fields SLA functions
+// search.
+func WithSLAFields(res FieldResolver, names []string) FieldResolver {
+	fields := make(map[string]bool, len(res.SLAFields)+len(names))
+	for name := range res.SLAFields {
+		fields[name] = true
+	}
+	for _, name := range names {
+		fields[strings.ToLower(name)] = true
+	}
+	res.SLAFields = fields
+	return res
 }
 
 // EntityPropertyField is an indexed value inside an issue property: the value
@@ -1049,6 +1066,8 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 
 func DefaultResolver() FieldResolver {
 	return FieldResolver{
+		// Every service desk has Jira's two built-in SLAs.
+		SLAFields: map[string]bool{"time to first response": true, "time to resolution": true},
 		Columns: map[string]string{
 			"key":            "i.key",
 			"issue":          "i.key",
@@ -1507,7 +1526,7 @@ func (c *compiler) slaClause(cl Clause) string {
 		c.err = &SyntaxError{0, "SLA functions require an SLA field"}
 		return ""
 	}
-	if cl.Field != "time to first response" && cl.Field != "time to resolution" {
+	if !c.res.SLAFields[cl.Field] {
 		c.err = &SyntaxError{0, "field does not exist or is not searchable: " + cl.Field}
 		return ""
 	}

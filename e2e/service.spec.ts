@@ -481,6 +481,19 @@ test('admin creates a service project with Jira Service Management request types
   await firstResponseStop().getByLabel('Assignee: From Unassigned').uncheck();
   await page.locator('#sla-settings .service-sla-goals form').first().getByRole('button', { name: 'Save SLA' }).click();
   await expect(firstResponseStop().getByLabel('Assignee: From Unassigned')).not.toBeChecked();
+  // A manager adds their own SLA and removes it again.
+  const customSLAName = `Time to approve ${String(Date.now()).slice(-6)}`;
+  const createSLA = page.locator('#sla-settings .service-sla-create');
+  await createSLA.getByLabel('SLA name').fill(customSLAName);
+  await createSLA.getByRole('group', { name: 'Start counting time when' }).getByLabel('Issue Created').check();
+  await createSLA.getByRole('group', { name: 'Stop counting time when' }).getByLabel('Resolution: Set').check();
+  await createSLA.getByLabel('Goal in minutes').fill('120');
+  await createSLA.getByRole('button', { name: 'Add SLA' }).click();
+  const customSLAForm = page.locator('#sla-settings .service-sla-goals form').filter({ has: page.getByText(customSLAName, { exact: true }) });
+  await expect(customSLAForm.getByRole('spinbutton')).toHaveValue('120');
+  await expect(customSLAForm.getByRole('group', { name: 'Stop counting time when' }).getByLabel('Resolution: Set')).toBeChecked();
+  await page.getByRole('button', { name: `Delete ${customSLAName}` }).click();
+  await expect(page.getByRole('button', { name: `Delete ${customSLAName}` })).toHaveCount(0);
   const conditionalGoalName = `Incident response ${String(Date.now()).slice(-6)}`;
   const firstResponseConditions = page.locator('#sla-settings .service-conditional-goals section').filter({ has: page.getByRole('heading', { name: 'Time to first response conditions', level: 3 }) });
   const conditionalGoalCreate = firstResponseConditions.locator('.service-conditional-goal-create');

@@ -296,6 +296,14 @@ Created and stops at a comment for customers, and time to resolution starts at
 Issue Created or Resolution Cleared and stops at Resolution Set. Condition
 changes are audited and apply to the events that follow.
 
+Managers also add their own SLAs, such as time to approve, with a name, a goal
+and their start and stop conditions, and delete them again; time to first
+response and time to resolution are built in and stay. A new SLA runs on the
+desk's calendar, gets its default goal, follows the events after it is added,
+and is searchable by its name with the SLA JQL functions, for example
+`"Time to approve" = breached()`. Deleting it removes its goals and cycles.
+Creating and deleting SLAs are audited.
+
 Administrators add, rename, or remove dated holidays in the same calendar
 workspace. Changes are scoped to the selected service desk and audited. SLA
 calculation, queue urgency, customer-visible goal state, and the escalation
@@ -424,7 +432,7 @@ The implemented operations are assessed as partial. JQL support follows the
 documented ZZIRA search subset, including array-aware label matching;
 Assets-backed portal pickers, participant notifications,
 approval workflow configuration, email delivery and notification preference administration, CSAT configuration,
-SLA goal distributions, complete public Assets object/schema/import API parity, custom SLA metrics,
+SLA goal distributions, complete public Assets object/schema/import API parity, SLA recalculation for requests that predate a new SLA,
 portal invitation email delivery, Atlassian knowledge ranking/analytics, and asset import/reconciliation and review templates
 remain. Customer creation grants only the
 site `atlassian/customer` role and never silently grants Jira product access.

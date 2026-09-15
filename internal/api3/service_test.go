@@ -1197,7 +1197,42 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 			t.Fatalf("first response conditions = %+v", metric)
 		}
 	}
+	// A custom SLA counts time from entering In Progress until a resolution is set.
+	if _, err := handler.Commands.CreateServiceSLAMetric(ctx, customerID, workspaceID, serviceDeskID, "Time in progress", time.Hour.Milliseconds(), []string{inProgress}, []string{models.SLAConditionResolutionSet}); err == nil {
+		t.Fatal("customer created an SLA")
+	}
+	if _, err := handler.Commands.CreateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, "Time to first response", time.Hour.Milliseconds(), []string{inProgress}, []string{models.SLAConditionResolutionSet}); !errors.Is(err, store.ErrServiceSLANameTaken) {
+		t.Fatalf("duplicate SLA name err = %v", err)
+	}
+	customSLA, err := handler.Commands.CreateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, "Time in progress", time.Hour.Milliseconds(), []string{inProgress}, []string{models.SLAConditionResolutionSet})
+	if err != nil || customSLA.Kind != "custom" || customSLA.ID == "" {
+		t.Fatalf("custom SLA = %+v, %v", customSLA, err)
+	}
+	if err := handler.Commands.DeleteServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, metricByKind["resolution"]); err == nil {
+		t.Fatal("a built-in SLA was deleted")
+	}
+	customCycles := func(onlyOngoing bool) int {
+		t.Helper()
+		var count int
+		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM service_sla_cycles WHERE request_issue_id=$1 AND metric_id=$2 AND ($3=false OR stopped_at IS NULL)`, issue.ID, customSLA.ID, onlyOngoing).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	if customCycles(false) != 0 {
+		t.Fatal("a new SLA started before its start condition")
+	}
 	callAs(customerID, "POST", "/rest/servicedeskapi/request/"+issueKey+"/transition", `{"id":"21","additionalComment":{"body":"Work can begin.","public":true}}`, 204)
+	if customCycles(true) != 1 {
+		t.Fatal("entering In Progress did not start the custom SLA")
+	}
+	searchTotalAs(customerID, `key = `+issueKey+` AND "Time in progress" = running()`, 1)
+	if err := handler.Commands.DeleteServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, customSLA.ID); err != nil {
+		t.Fatal(err)
+	}
+	if customCycles(false) != 0 {
+		t.Fatal("deleting the custom SLA kept its cycles")
+	}
 	if ongoingFirstResponse() != 0 {
 		t.Fatal("entering In Progress did not stop time to first response")
 	}

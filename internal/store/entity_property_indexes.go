@@ -69,5 +69,13 @@ func (s *Store) JQLResolver(ctx context.Context, workspaceID string) (jql.FieldR
 	if err != nil {
 		return jql.FieldResolver{}, err
 	}
-	return jql.WithEntityProperties(jql.WithCustomFields(jql.DefaultResolver(), fields), indexes), nil
+	metrics, err := s.ServiceSLAMetricsForWorkspace(ctx, workspaceID)
+	if err != nil {
+		return jql.FieldResolver{}, err
+	}
+	slaNames := make([]string, 0, len(metrics))
+	for _, metric := range metrics {
+		slaNames = append(slaNames, metric.Name)
+	}
+	return jql.WithSLAFields(jql.WithEntityProperties(jql.WithCustomFields(jql.DefaultResolver(), fields), indexes), slaNames), nil
 }

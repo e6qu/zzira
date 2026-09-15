@@ -2,7 +2,10 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"sort"
 	"strings"
 	"time"
@@ -252,6 +255,79 @@ func (s *Store) ApplyServiceSLAEvents(ctx context.Context, workspaceID, serviceD
 		return false, err
 	}
 	return stopped.RowsAffected()+started.RowsAffected() > 0, tx.Commit(ctx)
+}
+
+// ErrServiceSLANameTaken is a new SLA named like another SLA of the desk.
+var ErrServiceSLANameTaken = errors.New("another SLA of this service desk has that name")
+
+// CreateServiceSLAMetric adds a custom SLA to a service desk on its calendar,
+// after the desk's existing SLAs. Its default goal comes from the goal
+// trigger, and it applies to the events that follow.
+func (s *Store) CreateServiceSLAMetric(ctx context.Context, workspaceID, actorID, serviceDeskID, name string, goalMillis int64, start, stop []string) (models.ServiceSLAMetric, error) {
+	metric := models.ServiceSLAMetric{ServiceDeskID: serviceDeskID, Name: name, Kind: "custom", GoalMillis: goalMillis, StartConditions: start, StopConditions: stop}
+	if goalMillis < time.Minute.Milliseconds() || goalMillis > (365*24*time.Hour).Milliseconds() {
+		return metric, fmt.Errorf("SLA goal must be between one minute and 365 days")
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return metric, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	err = tx.QueryRow(ctx, `
+		INSERT INTO service_sla_metrics(service_desk_id,calendar_id,name,kind,goal_millis,position,start_conditions,stop_conditions)
+		SELECT sd.id,c.id,$3,'custom',$4,COALESCE((SELECT max(position)+1 FROM service_sla_metrics WHERE service_desk_id=sd.id),0),$5,$6
+		FROM service_desks sd JOIN service_calendars c ON c.service_desk_id=sd.id
+		WHERE sd.workspace_id=$1 AND sd.id=$2
+		RETURNING id,calendar_id,position`, workspaceID, serviceDeskID, name, goalMillis, start, stop).Scan(&metric.ID, &metric.CalendarID, &metric.Position)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return metric, fmt.Errorf("service desk does not exist")
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return metric, ErrServiceSLANameTaken
+	}
+	if err != nil {
+		return metric, err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT si.organization_id,$2,'service.sla.created','service_sla',$4,jsonb_build_object('serviceDeskId',$3::text,'name',$5::text)
+		FROM sites si WHERE si.workspace_id=$1`, workspaceID, actorID, serviceDeskID, metric.ID, name); err != nil {
+		return metric, err
+	}
+	return metric, tx.Commit(ctx)
+}
+
+// DeleteServiceSLAMetric removes a custom SLA with its goals and cycles; the
+// built-in SLAs stay.
+func (s *Store) DeleteServiceSLAMetric(ctx context.Context, workspaceID, actorID, serviceDeskID, metricID string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var name, kind string
+	if err := tx.QueryRow(ctx, `
+		SELECT m.name,m.kind FROM service_sla_metrics m JOIN service_desks sd ON sd.id=m.service_desk_id
+		WHERE sd.workspace_id=$1 AND sd.id=$2 AND m.id=$3`, workspaceID, serviceDeskID, metricID).Scan(&name, &kind); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("SLA metric does not exist")
+		}
+		return err
+	}
+	if kind != "custom" {
+		return fmt.Errorf("%s is built in and cannot be deleted", name)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM service_sla_metrics WHERE id=$1`, metricID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
+		SELECT si.organization_id,$2,'service.sla.deleted','service_sla',$4,jsonb_build_object('serviceDeskId',$3::text,'name',$5::text)
+		FROM sites si WHERE si.workspace_id=$1`, workspaceID, actorID, serviceDeskID, metricID, name); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // UpdateServiceSLAConditions replaces the conditions that start and stop an

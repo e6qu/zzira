@@ -983,6 +983,40 @@ func (h *Handler) ServiceSLASettings(w http.ResponseWriter, r *http.Request) {
 	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#sla-settings")
 }
 
+// ServiceSLACreate adds a custom SLA to a service desk.
+func (h *Handler) ServiceSLACreate(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	goalMinutes, err := strconv.ParseInt(r.PostFormValue("goalMinutes"), 10, 64)
+	if err != nil || goalMinutes < 1 {
+		http.Error(w, "SLA goal must be a positive number of minutes.", http.StatusBadRequest)
+		return
+	}
+	if _, err := h.Commands.CreateServiceSLAMetric(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PostFormValue("name"), goalMinutes*time.Minute.Milliseconds(), r.PostForm["startCondition"], r.PostForm["stopCondition"]); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#sla-settings")
+}
+
+// ServiceSLADelete removes a custom SLA from a service desk.
+func (h *Handler) ServiceSLADelete(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if err := h.Commands.DeleteServiceSLAMetric(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PathValue("metric")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#sla-settings")
+}
+
 func (h *Handler) ServiceSLAGoalSettings(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
