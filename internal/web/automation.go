@@ -68,6 +68,10 @@ var (
 		{"jira.issue.edit:priority", "Set priority"}, {"jira.issue.create-subtask", "Create sub-task"},
 		{"jira.issue.email:assignee", "Email the assignee"}, {"jira.issue.email:reporter", "Email the reporter"},
 		{"jira.issue.email:watchers", "Email the watchers"},
+		{automation.WebRequestActionType + ":POST", "Send web request (POST)"},
+		{automation.WebRequestActionType + ":PUT", "Send web request (PUT)"},
+		{automation.WebRequestActionType + ":GET", "Send web request (GET)"},
+		{automation.WebRequestActionType + ":DELETE", "Send web request (DELETE)"},
 	}
 	automationRelatedTypes    = []automationOption{{"sub-tasks", "Sub-tasks"}, {"parent", "Parent"}, {"linked", "Linked work items"}}
 	automationConditionFields = []automationOption{
@@ -583,6 +587,15 @@ func automationFormActions(types, values []string) ([]map[string]any, error) {
 			})
 			continue
 		}
+		// A web request names its method in the action, as a link names its
+		// link type, and carries the address it is sent to.
+		if method := strings.TrimPrefix(actionType, automation.WebRequestActionType+":"); method != actionType && strings.TrimSpace(method) != "" {
+			components = append(components, map[string]any{
+				"component": "ACTION", "schemaVersion": 1, "type": automation.WebRequestActionType,
+				"value": map[string]string{"method": method, "url": value},
+			})
+			continue
+		}
 		// An email action names its recipients in the action, as a link names
 		// its link type.
 		if recipient := strings.TrimPrefix(actionType, "jira.issue.email:"); recipient != actionType && strings.TrimSpace(recipient) != "" {
@@ -650,7 +663,7 @@ func automationEditorUnsupported(payload json.RawMessage) string {
 		return "its trigger"
 	}
 	editableAction := func(component automationComponentJSON) bool {
-		return (component.Component == "" || component.Component == "ACTION") && (component.Type == "jira.issue.edit" || component.Type == "jira.issue.link" || component.Type == "jira.issue.email" || component.Type == "jira.issue.create" || automationOptionName(automationActionTypes, component.Type) != "")
+		return (component.Component == "" || component.Component == "ACTION") && (component.Type == "jira.issue.edit" || component.Type == "jira.issue.link" || component.Type == "jira.issue.email" || component.Type == "jira.issue.create" || component.Type == automation.WebRequestActionType || automationOptionName(automationActionTypes, component.Type) != "")
 	}
 	for index, component := range rule.Components {
 		switch component.Component {
@@ -796,6 +809,8 @@ func automationActionViews(components []automationComponentJSON) []automationAct
 			view.Type, view.Value = "jira.issue.email:"+fields["recipient"], fields["body"]
 		case "jira.issue.create":
 			view.Type, view.Value = "jira.issue.create:"+fields["issueTypeId"], fields["summary"]
+		case automation.WebRequestActionType:
+			view.Type, view.Value = automation.WebRequestActionType+":"+fields["method"], fields["url"]
 		}
 		actions = append(actions, view)
 	}

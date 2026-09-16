@@ -100,6 +100,42 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
 });
 
 
+test('admin builds a rule that sends a web request', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const fixture = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary: `Web request rule work ${Date.now()}`, issuetype: { name: 'Task' } } } });
+  expect(fixture.status()).toBe(201);
+  const fixtureKey = (await fixture.json()).key as string;
+
+  await page.goto('/settings/automation');
+  await page.getByRole('link', { name: 'Create rule', exact: true }).click();
+  const name = `E2E web request ${Date.now()}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByLabel('Run every').fill('60');
+  await page.getByLabel('Timezone').fill('UTC');
+  await page.getByLabel('JQL query').fill(`key = ${fixtureKey}`);
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.outgoing-webhook:POST');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('http://127.0.0.1:9/hook');
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+
+  // The editor shows the saved action rather than turning saving off.
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue('jira.issue.outgoing-webhook:POST');
+  await expect(page.getByRole('combobox', { name: 'Value', exact: true }).first()).toHaveValue('http://127.0.0.1:9/hook');
+
+  // The rule runs the action, and an address on a private network is refused
+  // rather than reaching the site's own network.
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => {
+    await page.goto(ruleURL);
+    return await page.locator('.automation-audit tbody').innerText();
+  }, { timeout: 15_000 }).toContain('FAILED');
+  await expect(page.locator('.automation-audit tbody')).toContainText('private network');
+});
+
+
 test('admin builds a rule an incoming webhook runs', async ({ page, request }) => {
   await login(page);
   const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };

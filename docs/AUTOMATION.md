@@ -92,9 +92,16 @@ larger results fail before any actions run.
 
 Other triggers, components, branch types, smart values and connection payloads
 remain available through the rule API, but the worker records an explicit failed
-audit entry when asked to execute unsupported behavior. Page creation, work
-creation and incoming-request triggers, web requests, usage limits and
-the rest of Jira's trigger, condition and action catalog remain gaps.
+audit entry when asked to execute unsupported behavior. Page creation triggers,
+usage limits and the rest of Jira's trigger, condition and action catalog
+remain gaps. A rule sends a web request with the send web request action: it
+names its method, as a link action names its link type, and carries the address,
+which may hold smart values. A work item, when the rule has one, is sent as the
+body in Jira's format. The answer reaches later actions as `{{webResponse}}`,
+with `{{webResponse.status}}` for its status; an answer outside the 2xx range
+fails the rule, and an address on a private network is refused. Work item creation starts a rule through the work item
+created trigger below, and a request starts one through the incoming webhook
+trigger above.
 
 ## The incoming webhook trigger
 
