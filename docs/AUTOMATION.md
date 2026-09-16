@@ -93,8 +93,30 @@ larger results fail before any actions run.
 Other triggers, components, branch types, smart values and connection payloads
 remain available through the rule API, but the worker records an explicit failed
 audit entry when asked to execute unsupported behavior. Page creation, work
-creation, webhook and incoming-request triggers, web requests, usage limits and
+creation and incoming-request triggers, web requests, usage limits and
 the rest of Jira's trigger, condition and action catalog remain gaps.
+
+## The incoming webhook trigger
+
+A rule can instead start from a request. A rule whose trigger type is
+`jira.webhook.trigger` is given an address of its own, `/pro/hooks/{token}`,
+shown in the editor once the rule is saved. A POST to that address runs the
+rule. The token is the credential, as it is in Jira, so the address is a
+secret; a rule that also carries a `webhook_secret` checks it, in constant
+time, against the request's `X-Automation-Webhook-Token` header.
+
+The trigger's `value` holds `issuesFromWebhook`, which says whether the request
+names the work items to run for. A body naming `issues` queues one run for each
+work item it names, at most a hundred, skipping any the site does not hold; a
+body naming none queues one run with no work item at all. The whole body, which
+may be empty, reaches the rule's actions as `{{webhookData}}`, and a path
+within it as `{{webhookData.release.version}}`; a path the body does not hold
+renders empty, as any unknown smart value does.
+
+An action or condition that needs a work item fails when the request named
+none, rather than being skipped, and the run records why. A disabled rule is
+not run by its address, and an address naming no rule is not found. Saving a
+rule keeps the address it already has.
 
 ## Event triggers, conditions and smart values
 
@@ -160,8 +182,8 @@ smart values describe the related work item and `{{triggerIssue.key}}` and
 `{{triggerIssue.summary}}` the work item the rule started from, and a condition
 that does not hold skips only that related work item.
 
-The rule editor at `/settings/automation` offers the scheduled and work item
-event triggers with their options, work item fields and JQL conditions, the
+The rule editor at `/settings/automation` offers the scheduled, work item
+event and incoming webhook triggers with their options, work item fields and JQL conditions, the
 label, assign, transition, comment, edit summary and due date actions, and one
 related work items branch placed after them with its own field and JQL
 conditions followed by its actions. It does not show triggers, conditions,

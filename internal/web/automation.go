@@ -38,6 +38,9 @@ type automationOption struct{ Value, Name string }
 type automationTriggerView struct {
 	Type, FromStatus, ToStatus, Fields string
 	AllowRules                         bool
+	// WebhookIssues is whether an incoming webhook rule runs for the work
+	// items the request names, rather than for none.
+	WebhookIssues bool
 }
 
 // automationConditionView is a work item fields or JQL condition in the
@@ -57,6 +60,7 @@ var (
 		{"jira.jql.scheduled", "Scheduled"}, {"jira.issue.event.trigger:created", "Work item created"},
 		{"jira.issue.event.trigger:transitioned", "Work item transitioned"}, {"jira.issue.field.changed", "Field value changed"},
 		{"jira.issue.event.trigger:commented", "Work item commented"}, {"jira.issue.event.trigger:linked", "Work item linked"},
+		{automation.WebhookTriggerType, "Incoming webhook"},
 	}
 	automationActionTypes = []automationOption{
 		{"jira.issue.add-label", "Add label"}, {"jira.issue.remove-label", "Remove label"}, {"jira.issue.assign", "Assign work item"}, {"jira.issue.transition", "Transition work item"},
@@ -113,9 +117,11 @@ type automationEditorData struct {
 	Members      []*models.User
 	Statuses     []models.Status
 	CloudID      string
-	IsNew        bool
-	FormAction   string
-	Error        string
+	// WebhookURL is the address an incoming webhook rule is called at.
+	WebhookURL string
+	IsNew      bool
+	FormAction string
+	Error      string
 }
 
 func (h *Handler) AutomationRules(w http.ResponseWriter, r *http.Request) {
@@ -294,6 +300,9 @@ func (h *Handler) automationEditorData(r *http.Request, workspaceID string, rule
 	data := automationEditorData{Rule: rule, Members: members, Statuses: statuses, CloudID: cloudID,
 		Triggers: automationTriggers, ActionTypes: actionTypes, ConditionFields: automationConditionFields, ConditionOperators: automationConditionOperators,
 		RelatedTypes: automationRelatedTypes}
+	if rule != nil && rule.WebhookToken != "" {
+		data.WebhookURL = strings.TrimSuffix(h.BaseURL, "/") + "/pro/hooks/" + url.PathEscape(rule.WebhookToken)
+	}
 	if rule == nil {
 		data.Trigger = automationTriggerView{Type: "jira.jql.scheduled"}
 		data.Conditions = []automationConditionView{{}}
@@ -430,6 +439,11 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 			return nil, fmt.Errorf("choose between 1 and 20 fields for the field value changed trigger")
 		}
 		triggerValue = map[string]any{"jql": query, "fields": fields}
+	case automation.WebhookTriggerType:
+		// Jira's incoming webhook runs either for the work items the request
+		// names or for none at all, and the rule says which it expects.
+		issues := r.PostFormValue("webhook_issues") == "true"
+		triggerValue = map[string]any{"jql": query, "issuesFromWebhook": issues}
 	default:
 		return nil, fmt.Errorf("unsupported trigger")
 	}
@@ -680,12 +694,14 @@ func parseAutomationTrigger(payload json.RawMessage) automationTriggerView {
 	}
 	_ = json.Unmarshal(payload, &rule)
 	var value struct {
-		FromStatusIDs []string `json:"fromStatusIds"`
-		ToStatusIDs   []string `json:"toStatusIds"`
-		Fields        []string `json:"fields"`
+		FromStatusIDs     []string `json:"fromStatusIds"`
+		ToStatusIDs       []string `json:"toStatusIds"`
+		Fields            []string `json:"fields"`
+		IssuesFromWebhook bool     `json:"issuesFromWebhook"`
 	}
 	automationComponentValue(rule.Trigger.Value, &value)
-	view := automationTriggerView{Type: rule.Trigger.Type, Fields: strings.Join(value.Fields, ", "), AllowRules: rule.CanOtherRuleTrigger}
+	view := automationTriggerView{Type: rule.Trigger.Type, Fields: strings.Join(value.Fields, ", "), AllowRules: rule.CanOtherRuleTrigger,
+		WebhookIssues: value.IssuesFromWebhook}
 	if len(value.FromStatusIDs) > 0 {
 		view.FromStatus = value.FromStatusIDs[0]
 	}

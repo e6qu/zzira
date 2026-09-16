@@ -100,6 +100,50 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
 });
 
 
+test('admin builds a rule an incoming webhook runs', async ({ page, request }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const fixture = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary: `Webhook rule work ${Date.now()}`, issuetype: { name: 'Task' } } } });
+  expect(fixture.status()).toBe(201);
+  const fixtureKey = (await fixture.json()).key as string;
+
+  await page.goto('/settings/automation');
+  await page.getByRole('link', { name: 'Create rule', exact: true }).click();
+  const name = `E2E webhook ${Date.now()}`;
+  const label = `hooked-${Date.now()}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('jira.webhook.trigger');
+  await page.getByLabel('The request names the work items to run for').check();
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(label);
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+
+  // The rule is called at the address the editor shows, the way a real caller
+  // does: no session, which is also why a signed-in browser cannot be made to
+  // fire someone else's webhook from another site.
+  const webhookURL = await page.getByLabel('Webhook URL').inputValue();
+  expect(webhookURL).toContain('/pro/hooks/');
+  const called = await request.post(webhookURL, { data: { issues: [fixtureKey] } });
+  expect(called.status()).toBe(200);
+  expect((await called.json()).queued).toBe(1);
+
+  await expect.poll(async () => {
+    await page.goto(ruleURL);
+    return await page.locator('.automation-audit tbody').innerText();
+  }, { timeout: 15_000 }).toContain('SUCCESS');
+  const issue = await (await page.request.get(`/rest/api/3/issue/${fixtureKey}`, { headers })).json();
+  expect(issue.fields.labels).toContain(label);
+
+  // The address survives a save, so what already calls it keeps working.
+  await page.getByRole('button', { name: 'Save rule' }).click();
+  await page.goto(ruleURL);
+  expect(await page.getByLabel('Webhook URL').inputValue()).toBe(webhookURL);
+});
+
+
 test('admin builds an event rule with a condition and smart values that runs when work is commented', async ({ page }) => {
   await login(page);
   const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };

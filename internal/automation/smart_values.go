@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,29 +39,85 @@ func (r *Runner) renderSmartValues(ctx context.Context, run *claimedRun, issue *
 		return user.DisplayName
 	}
 	values := map[string]string{
-		"issue.key": issue.Key, "issue.summary": issue.Summary, "issue.status.name": issue.Status.Name,
-		"issue.issueType.name": issue.IssueType.Name, "issue.dueDate": issue.DueDate, "issue.labels": strings.Join(issue.Labels, ", "),
-		"issue.assignee.displayName": person(issue.Assignee, "displayName"), "issue.assignee.accountId": person(issue.Assignee, "accountId"),
-		"issue.reporter.displayName": person(issue.Reporter, "displayName"), "issue.reporter.accountId": person(issue.Reporter, "accountId"),
 		"initiator.displayName": person(initiator, "displayName"), "initiator.accountId": person(initiator, "accountId"),
 		"rule.name": run.RuleName, "now": now.Format(time.RFC3339), "now.jiraDate": now.Format("2006-01-02"),
 	}
-	if issue.Priority != nil {
-		values["issue.priority.name"] = issue.Priority.Name
+	// A rule an incoming webhook ran without work items has no work item
+	// values; in Jira those render empty rather than failing.
+	if issue != nil {
+		values["issue.key"], values["issue.summary"] = issue.Key, issue.Summary
+		values["issue.status.name"], values["issue.issueType.name"] = issue.Status.Name, issue.IssueType.Name
+		values["issue.dueDate"], values["issue.labels"] = issue.DueDate, strings.Join(issue.Labels, ", ")
+		values["issue.assignee.displayName"], values["issue.assignee.accountId"] = person(issue.Assignee, "displayName"), person(issue.Assignee, "accountId")
+		values["issue.reporter.displayName"], values["issue.reporter.accountId"] = person(issue.Reporter, "displayName"), person(issue.Reporter, "accountId")
+		if issue.Priority != nil {
+			values["issue.priority.name"] = issue.Priority.Name
+		}
 	}
 	trigger := run.TriggerIssue
 	if trigger == nil {
 		trigger = issue
 	}
-	values["triggerIssue.key"], values["triggerIssue.summary"] = trigger.Key, trigger.Summary
+	if trigger != nil {
+		values["triggerIssue.key"], values["triggerIssue.summary"] = trigger.Key, trigger.Summary
+	}
 	if len(text) > 32768 {
 		return "", errors.New("action text is longer than 32768 characters")
 	}
 	rendered := smartValuePattern.ReplaceAllStringFunc(text, func(match string) string {
 		name := smartValuePattern.FindStringSubmatch(match)[1]
-		return values[name]
+		if value, ok := values[name]; ok {
+			return value
+		}
+		if name == "webhookData" || strings.HasPrefix(name, "webhookData.") {
+			return webhookValue(run.WebhookData, strings.TrimPrefix(strings.TrimPrefix(name, "webhookData"), "."))
+		}
+		return ""
 	})
 	return rendered, nil
+}
+
+// webhookValue reads the body an incoming webhook ran a rule with: the whole
+// body for {{webhookData}}, and a dotted path within it for
+// {{webhookData.issue.key}}. A path the body does not hold renders empty, as
+// an unknown smart value does in Jira.
+func webhookValue(data json.RawMessage, path string) string {
+	if len(data) == 0 {
+		return ""
+	}
+	if path == "" {
+		return strings.TrimSpace(string(data))
+	}
+	var current any
+	if err := json.Unmarshal(data, &current); err != nil {
+		return ""
+	}
+	for _, segment := range strings.Split(path, ".") {
+		object, ok := current.(map[string]any)
+		if !ok {
+			return ""
+		}
+		current, ok = object[segment]
+		if !ok {
+			return ""
+		}
+	}
+	switch value := current.(type) {
+	case string:
+		return value
+	case nil:
+		return ""
+	case float64:
+		return strconv.FormatFloat(value, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(value)
+	default:
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return ""
+		}
+		return string(encoded)
+	}
 }
 
 // conditionFields are the work item fields a fields condition compares.
@@ -78,6 +135,9 @@ var conditionOperators = map[string]bool{"EQUALS": true, "NOT_EQUALS": true, "CO
 
 // condition reports whether a rule's condition holds for a work item.
 func (r *Runner) condition(ctx context.Context, run *claimedRun, issue *models.Issue, item component) (bool, error) {
+	if issue == nil {
+		return false, errors.New("this condition needs a work item, and the webhook named none")
+	}
 	raw := decodeComponentValue(item.Value)
 	switch item.Type {
 	case "jira.jql.condition":

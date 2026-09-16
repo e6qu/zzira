@@ -34,8 +34,11 @@ type claimedRun struct {
 	// IssueID and InitiatorID are the work item and person of the event an
 	// event run started from; both are empty for scheduled runs.
 	IssueID, InitiatorID string
-	RuleName             string
-	ScopeARIs            []string
+	// WebhookData is the body of the request that ran an incoming webhook
+	// rule, which its actions read as {{webhookData}}.
+	WebhookData json.RawMessage
+	RuleName    string
+	ScopeARIs   []string
 	// TriggerIssue is the work item the rule started from while branches run
 	// for related work.
 	TriggerIssue *models.Issue
@@ -181,15 +184,16 @@ func (r *Runner) claim(ctx context.Context, workspaceID string) (*claimedRun, er
 		  started_at=COALESCE(started_at,now()),completed_at=NULL
 		 FROM candidate WHERE ar.id=candidate.id
 		 RETURNING ar.id,ar.rule_uuid,ar.scheduled_for,ar.state,ar.attempts,ar.started_at,
-		           ar.completed_at,ar.matched_count,ar.changed_count,ar.detail,ar.issue_id,ar.initiator_id
+		           ar.completed_at,ar.matched_count,ar.changed_count,ar.detail,ar.issue_id,ar.initiator_id,ar.webhook_data
 		)
 		SELECT c.id::text,c.rule_uuid::text,c.scheduled_for,c.state,c.attempts,c.started_at,c.completed_at,
 		       c.matched_count,c.changed_count,c.detail,rule.workspace_id,rule.actor_id,rule.payload,rule.jql,
-		       COALESCE(c.issue_id,''),COALESCE(c.initiator_id,''),rule.name,rule.rule_scope_aris
+		       COALESCE(c.issue_id,''),COALESCE(c.initiator_id,''),rule.name,rule.rule_scope_aris,c.webhook_data
 		FROM claimed c JOIN automation_rules rule ON rule.uuid=c.rule_uuid`, workspaceID).
 		Scan(&run.ID, &run.RuleUUID, &run.ScheduledFor, &run.State, &run.Attempts, &run.StartedAt,
 			&run.CompletedAt, &run.MatchedCount, &run.ChangedCount, &run.Detail, &run.WorkspaceID,
-			&run.ActorID, &run.Payload, &run.JQL, &run.IssueID, &run.InitiatorID, &run.RuleName, &run.ScopeARIs)
+			&run.ActorID, &run.Payload, &run.JQL, &run.IssueID, &run.InitiatorID, &run.RuleName, &run.ScopeARIs,
+			&run.WebhookData)
 	return run, err
 }
 
@@ -205,13 +209,32 @@ func (r *Runner) execute(ctx context.Context, run *claimedRun) (int, int, error)
 	ctx = store.WithAutomationRule(ctx, run.RuleUUID)
 	var issues []*models.Issue
 	total := 0
-	if run.IssueID != "" {
+	switch {
+	case triggerType(run.Payload) == WebhookTriggerType:
+		// An incoming webhook runs for the work the request named, or, when it
+		// named none, once with no work item, as Jira's webhook trigger does.
+		if run.IssueID == "" {
+			changed, err := r.runComponents(ctx, run, nil, components)
+			if err != nil {
+				return 0, 0, err
+			}
+			if changed {
+				return 0, 1, nil
+			}
+			return 0, 0, nil
+		}
 		issue, applies, err := r.eventIssue(ctx, run)
 		if err != nil || !applies {
 			return 0, 0, err
 		}
 		issues, total = []*models.Issue{issue}, 1
-	} else {
+	case run.IssueID != "":
+		issue, applies, err := r.eventIssue(ctx, run)
+		if err != nil || !applies {
+			return 0, 0, err
+		}
+		issues, total = []*models.Issue{issue}, 1
+	default:
 		query, err := jql.Parse(run.JQL)
 		if err != nil {
 			return 0, 0, fmt.Errorf("parse JQL: %w", err)
@@ -283,13 +306,22 @@ func (r *Runner) eventIssue(ctx context.Context, run *claimedRun) (*models.Issue
 // a condition that does not hold stops the rule for it, and each action sees
 // the work item as the previous one left it.
 func (r *Runner) runComponents(ctx context.Context, run *claimedRun, issue *models.Issue, components []component) (bool, error) {
-	if run.TriggerIssue == nil {
+	if run.TriggerIssue == nil && issue != nil {
 		run.TriggerIssue = issue
 		defer func() { run.TriggerIssue = nil }()
+	}
+	// A rule an incoming webhook ran without work items has no work item to
+	// name in a failure, and no related work to branch over.
+	where := "the webhook's request"
+	if issue != nil {
+		where = issue.Key
 	}
 	changed := false
 	for _, item := range components {
 		if item.Component == "BRANCH" {
+			if issue == nil {
+				return changed, fmt.Errorf("%s on %s: a branch needs a work item, and the webhook named none", item.Type, where)
+			}
 			related, err := r.relatedIssues(ctx, run, issue, item)
 			if err != nil {
 				return changed, fmt.Errorf("%s on %s: %w", item.Type, issue.Key, err)
@@ -306,7 +338,7 @@ func (r *Runner) runComponents(ctx context.Context, run *claimedRun, issue *mode
 		if item.Component == "CONDITION" {
 			holds, err := r.condition(ctx, run, issue, item)
 			if err != nil {
-				return changed, fmt.Errorf("%s on %s: %w", item.Type, issue.Key, err)
+				return changed, fmt.Errorf("%s on %s: %w", item.Type, where, err)
 			}
 			if !holds {
 				return changed, nil
@@ -315,12 +347,14 @@ func (r *Runner) runComponents(ctx context.Context, run *claimedRun, issue *mode
 		}
 		didChange, err := r.apply(ctx, run, issue, item)
 		if err != nil {
-			return changed, fmt.Errorf("%s on %s: %w", item.Type, issue.Key, err)
+			return changed, fmt.Errorf("%s on %s: %w", item.Type, where, err)
 		}
 		if didChange {
 			changed = true
-			if fresh, err := r.Service.Store.IssueByIDOrKey(ctx, run.WorkspaceID, issue.ID); err == nil {
-				issue = fresh
+			if issue != nil {
+				if fresh, err := r.Service.Store.IssueByIDOrKey(ctx, run.WorkspaceID, issue.ID); err == nil {
+					issue = fresh
+				}
 			}
 		}
 	}
@@ -538,6 +572,11 @@ func (r *Runner) relatedIssues(ctx context.Context, run *claimedRun, issue *mode
 }
 
 func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue, action component) (bool, error) {
+	// Every action this rule catalog holds acts on a work item. Jira fails
+	// such an action when the trigger supplied none, rather than skipping it.
+	if issue == nil && action.Type != "jira.issue.create" && !strings.HasPrefix(action.Type, "jira.issue.create:") {
+		return false, errors.New("this action needs a work item, and the webhook named none")
+	}
 	valueRaw := decodeComponentValue(action.Value)
 	render := func(text string) (string, error) { return r.renderSmartValues(ctx, run, issue, text) }
 	switch action.Type {
