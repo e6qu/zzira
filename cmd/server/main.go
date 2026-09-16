@@ -740,6 +740,9 @@ func main() {
 	}
 	mux.Handle("/jira/deployments/0.1/cloud/", api)
 	mux.HandleFunc("GET /_edge/tenant_info", automationAPI.TenantInfo)
+	mux.HandleFunc("POST /pro/hooks/{token}", func(w http.ResponseWriter, r *http.Request) {
+		automationAPI.IncomingWebhook(w, r, r.PathValue("token"))
+	})
 	mux.Handle("/gateway/api/automation/public/jira/", automationAPI)
 	mux.Handle("/automation/public/jira/", automationAPI)
 	mux.HandleFunc("GET /admin/v1/orgs", adminAPI.Organizations)

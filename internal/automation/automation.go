@@ -48,7 +48,13 @@ type Rule struct {
 	CronExpression string
 	// EventTrigger is the work item event a rule starts from: created,
 	// transitioned, field_changed or commented; empty for other triggers.
-	EventTrigger        string
+	EventTrigger string
+	// WebhookToken is the secret in a rule's incoming webhook URL, and
+	// WebhookSecret the value a request must present as X-Automation-Webhook-Token
+	// when the rule asks for one. Both are empty unless the rule's trigger is
+	// the incoming webhook.
+	WebhookToken        string
+	WebhookSecret       string
 	ScheduleTimezone    string
 	JQL                 string
 	NextRunAt           *time.Time
@@ -229,20 +235,21 @@ func decodeCursor(cursor string) (int, error) {
 }
 
 func (s *Service) CreateRule(ctx context.Context, workspaceID, requesterID string, body json.RawMessage) (string, error) {
-	prepared, err := s.prepareRule(ctx, workspaceID, requesterID, "", body)
+	prepared, err := s.prepareRule(ctx, workspaceID, requesterID, "", body, nil)
 	if err != nil {
 		return "", err
 	}
 	_, err = s.Store.Pool.Exec(ctx, `
 		INSERT INTO automation_rules
-		(uuid,workspace_id,author_id,actor_id,name,description,labels,state,rule_scope_aris,payload,connections,interval_minutes,schedule_timezone,jql,next_run_at,event_trigger,cron_expression)
+		(uuid,workspace_id,author_id,actor_id,name,description,labels,state,rule_scope_aris,payload,connections,interval_minutes,schedule_timezone,jql,next_run_at,event_trigger,cron_expression,webhook_token,webhook_secret)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
 		       CASE WHEN $8::text='ENABLED' AND $12::int IS NOT NULL THEN now()+make_interval(mins=>$12::int) WHEN $8::text='ENABLED' THEN $17::timestamptz END,
-		       NULLIF($15,''),NULLIF($16,''))`,
+		       NULLIF($15,''),NULLIF($16,''),NULLIF($18,''),NULLIF($19,''))`,
 		prepared.UUID, workspaceID, prepared.AuthorID, prepared.ActorID, prepared.Name, prepared.Description,
 		prepared.Labels, prepared.State, prepared.RuleScopeARIs, prepared.Payload, prepared.Connections,
 		prepared.IntervalMinutes, prepared.ScheduleTimezone, prepared.JQL, prepared.EventTrigger,
-		prepared.CronExpression, nextCronRun(prepared.CronExpression, prepared.ScheduleTimezone, time.Now()))
+		prepared.CronExpression, nextCronRun(prepared.CronExpression, prepared.ScheduleTimezone, time.Now()),
+		prepared.WebhookToken, prepared.WebhookSecret)
 	if err != nil {
 		return "", fmt.Errorf("create rule: %w", err)
 	}
@@ -250,10 +257,11 @@ func (s *Service) CreateRule(ctx context.Context, workspaceID, requesterID strin
 }
 
 func (s *Service) UpdateRule(ctx context.Context, workspaceID, requesterID, uuid string, body json.RawMessage) error {
-	if _, err := s.Rule(ctx, workspaceID, uuid); err != nil {
+	existing, err := s.Rule(ctx, workspaceID, uuid)
+	if err != nil {
 		return err
 	}
-	prepared, err := s.prepareRule(ctx, workspaceID, requesterID, uuid, body)
+	prepared, err := s.prepareRule(ctx, workspaceID, requesterID, uuid, body, existing)
 	if err != nil {
 		return err
 	}
@@ -262,10 +270,12 @@ func (s *Service) UpdateRule(ctx context.Context, workspaceID, requesterID, uuid
 		 rule_scope_aris=$9,payload=$10,connections=$11,interval_minutes=$12,schedule_timezone=$13,jql=$14,
 		 next_run_at=CASE WHEN $8::text='ENABLED' AND $12::int IS NOT NULL THEN COALESCE(CASE WHEN cron_expression IS NULL THEN next_run_at END,now()+make_interval(mins=>$12::int))
 		                  WHEN $8::text='ENABLED' THEN $17::timestamptz END,
-		 event_trigger=NULLIF($15,''),cron_expression=NULLIF($16,''),updated_at=now() WHERE workspace_id=$1 AND uuid=$2`, workspaceID, uuid,
+		 event_trigger=NULLIF($15,''),cron_expression=NULLIF($16,''),
+		 webhook_token=NULLIF($18,''),webhook_secret=NULLIF($19,''),updated_at=now() WHERE workspace_id=$1 AND uuid=$2`, workspaceID, uuid,
 		prepared.AuthorID, prepared.ActorID, prepared.Name, prepared.Description, prepared.Labels, prepared.State,
 		prepared.RuleScopeARIs, prepared.Payload, prepared.Connections, prepared.IntervalMinutes, prepared.ScheduleTimezone, prepared.JQL, prepared.EventTrigger,
-		prepared.CronExpression, nextCronRun(prepared.CronExpression, prepared.ScheduleTimezone, time.Now()))
+		prepared.CronExpression, nextCronRun(prepared.CronExpression, prepared.ScheduleTimezone, time.Now()),
+		prepared.WebhookToken, prepared.WebhookSecret)
 	if err != nil {
 		return fmt.Errorf("update rule: %w", err)
 	}
@@ -361,7 +371,7 @@ func (s *Service) EnqueueNow(ctx context.Context, workspaceID, uuid string) erro
 	return err
 }
 
-func (s *Service) prepareRule(ctx context.Context, workspaceID, requesterID, forcedUUID string, body json.RawMessage) (*Rule, error) {
+func (s *Service) prepareRule(ctx context.Context, workspaceID, requesterID, forcedUUID string, body json.RawMessage, existing *Rule) (*Rule, error) {
 	var write ruleWrite
 	if err := json.Unmarshal(body, &write); err != nil || write.Rule == nil {
 		return nil, fmt.Errorf("body must contain a rule object")
@@ -473,13 +483,44 @@ func (s *Service) prepareRule(ctx context.Context, workspaceID, requesterID, for
 	if event != "" {
 		query = eventJQL
 	}
+	// The token in the address is the credential, as it is in Jira: the URL is
+	// the secret. A rule keeps the address it was given, because minting a new
+	// one on every save would silently break whatever already calls it.
+	webhookToken, webhookSecret := "", ""
+	if triggerType(payload) == WebhookTriggerType {
+		if existing != nil {
+			webhookToken, webhookSecret = existing.WebhookToken, existing.WebhookSecret
+		}
+		if webhookToken == "" {
+			webhookToken, err = newWebhookToken()
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	return &Rule{
 		UUID: uuid, AuthorID: authorID, ActorID: actorID, Name: name,
 		Description: jsonString(write.Rule["description"]), Labels: jsonStrings(write.Rule["labels"]),
 		State: state, RuleScopeARIs: jsonStrings(write.Rule["ruleScopeARIs"]), Payload: payload,
 		Connections: write.Connections, IntervalMinutes: interval, ScheduleTimezone: timezone, JQL: query,
 		EventTrigger: event, CronExpression: cronExpression,
+		WebhookToken: webhookToken, WebhookSecret: webhookSecret,
 	}, nil
+}
+
+// WebhookTriggerType is Jira Automation's incoming webhook trigger: a rule
+// carries a secret URL, and a request to it runs the rule.
+const WebhookTriggerType = "jira.webhook.trigger"
+
+// newWebhookToken mints the unguessable half of a rule's incoming webhook URL.
+// A time-ordered UUID would be guessable, so this follows the site's own
+// random-token shape.
+func newWebhookToken() (string, error) {
+	value := make([]byte, 24)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(value), nil
 }
 
 func ensureComponentIDs(raw json.RawMessage) (json.RawMessage, error) {
@@ -691,7 +732,8 @@ func contains(values []string, target string) bool {
 }
 
 const ruleSelect = `SELECT uuid::text,workspace_id,author_id,actor_id,name,description,labels,state,rule_scope_aris,
- payload,connections,interval_minutes,schedule_timezone,jql,next_run_at,consecutive_failures,created_at,updated_at,COALESCE(event_trigger,''),COALESCE(cron_expression,'') FROM automation_rules`
+ payload,connections,interval_minutes,schedule_timezone,jql,next_run_at,consecutive_failures,created_at,updated_at,COALESCE(event_trigger,''),COALESCE(cron_expression,''),
+ COALESCE(webhook_token,''),COALESCE(webhook_secret,'') FROM automation_rules`
 
 type rowScanner interface{ Scan(...any) error }
 
@@ -699,6 +741,7 @@ func scanRule(row rowScanner) (*Rule, error) {
 	rule := &Rule{}
 	err := row.Scan(&rule.UUID, &rule.WorkspaceID, &rule.AuthorID, &rule.ActorID, &rule.Name, &rule.Description,
 		&rule.Labels, &rule.State, &rule.RuleScopeARIs, &rule.Payload, &rule.Connections, &rule.IntervalMinutes,
-		&rule.ScheduleTimezone, &rule.JQL, &rule.NextRunAt, &rule.ConsecutiveFailures, &rule.CreatedAt, &rule.UpdatedAt, &rule.EventTrigger, &rule.CronExpression)
+		&rule.ScheduleTimezone, &rule.JQL, &rule.NextRunAt, &rule.ConsecutiveFailures, &rule.CreatedAt, &rule.UpdatedAt, &rule.EventTrigger, &rule.CronExpression,
+		&rule.WebhookToken, &rule.WebhookSecret)
 	return rule, err
 }
