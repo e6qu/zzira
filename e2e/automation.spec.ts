@@ -551,3 +551,47 @@ test('admin builds a rule that emails the reporter', async ({ page }) => {
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
 });
+
+test('admin builds a rule that raises a follow-up work item', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const created = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary: `Follow-up trigger ${stamp}`, issuetype: { name: 'Task' } } } });
+  expect(created.status()).toBe(201);
+  const key = (await created.json()).key as string;
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E create ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByLabel('JQL query').fill(`key = ${key}`);
+  // The editor offers the site's work types, so the action is chosen by name.
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption({ label: 'Create: Task' });
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(`Follow up on {{issue.key}} ${stamp}`);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+
+  // The editor round-trips the work type it folded into the action.
+  await expect(page.getByRole('note')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save rule', exact: true })).toBeEnabled();
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue(/^jira\.issue\.create:/);
+
+  const raised = async () => {
+    const response = await page.request.get(`/rest/api/3/search?jql=${encodeURIComponent(`project = ZZ AND summary ~ "Follow up on ${key} ${stamp}"`)}`, { headers });
+    return ((await response.json()).issues ?? []).length as number;
+  };
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(raised, { timeout: 15_000 }).toBe(1);
+
+  // Running again finds the work already there and raises no second one.
+  await page.goto(ruleURL);
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await page.waitForTimeout(3_000);
+  expect(await raised()).toBe(1);
+
+  await page.goto(ruleURL);
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});

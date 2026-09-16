@@ -348,6 +348,28 @@ func (r *Runner) matchesJQL(ctx context.Context, run *claimedRun, issue *models.
 	return total > 0, err
 }
 
+// matchingWorkExists reports whether the rule actor can see any work item the
+// query matches, where matchesJQL asks the same of one work item.
+func (r *Runner) matchingWorkExists(ctx context.Context, run *claimedRun, text string) (bool, error) {
+	query, err := jql.Parse(text)
+	if err != nil {
+		return false, fmt.Errorf("parse JQL: %w", err)
+	}
+	if err := r.Service.Store.ExpandAppJQL(ctx, run.WorkspaceID, query); err != nil {
+		return false, fmt.Errorf("expand app JQL: %w", err)
+	}
+	resolver, err := r.Service.Store.JQLResolver(ctx, run.WorkspaceID)
+	if err != nil {
+		return false, err
+	}
+	compiled := jql.CompileAt(query, run.ActorID, resolver, 2)
+	if compiled.Err != nil {
+		return false, fmt.Errorf("compile JQL: %w", compiled.Err)
+	}
+	_, total, err := r.Service.Store.Search(ctx, run.WorkspaceID, run.ActorID, compiled, 1, 0)
+	return total > 0, err
+}
+
 func validateExecutionActor(payload json.RawMessage, actorID string) error {
 	var rule struct {
 		Actor struct {
@@ -366,7 +388,7 @@ func validateExecutionActor(payload json.RawMessage, actorID string) error {
 
 // Actions and conditions the runner executes.
 var (
-	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true}
+	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true}
 	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true, "jira.issue.related.condition": true}
 )
 
@@ -648,6 +670,57 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 			return false, err
 		}
 		return true, nil
+	case "jira.issue.create":
+		var value struct {
+			IssueTypeID string `json:"issueTypeId"`
+			Summary     string `json:"summary"`
+		}
+		if err := json.Unmarshal(valueRaw, &value); err != nil || strings.TrimSpace(value.IssueTypeID) == "" || strings.TrimSpace(value.Summary) == "" {
+			return false, errors.New("create action requires value.issueTypeId and value.summary")
+		}
+		summary, err := render(value.Summary)
+		if err != nil {
+			return false, err
+		}
+		if summary = strings.TrimSpace(summary); summary == "" {
+			return false, errors.New("create action rendered an empty summary")
+		}
+		// The work type comes from the project's own scheme, so a rule cannot
+		// raise a type the project does not offer, and sub-tasks keep their own
+		// action because they need a parent.
+		issueTypes, err := r.Service.Store.ProjectIssueTypes(ctx, run.WorkspaceID, issue.ProjectID, nil)
+		if err != nil {
+			return false, err
+		}
+		var wanted *models.IssueType
+		for index, issueType := range issueTypes {
+			if issueType.ID == value.IssueTypeID && !issueType.Subtask {
+				wanted = &issueTypes[index]
+				break
+			}
+		}
+		if wanted == nil {
+			return false, errors.New("the project offers no such work type")
+		}
+		project, err := r.Service.Store.ProjectByIDOrKey(ctx, run.WorkspaceID, issue.ProjectID)
+		if err != nil {
+			return false, err
+		}
+		// Work of that type and summary already in the project means there is
+		// nothing to do, so a scheduled rule does not raise one every interval.
+		existing, err := r.matchingWorkExists(ctx, run, fmt.Sprintf("project = %s AND issuetype = %s AND summary = %s",
+			jql.Quote(project.Key), jql.Quote(wanted.Name), jql.Quote(summary)))
+		if err != nil {
+			return false, err
+		}
+		if existing {
+			return false, nil
+		}
+		created, _, err := r.Service.Commands.CreateIssue(ctx, commands.CreateIssueInput{
+			ActorID: run.ActorID, WorkspaceID: run.WorkspaceID, ProjectIDOrKey: issue.ProjectID,
+			Summary: summary, IssueTypeID: wanted.ID,
+		})
+		return created != nil, err
 	case "jira.issue.create-subtask":
 		var value struct {
 			Summary string `json:"summary"`

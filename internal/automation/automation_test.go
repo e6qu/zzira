@@ -549,3 +549,39 @@ func TestRunnerEmailsTheAssignee(t *testing.T) {
 		t.Errorf("recipient = %q, want the assignee %q", recipient, email)
 	}
 }
+
+func TestRunnerCreatesWorkItem(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID, issueID := store.NewID("prj"), store.NewID("iss")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id,issue_seq) VALUES($1,$2,'MAKE','Making','wf_default',1)`, projectID, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,updated_seq) VALUES($1,$2,$3,'MAKE-1','Triggering work','st_todo','it_task',0)`,
+		issueID, fx.ws, projectID); err != nil {
+		t.Fatal(err)
+	}
+
+	actions := []map[string]any{{"component": "ACTION", "type": "jira.issue.create", "value": map[string]string{"issueTypeId": "it_task", "summary": "Follow up on {{issue.key}}"}}}
+	body, _ := json.Marshal(ruleBody("Raise a follow-up", fx.admin, "ENABLED", "key = MAKE-1", actions))
+	uuid, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &Runner{Service: fx.service}
+	// Running twice proves the second run finds the work already there.
+	for range 2 {
+		if err := fx.service.EnqueueNow(fx.ctx, fx.ws, uuid); err != nil {
+			t.Fatal(err)
+		}
+		if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var made int
+	if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT count(*) FROM issues WHERE project_id=$1 AND summary=$2`, projectID, "Follow up on MAKE-1").Scan(&made); err != nil {
+		t.Fatal(err)
+	}
+	if made != 1 {
+		t.Fatalf("work items raised = %d, want 1", made)
+	}
+}
