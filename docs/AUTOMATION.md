@@ -104,6 +104,7 @@ which the work item must match for the rule actor:
 | `jira.issue.event.trigger:transitioned` | optional `fromStatusIds`, `toStatusIds` | A work item's status changes, from and to the listed statuses when given |
 | `jira.issue.field.changed` | `fields`, 1 to 20 names such as `summary`, `priority`, `assignee`, `labels` | Any listed field changes |
 | `jira.issue.event.trigger:commented` | none | A comment is added |
+| `jira.issue.event.trigger:linked` | none | A link is added. A link joins two work items but starts one run, for the outward work item — the side that acts, as an outward work item blocks its inward one |
 
 The worker reads new events from the action log in order and queues one run per
 rule and event, so a retried batch never repeats a run. Enabling a rule never

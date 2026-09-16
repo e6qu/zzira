@@ -3,6 +3,7 @@ package automation
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -383,5 +384,66 @@ func TestBuildTemplateRuleValidates(t *testing.T) {
 	}
 	if len(Templates()) != len(ruleTemplates) || Templates()[0].Categories[0] != "Popular" {
 		t.Fatalf("templates = %+v", Templates())
+	}
+}
+
+func TestLinkedEventRuleStartsForTheOutwardWorkItem(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID := store.NewID("prj")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id,lead_account_id) VALUES($1,$2,'LNKE','Linked events','wf_default',$3)`, projectID, fx.ws, fx.admin); err != nil {
+		t.Fatal(err)
+	}
+	create := func(summary string) *models.Issue {
+		t.Helper()
+		issue, _, err := fx.store.CreateIssue(fx.ctx, fx.admin, projectID, summary, json.RawMessage(`{"type":"doc","version":1,"content":[]}`), "st_todo", "it_task", "pr_medium", "", nil, nil, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return issue
+	}
+	labels := func(issue *models.Issue) []string {
+		t.Helper()
+		fresh, err := fx.store.IssueByIDOrKey(fx.ctx, fx.ws, issue.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fresh.Labels
+	}
+	blocker, blocked := create("Blocking work"), create("Blocked work")
+	blocksID, err := fx.store.LinkTypeIDByName(fx.ctx, fx.ws, "Blocks")
+	if err != nil || blocksID == "" {
+		t.Fatalf("seeded Blocks link type = %q, %v", blocksID, err)
+	}
+
+	body, _ := json.Marshal(map[string]any{"rule": map[string]any{
+		"actor": map[string]string{"actor": fx.admin, "type": "ACCOUNT_ID"}, "name": "Label linked work", "state": "ENABLED",
+		"components": []map[string]any{{"component": "ACTION", "type": "jira.issue.add-label", "value": map[string]string{"label": "linked"}}},
+		"trigger":    map[string]any{"component": "TRIGGER", "type": "jira.issue.event.trigger:linked", "schemaVersion": 1, "value": map[string]any{}},
+	}, "connections": []any{}})
+	if _, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body); err != nil {
+		t.Fatal(err)
+	}
+	runner := &Runner{Service: fx.service}
+	drain := func() {
+		t.Helper()
+		for range 25 {
+			if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// Work linked before the rule existed is never replayed.
+	drain()
+
+	// A link joins two work items and starts one run, for the outward side.
+	if _, _, err := fx.store.CreateIssueLink(fx.ctx, fx.admin, fx.ws, blocksID, blocked.ID, blocker.ID); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	if got := labels(blocker); !slices.Contains(got, "linked") {
+		t.Fatalf("the outward work item's labels = %v, want the rule to have run", got)
+	}
+	if got := labels(blocked); slices.Contains(got, "linked") {
+		t.Fatalf("the inward work item's labels = %v, want the rule not to have run for it", got)
 	}
 }

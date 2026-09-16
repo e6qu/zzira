@@ -56,7 +56,7 @@ var (
 	automationTriggers = []automationOption{
 		{"jira.jql.scheduled", "Scheduled"}, {"jira.issue.event.trigger:created", "Work item created"},
 		{"jira.issue.event.trigger:transitioned", "Work item transitioned"}, {"jira.issue.field.changed", "Field value changed"},
-		{"jira.issue.event.trigger:commented", "Work item commented"},
+		{"jira.issue.event.trigger:commented", "Work item commented"}, {"jira.issue.event.trigger:linked", "Work item linked"},
 	}
 	automationActionTypes = []automationOption{
 		{"jira.issue.add-label", "Add label"}, {"jira.issue.remove-label", "Remove label"}, {"jira.issue.assign", "Assign work item"}, {"jira.issue.transition", "Transition work item"},
