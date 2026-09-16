@@ -44,7 +44,7 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
   const name = `E2E schedule ${Date.now()}`;
   const label = `scheduled-${Date.now()}`;
   await page.getByLabel('Rule name').fill(name);
-  await page.getByLabel('Description').fill('Marks a demo work item through the durable runner');
+  await page.getByRole('textbox', { name: 'Description' }).fill('Marks a demo work item through the durable runner');
   await page.getByLabel('Run every').fill('60');
   await page.getByLabel('Timezone').fill('Europe/Bucharest');
   await page.getByLabel('JQL query').fill(`key = ${fixtureKey}`);
