@@ -127,8 +127,12 @@ type workflowEditorData struct {
 	Events   []store.NotificationEventDefinition
 	// ApproverFields are the user picker fields a status approval can name.
 	ApproverFields []*models.CustomField
-	CanEdit        bool
-	CanAssign      bool
+	// TransitionFields are the custom fields a transition's rules can name
+	// beside the system fields. A transition screen is not among them, because
+	// the transition dialog renders only system field controls.
+	TransitionFields []*models.CustomField
+	CanEdit          bool
+	CanAssign        bool
 }
 
 type statusDirectoryData struct {
@@ -895,7 +899,7 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 		}
 	}
 	h.writeWorkspacePage(w, r, "page_workflow", user, wsID, workflowEditorData{
-		Workflow: wf, Initial: initial, Global: global, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks, Events: events, ApproverFields: approverFields,
+		Workflow: wf, Initial: initial, Global: global, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks, Events: events, ApproverFields: approverFields, TransitionFields: fields,
 		CanEdit: admin && wf.ID != workflow.Default().ID, CanAssign: admin,
 	}, "workflows", "")
 }

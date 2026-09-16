@@ -155,6 +155,14 @@ test('project workflow creation, editor, transition changes, and assignment work
   });
   expect(webhookResponse.status()).toBe(201);
   const webhookID = String((await webhookResponse.json()).self).split('/').pop() as string;
+  const fieldStamp = Date.now();
+  const workflowFieldName = `Workflow field ${fieldStamp}`;
+  const fieldResponse = await page.request.post('/rest/api/3/field', {
+    headers: { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' },
+    data: { name: workflowFieldName, type: 'text' },
+  });
+  expect(fieldResponse.status()).toBe(201);
+  const workflowFieldID = (await fieldResponse.json()).id as string;
   await page.getByRole('link', { name: 'Workflows', exact: true }).click();
   await expect(page).toHaveURL('/settings/workflows');
   await expect(page.getByRole('heading', { name: 'Workflows', level: 1 })).toBeVisible();
@@ -218,7 +226,9 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-from', 'st_done');
   await page.selectOption('#transition-to', 'st_todo');
   await page.selectOption('#transition-restriction', 'block-users');
-  await page.selectOption('#transition-condition-field', 'summary');
+  await expect(page.locator('#transition-condition-field')).toContainText(workflowFieldName);
+  await page.selectOption('#transition-condition-field', workflowFieldID);
+  await page.locator('fieldset').filter({ hasText: 'Required before transition' }).getByLabel(workflowFieldName).check();
   await page.selectOption('#transition-condition-comparator', '=');
   await page.selectOption('#transition-condition-type', 'STRING');
   await page.fill('#transition-condition-value', 'Emergency reopen');
