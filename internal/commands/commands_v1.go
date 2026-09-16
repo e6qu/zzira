@@ -557,6 +557,9 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 		context.FieldValues[field] = workflowFieldRaw(issue, &update, field)
 	}
 	context.Permissions, err = authz.JiraPermissions(ctx, s.Store, workspaceID, actorID)
+	if err == nil {
+		context.ActorGroups, err = workflowActorGroups(ctx, s.Store, workspaceID, actorID)
+	}
 	if err != nil {
 		return nil, nil, err
 	}

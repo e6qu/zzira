@@ -531,6 +531,23 @@ func (s *Service) enforceCustomFieldContexts(ctx context.Context, workspaceID, p
 // select, account ids for user pickers ({"accountId"}), group ids for group
 // pickers ({"groupId"} or {"name"}), and lists for the multi-value fields, where
 // a single value is taken as a list of one.
+// workflowActorGroups names the groups a transition's validators can exempt
+// the actor from, by name and by id. Someone the site directory does not hold,
+// such as a portal customer or an app account, belongs to no group: an
+// exemption relaxes a validator, so not knowing the actor's groups keeps the
+// validator applying rather than stopping the transition.
+func workflowActorGroups(ctx context.Context, st *store.Store, workspaceID, actorID string) ([]string, error) {
+	groups, err := st.UserGroups(ctx, workspaceID, actorID)
+	if err != nil {
+		return nil, nil
+	}
+	names := make([]string, 0, len(groups)*2)
+	for _, group := range groups {
+		names = append(names, group.Name, group.ID)
+	}
+	return names, nil
+}
+
 func (s *Service) normalizeOptionFields(ctx context.Context, workspaceID, projectID, issueTypeID string, fields map[string]json.RawMessage, assetSchemas map[string]string) error {
 	if len(fields) == 0 {
 		return nil
@@ -868,6 +885,10 @@ func (s *Service) runInitialTransition(ctx context.Context, in CreateIssueInput,
 		return created, err
 	}
 	context.Permissions = permissions
+	context.ActorGroups, err = workflowActorGroups(ctx, s.Store, in.WorkspaceID, in.ActorID)
+	if err != nil {
+		return created, err
+	}
 	if err = initial.ValidateRules(context); err != nil {
 		return created, err
 	}

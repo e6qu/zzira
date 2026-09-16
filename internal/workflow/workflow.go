@@ -79,12 +79,29 @@ type EvaluationContext struct {
 	FormsAttached  int
 	FormsSubmitted bool
 	IsAPI          bool
+	// ActorGroups are the names and ids of the groups the actor belongs to,
+	// which a field validator can exempt from its check.
+	ActorGroups []string
 	// Approvals holds the final decision of each approval on the work item:
 	// pending, approved or declined.
 	Approvals []string
 }
 
 // approvalState summarizes the approvals on a work item.
+// workflowActorExempt reports whether the actor belongs to one of the groups a
+// validator exempts. Groups are named as Jira names them, and an id matches
+// too, so a group renamed after the rule was written still exempts its people.
+func workflowActorExempt(context EvaluationContext, exempt string) bool {
+	for _, group := range commaValues(exempt) {
+		for _, held := range context.ActorGroups {
+			if strings.EqualFold(strings.TrimSpace(group), strings.TrimSpace(held)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func approvalState(decisions []string) (pending, approved, declined int) {
 	for _, decision := range decisions {
 		switch decision {
@@ -538,6 +555,9 @@ func (t Transition) ValidateRules(context EvaluationContext) error {
 				}
 			case "fieldChanged":
 				field := validator.Parameters["fieldKey"]
+				if workflowActorExempt(context, validator.Parameters["groupsExemptFromValidation"]) {
+					continue
+				}
 				if !context.ChangedFields[field] {
 					message := strings.TrimSpace(validator.Parameters["errorMessage"])
 					if message == "" {
@@ -899,7 +919,7 @@ func ValidateTransitionRules(transition Transition) error {
 					return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)
 				}
 			case "fieldChanged":
-				if strings.TrimSpace(validator.Parameters["fieldKey"]) == "" || strings.TrimSpace(validator.Parameters["groupsExemptFromValidation"]) != "" {
+				if strings.TrimSpace(validator.Parameters["fieldKey"]) == "" {
 					return fmt.Errorf("workflow validator %q is unsupported or incomplete", validator.RuleKey)
 				}
 			case "fieldMatchesRegularExpression":

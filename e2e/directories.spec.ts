@@ -207,6 +207,7 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-trigger-webhook', { label: 'https://example.invalid/workflow-ui' });
   await page.selectOption('#transition-changed-field-validator', 'labels');
   await page.fill('#transition-changed-error', 'Relabel the work before review');
+  await page.fill('#transition-changed-exempt', 'Release managers');
   await page.selectOption('#transition-regexp-field-validator', 'description');
   await page.fill('#transition-regexp-pattern', '^.+$');
   await page.fill('#transition-regexp-error', 'Describe the review');

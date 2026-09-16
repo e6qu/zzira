@@ -204,9 +204,24 @@ func TestChangedFieldValidatorRequiresTransitionInput(t *testing.T) {
 	if err := ValidateTransitionRules(transition); err != nil {
 		t.Fatal(err)
 	}
-	transition.Validators[0].Parameters["groupsExemptFromValidation"] = "group-1"
-	if err := ValidateTransitionRules(transition); err == nil {
-		t.Fatal("unimplemented group exemption was accepted")
+	transition.Validators[0].Parameters["groupsExemptFromValidation"] = "Release managers, group-1"
+	if err := ValidateTransitionRules(transition); err != nil {
+		t.Fatal(err)
+	}
+	// Someone the validator exempts transitions without changing the field.
+	exempt := EvaluationContext{ChangedFields: map[string]bool{"summary": true}, ActorGroups: []string{"release managers", "grp_7"}}
+	if err := transition.ValidateRules(exempt); err != nil {
+		t.Fatalf("an exempt actor was stopped: %v", err)
+	}
+	if err := transition.ValidateRules(EvaluationContext{ChangedFields: map[string]bool{"summary": true}, ActorGroups: []string{"group-1"}}); err != nil {
+		t.Fatalf("an actor exempt by group id was stopped: %v", err)
+	}
+	// Everyone else still changes the field.
+	if err := transition.ValidateRules(EvaluationContext{ChangedFields: map[string]bool{"summary": true}, ActorGroups: []string{"Developers"}}); err == nil {
+		t.Fatal("an actor outside the exempt groups was not stopped")
+	}
+	if err := transition.ValidateRules(EvaluationContext{ChangedFields: map[string]bool{"summary": true}}); err == nil {
+		t.Fatal("an actor in no group was not stopped")
 	}
 }
 
