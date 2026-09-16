@@ -1187,13 +1187,13 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 	if fields := r.PostForm["required_field"]; len(fields) > 0 {
 		transition.Validators = append(transition.Validators, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleValidateFieldValue,
-			Parameters: map[string]string{"ruleType": "fieldRequired", "fieldsRequired": strings.Join(fields, ","), "errorMessage": "Complete the required transition fields."},
+			Parameters: map[string]string{"ruleType": "fieldRequired", "fieldsRequired": strings.Join(fields, ","), "errorMessage": workflowValidatorMessage(r, "required_error", "Complete the required transition fields.")},
 		})
 	}
 	if changedField != "" {
 		transition.Validators = append(transition.Validators, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleValidateFieldValue,
-			Parameters: map[string]string{"ruleType": "fieldChanged", "fieldKey": changedField, "errorMessage": "Change the selected field during the transition."},
+			Parameters: map[string]string{"ruleType": "fieldChanged", "fieldKey": changedField, "errorMessage": workflowValidatorMessage(r, "changed_error", "Change the selected field during the transition.")},
 		})
 	}
 	if field := strings.TrimSpace(r.PostFormValue("regexp_field_validator")); field != "" {
@@ -1480,6 +1480,16 @@ func workflowStatusIDs(wf workflow.Workflow) map[string]bool {
 }
 
 // workflowRuleSummary names the kinds of rule a transition carries.
+// workflowValidatorMessage is what a validator says when it stops a
+// transition. An administrator may write it; an empty message keeps the
+// wording the validator shipped with.
+func workflowValidatorMessage(r *http.Request, field, fallback string) string {
+	if message := strings.TrimSpace(r.PostFormValue(field)); message != "" {
+		return message
+	}
+	return fallback
+}
+
 func workflowRuleSummary(transition workflow.Transition) []string {
 	rules := make([]string, 0, 4)
 	if transition.Conditions != nil {

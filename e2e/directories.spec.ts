@@ -191,6 +191,7 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-to', 'st_done');
   await page.selectOption('#transition-restriction', 'allow-reporter');
   await page.locator('fieldset').filter({ hasText: 'Required before transition' }).getByLabel('Description').check();
+  await page.fill('#transition-required-error', 'Describe the work before review');
   await page.selectOption('#transition-screen-mode', 'remind');
   await page.fill('#transition-screen-remind-message', 'Check the estimate before moving on');
   await page.getByLabel('Remind every time, not only when a field is empty').check();
@@ -205,6 +206,7 @@ test('project workflow creation, editor, transition changes, and assignment work
   await expect(page.locator('#transition-trigger-webhook')).toContainText('https://example.invalid/workflow-ui');
   await page.selectOption('#transition-trigger-webhook', { label: 'https://example.invalid/workflow-ui' });
   await page.selectOption('#transition-changed-field-validator', 'labels');
+  await page.fill('#transition-changed-error', 'Relabel the work before review');
   await page.selectOption('#transition-regexp-field-validator', 'description');
   await page.fill('#transition-regexp-pattern', '^.+$');
   await page.fill('#transition-regexp-error', 'Describe the review');
