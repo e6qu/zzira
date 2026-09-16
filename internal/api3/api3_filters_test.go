@@ -113,7 +113,7 @@ func TestFilterAdministrationContractJourney(t *testing.T) {
 	}, http.StatusOK))
 	filterID := created["id"].(string)
 	call(memberID, http.MethodGet, "/rest/api/3/filter/"+filterID, nil, http.StatusBadRequest)
-	subscription, err := st.SaveFilterSubscription(ctx, workspaceID, ownerID, st.FilterIDByRef(ctx, workspaceID, filterID), "0 8 * * *", []string{ownerID, memberID})
+	subscription, err := st.SaveFilterSubscription(ctx, workspaceID, ownerID, st.FilterIDByRef(ctx, workspaceID, filterID), "0 8 * * *", "", []string{ownerID, memberID})
 	if err != nil {
 		t.Fatal(err)
 	}

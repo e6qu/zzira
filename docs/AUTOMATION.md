@@ -75,10 +75,14 @@ The worker executes these action component types in order:
 | Component type | Value | Semantics |
 |---|---|---|
 | `jira.issue.add-label` | `{"label":"reviewed"}` | Adds the label if absent |
+| `jira.issue.remove-label` | `{"label":"triage"}` | Removes the label if the work item carries it. The label renders smart values, and a label the work item does not carry changes nothing |
 | `jira.issue.assign` | `{"accountId":"..."}` | Assigns an active member; `ACTOR` and `UNASSIGNED` are accepted |
 | `jira.issue.transition` | `{"statusId":"10001"}` | Uses a valid current-workflow transition to the target status |
 | `jira.issue.comment` | `{"comment":"Picked up by {{initiator.displayName}}"}` | Adds a comment as the rule actor |
-| `jira.issue.edit` | `{"field":"summary","value":"[{{issue.key}}] {{issue.summary}}"}` | Sets the `summary` or `duedate` (yyyy-MM-dd; blank clears it) when it differs |
+| `jira.issue.edit` | `{"field":"summary","value":"[{{issue.key}}] {{issue.summary}}"}` | Sets the `summary`, `duedate` (yyyy-MM-dd; blank clears it) or `priority` (by name or id) when it differs |
+| `jira.issue.create-subtask` | `{"summary":"Review {{issue.key}}"}` | Raises a sub-task of the work item, taking the project scheme's sub-task work type. The summary renders smart values. A sub-task of that name already under the work item changes nothing, so a rule that runs again does not mint a second one; a work item that is itself a sub-task, or a project offering no sub-task type, stops the rule |
+| `jira.issue.create` | `{"issueTypeId":"it_task","summary":"Follow up on {{issue.key}}"}` | Raises a work item beside the one the rule runs for, in its project. The work type comes from the project's own scheme, so a rule cannot raise a type the project does not offer, and sub-task types are refused because they need a parent. The summary renders smart values. Work of that type and summary already in the project changes nothing, so a scheduled rule does not raise one every interval |
+| `jira.issue.email` | `{"recipient":"assignee","body":"{{issue.key}} needs you"}` | Queues plain-text mail to the work item's `assignee`, `reporter` or `watchers` through the site's delivery outbox. The body renders smart values; the subject is the work item's key and summary, because a rule names one message. Recipients without an address, and deactivated accounts, are skipped, so work nobody is assigned or watching sends nothing |
 | `jira.issue.link` | `{"linkTypeId":"lt_blocks","issueKey":"ZZ-7"}` | Links the work item to the one named, which takes the link type's inward phrase. The key renders smart values. A link that already holds, or a work item naming itself, changes nothing; a key of another site stops the rule |
 
 JQL evaluation and every mutation run as the stored rule actor. Issue security
@@ -88,9 +92,9 @@ larger results fail before any actions run.
 
 Other triggers, components, branch types, smart values and connection payloads
 remain available through the rule API, but the worker records an explicit failed
-audit entry when asked to execute unsupported behavior. Issue and page
-creation, email and web requests, usage limits and the
-rest of Jira's trigger, condition and action catalog remain gaps.
+audit entry when asked to execute unsupported behavior. Page creation, work
+creation, webhook and incoming-request triggers, web requests, usage limits and
+the rest of Jira's trigger, condition and action catalog remain gaps.
 
 ## Event triggers, conditions and smart values
 
@@ -103,6 +107,7 @@ which the work item must match for the rule actor:
 | `jira.issue.event.trigger:transitioned` | optional `fromStatusIds`, `toStatusIds` | A work item's status changes, from and to the listed statuses when given |
 | `jira.issue.field.changed` | `fields`, 1 to 20 names such as `summary`, `priority`, `assignee`, `labels` | Any listed field changes |
 | `jira.issue.event.trigger:commented` | none | A comment is added |
+| `jira.issue.event.trigger:linked` | none | A link is added. A link joins two work items but starts one run, for the outward work item — the side that acts, as an outward work item blocks its inward one |
 
 The worker reads new events from the action log in order and queues one run per
 rule and event, so a retried batch never repeats a run. Enabling a rule never
@@ -119,6 +124,7 @@ action left it. Scheduled, event and manual runs evaluate:
 |---|---|---|
 | `jira.jql.condition` | `{"jql":"priority = High"}` | The work item matches the JQL for the rule actor |
 | `jira.issue.condition` | `{"field":"status","operator":"EQUALS","value":"In Progress"}` | The field compares as asked |
+| `jira.issue.related.condition` | `{"relatedType":"linked","jql":"status = Done"}` | Related work matches the JQL: `sub-tasks`, `parent` or `linked`. A blank query holds when any related work exists at all. Linked work may be narrowed by `linkTypes` |
 
 Fields conditions compare `status`, `priority`, `issuetype`, `assignee`,
 `reporter`, `labels`, `summary`, `duedate`, `resolution`, `created`,

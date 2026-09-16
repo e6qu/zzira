@@ -24,13 +24,16 @@ type VersionUpdate struct {
 	Released    *bool   `json:"released"`
 	Archived    *bool   `json:"archived"`
 	Driver      *string `json:"driver"`
+	// MoveUnfixedIssuesTo names the version unresolved work moves to when this
+	// version is released; an empty string clears it.
+	MoveUnfixedIssuesTo *string `json:"moveUnfixedIssuesTo"`
 }
 
-const versionSelect = `SELECT v.id,v.project_id,v.name,v.description,COALESCE(v.start_date::text,''),COALESCE(v.release_date::text,''),v.released,v.archived,v.position,COALESCE(v.driver_account_id,'') FROM project_versions v `
+const versionSelect = `SELECT v.id,v.project_id,v.name,v.description,COALESCE(v.start_date::text,''),COALESCE(v.release_date::text,''),v.released,v.archived,v.position,COALESCE(v.driver_account_id,''),COALESCE(v.move_unfixed_issues_to,'') FROM project_versions v `
 
 func scanVersion(row pgx.Row) (*models.Version, error) {
 	v := &models.Version{}
-	err := row.Scan(&v.ID, &v.ProjectID, &v.Name, &v.Description, &v.StartDate, &v.ReleaseDate, &v.Released, &v.Archived, &v.Position, &v.DriverID)
+	err := row.Scan(&v.ID, &v.ProjectID, &v.Name, &v.Description, &v.StartDate, &v.ReleaseDate, &v.Released, &v.Archived, &v.Position, &v.DriverID, &v.MoveUnfixedIssuesToID)
 	return v, err
 }
 func (s *Store) Version(ctx context.Context, ws, id string) (*models.Version, error) {
@@ -112,6 +115,9 @@ func (s *Store) SaveVersion(ctx context.Context, ws, actor, project, id string, 
 			return nil, err
 		}
 	}
+	// The move happens when a version is released, not every time a released
+	// version is saved, so the state before this update is what decides.
+	wasReleased := v.Released
 	if up.Name != nil {
 		v.Name = *up.Name
 	}
@@ -138,19 +144,39 @@ func (s *Store) SaveVersion(ctx context.Context, ws, actor, project, id string, 
 			}
 		}
 	}
+	if up.MoveUnfixedIssuesTo != nil {
+		v.MoveUnfixedIssuesToID = strings.TrimSpace(*up.MoveUnfixedIssuesTo)
+	}
+	if v.MoveUnfixedIssuesToID != "" {
+		if v.MoveUnfixedIssuesToID == id {
+			return nil, fmt.Errorf("%w: unresolved work must move to a different version", ErrVersionValidation)
+		}
+		if _, err = scanVersion(tx.QueryRow(ctx, versionSelect+` WHERE v.id=$1 AND v.project_id=$2`, v.MoveUnfixedIssuesToID, project)); err != nil {
+			return nil, fmt.Errorf("%w: unresolved work must move to a version in this project", ErrVersionValidation)
+		}
+	}
 	if err = validateVersion(v); err != nil {
 		return nil, err
 	}
 	if id == "" {
-		err = tx.QueryRow(ctx, `INSERT INTO project_versions(project_id,name,description,start_date,release_date,released,archived,position,driver_account_id) VALUES($1,$2,$3,NULLIF($4,'')::date,NULLIF($5,'')::date,$6,$7,COALESCE((SELECT max(position)+1 FROM project_versions WHERE project_id=$1),0),NULLIF($8,'')) RETURNING id,position`, project, v.Name, v.Description, v.StartDate, v.ReleaseDate, v.Released, v.Archived, v.DriverID).Scan(&v.ID, &v.Position)
+		err = tx.QueryRow(ctx, `INSERT INTO project_versions(project_id,name,description,start_date,release_date,released,archived,position,driver_account_id,move_unfixed_issues_to) VALUES($1,$2,$3,NULLIF($4,'')::date,NULLIF($5,'')::date,$6,$7,COALESCE((SELECT max(position)+1 FROM project_versions WHERE project_id=$1),0),NULLIF($8,''),NULLIF($9,'')) RETURNING id,position`, project, v.Name, v.Description, v.StartDate, v.ReleaseDate, v.Released, v.Archived, v.DriverID, v.MoveUnfixedIssuesToID).Scan(&v.ID, &v.Position)
 	} else {
-		_, err = tx.Exec(ctx, `UPDATE project_versions SET name=$2,description=$3,start_date=NULLIF($4,'')::date,release_date=NULLIF($5,'')::date,released=$6,archived=$7,driver_account_id=NULLIF($8,'') WHERE id=$1`, id, v.Name, v.Description, v.StartDate, v.ReleaseDate, v.Released, v.Archived, v.DriverID)
+		_, err = tx.Exec(ctx, `UPDATE project_versions SET name=$2,description=$3,start_date=NULLIF($4,'')::date,release_date=NULLIF($5,'')::date,released=$6,archived=$7,driver_account_id=NULLIF($8,''),move_unfixed_issues_to=NULLIF($9,'') WHERE id=$1`, id, v.Name, v.Description, v.StartDate, v.ReleaseDate, v.Released, v.Archived, v.DriverID, v.MoveUnfixedIssuesToID)
 	}
 	if err != nil {
 		return nil, versionDBError(err)
 	}
 	if id != "" {
 		if err = refreshVersionIssues(ctx, tx, ws, actor, v, nil, false); err != nil {
+			return nil, err
+		}
+	}
+	if !wasReleased && v.Released && v.MoveUnfixedIssuesToID != "" {
+		target, e := scanVersion(tx.QueryRow(ctx, versionSelect+` WHERE v.id=$1`, v.MoveUnfixedIssuesToID))
+		if e != nil {
+			return nil, e
+		}
+		if err = moveUnfixedVersionIssues(ctx, tx, ws, actor, v, target); err != nil {
 			return nil, err
 		}
 	}
@@ -291,6 +317,92 @@ func refreshVersionIssues(ctx context.Context, tx pgx.Tx, ws, actor string, v *m
 	}
 	return nil
 }
+
+// moveUnfixedVersionIssues moves work that is not done off a version being
+// released and onto the version it names. Work already done stays with the
+// version that shipped it, which is what makes this different from replacing a
+// deleted version everywhere it appears.
+func moveUnfixedVersionIssues(ctx context.Context, tx pgx.Tx, ws, actor string, v *models.Version, target *models.Version) error {
+	match, _ := json.Marshal([]map[string]string{{"id": v.ID}})
+	rows, err := tx.Query(ctx, `SELECT id FROM issues WHERE project_id=$1 AND fields->'fixVersions' @> $2::jsonb ORDER BY id FOR UPDATE`, v.ProjectID, match)
+	if err != nil {
+		return err
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		issue, err := scanIssue(tx.QueryRow(ctx, issueJoin+` WHERE i.id=$1`, id))
+		if err != nil {
+			return err
+		}
+		if issue.Status.Category == "done" {
+			continue
+		}
+		var refs []*models.Version
+		if raw := issue.Fields["fixVersions"]; raw != nil {
+			if err = json.Unmarshal(raw, &refs); err != nil {
+				return err
+			}
+		}
+		updated := []*models.Version{}
+		seen := map[string]bool{}
+		changed := false
+		for _, ref := range refs {
+			if ref != nil && ref.ID == v.ID {
+				changed, ref = true, target
+			}
+			if ref != nil && !seen[ref.ID] {
+				updated = append(updated, ref)
+				seen[ref.ID] = true
+			}
+		}
+		if !changed {
+			continue
+		}
+		raw, err := json.Marshal(updated)
+		if err != nil {
+			return err
+		}
+		diff := map[string]models.ChangeItem{"fixVersions": versionChange("fixVersions", issue.Fields["fixVersions"], raw)}
+		issue.Fields["fixVersions"] = raw
+		seq, err := nextSeq(ctx, tx, ws)
+		if err != nil {
+			return err
+		}
+		fields, err := json.Marshal(issue.Fields)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE issues SET fields=$2,updated_seq=$3,updated_at=now() WHERE id=$1`, id, fields, seq); err != nil {
+			return err
+		}
+		issue, err = scanIssue(tx.QueryRow(ctx, issueJoin+` WHERE i.id=$1`, id))
+		if err != nil {
+			return err
+		}
+		payload, err := json.Marshal(models.IssueUpdatePayload{Issue: *issue, Diff: diff})
+		if err != nil {
+			return err
+		}
+		if err = appendAction(ctx, tx, &models.Action{WorkspaceID: ws, Seq: seq, EntityType: models.EntityIssue, EntityID: id, Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actor}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Store) DeleteVersion(ctx context.Context, ws, actor, id, fixTo, affectedTo string) error {
 	v, err := s.Version(ctx, ws, id)
 	if err != nil {

@@ -243,7 +243,11 @@ func (h *Handler) UpdateSavedFilter(w http.ResponseWriter, r *http.Request, id s
 			notice = "Filter columns updated."
 		}
 	case "subscribe":
-		_, err = h.Store.SaveFilterSubscription(r.Context(), workspaceID, user.ID, id, r.FormValue("schedule"), r.Form["recipient"])
+		schedule := r.FormValue("schedule")
+		if custom := strings.TrimSpace(r.FormValue("cron")); custom != "" {
+			schedule = custom
+		}
+		_, err = h.Store.SaveFilterSubscription(r.Context(), workspaceID, user.ID, id, schedule, r.FormValue("timezone"), r.Form["recipient"])
 		notice = "Filter email scheduled."
 	case "unsubscribe":
 		subscriptionID, parseErr := strconv.ParseInt(r.FormValue("subscriptionId"), 10, 64)

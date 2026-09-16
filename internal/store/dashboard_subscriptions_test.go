@@ -81,13 +81,13 @@ func TestDashboardSubscriptionsEmailEachRecipientTheirView(t *testing.T) {
 	addGadget("com.zzira:velocity", models.GadgetConfig{})
 
 	// Recipients must be members who can view the dashboard.
-	if _, err := st.SaveDashboardSubscription(ctx, workspaceID, ownerID, private.ID, "0 8 * * *", []string{viewerID}); !errors.Is(err, ErrDashboardValidation) {
+	if _, err := st.SaveDashboardSubscription(ctx, workspaceID, ownerID, private.ID, "0 8 * * *", "", []string{viewerID}); !errors.Is(err, ErrDashboardValidation) {
 		t.Fatalf("private dashboard recipient error = %v", err)
 	}
-	if _, err := st.SaveDashboardSubscription(ctx, workspaceID, ownerID, shared.ID, "0 8 * * 9", nil); !errors.Is(err, ErrDashboardValidation) {
+	if _, err := st.SaveDashboardSubscription(ctx, workspaceID, ownerID, shared.ID, "0 8 * * 9", "", nil); !errors.Is(err, ErrDashboardValidation) {
 		t.Fatalf("bad schedule error = %v", err)
 	}
-	subscription, err := st.SaveDashboardSubscription(ctx, workspaceID, viewerID, shared.ID, "0 8 * * 1", []string{ownerID, viewerID})
+	subscription, err := st.SaveDashboardSubscription(ctx, workspaceID, viewerID, shared.ID, "0 8 * * 1", "", []string{ownerID, viewerID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,15 +112,15 @@ func TestDashboardSubscriptionsEmailEachRecipientTheirView(t *testing.T) {
 	}
 	// Read every email before asserting: failing with the rows still open
 	// would leave cleanup waiting for a connection instead of reporting.
-	type sentEmail struct{ recipient, subject, body string }
+	type sentEmail struct{ recipient, subject, body, html string }
 	var sent []sentEmail
-	rows, err := st.Pool.Query(ctx, `SELECT recipient,subject,body FROM email_outbox WHERE workspace_id=$1 ORDER BY recipient`, workspaceID)
+	rows, err := st.Pool.Query(ctx, `SELECT recipient,subject,body,html_body FROM email_outbox WHERE workspace_id=$1 ORDER BY recipient`, workspaceID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for rows.Next() {
 		var email sentEmail
-		if err := rows.Scan(&email.recipient, &email.subject, &email.body); err != nil {
+		if err := rows.Scan(&email.recipient, &email.subject, &email.body, &email.html); err != nil {
 			rows.Close()
 			t.Fatal(err)
 		}
@@ -129,6 +129,11 @@ func TestDashboardSubscriptionsEmailEachRecipientTheirView(t *testing.T) {
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
+	}
+	for _, email := range sent {
+		if !strings.Contains(email.html, "<!doctype html>") || !strings.Contains(email.html, `href="/dashboards/`) {
+			t.Fatalf("dashboard email carries no HTML alternative with site-relative links: %q", email.html)
+		}
 	}
 	emails := len(sent)
 	for _, email := range sent {

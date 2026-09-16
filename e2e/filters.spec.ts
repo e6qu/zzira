@@ -70,7 +70,20 @@ test('saved filter owner manages access, columns, favorites, and ownership', asy
   await expect(page.getByRole('status')).toContainText('Filter email scheduled.');
   card = page.locator(`#filter-${filterID}`);
   await card.getByText('Email results', { exact: true }).click();
-  await expect(card).toContainText('Daily at 08:00 UTC');
+  await expect(card).toContainText('Every day at 08:00 in UTC');
+  await card.getByRole('button', { name: 'Remove schedule' }).click();
+  await expect(page.getByRole('status')).toContainText('Filter email schedule removed.');
+
+  // A schedule of the owner's own, read in the zone they name.
+  card = page.locator(`#filter-${filterID}`);
+  await card.getByText('Email results', { exact: true }).click();
+  await card.locator(`#filter-cron-${filterID}`).fill('0 0 9 ? * MON-FRI');
+  await card.locator(`#filter-zone-${filterID}`).fill('Europe/Bucharest');
+  await card.getByRole('button', { name: 'Schedule email' }).click();
+  await expect(page.getByRole('status')).toContainText('Filter email scheduled.');
+  card = page.locator(`#filter-${filterID}`);
+  await card.getByText('Email results', { exact: true }).click();
+  await expect(card).toContainText('0 0 9 ? * MON-FRI in Europe/Bucharest');
   await card.getByRole('button', { name: 'Remove schedule' }).click();
   await expect(page.getByRole('status')).toContainText('Filter email schedule removed.');
 

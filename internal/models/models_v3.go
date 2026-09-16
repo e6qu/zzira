@@ -29,10 +29,12 @@ type Filter struct {
 }
 
 type FilterSubscription struct {
-	ID              int64
-	FilterID        string
-	UserID          string
-	CronExpression  string
+	ID             int64
+	FilterID       string
+	UserID         string
+	CronExpression string
+	// Timezone is the IANA zone the schedule runs in; empty means UTC.
+	Timezone        string
 	Recipients      []string
 	Enabled         bool
 	NextRunAt       string
@@ -44,10 +46,12 @@ type FilterSubscription struct {
 // DashboardSubscription emails a dashboard on a schedule to recipients who
 // each receive it as they see it.
 type DashboardSubscription struct {
-	ID              int64
-	DashboardID     string
-	UserID          string
-	CronExpression  string
+	ID             int64
+	DashboardID    string
+	UserID         string
+	CronExpression string
+	// Timezone is the IANA zone the schedule runs in; empty means UTC.
+	Timezone        string
 	Recipients      []string
 	Enabled         bool
 	NextRunAt       string
@@ -59,10 +63,12 @@ type DashboardSubscription struct {
 // ReportSubscription emails a report's data on a schedule, with the choices it
 // was scheduled from, to recipients who each receive it as they see it.
 type ReportSubscription struct {
-	ID              int64
-	Report          string
-	UserID          string
-	CronExpression  string
+	ID             int64
+	Report         string
+	UserID         string
+	CronExpression string
+	// Timezone is the IANA zone the schedule runs in; empty means UTC.
+	Timezone        string
 	Recipients      []string
 	Enabled         bool
 	NextRunAt       string

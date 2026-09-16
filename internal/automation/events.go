@@ -61,7 +61,7 @@ func (r *Runner) enqueueEvents(ctx context.Context, workspaceID string) error {
 	rows, err := tx.Query(ctx, `
 		SELECT a.seq, a.entity_type, a.entity_id, a.op, a.payload, a.actor_id, a.automation_rule_uuid::text,
 		       NOT EXISTS (SELECT 1 FROM actions earlier WHERE earlier.workspace_id=a.workspace_id AND earlier.entity_type=a.entity_type AND earlier.entity_id=a.entity_id AND earlier.seq<a.seq)
-		FROM actions a WHERE a.workspace_id=$1 AND a.seq>$2 AND a.entity_type IN ('issue','comment') AND a.op='upsert'
+		FROM actions a WHERE a.workspace_id=$1 AND a.seq>$2 AND a.entity_type IN ('issue','comment','issue_link') AND a.op='upsert'
 		ORDER BY a.seq LIMIT $3`, workspaceID, last, eventBatch)
 	if err != nil {
 		return err
@@ -185,6 +185,15 @@ func actionEvent(action loggedAction) (string, string, map[string]models.ChangeI
 		if action.First && json.Unmarshal(action.Payload, &payload) == nil && payload.Comment.IssueID != "" {
 			return "commented", payload.Comment.IssueID, nil
 		}
+	case models.EntityIssueLink:
+		// A link joins two work items but starts one run, because a run is
+		// keyed by its rule and the action it came from. It starts for the
+		// outward work item, the side that acts: an outward work item blocks
+		// its inward one, and the link action puts the rule's work item there.
+		var payload models.IssueLinkPayload
+		if action.Op == models.OpUpsert && json.Unmarshal(action.Payload, &payload) == nil && payload.Link.OutwardID != "" {
+			return "linked", payload.Link.OutwardID, nil
+		}
 	}
 	return "", "", nil
 }
@@ -196,7 +205,7 @@ func (rule eventRule) matches(event string, diff map[string]models.ChangeItem, a
 		return false
 	}
 	switch rule.Event {
-	case "created", "commented":
+	case "created", "commented", "linked":
 		return event == rule.Event
 	case "transitioned":
 		change, ok := diff["status"]

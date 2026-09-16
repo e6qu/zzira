@@ -42,7 +42,7 @@ test('a dashboard is emailed on a schedule to people who can view it', async ({ 
   // Saved schedules are the forms that remove one; the form that adds one
   // offers the same wording among its choices.
   const saved = page.locator('.dashboard-subscribe-panel form').filter({ has: page.getByRole('button', { name: 'Remove email' }) });
-  const scheduled = saved.filter({ hasText: 'Every Monday at 08:00 UTC' });
+  const scheduled = saved.filter({ hasText: 'Every Monday at 08:00 in UTC' });
   await expect(scheduled).toHaveCount(1);
   await expect(scheduled).toContainText('Next');
   await page.setViewportSize({ width: 320, height: 740 });

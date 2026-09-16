@@ -36,7 +36,7 @@ test('a report is emailed on a schedule with the choices it was scheduled from',
   // offers the same wording among its choices.
   await page.locator('.report-subscribe summary').click();
   const saved = page.locator('.report-subscribe .dashboard-subscribe-panel form').filter({ has: page.getByRole('button', { name: 'Remove email' }) });
-  const scheduled = saved.filter({ hasText: 'Every Monday at 08:00 UTC' });
+  const scheduled = saved.filter({ hasText: 'Every Monday at 08:00 in UTC' });
   await expect(scheduled).toHaveCount(1);
   await expect(scheduled).toContainText('Next');
   await accessible(page);

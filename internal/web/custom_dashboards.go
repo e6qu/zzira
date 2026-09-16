@@ -229,7 +229,11 @@ func (h *Handler) CustomDashboard(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case "subscribe":
-			_, opErr = h.Store.SaveDashboardSubscription(r.Context(), ws, user.ID, id, r.PostFormValue("schedule"), r.PostForm["recipient"])
+			schedule := r.PostFormValue("schedule")
+			if custom := strings.TrimSpace(r.PostFormValue("cron")); custom != "" {
+				schedule = custom
+			}
+			_, opErr = h.Store.SaveDashboardSubscription(r.Context(), ws, user.ID, id, schedule, r.PostFormValue("timezone"), r.PostForm["recipient"])
 		case "unsubscribe":
 			subscriptionID, parseErr := strconv.ParseInt(r.PostFormValue("subscriptionId"), 10, 64)
 			if parseErr != nil {

@@ -1,8 +1,11 @@
 package store
 
 import (
+	"errors"
+
 	"context"
 	"encoding/json"
+	"github.com/jackc/pgx/v5"
 	"os"
 	"strings"
 	"testing"
@@ -15,15 +18,31 @@ func TestFilterSubscriptionSchedule(t *testing.T) {
 		"0 8 * * *": time.Date(2026, time.September, 10, 8, 0, 0, 0, time.UTC),
 		"0 8 * * 1": time.Date(2026, time.September, 14, 8, 0, 0, 0, time.UTC),
 	} {
-		got, err := nextFilterSubscriptionRun(expression, wednesday)
+		got, err := nextSubscriptionRun(expression, "", wednesday)
 		if err != nil || !got.Equal(want) {
 			t.Fatalf("next %q = %s, want %s (%v)", expression, got, want, err)
 		}
 	}
 	for _, invalid := range []string{"* * * * *", "0 25 * * *", "0 8 * * 7", "0 8 1 * *"} {
-		if _, err := nextFilterSubscriptionRun(invalid, wednesday); err == nil {
+		if _, err := nextSubscriptionRun(invalid, "", wednesday); err == nil {
 			t.Fatalf("accepted schedule %q", invalid)
 		}
+	}
+	// A cron expression runs in the subscription's zone: 09:00 in Bucharest is
+	// 06:00 UTC, and the five-field schedules follow the zone as well.
+	bucharest, err := nextSubscriptionRun("0 0 9 ? * *", "Europe/Bucharest", wednesday)
+	if err != nil || !bucharest.Equal(time.Date(2026, time.September, 10, 6, 0, 0, 0, time.UTC)) {
+		t.Fatalf("cron in a zone = %s (%v)", bucharest, err)
+	}
+	daily, err := nextSubscriptionRun("0 8 * * *", "Europe/Bucharest", wednesday)
+	if err != nil || !daily.Equal(time.Date(2026, time.September, 10, 5, 0, 0, 0, time.UTC)) {
+		t.Fatalf("daily in a zone = %s (%v)", daily, err)
+	}
+	if _, err := nextSubscriptionRun("0 8 * * *", "Mars/Olympus", wednesday); err == nil {
+		t.Fatal("accepted a zone that does not exist")
+	}
+	if _, err := nextSubscriptionRun("0 0 9 ? * NOPE", "", wednesday); err == nil {
+		t.Fatal("accepted an unparseable cron expression")
 	}
 }
 
@@ -71,7 +90,7 @@ func TestFilterSubscriptionRunnerQueuesOnePermissionScopedEmail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	subscription, err := st.SaveFilterSubscription(ctx, workspaceID, userID, filter.ID, "0 8 * * *", nil)
+	subscription, err := st.SaveFilterSubscription(ctx, workspaceID, userID, filter.ID, "0 8 * * *", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,8 +102,12 @@ func TestFilterSubscriptionRunnerQueuesOnePermissionScopedEmail(t *testing.T) {
 	}
 	var state, recipient, subject, body string
 	var count int
-	if err := st.Pool.QueryRow(ctx, `SELECT r.state,r.result_count,e.recipient,e.subject,e.body FROM filter_subscription_runs r JOIN email_outbox e ON e.dedupe_key='filter-subscription:'||r.id||':'||$2 WHERE r.subscription_id=$1`, subscription.ID, userID).Scan(&state, &count, &recipient, &subject, &body); err != nil {
+	var htmlBody string
+	if err := st.Pool.QueryRow(ctx, `SELECT r.state,r.result_count,e.recipient,e.subject,e.body,e.html_body FROM filter_subscription_runs r JOIN email_outbox e ON e.dedupe_key='filter-subscription:'||r.id||':'||$2 WHERE r.subscription_id=$1`, subscription.ID, userID).Scan(&state, &count, &recipient, &subject, &body, &htmlBody); err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(htmlBody, "<!doctype html>") || !strings.Contains(htmlBody, `href="/browse/`+issue.Key) {
+		t.Fatalf("filter email carries no HTML alternative linking its work: %q", htmlBody)
 	}
 	if state != "SUCCEEDED" || count != 1 || recipient != userID+"@example.test" || !strings.Contains(subject, filter.Name) || !strings.Contains(body, issue.Key) {
 		t.Fatalf("delivery state=%s count=%d recipient=%q subject=%q body=%q", state, count, recipient, subject, body)
@@ -99,5 +122,25 @@ func TestFilterSubscriptionRunnerQueuesOnePermissionScopedEmail(t *testing.T) {
 	loaded, err := st.FilterByID(ctx, workspaceID, userID, filter.ID)
 	if err != nil || len(loaded.Subscriptions) != 1 || loaded.Subscriptions[0].LastResultCount == nil || *loaded.Subscriptions[0].LastResultCount != 1 {
 		t.Fatalf("loaded subscriptions=%+v err=%v", loaded.Subscriptions, err)
+	}
+
+	// An administrator sees every filter email the site sends and can stop one
+	// without owning it: the site is the only thing the delete is scoped to.
+	all, err := st.WorkspaceFilterSubscriptions(ctx, workspaceID)
+	if err != nil || len(all) != 1 {
+		t.Fatalf("site subscriptions=%+v err=%v", all, err)
+	}
+	if all[0].FilterName != filter.Name || all[0].OwnerID != userID || all[0].OwnerName != "Subscription owner" || all[0].CronExpression != "0 8 * * *" {
+		t.Fatalf("site subscription=%+v", all[0])
+	}
+	if err := st.DeleteWorkspaceFilterSubscription(ctx, workspaceID, all[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	remaining, err := st.WorkspaceFilterSubscriptions(ctx, workspaceID)
+	if err != nil || len(remaining) != 0 {
+		t.Fatalf("subscriptions after an administrator stopped one=%+v err=%v", remaining, err)
+	}
+	if err := st.DeleteWorkspaceFilterSubscription(ctx, workspaceID, all[0].ID); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("stopping it twice = %v, want no rows", err)
 	}
 }

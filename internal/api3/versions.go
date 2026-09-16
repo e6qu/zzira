@@ -74,6 +74,9 @@ func (h *Handler) versionBean(v *models.Version) map[string]any {
 	if id, err := strconv.ParseInt(v.ProjectID, 10, 64); err == nil {
 		result["projectId"] = id
 	}
+	if v.MoveUnfixedIssuesToID != "" {
+		result["moveUnfixedIssuesTo"] = h.BaseURL + "/rest/api/3/version/" + v.MoveUnfixedIssuesToID
+	}
 	for key, date := range map[string]string{"startDate": v.StartDate, "releaseDate": v.ReleaseDate} {
 		if date != "" {
 			result[key] = date
@@ -175,6 +178,10 @@ func (h *Handler) versionRoute(w http.ResponseWriter, r *http.Request, parts []s
 			jiraError(w, 400, "Create the version before releasing it.")
 			return
 		}
+		if in.MoveUnfixedIssuesTo != nil {
+			jiraError(w, http.StatusBadRequest, "moveUnfixedIssuesTo is not applicable when creating a version.")
+			return
+		}
 		v, err := h.Store.SaveVersion(r.Context(), ws, user, p.ID, "", in.VersionUpdate)
 		if err != nil {
 			versionError(w, err)
@@ -215,6 +222,14 @@ func (h *Handler) versionRoute(w http.ResponseWriter, r *http.Request, parts []s
 			var up store.VersionUpdate
 			if !decodeVersionRequest(w, r, &up) {
 				return
+			}
+			// Jira sends the version as a self link; accept the trailing ID.
+			if up.MoveUnfixedIssuesTo != nil {
+				target := *up.MoveUnfixedIssuesTo
+				if index := strings.LastIndex(target, "/"); index >= 0 {
+					target = target[index+1:]
+				}
+				up.MoveUnfixedIssuesTo = &target
 			}
 			saved, err := h.Store.SaveVersion(r.Context(), ws, user, v.ProjectID, v.ID, up)
 			if err != nil {

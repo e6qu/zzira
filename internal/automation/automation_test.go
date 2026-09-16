@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -341,5 +342,246 @@ func TestRunnerLinksWorkItems(t *testing.T) {
 	}
 	if links, err = fx.store.LinksByIssue(fx.ctx, sourceID); err != nil || len(links) != 1 {
 		t.Fatalf("a work item linked to itself: %+v, %v", links, err)
+	}
+}
+
+func TestRunnerSetsPriority(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID := store.NewID("prj")
+	issueID := store.NewID("iss")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id) VALUES($1,$2,'PRI','Priorities','wf_default')`, projectID, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	// The work item starts with no priority at all, so the rule must compare
+	// against nothing without failing.
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,updated_seq) VALUES($1,$2,$3,'PRI-1','Unprioritised','st_todo','it_task',0)`, issueID, fx.ws, projectID); err != nil {
+		t.Fatal(err)
+	}
+	priority := func() string {
+		t.Helper()
+		var name string
+		if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT COALESCE(priority_id,'') FROM issues WHERE id=$1`, issueID).Scan(&name); err != nil {
+			t.Fatal(err)
+		}
+		return name
+	}
+	runner := &Runner{Service: fx.service}
+	run := func(name string, actions []map[string]any) {
+		t.Helper()
+		body, _ := json.Marshal(ruleBody(name, fx.admin, "ENABLED", "key = PRI-1", actions))
+		uuid, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fx.service.EnqueueNow(fx.ctx, fx.ws, uuid); err != nil {
+			t.Fatal(err)
+		}
+		if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// A rule names the priority the way someone would say it.
+	run("Raise priority", []map[string]any{{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "priority", "value": "High"}}})
+	if got := priority(); got != "pr_high" {
+		t.Fatalf("priority = %q, want pr_high", got)
+	}
+
+	// Naming the priority the work item already holds, by name or by id,
+	// changes nothing.
+	for _, value := range []string{"High", "high", "pr_high"} {
+		run("Keep priority "+value, []map[string]any{{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "priority", "value": value}}})
+		if got := priority(); got != "pr_high" {
+			t.Fatalf("priority after naming %q = %q, want pr_high", value, got)
+		}
+	}
+
+	// A different priority is set.
+	run("Lower priority", []map[string]any{{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "priority", "value": "Low"}}})
+	if got := priority(); got != "pr_low" {
+		t.Fatalf("priority = %q, want pr_low", got)
+	}
+}
+
+func TestRunnerRemovesLabel(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID := store.NewID("prj")
+	issueID := store.NewID("iss")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id) VALUES($1,$2,'LBL','Labels','wf_default')`, projectID, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,labels,updated_seq) VALUES($1,$2,$3,'LBL-1','Labelled work','st_todo','it_task',$4,0)`,
+		issueID, fx.ws, projectID, []string{"triage", "backend"}); err != nil {
+		t.Fatal(err)
+	}
+	labels := func() []string {
+		t.Helper()
+		var out []string
+		if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT labels FROM issues WHERE id=$1`, issueID).Scan(&out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	runner := &Runner{Service: fx.service}
+	run := func(name, label string) {
+		t.Helper()
+		actions := []map[string]any{{"component": "ACTION", "type": "jira.issue.remove-label", "value": map[string]string{"label": label}}}
+		body, _ := json.Marshal(ruleBody(name, fx.admin, "ENABLED", "key = LBL-1", actions))
+		uuid, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fx.service.EnqueueNow(fx.ctx, fx.ws, uuid); err != nil {
+			t.Fatal(err)
+		}
+		if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The label the rule names is taken off; the rest stay.
+	run("Drop triage", "triage")
+	if got := labels(); !slices.Equal(got, []string{"backend"}) {
+		t.Fatalf("labels = %v, want [backend]", got)
+	}
+
+	// A label the work item does not carry changes nothing, and running again
+	// leaves the work item as it is.
+	run("Drop triage again", "triage")
+	run("Drop absent label", "frontend")
+	if got := labels(); !slices.Equal(got, []string{"backend"}) {
+		t.Fatalf("labels after removing what is absent = %v, want [backend]", got)
+	}
+
+	// The label renders smart values, so a rule can name it from the work item.
+	run("Drop rendered label", "{{issue.labels}}")
+	if got := labels(); len(got) != 0 {
+		t.Fatalf("labels after removing the rendered label = %v, want none", got)
+	}
+}
+
+func TestRunnerCreatesSubtask(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID, parentID := store.NewID("prj"), store.NewID("iss")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id,issue_seq) VALUES($1,$2,'SUB','Sub-tasks','wf_default',1)`, projectID, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,updated_seq) VALUES($1,$2,$3,'SUB-1','Parent work','st_todo','it_task',0)`,
+		parentID, fx.ws, projectID); err != nil {
+		t.Fatal(err)
+	}
+
+	// The summary renders smart values, so the sub-task names its parent.
+	actions := []map[string]any{{"component": "ACTION", "type": "jira.issue.create-subtask", "value": map[string]string{"summary": "Checklist for {{issue.key}}"}}}
+	body, _ := json.Marshal(ruleBody("Raise a checklist", fx.admin, "ENABLED", "key = SUB-1", actions))
+	uuid, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &Runner{Service: fx.service}
+	// Running twice proves the second run finds the sub-task already there and
+	// raises no duplicate.
+	for range 2 {
+		if err := fx.service.EnqueueNow(fx.ctx, fx.ws, uuid); err != nil {
+			t.Fatal(err)
+		}
+		if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+			t.Fatal(err)
+		}
+	}
+	children, err := fx.store.ChildIssues(fx.ctx, fx.ws, parentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(children) != 1 {
+		t.Fatalf("children = %d, want 1", len(children))
+	}
+	if children[0].Summary != "Checklist for SUB-1" {
+		t.Errorf("summary = %q", children[0].Summary)
+	}
+	if !children[0].IssueType.Subtask {
+		t.Errorf("work type = %+v, want a sub-task type", children[0].IssueType)
+	}
+}
+
+func TestRunnerEmailsTheAssignee(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID, issueID := store.NewID("prj"), store.NewID("iss")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id,issue_seq) VALUES($1,$2,'MAIL','Mail','wf_default',1)`, projectID, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,assignee_id,updated_seq) VALUES($1,$2,$3,'MAIL-1','Escalated work','st_todo','it_task',$4,0)`,
+		issueID, fx.ws, projectID, fx.member); err != nil {
+		t.Fatal(err)
+	}
+
+	// The body renders smart values; the subject is the work item itself.
+	actions := []map[string]any{{"component": "ACTION", "type": "jira.issue.email", "value": map[string]string{"recipient": "assignee", "body": "Please look at {{issue.key}}"}}}
+	body, _ := json.Marshal(ruleBody("Mail the assignee", fx.admin, "ENABLED", "key = MAIL-1", actions))
+	uuid, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &Runner{Service: fx.service}
+	if err := fx.service.EnqueueNow(fx.ctx, fx.ws, uuid); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+
+	var recipient, subject, queued string
+	if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT recipient,subject,body FROM email_outbox WHERE workspace_id=$1 ORDER BY id DESC LIMIT 1`, fx.ws).
+		Scan(&recipient, &subject, &queued); err != nil {
+		t.Fatalf("no mail queued: %v", err)
+	}
+	if subject != "[MAIL-1] Escalated work" {
+		t.Errorf("subject = %q", subject)
+	}
+	if queued != "Please look at MAIL-1" {
+		t.Errorf("body = %q", queued)
+	}
+	var email string
+	if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT email FROM users WHERE id=$1`, fx.member).Scan(&email); err != nil {
+		t.Fatal(err)
+	}
+	if recipient != email {
+		t.Errorf("recipient = %q, want the assignee %q", recipient, email)
+	}
+}
+
+func TestRunnerCreatesWorkItem(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID, issueID := store.NewID("prj"), store.NewID("iss")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id,issue_seq) VALUES($1,$2,'MAKE','Making','wf_default',1)`, projectID, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,updated_seq) VALUES($1,$2,$3,'MAKE-1','Triggering work','st_todo','it_task',0)`,
+		issueID, fx.ws, projectID); err != nil {
+		t.Fatal(err)
+	}
+
+	actions := []map[string]any{{"component": "ACTION", "type": "jira.issue.create", "value": map[string]string{"issueTypeId": "it_task", "summary": "Follow up on {{issue.key}}"}}}
+	body, _ := json.Marshal(ruleBody("Raise a follow-up", fx.admin, "ENABLED", "key = MAKE-1", actions))
+	uuid, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &Runner{Service: fx.service}
+	// Running twice proves the second run finds the work already there.
+	for range 2 {
+		if err := fx.service.EnqueueNow(fx.ctx, fx.ws, uuid); err != nil {
+			t.Fatal(err)
+		}
+		if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var made int
+	if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT count(*) FROM issues WHERE project_id=$1 AND summary=$2`, projectID, "Follow up on MAKE-1").Scan(&made); err != nil {
+		t.Fatal(err)
+	}
+	if made != 1 {
+		t.Fatalf("work items raised = %d, want 1", made)
 	}
 }

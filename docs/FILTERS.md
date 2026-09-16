@@ -53,8 +53,9 @@ person, directory-group, project, and project-role access, transfer ownership,
 and delete a filter. Site administrators can inspect private filters and
 recover ownership when an owner leaves. Each user can also choose whether new
 filters start private or visible to everyone signed in. Filter owners can
-schedule daily or Monday email results, choose active workspace recipients,
-inspect the next and last run, and remove the schedule.
+schedule email results daily, on a Monday, or on a cron expression of their
+own, in a time zone they choose, pick active workspace recipients, inspect the
+next and last run, and remove the schedule.
 
 `e2e/filters.spec.ts` proves the connected REST-to-browser journey: create a
 private filter through Jira REST, find and favorite it in the browser, update
@@ -64,9 +65,11 @@ transfer it as an administrator, and delete it after transferring it back.
 ## Current limits
 
 The contract operations remain partial until the broader PR 1 JQL and search
-work completes. The schedule editor intentionally exposes daily and weekly UTC
-choices; arbitrary cron expressions, user-time-zone schedules, HTML email, and
-administrative subscription controls remain. Filter reads list subscriptions
+work completes. The schedule editor offers the daily and weekly choices it
+always had, a cron expression for anything else, and an IANA time zone the
+schedule is read in; the five-field schedules saved before custom ones existed
+keep their meaning. An administrator sees every filter email the site sends, whoever scheduled it,
+and can stop one from the administration page. Filter reads list subscriptions
 and the users a filter is shared with only when `expand=subscriptions` or
 `expand=sharedUsers` asks, including Jira's `[start:end]` index ranges; a filter
 shared with a project reaches the people who can browse that project. Jira
