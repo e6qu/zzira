@@ -191,6 +191,9 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-to', 'st_done');
   await page.selectOption('#transition-restriction', 'allow-reporter');
   await page.locator('fieldset').filter({ hasText: 'Required before transition' }).getByLabel('Description').check();
+  await page.selectOption('#transition-screen-mode', 'remind');
+  await page.fill('#transition-screen-remind-message', 'Check the estimate before moving on');
+  await page.getByLabel('Remind every time, not only when a field is empty').check();
   await page.selectOption('#transition-assignee-effect', 'to-current-user');
   await page.selectOption('#transition-update-field', 'labels');
   await page.selectOption('#transition-update-mode', 'append');
@@ -236,6 +239,7 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.getByLabel('Most recent only').first().check();
   await page.selectOption('#transition-previous-validator', 'st_done');
   await page.locator('fieldset').filter({ hasText: 'Status-history validator options' }).getByLabel('Most recent only').check();
+  await page.selectOption('#transition-approval-condition', 'block-in-progress');
   await page.selectOption('#transition-separation-from', 'st_todo');
   await page.selectOption('#transition-separation-to', 'st_inprogress');
   await page.getByRole('button', { name: 'Add transition' }).click();

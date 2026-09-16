@@ -1153,3 +1153,26 @@ func (s *Store) AccessibleProducts(ctx context.Context, workspaceID, userID stri
 	}
 	return products, rows.Err()
 }
+
+// WorkspaceAgentAccounts lists the workspace's active app accounts, the
+// non-human principals a workflow post function can ask to run.
+func (s *Store) WorkspaceAgentAccounts(ctx context.Context, workspaceID string) ([]*models.User, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT u.id,u.display_name
+		FROM memberships m JOIN users u ON u.id=m.user_id
+		WHERE m.workspace_id=$1 AND u.active AND u.id LIKE 'app!_%' ESCAPE '!'
+		ORDER BY u.display_name,u.id`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	agents := []*models.User{}
+	for rows.Next() {
+		agent := &models.User{}
+		if err := rows.Scan(&agent.ID, &agent.DisplayName); err != nil {
+			return nil, err
+		}
+		agents = append(agents, agent)
+	}
+	return agents, rows.Err()
+}

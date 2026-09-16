@@ -127,6 +127,9 @@ type workflowEditorData struct {
 	Events   []store.NotificationEventDefinition
 	// ApproverFields are the user picker fields a status approval can name.
 	ApproverFields []*models.CustomField
+	// AgentAccounts are the app accounts a transition's post function can ask
+	// to run.
+	AgentAccounts []*models.User
 	// TransitionFields are the custom fields a transition's rules can name
 	// beside the system fields. A transition screen is not among them, because
 	// the transition dialog renders only system field controls.
@@ -892,6 +895,11 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 		http.Error(w, "Could not load custom fields.", http.StatusInternalServerError)
 		return
 	}
+	agentAccounts, err := h.Store.WorkspaceAgentAccounts(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "Could not load agent accounts.", http.StatusInternalServerError)
+		return
+	}
 	approverFields := make([]*models.CustomField, 0)
 	for _, field := range fields {
 		if field.Type == models.CustomFieldUser || field.Type == models.CustomFieldMultiUser {
@@ -899,7 +907,7 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 		}
 	}
 	h.writeWorkspacePage(w, r, "page_workflow", user, wsID, workflowEditorData{
-		Workflow: wf, Initial: initial, Global: global, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks, Events: events, ApproverFields: approverFields, TransitionFields: fields,
+		Workflow: wf, Initial: initial, Global: global, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks, Events: events, ApproverFields: approverFields, TransitionFields: fields, AgentAccounts: agentAccounts,
 		CanEdit: admin && wf.ID != workflow.Default().ID, CanAssign: admin,
 	}, "workflows", "")
 }
@@ -1100,7 +1108,15 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		fields = append(fields, changedField)
 	}
 	if len(fields) > 0 {
-		transition.Screen = &workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleTransitionScreen, Parameters: map[string]string{"fields": strings.Join(fields, ",")}}
+		if r.PostFormValue("screen_mode") == "remind" {
+			parameters := map[string]string{"remindingFieldIds": strings.Join(fields, ","), "remindingAlwaysAsk": formBool(r, "screen_remind_always")}
+			if message := strings.TrimSpace(r.PostFormValue("screen_remind_message")); message != "" {
+				parameters["remindingMessage"] = message
+			}
+			transition.Screen = &workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleRemindToUpdateFields, Parameters: parameters}
+		} else {
+			transition.Screen = &workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleTransitionScreen, Parameters: map[string]string{"fields": strings.Join(fields, ",")}}
+		}
 	}
 	conditions := make([]workflow.Rule, 0, 2)
 	if restriction := r.PostFormValue("restriction"); restriction == "block-users" || restriction == "block-all" {
@@ -1123,6 +1139,26 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 				"fieldId": field, "fieldValue": string(values), "comparator": r.PostFormValue("condition_comparator"), "comparisonType": r.PostFormValue("condition_type"),
 			},
 		})
+	}
+	switch approval := r.PostFormValue("approval_condition"); approval {
+	case "block-in-progress":
+		conditions = append(conditions, workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleBlockInProgressApproval, Parameters: map[string]string{}})
+	case "approved", "rejected":
+		key := workflow.RuleApprovalsBlockUntilApproved
+		if approval == "rejected" {
+			key = workflow.RuleApprovalsBlockUntilRejected
+		}
+		// Jira sends the status's approval with the condition; ours is the one
+		// the editor already configures for the status the transition leaves.
+		configuration := "{}"
+		for _, status := range wf.Statuses {
+			if len(transition.From) > 0 && status.StatusReference == transition.From[0] && status.ApprovalConfiguration != nil {
+				if encoded, err := json.Marshal(status.ApprovalConfiguration); err == nil {
+					configuration = string(encoded)
+				}
+			}
+		}
+		conditions = append(conditions, workflow.Rule{ID: store.NewID("rule"), RuleKey: key, Parameters: map[string]string{"approvalConfigurationJson": configuration}})
 	}
 	if statusID := r.PostFormValue("previous_status_condition"); statusID != "" {
 		conditions = append(conditions, workflow.Rule{
@@ -1275,6 +1311,25 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		}
 		transition.Actions = append(transition.Actions, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleTriggerWebhook, Parameters: map[string]string{"webhookId": webhookID},
+		})
+	}
+	// A transition can ask one of the workspace's agent accounts to run, with
+	// the prompt it is given. An account that is not an active agent is
+	// refused here rather than when someone transitions the work item.
+	if agentID := strings.TrimSpace(r.PostFormValue("trigger_agent")); agentID != "" {
+		agents, agentErr := h.Store.WorkspaceAgentAccounts(r.Context(), wsID)
+		if agentErr != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if !slices.ContainsFunc(agents, func(agent *models.User) bool { return agent.ID == agentID }) {
+			http.Error(w, "the transition agent is not an active agent account", http.StatusBadRequest)
+			return
+		}
+		transition.Actions = append(transition.Actions, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleTriggerAgent, Parameters: map[string]string{
+				"agentId": agentID, "promptValue": strings.TrimSpace(r.PostFormValue("trigger_agent_prompt")),
+			},
 		})
 	}
 	wf.Transitions = append(wf.Transitions, transition)
