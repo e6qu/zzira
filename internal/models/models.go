@@ -358,6 +358,11 @@ type WorkflowTransition struct {
 	ID           string
 	Name         string
 	ScreenFields []string
+	// ScreenCustomFields describes the custom fields among ScreenFields, so a
+	// transition screen renders them as the edit dialog does rather than as a
+	// text box labelled with a field id. Empty offline, where screens are not
+	// offered.
+	ScreenCustomFields []CustomFieldView
 	// ScreenMessage is the prompt a remind-people-to-update-fields screen shows.
 	ScreenMessage string
 }

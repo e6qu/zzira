@@ -426,3 +426,85 @@ test('workflow schemes publish safely and migrate incompatible project statuses'
   expect(migratedIssue.status()).toBe(200);
   expect((await migratedIssue.json()).fields.status.id).toBe('10000');
 });
+
+test('a transition screen asks for a custom field by name', async ({ page, browser }) => {
+  await login(page);
+
+  // A project of its own: creating a project-scoped workflow reroutes the
+  // project it names, and the demo project's workflow belongs to other specs.
+  await page.goto('/projects');
+  await page.getByRole('link', { name: 'Create project', exact: true }).click();
+  const key = `TS${Date.now().toString(36).toUpperCase()}`;
+  await page.getByLabel('Name', { exact: true }).fill('Transition screens');
+  await page.getByLabel('Key', { exact: true }).fill(key);
+  await page.getByRole('button', { name: 'Create project', exact: true }).click();
+  await expect(page).toHaveURL(`/projects/${key}`);
+  const projectResponse = await page.request.get(`/rest/api/3/project/${key}`, { headers: { Authorization: apiAuthHeader() } });
+  expect(projectResponse.status()).toBe(200);
+  const projectID = (await projectResponse.json()).id as string;
+
+  // The default workflow is not editable, so the project gets its own.
+  await page.goto('/settings/workflows');
+  await page.fill('#workflow-name', `Screen workflow ${Date.now()}`);
+  await page.selectOption('#workflow-project-scope', projectID);
+  await page.getByRole('button', { name: 'Create workflow' }).click();
+  await expect(page).toHaveURL(/\/settings\/workflows\/workflow_/);
+  const workflowURL = new URL(page.url()).pathname;
+
+  // The screen fieldset now offers the site's custom fields beside the system ones.
+  const screenFields = page.locator('fieldset').filter({ hasText: 'Transition screen fields' });
+  await expect(screenFields.getByLabel('Story point estimate')).toBeVisible();
+  await page.fill('#transition-name', 'Estimate and start');
+  await page.selectOption('#transition-from', 'st_todo');
+  await page.selectOption('#transition-to', 'st_inprogress');
+  await screenFields.getByLabel('Story point estimate').check();
+  await page.getByRole('button', { name: 'Add transition' }).click();
+  await expect(page.locator('.workflow-node').getByText('Estimate and start', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Publish workflow' }).click();
+  await expect(page.getByText('Published', { exact: true })).toBeVisible();
+
+  // The screen asks for the field by its name, with the control its type wants.
+  const created = await page.request.post('/rest/api/3/issue', {
+    headers: { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' },
+    data: { fields: { project: { key }, summary: `Screen subject ${Date.now()}`, issuetype: { name: 'Task' } } },
+  });
+  expect(created.status()).toBe(201);
+  const issueKey = (await created.json()).key as string;
+  await page.goto(`/browse/${issueKey}`);
+  const screen = page.locator('details.transition-screen').filter({ hasText: 'Estimate and start' });
+  await screen.locator('summary').click();
+  await expect(screen.getByText('Story point estimate', { exact: true })).toBeVisible();
+  const control = screen.locator('[name="field_customfield_20000"]');
+  await expect(control).toHaveAttribute('type', 'number');
+  await control.fill('8');
+  await screen.getByRole('button', { name: 'Complete Estimate and start' }).click();
+
+  // The value the screen collected is on the work item.
+  await expect.poll(async () => {
+    const response = await page.request.get(`/rest/api/3/issue/${issueKey}?fields=customfield_20000,status`, { headers: { Authorization: apiAuthHeader() } });
+    const body = await response.json();
+    return `${body.fields?.status?.name}:${body.fields?.customfield_20000}`;
+  }, { timeout: 15_000 }).toContain('8');
+
+  // A person who does not administer the site reads the workflow but cannot
+  // author it: the page renders without the authoring form, and the endpoint
+  // behind that form refuses her.
+  const memberContext = await browser.newContext();
+  const member = await memberContext.newPage();
+  try {
+    await member.goto('/login');
+    await member.fill('#login-email', 'ana@zzira.dev');
+    await member.fill('#login-password', 'ana12345');
+    await member.click('button[type=submit]');
+    await expect(member).toHaveURL('/');
+    const readable = await member.goto(workflowURL);
+    expect(readable?.status()).toBe(200);
+    await expect(member.getByRole('heading', { name: 'Add transition' })).toHaveCount(0);
+    const refused = await member.request.post(`${workflowURL}/transitions`, {
+      form: { name: 'Sneaky', from: 'st_todo', to: 'st_done', screen_field: 'customfield_20000' },
+    });
+    expect(refused.status()).toBe(403);
+  } finally {
+    await memberContext.close();
+  }
+});

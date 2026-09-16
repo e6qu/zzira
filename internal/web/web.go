@@ -514,13 +514,27 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
-	for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
-		message, _, _ := t.ScreenReminder()
-		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: t.ScreenFields(), ScreenMessage: message})
-	}
 	editView, err := h.buildEditDialogView(r.Context(), wsID, issue)
 	if err != nil {
 		return nil, err
+	}
+	// The edit dialog has already resolved every custom field's type, value and
+	// options for this work item, so a transition screen names the same ones
+	// rather than loading them again.
+	customByID := map[string]models.CustomFieldView{}
+	for _, field := range editView.CustomFields {
+		customByID[field.ID] = field
+	}
+	for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
+		message, _, _ := t.ScreenReminder()
+		screenFields := t.ScreenFields()
+		asked := []models.CustomFieldView{}
+		for _, id := range screenFields {
+			if field, ok := customByID[id]; ok {
+				asked = append(asked, field)
+			}
+		}
+		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: screenFields, ScreenCustomFields: asked, ScreenMessage: message})
 	}
 	priorities, err := h.Store.Priorities(r.Context(), wsID)
 	if err != nil {
