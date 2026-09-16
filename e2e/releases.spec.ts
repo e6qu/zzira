@@ -155,3 +155,70 @@ test('plan a release, assign scope, publish notes, archive and delete', async ({
   expect((await page.request.get(`/rest/api/3/version/${id}`)).status()).toBe(404);
   expect((await page.request.get(`/rest/api/3/issue/${issue.key}`)).status()).toBe(200);
 });
+
+test('a project administrator orders releases from the list', async ({ page }) => {
+  await page.goto('/login');
+  await page.fill('#login-email', 'demo@zzira.dev');
+  await page.fill('#login-password', 'demo1234');
+  await page.click('button[type=submit]');
+
+  const stamp = Date.now();
+  const create = async (name: string) => {
+    await page.goto('/projects/ZZ/releases');
+    await page.getByLabel('Version name').fill(name);
+    await page.getByRole('button', { name: 'Create version', exact: true }).click();
+    await expect(page).toHaveURL(/\/projects\/ZZ\/releases\/\d+$/);
+  };
+  const first = `Order A ${stamp}`;
+  const second = `Order B ${stamp}`;
+  await create(first);
+  await create(second);
+
+  await page.goto('/projects/ZZ/releases');
+  const order = async () => await page.locator('.release-name').allTextContents();
+  const before = await order();
+  expect(before.indexOf(first)).toBeLessThan(before.indexOf(second));
+  await accessible(page);
+
+  // Moving one later swaps it past its neighbour in the project's order.
+  await page.getByRole('button', { name: `Move ${first} later` }).click();
+  await expect(page).toHaveURL(/\/projects\/ZZ\/releases$/);
+  const after = await order();
+  expect(after.indexOf(first)).toBeGreaterThan(after.indexOf(second));
+
+  // The order is the project's, not the filtered view's, so a filtered list
+  // offers no move at all.
+  await page.goto('/projects/ZZ/releases?status=unreleased');
+  await expect(page.getByRole('link', { name: second, exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Move / })).toHaveCount(0);
+});
+
+test('a project member is not offered the order, and is refused one sent anyway', async ({ page, browser }) => {
+  await page.goto('/login');
+  await page.fill('#login-email', 'demo@zzira.dev');
+  await page.fill('#login-password', 'demo1234');
+  await page.click('button[type=submit]');
+
+  // Something to order, created by the administrator.
+  await page.goto('/projects/ZZ/releases');
+  await page.getByLabel('Version name').fill(`Gated ${Date.now()}`);
+  await page.getByRole('button', { name: 'Create version', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects\/ZZ\/releases\/\d+$/);
+  const id = page.url().split('/').pop()!;
+
+  const memberContext = await browser.newContext();
+  const member = await memberContext.newPage();
+  try {
+    await member.goto('/login');
+    await member.fill('#login-email', 'ana@zzira.dev');
+    await member.fill('#login-password', 'ana12345');
+    await member.click('button[type=submit]');
+    await member.goto('/projects/ZZ/releases');
+    await expect(member.getByRole('heading', { name: 'Releases', exact: true })).toBeVisible();
+    await expect(member.getByRole('button', { name: /^Move / })).toHaveCount(0);
+    const refused = await member.request.post('/projects/ZZ/releases', { form: { action: 'move', version: id, position: 'Later' } });
+    expect(refused.status()).toBe(403);
+  } finally {
+    await memberContext.close();
+  }
+});

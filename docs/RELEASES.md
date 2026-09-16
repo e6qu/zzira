@@ -53,10 +53,13 @@ This is a partial version/release implementation, not full Jira Cloud fidelity:
 
 - Permissions use workspace membership and the administrator role. Jira project
   roles, anonymous browsing and granular version permissions remain gaps.
-- Version ordering is creation order unless explicitly sorted when reading;
-  the move endpoint and drag reordering are not implemented.
-- Version drivers/approvers, related work, custom version-picker fields,
-  `moveUnfixedIssuesTo`, cross-project releases and configurable release notes
+- Versions carry an explicit order. The move endpoint takes `after`, or a
+  position of First, Earlier, Later or Last, and the release list offers a
+  project administrator buttons to move a version up or down. Those buttons
+  appear on the unfiltered list, because a version moves within the project's
+  whole order rather than within the rows a filter leaves on screen. Dragging
+  is not implemented; the buttons reach the keyboard and need no script.
+- `moveUnfixedIssuesTo`, cross-project releases and configurable release notes
   or exports remain gaps. Unsupported request options are explicit errors.
 - Unresolved counts currently treat the Done status category as resolved; a
   separate Jira resolution field and its workflow semantics remain unfinished.

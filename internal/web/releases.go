@@ -20,6 +20,10 @@ type releaseRow struct {
 	Version  *models.Version
 	Progress models.VersionProgress
 	Overdue  bool
+	// First and Last are the version's place in the project's whole order, not
+	// in a filtered view of it, so the end rows offer no move that does nothing.
+	First bool
+	Last  bool
 }
 type releasesData struct {
 	Project  *models.Project
@@ -38,9 +42,12 @@ type releasesData struct {
 	MyApproval *models.VersionApprover
 	Admin      bool
 	Editing    bool
-	Error      string
-	Query      string
-	Status     string
+	// Reorderable is false while a filter is on, because a version moves
+	// within the project's whole order rather than within the rows on screen.
+	Reorderable bool
+	Error       string
+	Query       string
+	Status      string
 }
 
 // releaseApproval is an approval request with the approver's name.
@@ -88,21 +95,39 @@ func (h *Handler) Releases(w http.ResponseWriter, r *http.Request) {
 		if !parseForm(w, r) {
 			return
 		}
-		up := releaseForm(r)
-		data.Version = &models.Version{Name: *up.Name, Description: *up.Description, StartDate: *up.StartDate, ReleaseDate: *up.ReleaseDate}
-		saved, err := h.Store.SaveVersion(r.Context(), ws, user.ID, project.ID, "", up)
-		if err == nil {
-			redirectLocal(w, r, "/projects/"+project.Key+"/releases/"+saved.ID)
-			return
+		if r.PostFormValue("action") == "move" {
+			if !admin {
+				http.Error(w, "Only a project administrator can order releases.", http.StatusForbidden)
+				return
+			}
+			version, err := h.Store.Version(r.Context(), ws, strings.TrimSpace(r.PostFormValue("version")))
+			if err != nil || version.ProjectID != project.ID {
+				http.NotFound(w, r)
+				return
+			}
+			if err = h.Store.MoveVersion(r.Context(), ws, user.ID, version.ID, "", r.PostFormValue("position")); err == nil {
+				redirectLocal(w, r, "/projects/"+project.Key+"/releases")
+				return
+			}
+			status, data.Error = releaseWebError(err)
+		} else {
+			up := releaseForm(r)
+			data.Version = &models.Version{Name: *up.Name, Description: *up.Description, StartDate: *up.StartDate, ReleaseDate: *up.ReleaseDate}
+			saved, err := h.Store.SaveVersion(r.Context(), ws, user.ID, project.ID, "", up)
+			if err == nil {
+				redirectLocal(w, r, "/projects/"+project.Key+"/releases/"+saved.ID)
+				return
+			}
+			status, data.Error = releaseWebError(err)
 		}
-		status, data.Error = releaseWebError(err)
 	}
 	versions, err := h.Store.ProjectVersions(r.Context(), project.ID)
 	if err != nil {
 		http.Error(w, "Could not load releases.", 500)
 		return
 	}
-	for _, v := range versions {
+	data.Reorderable = data.Status == "" && data.Query == ""
+	for index, v := range versions {
 		if data.Status != "" && strings.ToLower(v.State()) != data.Status {
 			continue
 		}
@@ -114,7 +139,9 @@ func (h *Handler) Releases(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Could not load release progress.", 500)
 			return
 		}
-		data.Rows = append(data.Rows, releaseRow{Version: v, Progress: store.VersionProgress(issues), Overdue: !v.Released && v.ReleaseDate != "" && v.ReleaseDate < time.Now().UTC().Format("2006-01-02")})
+		data.Rows = append(data.Rows, releaseRow{Version: v, Progress: store.VersionProgress(issues),
+			Overdue: !v.Released && v.ReleaseDate != "" && v.ReleaseDate < time.Now().UTC().Format("2006-01-02"),
+			First:   index == 0, Last: index == len(versions)-1})
 	}
 	h.writeWorkspacePageStatus(w, r, "page_releases", user, ws, data, "releases", project.Key, status)
 }
