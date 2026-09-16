@@ -171,3 +171,38 @@ test('create a project, use its board, and update settings through UI and API', 
   await expect(page.locator('.project-card').filter({ hasText: key })).toHaveCount(0);
   expect((await page.request.get(`/rest/api/3/project/${key}`)).status()).toBe(404);
 });
+
+test('a project administrator creates and deletes a board from project settings', async ({ page }) => {
+  await page.goto('/login');
+  await page.fill('#login-email', 'demo@zzira.dev');
+  await page.fill('#login-password', 'demo1234');
+  await page.click('button[type=submit]');
+
+  // A project of its own, so the seeded board other specs use stays put.
+  await page.goto('/projects');
+  await page.getByRole('link', { name: 'Create project', exact: true }).click();
+  const key = `B${Date.now().toString(36).toUpperCase()}`;
+  await page.getByLabel('Name', { exact: true }).fill('Board administration');
+  await page.getByLabel('Key', { exact: true }).fill(key);
+  await page.getByRole('button', { name: 'Create project', exact: true }).click();
+  await expect(page).toHaveURL(`/projects/${key}`);
+
+  const settings = `/projects/${key}/settings`;
+  await page.goto(settings);
+  const name = `Delivery ${Date.now().toString(36)}`;
+  await page.getByLabel('Board name').fill(name);
+  await page.getByLabel('Board type').selectOption('kanban');
+  await page.getByRole('button', { name: 'Create board' }).click();
+  await expect(page).toHaveURL(new RegExp(`${settings}\\?board=`));
+  await expect(page.getByRole('status')).toContainText('Board created');
+  await expect(page.getByRole('link', { name: new RegExp(name) })).toBeVisible();
+
+  // A name the project already holds is refused, and the page says so.
+  await page.getByLabel('Board name').fill(name);
+  await page.getByRole('button', { name: 'Create board' }).click();
+  await expect(page.getByRole('alert')).toContainText('already exists');
+
+  await page.getByRole('button', { name: `Delete ${name}` }).click();
+  await expect(page.getByRole('status')).toContainText('Board deleted');
+  await expect(page.getByRole('link', { name: new RegExp(name) })).toHaveCount(0);
+});

@@ -18,9 +18,13 @@ import (
 )
 
 type projectSettingsData struct {
-	Project            *models.Project
-	Members            []*models.User
-	Boards             []*models.Board
+	Project *models.Project
+	Members []*models.User
+	Boards  []*models.Board
+	// BoardNotice and BoardError report what happened to a board, so a
+	// refused create or delete says so rather than looking like a dead button.
+	BoardNotice        string
+	BoardError         string
 	Components         []*models.ProjectComponent
 	Categories         []*models.ProjectCategory
 	Features           []models.ProjectFeature
@@ -120,6 +124,7 @@ func (h *Handler) projectSettings(w http.ResponseWriter, r *http.Request, key st
 	data.ComponentNotice, data.ComponentError = r.URL.Query().Get("component"), r.URL.Query().Get("componentError")
 	data.GovernanceNotice, data.GovernanceError = r.URL.Query().Get("governance"), r.URL.Query().Get("governanceError")
 	data.TemplateNotice, data.TemplateError = r.URL.Query().Get("template"), r.URL.Query().Get("templateError")
+	data.BoardNotice, data.BoardError = r.URL.Query().Get("board"), r.URL.Query().Get("boardError")
 	var err error
 	data.Categories, err = h.Store.ProjectCategories(r.Context(), wsID)
 	if err != nil {
@@ -394,4 +399,72 @@ func (h *Handler) ProjectComponentSettings(w http.ResponseWriter, r *http.Reques
 	}
 	notice := map[string]string{"create": "created", "update": "updated", "delete": "deleted"}[action]
 	redirectLocal(w, r, target+"?component="+notice)
+}
+
+// ProjectBoards creates and deletes a project's boards from the settings page
+// that lists them. It is its own route rather than another action on the
+// project form, because that form saves the project itself.
+func (h *Handler) ProjectBoards(w http.ResponseWriter, r *http.Request) {
+	user, wsID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByIDOrKey(r.Context(), wsID, r.PathValue("key"))
+	if errors.Is(err, pgx.ErrNoRows) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Could not load project.", 500)
+		return
+	}
+	allowed, err := h.Store.CanAdministerProject(r.Context(), wsID, user.ID, project.ID)
+	if err != nil || !allowed {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	settings := "/projects/" + project.Key + "/settings"
+	notice := ""
+	switch r.PostFormValue("action") {
+	case "create":
+		_, err = h.Store.CreateBoard(r.Context(), user.ID, wsID, store.BoardCreate{
+			Name: r.PostFormValue("name"), Type: r.PostFormValue("type"), ProjectID: project.ID,
+		})
+		notice = "Board created."
+	case "delete":
+		// The board is found through the project's own boards, so one from
+		// another project cannot be deleted by naming its id here.
+		boards, listErr := h.Store.BoardsByWorkspace(r.Context(), wsID)
+		if listErr != nil {
+			http.Error(w, "Could not load boards.", 500)
+			return
+		}
+		id, found := strings.TrimSpace(r.PostFormValue("board")), false
+		for _, board := range boards {
+			if board.ID == id && board.ProjectID == project.ID {
+				found = true
+			}
+		}
+		if !found {
+			http.NotFound(w, r)
+			return
+		}
+		err = h.Store.DeleteBoard(r.Context(), user.ID, wsID, id)
+		notice = "Board deleted. Its sprints went with it; the work items stayed."
+	default:
+		http.Error(w, "Unknown board action.", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		message := "Could not change this project's boards."
+		if errors.Is(err, store.ErrBoardValidation) {
+			message = err.Error()
+		}
+		redirectLocal(w, r, settings+"?boardError="+url.QueryEscape(message))
+		return
+	}
+	redirectLocal(w, r, settings+"?board="+url.QueryEscape(notice))
 }

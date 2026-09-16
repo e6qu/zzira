@@ -427,6 +427,7 @@ func main() {
 	mux.HandleFunc("POST /projects/{key}/releases", webHandler.Releases)
 	mux.HandleFunc("GET /projects/{key}/releases/{version}", webHandler.Release)
 	mux.HandleFunc("POST /projects/{key}/releases/{version}", webHandler.Release)
+	mux.HandleFunc("POST /projects/{key}/boards", webHandler.ProjectBoards)
 	mux.HandleFunc("GET /projects/{key}/reports", webHandler.ProjectReports)
 	mux.HandleFunc("GET /projects/{key}/reports/apps/{module}", webHandler.ProjectAppReport)
 	mux.HandleFunc("GET /projects/{key}/reports/dora", webHandler.DORAReport)
