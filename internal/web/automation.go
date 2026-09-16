@@ -63,7 +63,9 @@ var (
 		{automation.WebhookTriggerType, "Incoming webhook"},
 	}
 	automationActionTypes = []automationOption{
-		{"jira.issue.add-label", "Add label"}, {"jira.issue.remove-label", "Remove label"}, {"jira.issue.assign", "Assign work item"}, {"jira.issue.transition", "Transition work item"},
+		{"jira.issue.add-label", "Add label"}, {"jira.issue.remove-label", "Remove label"}, {"jira.issue.assign", "Assign work item"},
+		{"jira.issue.assign:round-robin", "Assign work item (round-robin)"}, {"jira.issue.assign:balanced", "Assign work item (balanced workload)"},
+		{"jira.issue.assign:random", "Assign work item (random)"}, {"jira.issue.transition", "Transition work item"},
 		{"jira.issue.comment", "Comment on work item"}, {"jira.issue.edit:summary", "Edit summary"}, {"jira.issue.edit:duedate", "Set due date"},
 		{"jira.issue.edit:priority", "Set priority"}, {"jira.issue.edit:description", "Set description"},
 		{"jira.issue.log-work", "Log work"}, {"jira.issue.create-subtask", "Create sub-task"},
@@ -611,6 +613,9 @@ func automationFormActions(types, values []string) ([]map[string]any, error) {
 			actionValue = map[string]string{"label": value}
 		case "jira.issue.assign":
 			actionValue = map[string]string{"accountId": value}
+		case "jira.issue.assign:round-robin", "jira.issue.assign:balanced", "jira.issue.assign:random":
+			actionValue = map[string]string{"method": strings.TrimPrefix(actionType, "jira.issue.assign:")}
+			actionType = "jira.issue.assign"
 		case "jira.issue.transition":
 			actionValue = map[string]string{"statusId": value}
 		case "jira.issue.comment":
@@ -798,6 +803,9 @@ func automationActionViews(components []automationComponentJSON) []automationAct
 		switch component.Type {
 		case "jira.issue.assign":
 			view.Value = fields["accountId"]
+			if method := fields["method"]; method != "" {
+				view.Type, view.Value = "jira.issue.assign:"+method, method
+			}
 		case "jira.issue.transition":
 			view.Value = fields["statusId"]
 		case "jira.issue.comment":

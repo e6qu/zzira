@@ -632,9 +632,28 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 	case "jira.issue.assign":
 		var value struct {
 			AccountID string `json:"accountId"`
+			Method    string `json:"method"`
 		}
-		if err := json.Unmarshal(valueRaw, &value); err != nil || value.AccountID == "" {
-			return false, errors.New("assign action requires value.accountId")
+		if err := json.Unmarshal(valueRaw, &value); err != nil || (value.AccountID == "" && value.Method == "") {
+			return false, errors.New("assign action requires value.accountId or value.method")
+		}
+		// Jira picks the person when the rule names a method rather than one
+		// account, from the people the project may assign work to.
+		if value.Method != "" {
+			if !assignmentMethods[value.Method] {
+				return false, fmt.Errorf("assign action cannot pick by %q", value.Method)
+			}
+			picked, err := r.pickAssignee(ctx, run, issue, value.Method)
+			if err != nil {
+				return false, err
+			}
+			if issue.Assignee != nil && issue.Assignee.ID == picked {
+				return false, nil
+			}
+			_, changed, err := r.Service.Commands.UpdateIssue(ctx, commands.UpdateIssueInput{
+				ActorID: run.ActorID, WorkspaceID: run.WorkspaceID, IssueIDOrKey: issue.ID, AssigneeID: &picked,
+			})
+			return changed != nil, err
 		}
 		accountID, err := render(value.AccountID)
 		if err != nil {
