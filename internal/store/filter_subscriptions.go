@@ -187,6 +187,53 @@ func (s *Store) loadFilterSubscriptions(ctx context.Context, filters []*models.F
 	return rows.Err()
 }
 
+// WorkspaceFilterSubscription is one person's filter email as an
+// administrator sees it: whose it is, which filter, and how it is doing.
+type WorkspaceFilterSubscription struct {
+	ID                                             int64
+	FilterID, FilterName, OwnerID, OwnerName       string
+	CronExpression, Timezone, NextRunAt, LastError string
+}
+
+// WorkspaceFilterSubscriptions lists every filter email scheduled in the site,
+// whoever owns it, so an administrator can see what the site sends.
+func (s *Store) WorkspaceFilterSubscriptions(ctx context.Context, workspaceID string) ([]WorkspaceFilterSubscription, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT fs.id,fs.filter_id,f.name,fs.user_id,COALESCE(u.display_name,''),fs.cron_expression,fs.timezone,
+		COALESCE(to_char(fs.next_run_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),fs.last_error
+		FROM filter_subscriptions fs JOIN filters f ON f.id=fs.filter_id LEFT JOIN users u ON u.id=fs.user_id
+		WHERE f.workspace_id=$1 ORDER BY f.name, u.display_name, fs.id`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []WorkspaceFilterSubscription{}
+	for rows.Next() {
+		var item WorkspaceFilterSubscription
+		if err := rows.Scan(&item.ID, &item.FilterID, &item.FilterName, &item.OwnerID, &item.OwnerName,
+			&item.CronExpression, &item.Timezone, &item.NextRunAt, &item.LastError); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+// DeleteWorkspaceFilterSubscription removes a filter email an administrator
+// has decided the site should stop sending. It is scoped to the site rather
+// than to the person who scheduled it, which is what separates it from the
+// owner's own delete.
+func (s *Store) DeleteWorkspaceFilterSubscription(ctx context.Context, workspaceID string, subscriptionID int64) error {
+	result, err := s.Pool.Exec(ctx, `DELETE FROM filter_subscriptions fs USING filters f
+		WHERE fs.id=$1 AND f.id=fs.filter_id AND f.workspace_id=$2`, subscriptionID, workspaceID)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 type FilterSubscriptionRunner struct {
 	Store   *Store
 	BaseURL string

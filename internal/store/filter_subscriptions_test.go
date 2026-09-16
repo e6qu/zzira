@@ -1,8 +1,11 @@
 package store
 
 import (
+	"errors"
+
 	"context"
 	"encoding/json"
+	"github.com/jackc/pgx/v5"
 	"os"
 	"strings"
 	"testing"
@@ -119,5 +122,25 @@ func TestFilterSubscriptionRunnerQueuesOnePermissionScopedEmail(t *testing.T) {
 	loaded, err := st.FilterByID(ctx, workspaceID, userID, filter.ID)
 	if err != nil || len(loaded.Subscriptions) != 1 || loaded.Subscriptions[0].LastResultCount == nil || *loaded.Subscriptions[0].LastResultCount != 1 {
 		t.Fatalf("loaded subscriptions=%+v err=%v", loaded.Subscriptions, err)
+	}
+
+	// An administrator sees every filter email the site sends and can stop one
+	// without owning it: the site is the only thing the delete is scoped to.
+	all, err := st.WorkspaceFilterSubscriptions(ctx, workspaceID)
+	if err != nil || len(all) != 1 {
+		t.Fatalf("site subscriptions=%+v err=%v", all, err)
+	}
+	if all[0].FilterName != filter.Name || all[0].OwnerID != userID || all[0].OwnerName != "Subscription owner" || all[0].CronExpression != "0 8 * * *" {
+		t.Fatalf("site subscription=%+v", all[0])
+	}
+	if err := st.DeleteWorkspaceFilterSubscription(ctx, workspaceID, all[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	remaining, err := st.WorkspaceFilterSubscriptions(ctx, workspaceID)
+	if err != nil || len(remaining) != 0 {
+		t.Fatalf("subscriptions after an administrator stopped one=%+v err=%v", remaining, err)
+	}
+	if err := st.DeleteWorkspaceFilterSubscription(ctx, workspaceID, all[0].ID); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("stopping it twice = %v, want no rows", err)
 	}
 }

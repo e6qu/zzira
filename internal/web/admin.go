@@ -54,6 +54,7 @@ type adminPageData struct {
 	ProjectCategories                 []*models.ProjectCategory
 	IssueEvents                       []adminIssueEvent
 	GlobalPermissions                 []adminGlobalPermission
+	FilterSubscriptions               []store.WorkspaceFilterSubscription
 	ClassificationLevels              []models.DataClassificationLevel
 	ClassificationColors              []string
 	LastClassificationIndex           int
@@ -260,6 +261,9 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		Query: data.AuditQuery, Action: data.AuditAction, Limit: 20,
 	})
 	if err != nil {
+		return adminPageData{}, err
+	}
+	if data.FilterSubscriptions, err = h.Store.WorkspaceFilterSubscriptions(r.Context(), workspaceID); err != nil {
 		return adminPageData{}, err
 	}
 	return data, nil
@@ -1324,4 +1328,34 @@ func (h *Handler) UpdateAdminUserProfile(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Profile updated"), http.StatusSeeOther)
+}
+
+// DeleteAdminFilterSubscription stops a filter email the site sends, whoever
+// scheduled it. The owner's own remove button reaches only their own; this is
+// the administrator's, so it is scoped to the site instead.
+func (h *Handler) DeleteAdminFilterSubscription(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("subscription"), 10, 64)
+	if err != nil {
+		http.Error(w, "choose a filter email", http.StatusBadRequest)
+		return
+	}
+	if err = h.Store.DeleteWorkspaceFilterSubscription(r.Context(), workspaceID, id); err != nil {
+		message := "Could not stop that filter email."
+		if errors.Is(err, pgx.ErrNoRows) {
+			message = "That filter email has already gone."
+		}
+		data, dataErr := h.adminData(r, workspaceID, message)
+		if dataErr != nil {
+			http.Error(w, "load administration", http.StatusInternalServerError)
+			return
+		}
+		data.CurrentUserID = user.ID
+		h.writeWorkspacePageStatus(w, r, "page_admin", user, workspaceID, data, "admin", "", http.StatusNotFound)
+		return
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Filter email stopped"), http.StatusSeeOther)
 }

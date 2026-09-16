@@ -258,3 +258,43 @@ test('site admin manages a directory group and its audited membership', async ({
   await resetTitleProperty.getByRole('textbox').fill('ZZIRA');
   await resetTitleProperty.getByRole('button', { name: 'Save' }).click();
 });
+
+test('a site administrator sees every filter email and stops one', async ({ page, request }) => {
+  const marker = Date.now();
+  const name = `Admin gate ${marker}`;
+  const response = await request.post('/rest/api/3/filter', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { name, description: 'Scheduled for the administration journey', jql: 'project = ZZ', sharePermissions: [], editPermissions: [] },
+  });
+  expect(response.status()).toBe(200);
+  const filterID = (await response.json()).id;
+
+  // The owner schedules the email their own way, on a cron in a named zone.
+  await login(page);
+  await page.goto('/filters');
+  let card = page.locator(`#filter-${filterID}`);
+  await card.getByText('Email results', { exact: true }).click();
+  await card.locator(`#filter-cron-${filterID}`).fill('0 0 9 ? * MON-FRI');
+  await card.locator(`#filter-zone-${filterID}`).fill('Europe/Bucharest');
+  await card.getByRole('button', { name: 'Schedule email' }).click();
+  await expect(page.getByRole('status')).toContainText('Filter email scheduled.');
+
+  // The administration page shows it, whoever scheduled it.
+  await page.goto('/admin');
+  const section = page.locator('#admin-filter-subscriptions');
+  await expect(page.getByRole('heading', { name: 'Filter emails', level: 2 })).toBeVisible();
+  await expect(section).toContainText(name);
+  await expect(section).toContainText('0 0 9 ? * MON-FRI in Europe/Bucharest');
+  await accessible(page);
+
+  // Stopping it says so on the page, rather than looking like a dead button.
+  await section.getByRole('button', { name: new RegExp(`^Stop the ${name} email`) }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=/);
+  await expect(page.getByRole('status')).toContainText('Filter email stopped');
+  await expect(page.locator('#admin-filter-subscriptions')).not.toContainText(name);
+
+  // The filter itself is untouched; only its schedule went.
+  await page.goto('/filters');
+  card = page.locator(`#filter-${filterID}`);
+  await expect(card.getByRole('heading', { name })).toBeVisible();
+});

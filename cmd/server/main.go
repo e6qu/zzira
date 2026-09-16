@@ -298,6 +298,7 @@ func main() {
 	mux.HandleFunc("POST /service/agent/{desk}/bulk", webHandler.ServiceQueueBulk)
 	mux.HandleFunc("GET /admin", webHandler.AdminPage)
 	mux.HandleFunc("GET /admin/apps/modules/{module}", webHandler.AdminAppModulePage)
+	mux.HandleFunc("POST /admin/filter-subscriptions/{subscription}/delete", webHandler.DeleteAdminFilterSubscription)
 	mux.HandleFunc("GET /admin/notification-helper", webHandler.NotificationHelperPage)
 	mux.HandleFunc("GET /admin/permission-helper", webHandler.PermissionHelperPage)
 	mux.HandleFunc("POST /admin/apps", webHandler.CreateAdminApp)

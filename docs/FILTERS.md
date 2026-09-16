@@ -68,7 +68,8 @@ The contract operations remain partial until the broader PR 1 JQL and search
 work completes. The schedule editor offers the daily and weekly choices it
 always had, a cron expression for anything else, and an IANA time zone the
 schedule is read in; the five-field schedules saved before custom ones existed
-keep their meaning. Administrative subscription controls remain. Filter reads list subscriptions
+keep their meaning. An administrator sees every filter email the site sends, whoever scheduled it,
+and can stop one from the administration page. Filter reads list subscriptions
 and the users a filter is shared with only when `expand=subscriptions` or
 `expand=sharedUsers` asks, including Jira's `[start:end]` index ranges; a filter
 shared with a project reaches the people who can browse that project. Jira
