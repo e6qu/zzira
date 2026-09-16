@@ -78,7 +78,7 @@ The worker executes these action component types in order:
 | `jira.issue.assign` | `{"accountId":"..."}` | Assigns an active member; `ACTOR` and `UNASSIGNED` are accepted |
 | `jira.issue.transition` | `{"statusId":"10001"}` | Uses a valid current-workflow transition to the target status |
 | `jira.issue.comment` | `{"comment":"Picked up by {{initiator.displayName}}"}` | Adds a comment as the rule actor |
-| `jira.issue.edit` | `{"field":"summary","value":"[{{issue.key}}] {{issue.summary}}"}` | Sets the `summary` or `duedate` (yyyy-MM-dd; blank clears it) when it differs |
+| `jira.issue.edit` | `{"field":"summary","value":"[{{issue.key}}] {{issue.summary}}"}` | Sets the `summary`, `duedate` (yyyy-MM-dd; blank clears it) or `priority` (by name or id) when it differs |
 | `jira.issue.link` | `{"linkTypeId":"lt_blocks","issueKey":"ZZ-7"}` | Links the work item to the one named, which takes the link type's inward phrase. The key renders smart values. A link that already holds, or a work item naming itself, changes nothing; a key of another site stops the rule |
 
 JQL evaluation and every mutation run as the stored rule actor. Issue security

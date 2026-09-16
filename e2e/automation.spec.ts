@@ -50,6 +50,8 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
   await page.getByLabel('JQL query').fill(`key = ${fixtureKey}`);
   await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
   await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(label);
+  await page.getByRole('combobox', { name: 'Additional action', exact: true }).selectOption('jira.issue.edit:priority');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).nth(1).fill('High');
   await accessible(page);
   await page.getByRole('button', { name: 'Create rule' }).click();
   await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
@@ -66,6 +68,9 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
   expect(issueResponse.ok()).toBe(true);
   const issue = await issueResponse.json();
   expect(issue.fields.labels).toContain(label);
+  expect(issue.fields.priority.name).toBe('High');
+  // The editor shows the saved priority action rather than turning saving off.
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).nth(1)).toHaveValue('jira.issue.edit:priority');
 
   await page.locator('[data-theme-toggle]').click();
   await accessible(page);

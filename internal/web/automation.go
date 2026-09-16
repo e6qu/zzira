@@ -61,6 +61,7 @@ var (
 	automationActionTypes = []automationOption{
 		{"jira.issue.add-label", "Add label"}, {"jira.issue.assign", "Assign work item"}, {"jira.issue.transition", "Transition work item"},
 		{"jira.issue.comment", "Comment on work item"}, {"jira.issue.edit:summary", "Edit summary"}, {"jira.issue.edit:duedate", "Set due date"},
+		{"jira.issue.edit:priority", "Set priority"},
 	}
 	automationRelatedTypes    = []automationOption{{"sub-tasks", "Sub-tasks"}, {"parent", "Parent"}, {"linked", "Linked work items"}}
 	automationConditionFields = []automationOption{
@@ -523,7 +524,7 @@ func automationFormActions(types, values []string) ([]map[string]any, error) {
 			actionValue = map[string]string{"statusId": value}
 		case "jira.issue.comment":
 			actionValue = map[string]string{"comment": value}
-		case "jira.issue.edit:summary", "jira.issue.edit:duedate":
+		case "jira.issue.edit:summary", "jira.issue.edit:duedate", "jira.issue.edit:priority":
 			actionValue = map[string]string{"field": strings.TrimPrefix(actionType, "jira.issue.edit:"), "value": value}
 			actionType = "jira.issue.edit"
 		default:

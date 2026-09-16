@@ -668,6 +668,17 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 				return false, nil
 			}
 			input.DueDate = &text
+		case "priority":
+			current := ""
+			if issue.Priority != nil {
+				current = issue.Priority.Name
+			}
+			// The work item already holds the priority the rule names, whether
+			// the rule named it by name or by id.
+			if strings.EqualFold(text, current) || (issue.Priority != nil && text == issue.Priority.ID) {
+				return false, nil
+			}
+			input.PriorityID = &text
 		default:
 			return false, fmt.Errorf("edit action cannot change %q", value.Field)
 		}

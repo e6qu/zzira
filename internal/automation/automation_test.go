@@ -343,3 +343,61 @@ func TestRunnerLinksWorkItems(t *testing.T) {
 		t.Fatalf("a work item linked to itself: %+v, %v", links, err)
 	}
 }
+
+func TestRunnerSetsPriority(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID := store.NewID("prj")
+	issueID := store.NewID("iss")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id) VALUES($1,$2,'PRI','Priorities','wf_default')`, projectID, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	// The work item starts with no priority at all, so the rule must compare
+	// against nothing without failing.
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,updated_seq) VALUES($1,$2,$3,'PRI-1','Unprioritised','st_todo','it_task',0)`, issueID, fx.ws, projectID); err != nil {
+		t.Fatal(err)
+	}
+	priority := func() string {
+		t.Helper()
+		var name string
+		if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT COALESCE(priority_id,'') FROM issues WHERE id=$1`, issueID).Scan(&name); err != nil {
+			t.Fatal(err)
+		}
+		return name
+	}
+	runner := &Runner{Service: fx.service}
+	run := func(name string, actions []map[string]any) {
+		t.Helper()
+		body, _ := json.Marshal(ruleBody(name, fx.admin, "ENABLED", "key = PRI-1", actions))
+		uuid, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fx.service.EnqueueNow(fx.ctx, fx.ws, uuid); err != nil {
+			t.Fatal(err)
+		}
+		if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// A rule names the priority the way someone would say it.
+	run("Raise priority", []map[string]any{{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "priority", "value": "High"}}})
+	if got := priority(); got != "pr_high" {
+		t.Fatalf("priority = %q, want pr_high", got)
+	}
+
+	// Naming the priority the work item already holds, by name or by id,
+	// changes nothing.
+	for _, value := range []string{"High", "high", "pr_high"} {
+		run("Keep priority "+value, []map[string]any{{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "priority", "value": value}}})
+		if got := priority(); got != "pr_high" {
+			t.Fatalf("priority after naming %q = %q, want pr_high", value, got)
+		}
+	}
+
+	// A different priority is set.
+	run("Lower priority", []map[string]any{{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "priority", "value": "Low"}}})
+	if got := priority(); got != "pr_low" {
+		t.Fatalf("priority = %q, want pr_low", got)
+	}
+}
