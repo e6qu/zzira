@@ -18,6 +18,95 @@ import (
 // TestPeopleContract pins people and identity as a Jira client sees them:
 // users and their search, the structured user query, groups and their swap on
 // delete, preferences, properties, columns, application roles and avatars.
+func TestUserMigrationResolvesKeysAndUsernames(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(st.Close)
+	if err = store.Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, execErr := st.Pool.Exec(ctx, query, args...); execErr != nil {
+			t.Fatal(execErr)
+		}
+	}
+	ws, caller, named := store.NewID("ws"), store.NewID("usr"), store.NewID("usr")
+	exec(`INSERT INTO workspaces(id,slug,name) VALUES($1,$1,'Migration')`, ws)
+	for _, id := range []string{caller, named} {
+		exec(`INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$2,'test','Migration person')`, id, id+"@example.test")
+		exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'admin')`, ws, id)
+		exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES($1,$1,$2)`, id, store.HashToken(id))
+	}
+	exec(`UPDATE users SET username='migrated.handle' WHERE id=$1`, named)
+	t.Cleanup(func() {
+		exec(`DELETE FROM api_tokens WHERE user_id=ANY($1)`, []string{caller, named})
+		exec(`DELETE FROM memberships WHERE workspace_id=$1`, ws)
+		exec(`DELETE FROM workspaces WHERE id=$1`, ws)
+		exec(`DELETE FROM users WHERE id=ANY($1)`, []string{caller, named})
+	})
+	h := &Handler{Store: st, Commands: &commands.Service{Store: st}, WorkspaceSlug: ws, BaseURL: "https://zzira.test"}
+	get := func(query string, want int) []any {
+		t.Helper()
+		r := httptest.NewRequest("GET", "/rest/api/3/user/bulk/migration"+query, nil)
+		r.SetBasicAuth(caller+"@example.test", caller)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		if rec.Code != want {
+			t.Fatalf("GET %s: %d want %d: %s", query, rec.Code, want, rec.Body.String())
+		}
+		out := []any{}
+		if want == 200 {
+			if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+				t.Fatalf("GET %s: %v: %s", query, err, rec.Body.String())
+			}
+		}
+		return out
+	}
+
+	get("", 400)
+	// A key answers with the key asked about; an account id names itself.
+	byKey := get("?key="+named, 200)
+	if len(byKey) != 1 || byKey[0].(map[string]any)["accountId"] != named || byKey[0].(map[string]any)["key"] != named {
+		t.Fatalf("by key = %+v", byKey)
+	}
+	// A username resolves the handle an identity provider supplied, and the
+	// answer names the username asked about rather than a key.
+	byUsername := get("?username=migrated.handle", 200)
+	if len(byUsername) != 1 || byUsername[0].(map[string]any)["accountId"] != named || byUsername[0].(map[string]any)["username"] != "migrated.handle" {
+		t.Fatalf("by username = %+v", byUsername)
+	}
+	// While username is unset, the local part of the email answers instead.
+	byLocalPart := get("?username="+caller, 200)
+	if len(byLocalPart) != 1 || byLocalPart[0].(map[string]any)["accountId"] != caller {
+		t.Fatalf("by email local part = %+v", byLocalPart)
+	}
+	if nobody := get("?username=nobody.at.all", 200); len(nobody) != 0 {
+		t.Fatalf("unknown handle = %+v", nobody)
+	}
+	// The resource pages, as the specification says it does.
+	both := get("?key="+named+"&key="+caller, 200)
+	if len(both) != 2 {
+		t.Fatalf("two keys = %+v", both)
+	}
+	if page := get("?key="+named+"&key="+caller+"&maxResults=1", 200); len(page) != 1 {
+		t.Fatalf("first page = %+v", page)
+	}
+	if page := get("?key="+named+"&key="+caller+"&startAt=1&maxResults=1", 200); len(page) != 1 || page[0].(map[string]any)["accountId"] != both[1].(map[string]any)["accountId"] {
+		t.Fatalf("second page = %+v", page)
+	}
+	if page := get("?key="+named+"&startAt=5", 200); len(page) != 0 {
+		t.Fatalf("past the end = %+v", page)
+	}
+}
+
 func TestPeopleContract(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {

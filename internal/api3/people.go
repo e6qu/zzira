@@ -376,18 +376,38 @@ func (h *Handler) bulkUsersMigration(w http.ResponseWriter, r *http.Request) {
 		writeJerr(w, e)
 		return
 	}
-	if len(securityQueryValues(r, "username")) == 0 && len(securityQueryValues(r, "key")) == 0 {
+	keys, usernames := securityQueryValues(r, "key"), securityQueryValues(r, "username")
+	if len(keys) == 0 && len(usernames) == 0 {
 		jiraError(w, http.StatusBadRequest, "key or username is required.")
 		return
 	}
-	// A key that is an account id already names a person, and maps to itself.
+	startAt, maxResults, ok := pageParams(w, r, 10)
+	if !ok {
+		return
+	}
+	// Each handle the caller asked about names its own entry, so a request by
+	// key answers with the key it asked with and one by username with that.
 	out := []map[string]string{}
-	for _, key := range securityQueryValues(r, "key") {
-		if u, err := h.Store.SiteUser(r.Context(), workspaceID, key); err == nil {
-			out = append(out, map[string]string{"accountId": u.ID, "key": key})
+	for _, asked := range []struct {
+		field   string
+		handles []string
+	}{{"key", keys}, {"username", usernames}} {
+		for _, handle := range asked.handles {
+			u, err := h.Store.SiteUserByHandle(r.Context(), workspaceID, handle)
+			// A handle naming nobody is left out, as Jira leaves it out; any
+			// other failure is this site's, and saying nothing about it would
+			// read as though the person did not exist.
+			if errors.Is(err, store.ErrPeopleNotFound) {
+				continue
+			}
+			if err != nil {
+				jiraError(w, http.StatusInternalServerError, "Could not look up the people named.")
+				return
+			}
+			out = append(out, map[string]string{"accountId": u.ID, asked.field: handle})
 		}
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, pageSlice(out, startAt, maxResults))
 }
 
 func (h *Handler) userColumns(w http.ResponseWriter, r *http.Request) {

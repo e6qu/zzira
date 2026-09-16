@@ -79,6 +79,39 @@ func (s *Store) SiteUser(ctx context.Context, workspaceID, accountID string) (*m
 
 // SiteUsersByIDs returns the named people in the order given, skipping ids that
 // are not people in the site.
+// SiteUserByHandle finds the person a key or username names: an account id, the
+// handle an identity provider supplied, an email address, or the local part of
+// one, which is what callers fall back to while username is unset. It scopes to
+// the site's members as the other people reads do.
+func (s *Store) SiteUserByHandle(ctx context.Context, workspaceID, handle string) (*models.User, error) {
+	handle = strings.TrimSpace(handle)
+	if handle == "" {
+		return nil, ErrPeopleNotFound
+	}
+	// The exactness of the match is selected as well as ordered by, because a
+	// DISTINCT row set can only be ordered by what it carries.
+	rows, err := s.Pool.Query(ctx, `SELECT DISTINCT `+siteUserColumns+`, COALESCE(u.username,''),
+		  CASE WHEN u.id=$2 THEN 0 ELSE 1 END AS exactness
+		FROM memberships m JOIN users u ON u.id=m.user_id
+		WHERE m.workspace_id=$1 AND (u.id=$2 OR lower(COALESCE(u.username,''))=lower($2)
+		  OR lower(u.email)=lower($2) OR lower(split_part(u.email,'@',1))=lower($2))
+		ORDER BY exactness, u.id
+		LIMIT 1`, workspaceID, handle)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return nil, ErrPeopleNotFound
+	}
+	u := &models.User{}
+	var exactness int
+	if err := rows.Scan(&u.ID, &u.Email, &u.DisplayName, &u.TimeZone, &u.Active, &u.Username, &exactness); err != nil {
+		return nil, err
+	}
+	return u, rows.Err()
+}
+
 func (s *Store) SiteUsersByIDs(ctx context.Context, workspaceID string, accountIDs []string) ([]*models.User, error) {
 	if len(accountIDs) == 0 {
 		return []*models.User{}, nil
