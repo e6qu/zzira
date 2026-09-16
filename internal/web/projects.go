@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"net/mail"
@@ -31,6 +32,9 @@ type projectSettingsData struct {
 	ComponentError     string
 	GovernanceNotice   string
 	GovernanceError    string
+	Templates          []store.ProjectTemplate
+	TemplateNotice     string
+	TemplateError      string
 	Creating           bool
 	Saved              bool
 }
@@ -115,6 +119,7 @@ func (h *Handler) projectSettings(w http.ResponseWriter, r *http.Request, key st
 	data := projectSettingsData{Creating: key == "", Saved: r.URL.Query().Get("saved") == "1"}
 	data.ComponentNotice, data.ComponentError = r.URL.Query().Get("component"), r.URL.Query().Get("componentError")
 	data.GovernanceNotice, data.GovernanceError = r.URL.Query().Get("governance"), r.URL.Query().Get("governanceError")
+	data.TemplateNotice, data.TemplateError = r.URL.Query().Get("template"), r.URL.Query().Get("templateError")
 	var err error
 	data.Categories, err = h.Store.ProjectCategories(r.Context(), wsID)
 	if err != nil {
@@ -132,6 +137,10 @@ func (h *Handler) projectSettings(w http.ResponseWriter, r *http.Request, key st
 			return
 		}
 		data.Project = p
+		if data.Templates, err = h.Store.ProjectTemplates(r.Context(), wsID); err != nil {
+			http.Error(w, "Could not load project templates.", 500)
+			return
+		}
 		data.Values = commands.CreateProjectInput{Key: p.Key, Name: p.Name, Description: p.Description, URL: p.URL, LeadAccountID: p.LeadAccountID, AssigneeType: p.AssigneeType}
 		data.SelectedCategoryID = p.CategoryID
 	} else {
@@ -232,6 +241,57 @@ func (h *Handler) projectSettings(w http.ResponseWriter, r *http.Request, key st
 		active = "projects"
 	}
 	h.writeWorkspacePageStatus(w, r, "page_project_settings", user, wsID, data, active, key, status)
+}
+
+// ProjectTemplateSettings saves a template from the project, renames one, or
+// removes one. Each refusal says why, the way the page's other sections do.
+func (h *Handler) ProjectTemplateSettings(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, r.PathValue("key"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	notice := "Template saved."
+	switch r.PostFormValue("action") {
+	case "save":
+		templateType := r.PostFormValue("templateType")
+		if templateType != "LIVE" && templateType != "SNAPSHOT" {
+			err = fmt.Errorf("%w: The template type must be LIVE or SNAPSHOT.", store.ErrProjectTemplateValidation)
+			break
+		}
+		_, err = h.Store.SaveProjectTemplate(r.Context(), workspaceID, user.ID, project.ID, templateType,
+			r.PostFormValue("templateName"), r.PostFormValue("templateDescription"), nil)
+	case "edit":
+		name, description := r.PostFormValue("templateName"), r.PostFormValue("templateDescription")
+		err = h.Store.EditProjectTemplate(r.Context(), workspaceID, r.PostFormValue("templateKey"), &name, &description, nil)
+		notice = "Template renamed."
+	case "remove":
+		err = h.Store.RemoveProjectTemplate(r.Context(), workspaceID, r.PostFormValue("templateKey"))
+		notice = "Template removed."
+	default:
+		http.Error(w, "action must be save, edit or remove", http.StatusBadRequest)
+		return
+	}
+	target := "/projects/" + url.PathEscape(project.Key) + "/settings"
+	if err != nil {
+		message := err.Error()
+		for _, prefix := range []string{store.ErrProjectTemplateValidation.Error() + ": ", store.ErrProjectTemplateNotFound.Error() + ": "} {
+			message = strings.TrimPrefix(message, prefix)
+		}
+		if errors.Is(err, store.ErrProjectTemplateNotFound) && message == store.ErrProjectTemplateNotFound.Error() {
+			message = "That template no longer exists."
+		}
+		http.Redirect(w, r, target+"?templateError="+url.QueryEscape(message), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, target+"?template="+url.QueryEscape(notice), http.StatusSeeOther)
 }
 
 func (h *Handler) ProjectGovernanceSettings(w http.ResponseWriter, r *http.Request) {

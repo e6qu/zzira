@@ -172,6 +172,32 @@ func (s *Store) ProjectTemplate(ctx context.Context, workspaceID, templateKey, p
 	return template, nil
 }
 
+// ProjectTemplates lists the custom project templates a site holds, newest
+// first, so an administrator can see what a new project can start from.
+func (s *Store) ProjectTemplates(ctx context.Context, workspaceID string) ([]ProjectTemplate, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT uuid::text,template_key,name,description,type,COALESCE(project_id::text,''),snapshot,generation_options,updated_at
+		FROM project_templates WHERE workspace_id=$1 ORDER BY created_at DESC,uuid`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	templates := []ProjectTemplate{}
+	for rows.Next() {
+		var template ProjectTemplate
+		var snapshot, options []byte
+		if err := rows.Scan(&template.UUID, &template.Key, &template.Name, &template.Description, &template.Type,
+			&template.ProjectID, &snapshot, &options, &template.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(snapshot, &template.Snapshot); err != nil {
+			return nil, fmt.Errorf("decode project template snapshot: %w", err)
+		}
+		template.GenerationOptions = append(json.RawMessage(nil), options...)
+		templates = append(templates, template)
+	}
+	return templates, rows.Err()
+}
+
 func (s *Store) EditProjectTemplate(ctx context.Context, workspaceID, templateKey string, name, description *string, options json.RawMessage) error {
 	current, err := s.ProjectTemplate(ctx, workspaceID, templateKey, "")
 	if err != nil {
