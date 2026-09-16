@@ -385,3 +385,44 @@ test('admin builds a rule that links one work item to another', async ({ page })
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
 });
+
+test('admin builds a rule that starts when work is linked', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const issue = async (summary: string) => {
+    const created = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary, issuetype: { name: 'Task' } } } });
+    expect(created.status()).toBe(201);
+    return (await created.json()).key as string;
+  };
+  // A request's inwardIssue is the stored outward side, which is the side the
+  // trigger starts for.
+  const acting = await issue(`Linked trigger source ${stamp}`);
+  const other = await issue(`Linked trigger target ${stamp}`);
+  const label = `linked-${stamp}`;
+
+  await page.goto('/settings/automation/new');
+  await page.getByLabel('Rule name').fill(`E2E linked trigger ${stamp}`);
+  await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('jira.issue.event.trigger:linked');
+  await page.getByLabel('JQL query').fill(`key = ${acting}`);
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(label);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  // The editor shows the saved trigger rather than turning saving off.
+  await expect(page.getByRole('note')).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Trigger', exact: true })).toHaveValue('jira.issue.event.trigger:linked');
+
+  const link = await page.request.post('/rest/api/3/issueLink', { headers, data: { type: { name: 'Blocks' }, inwardIssue: { key: acting }, outwardIssue: { key: other } } });
+  expect(link.status(), await link.text()).toBe(201);
+  await expect.poll(async () => (await (await page.request.get(`/rest/api/3/issue/${acting}`, { headers })).json()).fields.labels, { timeout: 15_000 }).toContain(label);
+  // The link starts one run, for the acting side only.
+  expect((await (await page.request.get(`/rest/api/3/issue/${other}`, { headers })).json()).fields.labels).not.toContain(label);
+
+  await page.goto(ruleURL);
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});

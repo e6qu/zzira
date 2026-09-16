@@ -388,7 +388,7 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 			return nil, fmt.Errorf("schedule must be a cron expression or an interval between 1 minute and 30 days")
 		}
 		triggerValue = map[string]any{"intervalMinutes": interval, "timezone": timezone, "jql": query}
-	case "jira.issue.event.trigger:created", "jira.issue.event.trigger:commented":
+	case "jira.issue.event.trigger:created", "jira.issue.event.trigger:commented", "jira.issue.event.trigger:linked":
 		triggerValue = map[string]any{"jql": query}
 	case "jira.issue.event.trigger:transitioned":
 		triggerValue = map[string]any{"jql": query, "fromStatusIds": nonEmpty(r.PostFormValue("from_status")), "toStatusIds": nonEmpty(r.PostFormValue("to_status"))}
