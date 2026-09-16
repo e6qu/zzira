@@ -366,7 +366,7 @@ func validateExecutionActor(payload json.RawMessage, actorID string) error {
 
 // Actions and conditions the runner executes.
 var (
-	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true}
+	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true}
 	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true}
 )
 
@@ -537,6 +537,29 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 			return false, nil
 		}
 		labels := append(slices.Clone(issue.Labels), value.Label)
+		_, changed, err := r.Service.Commands.UpdateIssue(ctx, commands.UpdateIssueInput{
+			ActorID: run.ActorID, WorkspaceID: run.WorkspaceID, IssueIDOrKey: issue.ID, Labels: &labels,
+		})
+		return changed != nil, err
+	case "jira.issue.remove-label":
+		var value struct {
+			Label string `json:"label"`
+		}
+		if err := json.Unmarshal(valueRaw, &value); err != nil || strings.TrimSpace(value.Label) == "" {
+			return false, errors.New("remove label action requires value.label")
+		}
+		label, err := render(value.Label)
+		if err != nil {
+			return false, err
+		}
+		if label = strings.TrimSpace(label); label == "" {
+			return false, errors.New("remove label action rendered an empty label")
+		}
+		index := slices.Index(issue.Labels, label)
+		if index < 0 {
+			return false, nil
+		}
+		labels := slices.Delete(slices.Clone(issue.Labels), index, index+1)
 		_, changed, err := r.Service.Commands.UpdateIssue(ctx, commands.UpdateIssueInput{
 			ActorID: run.ActorID, WorkspaceID: run.WorkspaceID, IssueIDOrKey: issue.ID, Labels: &labels,
 		})

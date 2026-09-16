@@ -59,7 +59,7 @@ var (
 		{"jira.issue.event.trigger:commented", "Work item commented"},
 	}
 	automationActionTypes = []automationOption{
-		{"jira.issue.add-label", "Add label"}, {"jira.issue.assign", "Assign work item"}, {"jira.issue.transition", "Transition work item"},
+		{"jira.issue.add-label", "Add label"}, {"jira.issue.remove-label", "Remove label"}, {"jira.issue.assign", "Assign work item"}, {"jira.issue.transition", "Transition work item"},
 		{"jira.issue.comment", "Comment on work item"}, {"jira.issue.edit:summary", "Edit summary"}, {"jira.issue.edit:duedate", "Set due date"},
 		{"jira.issue.edit:priority", "Set priority"},
 	}
@@ -516,7 +516,7 @@ func automationFormActions(types, values []string) ([]map[string]any, error) {
 			continue
 		}
 		switch actionType {
-		case "jira.issue.add-label":
+		case "jira.issue.add-label", "jira.issue.remove-label":
 			actionValue = map[string]string{"label": value}
 		case "jira.issue.assign":
 			actionValue = map[string]string{"accountId": value}

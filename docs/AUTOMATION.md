@@ -75,6 +75,7 @@ The worker executes these action component types in order:
 | Component type | Value | Semantics |
 |---|---|---|
 | `jira.issue.add-label` | `{"label":"reviewed"}` | Adds the label if absent |
+| `jira.issue.remove-label` | `{"label":"triage"}` | Removes the label if the work item carries it. The label renders smart values, and a label the work item does not carry changes nothing |
 | `jira.issue.assign` | `{"accountId":"..."}` | Assigns an active member; `ACTOR` and `UNASSIGNED` are accepted |
 | `jira.issue.transition` | `{"statusId":"10001"}` | Uses a valid current-workflow transition to the target status |
 | `jira.issue.comment` | `{"comment":"Picked up by {{initiator.displayName}}"}` | Adds a comment as the rule actor |

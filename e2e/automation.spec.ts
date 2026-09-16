@@ -142,6 +142,27 @@ test('admin builds an event rule with a condition and smart values that runs whe
   expect(texts.filter((text: string) => text.includes(`Thanks Demo User, ${key} is To Do`))).toHaveLength(1);
   await page.goto(ruleURL);
   await expect(page.locator('.automation-audit tbody')).toContainText('SUCCESS');
+
+  // A second rule takes the label off again.
+  await page.goto('/settings/automation/new');
+  await page.getByLabel('Rule name').fill(`E2E unlabel ${stamp}`);
+  await page.getByLabel('JQL query').fill(`key = ${key}`);
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.remove-label');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(`commented-${key}`);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const unlabelURL = page.url();
+  // The editor shows the saved action rather than turning saving off.
+  await expect(page.getByRole('note')).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue('jira.issue.remove-label');
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => (await (await page.request.get(`/rest/api/3/issue/${key}`, { headers })).json()).fields.labels, { timeout: 15_000 }).not.toContain(`commented-${key}`);
+  await page.goto(unlabelURL);
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+
+  await page.goto(ruleURL);
   await page.getByRole('button', { name: 'Disable' }).click();
   await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -399,5 +400,62 @@ func TestRunnerSetsPriority(t *testing.T) {
 	run("Lower priority", []map[string]any{{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "priority", "value": "Low"}}})
 	if got := priority(); got != "pr_low" {
 		t.Fatalf("priority = %q, want pr_low", got)
+	}
+}
+
+func TestRunnerRemovesLabel(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID := store.NewID("prj")
+	issueID := store.NewID("iss")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id) VALUES($1,$2,'LBL','Labels','wf_default')`, projectID, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,labels,updated_seq) VALUES($1,$2,$3,'LBL-1','Labelled work','st_todo','it_task',$4,0)`,
+		issueID, fx.ws, projectID, []string{"triage", "backend"}); err != nil {
+		t.Fatal(err)
+	}
+	labels := func() []string {
+		t.Helper()
+		var out []string
+		if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT labels FROM issues WHERE id=$1`, issueID).Scan(&out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	runner := &Runner{Service: fx.service}
+	run := func(name, label string) {
+		t.Helper()
+		actions := []map[string]any{{"component": "ACTION", "type": "jira.issue.remove-label", "value": map[string]string{"label": label}}}
+		body, _ := json.Marshal(ruleBody(name, fx.admin, "ENABLED", "key = LBL-1", actions))
+		uuid, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fx.service.EnqueueNow(fx.ctx, fx.ws, uuid); err != nil {
+			t.Fatal(err)
+		}
+		if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The label the rule names is taken off; the rest stay.
+	run("Drop triage", "triage")
+	if got := labels(); !slices.Equal(got, []string{"backend"}) {
+		t.Fatalf("labels = %v, want [backend]", got)
+	}
+
+	// A label the work item does not carry changes nothing, and running again
+	// leaves the work item as it is.
+	run("Drop triage again", "triage")
+	run("Drop absent label", "frontend")
+	if got := labels(); !slices.Equal(got, []string{"backend"}) {
+		t.Fatalf("labels after removing what is absent = %v, want [backend]", got)
+	}
+
+	// The label renders smart values, so a rule can name it from the work item.
+	run("Drop rendered label", "{{issue.labels}}")
+	if got := labels(); len(got) != 0 {
+		t.Fatalf("labels after removing the rendered label = %v, want none", got)
 	}
 }
