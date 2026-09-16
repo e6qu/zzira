@@ -25,9 +25,13 @@ type JiraSiteConfiguration struct {
 	Announcement       AnnouncementBanner
 	AttachmentsEnabled bool
 	// AttachmentUploadLimit is the largest attachment accepted, in bytes.
-	AttachmentUploadLimit   int64
-	IssueLinkingEnabled     bool
-	SubTasksEnabled         bool
+	AttachmentUploadLimit int64
+	IssueLinkingEnabled   bool
+	SubTasksEnabled       bool
+	// ParallelSprintsEnabled lets a board run more than one active sprint, as
+	// Jira Software's site-wide parallel sprints setting does. Off by default,
+	// as Jira leaves it.
+	ParallelSprintsEnabled  bool
 	TimeTrackingEnabled     bool
 	UnassignedIssuesAllowed bool
 	VotingEnabled           bool

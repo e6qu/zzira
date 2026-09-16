@@ -16,10 +16,11 @@ var defaultJiraSiteConfiguration = models.JiraSiteConfiguration{
 	Announcement:       models.AnnouncementBanner{Visibility: "public"},
 	AttachmentsEnabled: true, AttachmentUploadLimit: 32 << 20, IssueLinkingEnabled: true, SubTasksEnabled: true,
 	TimeTrackingEnabled: true, UnassignedIssuesAllowed: true, VotingEnabled: true, WatchingEnabled: true,
-	TimeTrackingProvider:  "Jira",
-	TimeTracking:          models.TimeTrackingConfiguration{DefaultUnit: "minute", TimeFormat: "pretty", WorkingDaysPerWeek: 5, WorkingHoursPerDay: 8},
-	NavigatorColumns:      []string{"issuekey", "summary", "priority", "status", "assignee", "updated"},
-	ApplicationProperties: map[string]string{},
+	ParallelSprintsEnabled: false,
+	TimeTrackingProvider:   "Jira",
+	TimeTracking:           models.TimeTrackingConfiguration{DefaultUnit: "minute", TimeFormat: "pretty", WorkingDaysPerWeek: 5, WorkingHoursPerDay: 8},
+	NavigatorColumns:       []string{"issuekey", "summary", "priority", "status", "assignee", "updated"},
+	ApplicationProperties:  map[string]string{},
 }
 
 func announcementHash(b models.AnnouncementBanner) string {
@@ -35,13 +36,13 @@ func (s *Store) JiraSiteConfiguration(ctx context.Context, workspaceID string) (
 	err := s.Pool.QueryRow(ctx, `
 		SELECT announcement_message,announcement_enabled,announcement_dismissible,announcement_visibility,
 		 attachments_enabled,issue_linking_enabled,subtasks_enabled,time_tracking_enabled,
-		 unassigned_issues_allowed,voting_enabled,watching_enabled,time_tracking_provider,
+		 unassigned_issues_allowed,voting_enabled,watching_enabled,parallel_sprints_enabled,time_tracking_provider,
 		 working_hours_per_day,working_days_per_week,time_format,default_unit,navigator_columns,application_properties,
 		 attachment_upload_limit
 		FROM jira_site_configuration WHERE workspace_id=$1`, workspaceID).Scan(
 		&cfg.Announcement.Message, &cfg.Announcement.IsEnabled, &cfg.Announcement.IsDismissible, &cfg.Announcement.Visibility,
 		&cfg.AttachmentsEnabled, &cfg.IssueLinkingEnabled, &cfg.SubTasksEnabled, &cfg.TimeTrackingEnabled,
-		&cfg.UnassignedIssuesAllowed, &cfg.VotingEnabled, &cfg.WatchingEnabled, &cfg.TimeTrackingProvider,
+		&cfg.UnassignedIssuesAllowed, &cfg.VotingEnabled, &cfg.WatchingEnabled, &cfg.ParallelSprintsEnabled, &cfg.TimeTrackingProvider,
 		&cfg.TimeTracking.WorkingHoursPerDay, &cfg.TimeTracking.WorkingDaysPerWeek, &cfg.TimeTracking.TimeFormat,
 		&cfg.TimeTracking.DefaultUnit, &cfg.NavigatorColumns, &properties, &cfg.AttachmentUploadLimit)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -71,13 +72,13 @@ func (s *Store) UpdateGlobalJiraConfiguration(ctx context.Context, workspaceID, 
 		"attachmentsEnabled": value.AttachmentsEnabled, "issueLinkingEnabled": value.IssueLinkingEnabled,
 		"subTasksEnabled": value.SubTasksEnabled, "timeTrackingEnabled": value.TimeTrackingEnabled,
 		"unassignedIssuesAllowed": value.UnassignedIssuesAllowed, "votingEnabled": value.VotingEnabled,
-		"watchingEnabled": value.WatchingEnabled,
+		"watchingEnabled": value.WatchingEnabled, "parallelSprintsEnabled": value.ParallelSprintsEnabled,
 	}
 	if value.AttachmentUploadLimit > 0 {
 		detail["attachmentUploadLimit"] = value.AttachmentUploadLimit
 	}
 	return s.updateJiraSiteConfiguration(ctx, workspaceID, actorID, "jira.configuration.updated", "globalConfiguration", detail, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `UPDATE jira_site_configuration SET attachments_enabled=$2,issue_linking_enabled=$3,subtasks_enabled=$4,time_tracking_enabled=$5,unassigned_issues_allowed=$6,voting_enabled=$7,watching_enabled=$8,attachment_upload_limit=COALESCE(NULLIF($9::bigint,0),attachment_upload_limit),updated_at=now() WHERE workspace_id=$1`, workspaceID, value.AttachmentsEnabled, value.IssueLinkingEnabled, value.SubTasksEnabled, value.TimeTrackingEnabled, value.UnassignedIssuesAllowed, value.VotingEnabled, value.WatchingEnabled, value.AttachmentUploadLimit)
+		_, err := tx.Exec(ctx, `UPDATE jira_site_configuration SET attachments_enabled=$2,issue_linking_enabled=$3,subtasks_enabled=$4,time_tracking_enabled=$5,unassigned_issues_allowed=$6,voting_enabled=$7,watching_enabled=$8,attachment_upload_limit=COALESCE(NULLIF($9::bigint,0),attachment_upload_limit),parallel_sprints_enabled=$10,updated_at=now() WHERE workspace_id=$1`, workspaceID, value.AttachmentsEnabled, value.IssueLinkingEnabled, value.SubTasksEnabled, value.TimeTrackingEnabled, value.UnassignedIssuesAllowed, value.VotingEnabled, value.WatchingEnabled, value.AttachmentUploadLimit, value.ParallelSprintsEnabled)
 		return err
 	})
 }

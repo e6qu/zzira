@@ -685,6 +685,12 @@ func main() {
 	mux.HandleFunc("POST /board/{id}/settings", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.UpdateBoardSettings(w, r, r.PathValue("id"))
 	})
+	mux.HandleFunc("POST /board/{id}/settings/admins", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.AddBoardAdministrator(w, r, r.PathValue("id"))
+	})
+	mux.HandleFunc("POST /board/{id}/settings/admins/{admin}/remove", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.RemoveBoardAdministrator(w, r, r.PathValue("id"), r.PathValue("admin"))
+	})
 	mux.HandleFunc("GET /board/{id}/backlog", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.BacklogPage(w, r, r.PathValue("id"))
 	})

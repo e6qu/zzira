@@ -65,6 +65,23 @@ test('board controls, settings, preview, and Agile configuration APIs are cohere
   await expect(rows.last().locator('input[name="quickFilterName"]')).toBeFocused();
   await rows.last().getByRole('button', { name: 'Remove' }).click();
   await expect(rows).toHaveCount(initialRows);
+
+  // A board names its own administrators, by person and by group.
+  const administrators = page.locator('.board-admin-settings');
+  await expect(administrators.getByRole('heading', { name: 'Administrators' })).toBeVisible();
+  await expect(administrators.locator('.board-admin-list li')).toHaveCount(0);
+  await administrators.locator('#board-admin-person').selectOption({ index: 1 });
+  await Promise.all([
+    page.waitForURL(/\/board\/brd_default\/settings/),
+    administrators.getByRole('button', { name: 'Add person' }).click(),
+  ]);
+  const administrator = page.locator('.board-admin-settings .board-admin-list li');
+  await expect(administrator).toHaveCount(1);
+  await Promise.all([
+    page.waitForURL(/\/board\/brd_default\/settings/),
+    administrator.first().getByRole('button', { name: /^Remove/ }).click(),
+  ]);
+  await expect(page.locator('.board-admin-settings .board-admin-list li')).toHaveCount(0);
 });
 
 test('board controls remain available when Web Workers are unsupported', async ({ page }) => {

@@ -41,6 +41,17 @@ type Board struct {
 	ProjectTypeKey string `json:"-"`
 }
 
+// BoardAdmin is one holder of a board's administration rights. Jira Software
+// administers a board by user and by group, and shows both on the board.
+type BoardAdmin struct {
+	ID        int64
+	Type      string
+	AccountID string
+	UserName  string
+	GroupID   string
+	GroupName string
+}
+
 type BoardQuickFilter struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`

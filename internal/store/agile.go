@@ -577,14 +577,22 @@ func (s *Store) UpdateSprint(ctx context.Context, actorID, workspaceID, sprintID
 		return nil, nil, fmt.Errorf("%w: sprint state cannot move from %s to %s", ErrSprintValidation, currentState, input.State)
 	}
 	if input.State == "active" && currentState != "active" {
-		var anotherActive bool
-		if err := tx.QueryRow(ctx,
-			`SELECT EXISTS(SELECT 1 FROM sprints WHERE board_id=$1 AND state='active' AND id<>$2)`,
-			boardID, sprintID).Scan(&anotherActive); err != nil {
-			return nil, nil, err
+		// A board runs one sprint at a time unless the site turns on parallel
+		// sprints, which is how Jira Software gates them.
+		configuration, cfgErr := s.JiraSiteConfiguration(ctx, workspaceID)
+		if cfgErr != nil {
+			return nil, nil, cfgErr
 		}
-		if anotherActive {
-			return nil, nil, fmt.Errorf("%w: complete the active sprint before starting another", ErrSprintConflict)
+		if !configuration.ParallelSprintsEnabled {
+			var anotherActive bool
+			if err := tx.QueryRow(ctx,
+				`SELECT EXISTS(SELECT 1 FROM sprints WHERE board_id=$1 AND state='active' AND id<>$2)`,
+				boardID, sprintID).Scan(&anotherActive); err != nil {
+				return nil, nil, err
+			}
+			if anotherActive {
+				return nil, nil, fmt.Errorf("%w: complete the active sprint before starting another", ErrSprintConflict)
+			}
 		}
 	}
 

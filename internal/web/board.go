@@ -74,6 +74,9 @@ type boardSettingColumn struct {
 
 type boardSettingsData struct {
 	Board        *models.Board
+	Admins       []models.BoardAdmin
+	Members      []*models.User
+	Groups       []*models.Group
 	Columns      []boardSettingColumn
 	Error        string
 	Saved        bool
@@ -308,6 +311,22 @@ func (h *Handler) BoardFragment(w http.ResponseWriter, r *http.Request, id strin
 
 func (h *Handler) boardSettingsData(r *http.Request, board *models.Board, message string) (boardSettingsData, error) {
 	data := boardSettingsData{Board: board, Error: message, Saved: r.URL.Query().Get("saved") == "1"}
+	if data.Error == "" {
+		data.Error = strings.TrimSpace(r.URL.Query().Get("error"))
+	}
+	admins, err := h.Store.BoardAdmins(r.Context(), board.ID)
+	if err != nil {
+		return boardSettingsData{}, err
+	}
+	members, err := h.Store.MembersByWorkspace(r.Context(), board.WorkspaceID)
+	if err != nil {
+		return boardSettingsData{}, err
+	}
+	groups, err := h.Store.GroupsForWorkspace(r.Context(), board.WorkspaceID)
+	if err != nil {
+		return boardSettingsData{}, err
+	}
+	data.Admins, data.Members, data.Groups = admins, members, groups
 	for _, field := range board.CardFields {
 		switch field {
 		case "priority":
@@ -328,14 +347,80 @@ func (h *Handler) boardSettingsData(r *http.Request, board *models.Board, messag
 	return data, nil
 }
 
-func (h *Handler) BoardSettingsPage(w http.ResponseWriter, r *http.Request, boardID string) {
-	user, wsID, ok := h.requireAdminPage(w, r)
+// requireBoardAdminPage resolves a board the signed-in person may configure.
+// Jira Software lets a board's administrators configure it, as well as the
+// administrators of the project it is located in.
+func (h *Handler) requireBoardAdminPage(w http.ResponseWriter, r *http.Request, boardID string) (*models.User, string, *models.Board, bool) {
+	user, wsID, ok := h.pageContext(w, r)
 	if !ok {
-		return
+		return nil, "", nil, false
 	}
 	board, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, boardID)
 	if err != nil {
 		http.NotFound(w, r)
+		return nil, "", nil, false
+	}
+	allowed, err := h.Store.CanAdministerBoard(r.Context(), wsID, user.ID, board)
+	if err != nil || !allowed {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return nil, "", nil, false
+	}
+	return user, wsID, board, true
+}
+
+// AddBoardAdministrator adds a person or a group to a board's administrators.
+func (h *Handler) AddBoardAdministrator(w http.ResponseWriter, r *http.Request, boardID string) {
+	user, wsID, _, ok := h.requireBoardAdminPage(w, r, boardID)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	err := h.Commands.AddBoardAdmin(r.Context(), user.ID, wsID, boardID, store.BoardAdminInput{
+		Type: r.PostFormValue("type"), AccountID: r.PostFormValue("accountId"), GroupID: r.PostFormValue("groupId"),
+	})
+	redirectBoardSettings(w, r, boardID, err)
+}
+
+// RemoveBoardAdministrator takes a board administrator off the board.
+func (h *Handler) RemoveBoardAdministrator(w http.ResponseWriter, r *http.Request, boardID, adminID string) {
+	user, wsID, _, ok := h.requireBoardAdminPage(w, r, boardID)
+	if !ok {
+		return
+	}
+	parsed, convErr := strconv.ParseInt(adminID, 10, 64)
+	if convErr != nil {
+		http.NotFound(w, r)
+		return
+	}
+	err := h.Commands.DeleteBoardAdmin(r.Context(), user.ID, wsID, boardID, parsed)
+	redirectBoardSettings(w, r, boardID, err)
+}
+
+// redirectBoardSettings returns to the board settings page, reporting an
+// administrator a board could not take.
+func redirectBoardSettings(w http.ResponseWriter, r *http.Request, boardID string, err error) {
+	target := "/board/" + url.PathEscape(boardID) + "/settings"
+	switch {
+	case errors.Is(err, store.ErrBoardAdminValidation):
+		message := err.Error()
+		if _, detail, found := strings.Cut(message, ": "); found {
+			message = detail
+		}
+		target += "?error=" + url.QueryEscape(message)
+	case err != nil:
+		log.Print("board administrators: update failed")
+		target += "?error=" + url.QueryEscape("The board administrators could not be changed.")
+	default:
+		target += "?saved=1"
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+func (h *Handler) BoardSettingsPage(w http.ResponseWriter, r *http.Request, boardID string) {
+	user, wsID, board, ok := h.requireBoardAdminPage(w, r, boardID)
+	if !ok {
 		return
 	}
 	data, err := h.boardSettingsData(r, board, "")
@@ -390,13 +475,8 @@ func boardConfigurationForm(r *http.Request, board *models.Board) (store.BoardCo
 }
 
 func (h *Handler) UpdateBoardSettings(w http.ResponseWriter, r *http.Request, boardID string) {
-	user, wsID, ok := h.requireAdminPage(w, r)
+	user, wsID, board, ok := h.requireBoardAdminPage(w, r, boardID)
 	if !ok {
-		return
-	}
-	board, err := h.Store.BoardByIDInWorkspace(r.Context(), wsID, boardID)
-	if err != nil {
-		http.NotFound(w, r)
 		return
 	}
 	input, err := boardConfigurationForm(r, board)
