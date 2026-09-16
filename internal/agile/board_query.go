@@ -2,6 +2,7 @@ package agile
 
 import (
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,6 +40,40 @@ func queryFlag(w http.ResponseWriter, r *http.Request, name string, fallback boo
 func (h *Handler) canBrowseBoard(r *http.Request, workspaceID, userID string, board *models.Board) bool {
 	allowed, err := h.Store.HasProjectPermission(r.Context(), workspaceID, userID, board.ProjectID, "", "BROWSE_PROJECTS")
 	return err == nil && allowed
+}
+
+// boardAdminsBean reports the users and groups who administer a board. A board
+// with no administrators of its own falls back to the lead of the project it is
+// located in, who administers it.
+func (h *Handler) boardAdminsBean(r *http.Request, workspaceID string, board *models.Board) map[string]any {
+	users, groups := []map[string]any{}, []map[string]any{}
+	admins, err := h.Store.BoardAdmins(r.Context(), board.ID)
+	if err == nil {
+		for _, admin := range admins {
+			if admin.Type == "group" {
+				groups = append(groups, map[string]any{
+					"name": admin.GroupName,
+					"self": h.BaseURL + "/rest/api/3/group?groupName=" + url.QueryEscape(admin.GroupName),
+				})
+				continue
+			}
+			users = append(users, map[string]any{
+				"accountId": admin.AccountID, "displayName": admin.UserName, "active": true,
+				"self": h.BaseURL + "/rest/api/3/user?accountId=" + admin.AccountID,
+			})
+		}
+	}
+	if len(users) == 0 && len(groups) == 0 {
+		if project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, board.ProjectID); err == nil && project.LeadAccountID != "" {
+			if lead, err := h.Store.UserByID(r.Context(), project.LeadAccountID); err == nil {
+				users = append(users, map[string]any{
+					"accountId": lead.ID, "displayName": lead.DisplayName, "active": true,
+					"self": h.BaseURL + "/rest/api/3/user?accountId=" + lead.ID,
+				})
+			}
+		}
+	}
+	return map[string]any{"users": users, "groups": groups}
 }
 
 // listBoardsFiltered serves GET /rest/agile/1.0/board with Jira's filters.
@@ -176,13 +211,7 @@ func (h *Handler) listBoardsFiltered(w http.ResponseWriter, r *http.Request) {
 	for _, board := range matched[start:end] {
 		bean := h.boardBean(board)
 		if expand["admins"] {
-			users := []map[string]any{}
-			if project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, board.ProjectID); err == nil && project.LeadAccountID != "" {
-				if lead, err := h.Store.UserByID(r.Context(), project.LeadAccountID); err == nil {
-					users = append(users, map[string]any{"accountId": lead.ID, "displayName": lead.DisplayName, "self": h.BaseURL + "/rest/api/3/user?accountId=" + lead.ID})
-				}
-			}
-			bean["admins"] = map[string]any{"users": users, "groups": []any{}}
+			bean["admins"] = h.boardAdminsBean(r, workspaceID, board)
 		}
 		if expand["permissions"] {
 			canEdit, err := h.Store.HasProjectPermission(r.Context(), workspaceID, userID, board.ProjectID, "", "ADMINISTER_PROJECTS")

@@ -153,7 +153,13 @@ func (h *Handler) boardRoute(w http.ResponseWriter, r *http.Request, parts []str
 	}
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodGet:
-		writeJSON(w, http.StatusOK, h.boardBean(board))
+		bean := h.boardBean(board)
+		for _, option := range splitValues(r, "expand") {
+			if option == "admins" {
+				bean["admins"] = h.boardAdminsBean(r, wsID, board)
+			}
+		}
+		writeJSON(w, http.StatusOK, bean)
 	case len(parts) == 1 && r.Method == http.MethodDelete:
 		h.deleteBoard(w, r, wsID, userID, board)
 	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodGet:

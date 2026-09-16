@@ -730,6 +730,15 @@
       <section class="surface-card board-setting-section board-quick-filter-settings" aria-labelledby="board-filters-heading"><div><span class="eyebrow">Focus</span><h2 id="board-filters-heading">Quick filters</h2><p>Give the whole team reusable JQL buttons for the questions they ask during planning.</p></div><div data-quick-filter-list>{{range .Data.Board.QuickFilters}}{{template "board_quick_filter_row" .}}{{end}}{{template "board_quick_filter_row" .Data.EmptyFilter}}</div><button type="button" class="btn" data-add-quick-filter>Add quick filter</button><template data-quick-filter-template>{{template "board_quick_filter_row" .Data.EmptyFilter}}</template></section>
       <div class="board-settings-actions"><a class="btn" href="/board/{{.Data.Board.ID}}">Cancel</a><button class="btn btn-primary" type="submit">Save board settings</button></div>
     </form>
+    <section class="surface-card board-setting-section board-admin-settings" aria-labelledby="board-admins-heading"><div><span class="eyebrow">Access</span><h2 id="board-admins-heading">Administrators</h2><p>People and groups who can configure this board. Administrators of {{.Data.Board.ProjectName}} can configure it either way.</p></div><div class="board-admin-controls">
+      {{if .Data.Admins}}<ul class="board-admin-list">{{range .Data.Admins}}<li><span class="board-admin-name">{{if eq .Type "user"}}{{.UserName}}{{else}}{{.GroupName}}{{end}}</span><span class="lozenge lozenge-default">{{if eq .Type "user"}}Person{{else}}Group{{end}}</span><form method="post" action="/board/{{$.Data.Board.ID}}/settings/admins/{{.ID}}/remove"><button class="btn" type="submit">Remove{{if eq .Type "user"}} {{.UserName}}{{else}} {{.GroupName}}{{end}}</button></form></li>{{end}}</ul>{{else}}<p class="board-admin-empty">This board has no administrators of its own yet.</p>{{end}}
+      <form method="post" action="/board/{{.Data.Board.ID}}/settings/admins" class="board-admin-add">
+        <div class="board-admin-field"><label for="board-admin-person">Person</label><select id="board-admin-person" name="accountId"><option value="">Choose a person</option>{{range .Data.Members}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}</select></div>
+        <button class="btn" type="submit" name="type" value="user">Add person</button>
+        <div class="board-admin-field"><label for="board-admin-group">Group</label><select id="board-admin-group" name="groupId"><option value="">Choose a group</option>{{range .Data.Groups}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>
+        <button class="btn" type="submit" name="type" value="group">Add group</button>
+      </form>
+    </div></section>
   </main>
   </div>
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>

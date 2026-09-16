@@ -152,6 +152,20 @@ func TestAgileBoardQueries(t *testing.T) {
 		t.Fatal(board)
 	}
 
+	// A board that names its own administrators reports them instead of the
+	// project lead it falls back to, on the board as well as in the list.
+	if _, err := st.AddBoardAdmin(ctx, actor, workspaceID, scrum.ID, store.BoardAdminInput{Type: "user", AccountID: actor}); err != nil {
+		t.Fatal(err)
+	}
+	named := call(http.MethodGet, fmt.Sprintf("/rest/agile/1.0/board/%d?expand=admins", scrum.JiraID), "", http.StatusOK)
+	namedUsers := named["admins"].(map[string]any)["users"].([]any)
+	if len(namedUsers) != 1 || namedUsers[0].(map[string]any)["accountId"] != actor {
+		t.Fatal(named)
+	}
+	if plain := call(http.MethodGet, fmt.Sprintf("/rest/agile/1.0/board/%d", scrum.JiraID), "", http.StatusOK); plain["admins"] != nil {
+		t.Fatalf("a board reports administrators only when asked: %v", plain)
+	}
+
 	// Work and sprints.
 	newIssue := func(project *models.Project, summary string, labels []string) *models.Issue {
 		t.Helper()

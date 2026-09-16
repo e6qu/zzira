@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
@@ -12,15 +11,47 @@ import (
 // UpdateBoardConfiguration is the shared administrative command for board
 // layout, quick filters, card fields, and column constraints.
 func (s *Service) UpdateBoardConfiguration(ctx context.Context, actorID, workspaceID, boardID string, input store.BoardConfigurationUpdate) (*models.Board, error) {
-	admin, err := authz.IsWorkspaceAdmin(ctx, s.Store, workspaceID, actorID)
-	if err != nil {
+	if _, err := s.administrableBoard(ctx, actorID, workspaceID, boardID); err != nil {
 		return nil, err
-	}
-	if !admin {
-		return nil, fmt.Errorf("workspace administrator permission is required")
 	}
 	board, _, err := s.Store.UpdateBoardConfiguration(ctx, actorID, workspaceID, boardID, input)
 	return board, err
+}
+
+// administrableBoard resolves a board the actor may configure. Jira Software
+// lets a board's own administrators configure it, alongside the administrators
+// of the project the board is located in.
+func (s *Service) administrableBoard(ctx context.Context, actorID, workspaceID, boardID string) (*models.Board, error) {
+	board, err := s.Store.BoardByIDInWorkspace(ctx, workspaceID, boardID)
+	if err != nil {
+		return nil, err
+	}
+	allowed, err := s.Store.CanAdministerBoard(ctx, workspaceID, actorID, board)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, fmt.Errorf("board administrator permission is required")
+	}
+	return board, nil
+}
+
+// AddBoardAdmin gives a person or a group administration rights over a board.
+func (s *Service) AddBoardAdmin(ctx context.Context, actorID, workspaceID, boardID string, input store.BoardAdminInput) error {
+	if _, err := s.administrableBoard(ctx, actorID, workspaceID, boardID); err != nil {
+		return err
+	}
+	_, err := s.Store.AddBoardAdmin(ctx, actorID, workspaceID, boardID, input)
+	return err
+}
+
+// DeleteBoardAdmin takes those rights away again.
+func (s *Service) DeleteBoardAdmin(ctx context.Context, actorID, workspaceID, boardID string, adminID int64) error {
+	if _, err := s.administrableBoard(ctx, actorID, workspaceID, boardID); err != nil {
+		return err
+	}
+	_, err := s.Store.DeleteBoardAdmin(ctx, actorID, workspaceID, boardID, adminID)
+	return err
 }
 
 func (s *Service) CreateSprint(ctx context.Context, actorID, workspaceID, boardID, name, goal string) (*models.Sprint, error) {
