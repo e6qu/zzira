@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log"
 	"strings"
 	"time"
@@ -58,6 +59,35 @@ func (s *Store) subscriptionRecipientEmail(ctx context.Context, ws, recipient st
 // SaveReportSubscription schedules an email of a report, identified by its
 // path and choices. The caller checks that the subscriber and every recipient
 // can open the report; leaving recipients empty sends it to the subscriber.
+// reportSubscriptionHTML is the HTML alternative to a report email: the rows
+// of the CSV it carries, drawn as a table, in the style the notification mail
+// already uses.
+func reportSubscriptionHTML(title, reportPath string, records [][]string) string {
+	escape := html.EscapeString
+	var b strings.Builder
+	b.WriteString(`<!doctype html><html lang="en"><body style="margin:0;padding:24px;background:#f7f8f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#172b4d"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #dfe1e6;border-radius:8px"><tr><td style="padding:24px">`)
+	b.WriteString(`<h1 style="margin:0 0 16px;font-size:20px;line-height:1.3"><a href="` + escape(reportPath) + `" style="color:#172b4d;text-decoration:none">` + escape(title) + `</a></h1>`)
+	if len(records) == 0 {
+		b.WriteString(`<p style="margin:0;font-size:14px">This report has no data yet.</p>`)
+	} else {
+		b.WriteString(`<table role="presentation" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:13px">`)
+		for index, record := range records {
+			cell, style := "td", `style="border:1px solid #dfe1e6"`
+			if index == 0 {
+				cell, style = "th", `style="border:1px solid #dfe1e6;background:#f4f5f7;text-align:left"`
+			}
+			b.WriteString("<tr>")
+			for _, value := range record {
+				b.WriteString("<" + cell + " " + style + ">" + escape(value) + "</" + cell + ">")
+			}
+			b.WriteString("</tr>")
+		}
+		b.WriteString("</table>")
+	}
+	b.WriteString(`</td></tr></table><p style="max-width:600px;margin:16px auto 0;font-size:12px;color:#626f86">You receive this because you subscribed to this report. <a href="` + escape(reportPath) + `" style="color:#0c66e4">Open the report</a></p></body></html>`)
+	return b.String()
+}
+
 func (s *Store) SaveReportSubscription(ctx context.Context, ws, user, report, expression, timezone string, recipients []string) (*models.ReportSubscription, error) {
 	if report == "" || len(report) > 2000 {
 		return nil, fmt.Errorf("%w: choose a report", ErrReportSubscriptionValidation)
@@ -254,13 +284,17 @@ func (r *ReportSubscriptionRunner) execute(ctx context.Context, run *claimedRepo
 			failures = append(failures, name+" can no longer open the report")
 			continue
 		}
-		if records, parseErr := csv.NewReader(strings.NewReader(data)).ReadAll(); parseErr == nil && len(records) > 0 {
+		records, parseErr := csv.NewReader(strings.NewReader(data)).ReadAll()
+		if parseErr != nil {
+			records = nil
+		}
+		if len(records) > 0 {
 			rows = len(records) - 1
 		}
 		subject := strings.NewReplacer("\r", " ", "\n", " ").Replace("ZZIRA report: " + title)
 		body := strings.Join([]string{title, link, "", "The report's data, as in its CSV download:", "", data}, "\n")
 		dedupe := fmt.Sprintf("report-subscription:%d:%s", run.RunID, recipient)
-		if _, err = r.Store.Pool.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,dedupe_key) VALUES($1,$2,$3,$4,$5) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, run.WorkspaceID, email, subject, body, dedupe); err != nil {
+		if _, err = r.Store.Pool.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,html_body,dedupe_key) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, run.WorkspaceID, email, subject, body, reportSubscriptionHTML(title, run.Report, records), dedupe); err != nil {
 			return rows, err
 		}
 	}

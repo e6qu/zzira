@@ -99,8 +99,12 @@ func TestFilterSubscriptionRunnerQueuesOnePermissionScopedEmail(t *testing.T) {
 	}
 	var state, recipient, subject, body string
 	var count int
-	if err := st.Pool.QueryRow(ctx, `SELECT r.state,r.result_count,e.recipient,e.subject,e.body FROM filter_subscription_runs r JOIN email_outbox e ON e.dedupe_key='filter-subscription:'||r.id||':'||$2 WHERE r.subscription_id=$1`, subscription.ID, userID).Scan(&state, &count, &recipient, &subject, &body); err != nil {
+	var htmlBody string
+	if err := st.Pool.QueryRow(ctx, `SELECT r.state,r.result_count,e.recipient,e.subject,e.body,e.html_body FROM filter_subscription_runs r JOIN email_outbox e ON e.dedupe_key='filter-subscription:'||r.id||':'||$2 WHERE r.subscription_id=$1`, subscription.ID, userID).Scan(&state, &count, &recipient, &subject, &body, &htmlBody); err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(htmlBody, "<!doctype html>") || !strings.Contains(htmlBody, `href="/browse/`+issue.Key) {
+		t.Fatalf("filter email carries no HTML alternative linking its work: %q", htmlBody)
 	}
 	if state != "SUCCEEDED" || count != 1 || recipient != userID+"@example.test" || !strings.Contains(subject, filter.Name) || !strings.Contains(body, issue.Key) {
 		t.Fatalf("delivery state=%s count=%d recipient=%q subject=%q body=%q", state, count, recipient, subject, body)

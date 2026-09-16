@@ -90,15 +90,15 @@ func TestReportSubscriptionsEmailEachRecipientTheReportAsTheySeeIt(t *testing.T)
 	}
 	// Read every email before asserting, so a failure does not leave the rows
 	// holding the connection cleanup needs.
-	type sentEmail struct{ recipient, subject, body string }
+	type sentEmail struct{ recipient, subject, body, html string }
 	var sent []sentEmail
-	rows, err := st.Pool.Query(ctx, `SELECT recipient,subject,body FROM email_outbox WHERE workspace_id=$1 ORDER BY recipient`, workspaceID)
+	rows, err := st.Pool.Query(ctx, `SELECT recipient,subject,body,html_body FROM email_outbox WHERE workspace_id=$1 ORDER BY recipient`, workspaceID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for rows.Next() {
 		var email sentEmail
-		if err := rows.Scan(&email.recipient, &email.subject, &email.body); err != nil {
+		if err := rows.Scan(&email.recipient, &email.subject, &email.body, &email.html); err != nil {
 			rows.Close()
 			t.Fatal(err)
 		}
@@ -107,6 +107,11 @@ func TestReportSubscriptionsEmailEachRecipientTheReportAsTheySeeIt(t *testing.T)
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
+	}
+	for _, email := range sent {
+		if !strings.Contains(email.html, "<!doctype html>") || !strings.Contains(email.html, "<table") {
+			t.Fatalf("report email carries no HTML alternative with its rows: %q", email.html)
+		}
 	}
 	if len(sent) != 2 {
 		t.Fatalf("emails = %+v", sent)

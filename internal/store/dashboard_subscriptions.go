@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log"
+	"net/url"
 	"strings"
 	"time"
 
@@ -16,6 +18,21 @@ import (
 // SaveDashboardSubscription schedules a dashboard email for someone who can
 // view the dashboard. Every recipient must be an active member of the site
 // who can view it too; leaving recipients empty sends it to the subscriber.
+// dashboardSubscriptionHTML is the HTML alternative to a dashboard email: the
+// gadget summaries it carries, in the style the notification mail already uses.
+func dashboardSubscriptionHTML(name, dashboardID string, summaries []string) string {
+	escape := html.EscapeString
+	link := "/dashboards/" + url.PathEscape(dashboardID)
+	var b strings.Builder
+	b.WriteString(`<!doctype html><html lang="en"><body style="margin:0;padding:24px;background:#f7f8f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#172b4d"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #dfe1e6;border-radius:8px"><tr><td style="padding:24px">`)
+	b.WriteString(`<h1 style="margin:0 0 16px;font-size:20px;line-height:1.3"><a href="` + link + `" style="color:#172b4d;text-decoration:none">` + escape(name) + `</a></h1>`)
+	for _, summary := range summaries {
+		b.WriteString(`<p style="margin:0 0 8px;font-size:14px">` + escape(summary) + `</p>`)
+	}
+	b.WriteString(`</td></tr></table><p style="max-width:600px;margin:16px auto 0;font-size:12px;color:#626f86">You receive this because you subscribed to this dashboard. <a href="` + link + `" style="color:#0c66e4">Open the dashboard</a></p></body></html>`)
+	return b.String()
+}
+
 func (s *Store) SaveDashboardSubscription(ctx context.Context, ws, user, dashboardID, expression, timezone string, recipients []string) (*models.DashboardSubscription, error) {
 	if _, err := s.Dashboard(ctx, ws, user, dashboardID); err != nil {
 		return nil, err
@@ -438,16 +455,17 @@ func (r *DashboardSubscriptionRunner) execute(ctx context.Context, run *claimedD
 		if err != nil {
 			return gadgets, err
 		}
-		lines := []string{dashboard.Name, base + "/dashboards/" + dashboard.ID, ""}
+		summaries := []string{}
 		if len(list) == 0 {
-			lines = append(lines, "This dashboard has no gadgets yet.")
+			summaries = append(summaries, "This dashboard has no gadgets yet.")
 		}
 		for _, gadget := range list {
-			lines = append(lines, r.gadgetSummary(ctx, run.WorkspaceID, recipient, run.DashboardID, gadget)...)
+			summaries = append(summaries, r.gadgetSummary(ctx, run.WorkspaceID, recipient, run.DashboardID, gadget)...)
 		}
+		lines := append([]string{dashboard.Name, base + "/dashboards/" + dashboard.ID, ""}, summaries...)
 		gadgets = len(list)
 		dedupe := fmt.Sprintf("dashboard-subscription:%d:%s", run.RunID, recipient)
-		if _, err = r.Store.Pool.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,dedupe_key) VALUES($1,$2,$3,$4,$5) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, run.WorkspaceID, email, subject, strings.Join(lines, "\n"), dedupe); err != nil {
+		if _, err = r.Store.Pool.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,html_body,dedupe_key) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, run.WorkspaceID, email, subject, strings.Join(lines, "\n"), dashboardSubscriptionHTML(dashboard.Name, dashboard.ID, summaries), dedupe); err != nil {
 			return gadgets, err
 		}
 	}
