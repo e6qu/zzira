@@ -108,8 +108,9 @@ test('admin builds an event rule with a condition and smart values that runs whe
   await page.getByLabel('Rule name').fill(name);
   await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('jira.issue.event.trigger:commented');
   await page.getByLabel('JQL query').fill(`key = ${key}`);
-  await page.getByRole('combobox', { name: 'Condition field', exact: true }).selectOption('status');
-  await page.getByRole('combobox', { name: 'Comparison', exact: true }).selectOption('IS_NOT_EMPTY');
+  await page.getByRole('combobox', { name: 'Condition field', exact: true }).selectOption('key');
+  await page.getByRole('combobox', { name: 'Comparison', exact: true }).selectOption('IS_ONE_OF');
+  await page.getByLabel('Compared with', { exact: true }).fill(`${key}, ZZ-0`);
   await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
   await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('commented-{{issue.key}}');
   await page.getByRole('combobox', { name: 'Additional action', exact: true }).selectOption('jira.issue.comment');
@@ -120,8 +121,9 @@ test('admin builds an event rule with a condition and smart values that runs whe
   const ruleURL = page.url();
   // The editor shows the saved trigger, condition and actions.
   await expect(page.getByRole('combobox', { name: 'Trigger', exact: true })).toHaveValue('jira.issue.event.trigger:commented');
-  await expect(page.getByRole('combobox', { name: 'Condition field', exact: true }).first()).toHaveValue('status');
-  await expect(page.getByRole('combobox', { name: 'Comparison', exact: true }).first()).toHaveValue('IS_NOT_EMPTY');
+  await expect(page.getByRole('combobox', { name: 'Condition field', exact: true }).first()).toHaveValue('key');
+  await expect(page.getByRole('combobox', { name: 'Comparison', exact: true }).first()).toHaveValue('IS_ONE_OF');
+  await expect(page.getByLabel('Compared with', { exact: true }).first()).toHaveValue(`${key}, ZZ-0`);
   await expect(page.getByRole('combobox', { name: 'Action', exact: true }).nth(1)).toHaveValue('jira.issue.comment');
   await page.goto('/settings/automation');
   await expect(page.getByRole('article').filter({ hasText: name })).toContainText('Work item commented');
