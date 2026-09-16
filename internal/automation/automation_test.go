@@ -503,3 +503,49 @@ func TestRunnerCreatesSubtask(t *testing.T) {
 		t.Errorf("work type = %+v, want a sub-task type", children[0].IssueType)
 	}
 }
+
+func TestRunnerEmailsTheAssignee(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID, issueID := store.NewID("prj"), store.NewID("iss")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id,issue_seq) VALUES($1,$2,'MAIL','Mail','wf_default',1)`, projectID, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,assignee_id,updated_seq) VALUES($1,$2,$3,'MAIL-1','Escalated work','st_todo','it_task',$4,0)`,
+		issueID, fx.ws, projectID, fx.member); err != nil {
+		t.Fatal(err)
+	}
+
+	// The body renders smart values; the subject is the work item itself.
+	actions := []map[string]any{{"component": "ACTION", "type": "jira.issue.email", "value": map[string]string{"recipient": "assignee", "body": "Please look at {{issue.key}}"}}}
+	body, _ := json.Marshal(ruleBody("Mail the assignee", fx.admin, "ENABLED", "key = MAIL-1", actions))
+	uuid, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &Runner{Service: fx.service}
+	if err := fx.service.EnqueueNow(fx.ctx, fx.ws, uuid); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+
+	var recipient, subject, queued string
+	if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT recipient,subject,body FROM email_outbox WHERE workspace_id=$1 ORDER BY id DESC LIMIT 1`, fx.ws).
+		Scan(&recipient, &subject, &queued); err != nil {
+		t.Fatalf("no mail queued: %v", err)
+	}
+	if subject != "[MAIL-1] Escalated work" {
+		t.Errorf("subject = %q", subject)
+	}
+	if queued != "Please look at MAIL-1" {
+		t.Errorf("body = %q", queued)
+	}
+	var email string
+	if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT email FROM users WHERE id=$1`, fx.member).Scan(&email); err != nil {
+		t.Fatal(err)
+	}
+	if recipient != email {
+		t.Errorf("recipient = %q, want the assignee %q", recipient, email)
+	}
+}

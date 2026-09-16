@@ -366,7 +366,7 @@ func validateExecutionActor(payload json.RawMessage, actorID string) error {
 
 // Actions and conditions the runner executes.
 var (
-	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true}
+	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true}
 	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true, "jira.issue.related.condition": true}
 )
 
@@ -695,6 +695,57 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 			Summary: summary, IssueTypeID: subtaskTypeID, ParentIDOrKey: issue.ID,
 		})
 		return created != nil, err
+	case "jira.issue.email":
+		var value struct {
+			Recipient string `json:"recipient"`
+			Body      string `json:"body"`
+		}
+		if err := json.Unmarshal(valueRaw, &value); err != nil || strings.TrimSpace(value.Body) == "" {
+			return false, errors.New("email action requires value.body")
+		}
+		body, err := render(value.Body)
+		if err != nil {
+			return false, err
+		}
+		if body = strings.TrimSpace(body); body == "" {
+			return false, errors.New("email action rendered an empty message")
+		}
+		// The recipients are resolved by id, because a work item carries a
+		// user's identity and display name rather than an address.
+		recipientIDs := []string{}
+		switch value.Recipient {
+		case "assignee":
+			if issue.Assignee != nil && issue.Assignee.ID != "" {
+				recipientIDs = append(recipientIDs, issue.Assignee.ID)
+			}
+		case "reporter":
+			if issue.Reporter != nil && issue.Reporter.ID != "" {
+				recipientIDs = append(recipientIDs, issue.Reporter.ID)
+			}
+		case "watchers":
+			watchers, err := r.Service.Store.WatchersByIssue(ctx, issue.ID)
+			if err != nil {
+				return false, err
+			}
+			recipientIDs = watchers
+		default:
+			return false, fmt.Errorf("email action cannot send to %q", value.Recipient)
+		}
+		// Work nobody is assigned or watching leaves no one to write to, so the
+		// rule changes nothing rather than queueing mail addressed to no one.
+		subject := fmt.Sprintf("[%s] %s", issue.Key, issue.Summary)
+		sent := false
+		for _, recipientID := range recipientIDs {
+			user, err := r.Service.Store.UserByID(ctx, recipientID)
+			if err != nil || user == nil || strings.TrimSpace(user.Email) == "" || !user.Active {
+				continue
+			}
+			if err := r.Service.Store.QueueEmail(ctx, run.WorkspaceID, user.Email, subject, body); err != nil {
+				return sent, err
+			}
+			sent = true
+		}
+		return sent, nil
 	case "jira.issue.comment":
 		var value struct {
 			Comment string `json:"comment"`

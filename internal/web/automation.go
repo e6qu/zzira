@@ -62,6 +62,8 @@ var (
 		{"jira.issue.add-label", "Add label"}, {"jira.issue.remove-label", "Remove label"}, {"jira.issue.assign", "Assign work item"}, {"jira.issue.transition", "Transition work item"},
 		{"jira.issue.comment", "Comment on work item"}, {"jira.issue.edit:summary", "Edit summary"}, {"jira.issue.edit:duedate", "Set due date"},
 		{"jira.issue.edit:priority", "Set priority"}, {"jira.issue.create-subtask", "Create sub-task"},
+		{"jira.issue.email:assignee", "Email the assignee"}, {"jira.issue.email:reporter", "Email the reporter"},
+		{"jira.issue.email:watchers", "Email the watchers"},
 	}
 	automationRelatedTypes    = []automationOption{{"sub-tasks", "Sub-tasks"}, {"parent", "Parent"}, {"linked", "Linked work items"}}
 	automationConditionFields = []automationOption{
@@ -529,6 +531,15 @@ func automationFormActions(types, values []string) ([]map[string]any, error) {
 			})
 			continue
 		}
+		// An email action names its recipients in the action, as a link names
+		// its link type.
+		if recipient := strings.TrimPrefix(actionType, "jira.issue.email:"); recipient != actionType && strings.TrimSpace(recipient) != "" {
+			components = append(components, map[string]any{
+				"component": "ACTION", "schemaVersion": 1, "type": "jira.issue.email",
+				"value": map[string]string{"recipient": recipient, "body": value},
+			})
+			continue
+		}
 		switch actionType {
 		case "jira.issue.add-label", "jira.issue.remove-label":
 			actionValue = map[string]string{"label": value}
@@ -587,7 +598,7 @@ func automationEditorUnsupported(payload json.RawMessage) string {
 		return "its trigger"
 	}
 	editableAction := func(component automationComponentJSON) bool {
-		return (component.Component == "" || component.Component == "ACTION") && (component.Type == "jira.issue.edit" || component.Type == "jira.issue.link" || automationOptionName(automationActionTypes, component.Type) != "")
+		return (component.Component == "" || component.Component == "ACTION") && (component.Type == "jira.issue.edit" || component.Type == "jira.issue.link" || component.Type == "jira.issue.email" || automationOptionName(automationActionTypes, component.Type) != "")
 	}
 	for index, component := range rule.Components {
 		switch component.Component {
@@ -727,6 +738,8 @@ func automationActionViews(components []automationComponentJSON) []automationAct
 			view.Type, view.Value = "jira.issue.edit:"+fields["field"], fields["value"]
 		case "jira.issue.link":
 			view.Type, view.Value = "jira.issue.link:"+fields["linkTypeId"], fields["issueKey"]
+		case "jira.issue.email":
+			view.Type, view.Value = "jira.issue.email:"+fields["recipient"], fields["body"]
 		}
 		actions = append(actions, view)
 	}
