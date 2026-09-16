@@ -156,7 +156,11 @@ func (h *Handler) ReportEmail(w http.ResponseWriter, r *http.Request) {
 		if problem != "" {
 			break
 		}
-		if _, err = h.Store.SaveReportSubscription(r.Context(), workspaceID, user.ID, target, r.PostFormValue("schedule"), recipients); errors.Is(err, store.ErrReportSubscriptionValidation) {
+		schedule := r.PostFormValue("schedule")
+		if custom := strings.TrimSpace(r.PostFormValue("cron")); custom != "" {
+			schedule = custom
+		}
+		if _, err = h.Store.SaveReportSubscription(r.Context(), workspaceID, user.ID, target, schedule, r.PostFormValue("timezone"), recipients); errors.Is(err, store.ErrReportSubscriptionValidation) {
 			problem = "invalid"
 		} else if err != nil {
 			http.Error(w, "Could not schedule the report email.", http.StatusInternalServerError)

@@ -16,11 +16,11 @@ import (
 // SaveDashboardSubscription schedules a dashboard email for someone who can
 // view the dashboard. Every recipient must be an active member of the site
 // who can view it too; leaving recipients empty sends it to the subscriber.
-func (s *Store) SaveDashboardSubscription(ctx context.Context, ws, user, dashboardID, expression string, recipients []string) (*models.DashboardSubscription, error) {
+func (s *Store) SaveDashboardSubscription(ctx context.Context, ws, user, dashboardID, expression, timezone string, recipients []string) (*models.DashboardSubscription, error) {
 	if _, err := s.Dashboard(ctx, ws, user, dashboardID); err != nil {
 		return nil, err
 	}
-	next, err := nextFilterSubscriptionRun(expression, time.Now())
+	next, err := nextSubscriptionRun(expression, timezone, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrDashboardValidation, strings.TrimPrefix(err.Error(), ErrFilterValidation.Error()+": "))
 	}
@@ -39,12 +39,12 @@ func (s *Store) SaveDashboardSubscription(ctx context.Context, ws, user, dashboa
 		}
 	}
 	encoded, _ := json.Marshal(clean)
-	subscription := &models.DashboardSubscription{DashboardID: dashboardID, UserID: user, CronExpression: expression, Recipients: clean, Enabled: true, NextRunAt: next.Format(time.RFC3339)}
+	subscription := &models.DashboardSubscription{DashboardID: dashboardID, UserID: user, CronExpression: expression, Timezone: timezone, Recipients: clean, Enabled: true, NextRunAt: next.Format(time.RFC3339)}
 	err = s.Pool.QueryRow(ctx, `
-		INSERT INTO dashboard_subscriptions(dashboard_id,user_id,cron_expression,recipients,enabled,next_run_at)
-		VALUES($1,$2,$3,$4,true,$5)
-		ON CONFLICT(dashboard_id,user_id,cron_expression) DO UPDATE SET recipients=EXCLUDED.recipients,enabled=true,next_run_at=EXCLUDED.next_run_at,last_error=''
-		RETURNING id`, dashboardID, user, expression, encoded, next).Scan(&subscription.ID)
+		INSERT INTO dashboard_subscriptions(dashboard_id,user_id,cron_expression,timezone,recipients,enabled,next_run_at)
+		VALUES($1,$2,$3,$4,$5,true,$6)
+		ON CONFLICT(dashboard_id,user_id,cron_expression) DO UPDATE SET timezone=EXCLUDED.timezone,recipients=EXCLUDED.recipients,enabled=true,next_run_at=EXCLUDED.next_run_at,last_error=''
+		RETURNING id`, dashboardID, user, expression, timezone, encoded, next).Scan(&subscription.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (s *Store) DeleteDashboardSubscription(ctx context.Context, ws, user, dashb
 
 // DashboardSubscriptions lists the caller's emails of a dashboard.
 func (s *Store) DashboardSubscriptions(ctx context.Context, ws, user, dashboardID string) ([]models.DashboardSubscription, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT ds.id,ds.dashboard_id,ds.user_id,ds.cron_expression,ds.recipients,ds.enabled,
+	rows, err := s.Pool.Query(ctx, `SELECT ds.id,ds.dashboard_id,ds.user_id,ds.cron_expression,ds.timezone,ds.recipients,ds.enabled,
 		COALESCE(to_char(ds.next_run_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),COALESCE(to_char(ds.last_run_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),ds.last_error,ds.last_result_count
 		FROM dashboard_subscriptions ds JOIN dashboards d ON d.id=ds.dashboard_id
 		WHERE d.workspace_id=$1 AND ds.user_id=$2 AND ds.dashboard_id=$3 ORDER BY ds.id`, ws, user, dashboardID)
@@ -78,7 +78,7 @@ func (s *Store) DashboardSubscriptions(ctx context.Context, ws, user, dashboardI
 	for rows.Next() {
 		var subscription models.DashboardSubscription
 		var raw []byte
-		if err := rows.Scan(&subscription.ID, &subscription.DashboardID, &subscription.UserID, &subscription.CronExpression, &raw, &subscription.Enabled, &subscription.NextRunAt, &subscription.LastRunAt, &subscription.LastError, &subscription.LastResultCount); err != nil {
+		if err := rows.Scan(&subscription.ID, &subscription.DashboardID, &subscription.UserID, &subscription.CronExpression, &subscription.Timezone, &raw, &subscription.Enabled, &subscription.NextRunAt, &subscription.LastRunAt, &subscription.LastError, &subscription.LastResultCount); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(raw, &subscription.Recipients); err != nil {
@@ -152,17 +152,17 @@ func (r *DashboardSubscriptionRunner) enqueueDue(ctx context.Context, workspaceI
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var id int64
-	var expression string
+	var expression, timezone string
 	var scheduled time.Time
-	err = tx.QueryRow(ctx, `SELECT ds.id,ds.cron_expression,ds.next_run_at FROM dashboard_subscriptions ds JOIN dashboards d ON d.id=ds.dashboard_id
-		WHERE d.workspace_id=$1 AND NOT d.deleted AND ds.enabled AND ds.next_run_at<=$2 ORDER BY ds.next_run_at,ds.id FOR UPDATE OF ds SKIP LOCKED LIMIT 1`, workspaceID, r.now()).Scan(&id, &expression, &scheduled)
+	err = tx.QueryRow(ctx, `SELECT ds.id,ds.cron_expression,ds.timezone,ds.next_run_at FROM dashboard_subscriptions ds JOIN dashboards d ON d.id=ds.dashboard_id
+		WHERE d.workspace_id=$1 AND NOT d.deleted AND ds.enabled AND ds.next_run_at<=$2 ORDER BY ds.next_run_at,ds.id FOR UPDATE OF ds SKIP LOCKED LIMIT 1`, workspaceID, r.now()).Scan(&id, &expression, &timezone, &scheduled)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return tx.Commit(ctx)
 	}
 	if err != nil {
 		return err
 	}
-	next, err := nextFilterSubscriptionRun(expression, scheduled)
+	next, err := nextSubscriptionRun(expression, timezone, scheduled)
 	if err != nil {
 		return err
 	}

@@ -15,15 +15,31 @@ func TestFilterSubscriptionSchedule(t *testing.T) {
 		"0 8 * * *": time.Date(2026, time.September, 10, 8, 0, 0, 0, time.UTC),
 		"0 8 * * 1": time.Date(2026, time.September, 14, 8, 0, 0, 0, time.UTC),
 	} {
-		got, err := nextFilterSubscriptionRun(expression, wednesday)
+		got, err := nextSubscriptionRun(expression, "", wednesday)
 		if err != nil || !got.Equal(want) {
 			t.Fatalf("next %q = %s, want %s (%v)", expression, got, want, err)
 		}
 	}
 	for _, invalid := range []string{"* * * * *", "0 25 * * *", "0 8 * * 7", "0 8 1 * *"} {
-		if _, err := nextFilterSubscriptionRun(invalid, wednesday); err == nil {
+		if _, err := nextSubscriptionRun(invalid, "", wednesday); err == nil {
 			t.Fatalf("accepted schedule %q", invalid)
 		}
+	}
+	// A cron expression runs in the subscription's zone: 09:00 in Bucharest is
+	// 06:00 UTC, and the five-field schedules follow the zone as well.
+	bucharest, err := nextSubscriptionRun("0 0 9 ? * *", "Europe/Bucharest", wednesday)
+	if err != nil || !bucharest.Equal(time.Date(2026, time.September, 10, 6, 0, 0, 0, time.UTC)) {
+		t.Fatalf("cron in a zone = %s (%v)", bucharest, err)
+	}
+	daily, err := nextSubscriptionRun("0 8 * * *", "Europe/Bucharest", wednesday)
+	if err != nil || !daily.Equal(time.Date(2026, time.September, 10, 5, 0, 0, 0, time.UTC)) {
+		t.Fatalf("daily in a zone = %s (%v)", daily, err)
+	}
+	if _, err := nextSubscriptionRun("0 8 * * *", "Mars/Olympus", wednesday); err == nil {
+		t.Fatal("accepted a zone that does not exist")
+	}
+	if _, err := nextSubscriptionRun("0 0 9 ? * NOPE", "", wednesday); err == nil {
+		t.Fatal("accepted an unparseable cron expression")
 	}
 }
 
@@ -71,7 +87,7 @@ func TestFilterSubscriptionRunnerQueuesOnePermissionScopedEmail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	subscription, err := st.SaveFilterSubscription(ctx, workspaceID, userID, filter.ID, "0 8 * * *", nil)
+	subscription, err := st.SaveFilterSubscription(ctx, workspaceID, userID, filter.ID, "0 8 * * *", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

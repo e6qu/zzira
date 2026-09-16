@@ -56,9 +56,9 @@ not run it as a formula.
 
 ## Report emails
 
-Email this report, beside Download CSV, schedules the report's data every day
-or every Monday at 08:00 UTC, with the board, sprint, epic, version, window
-and filters on the page. The same report with other choices is a separate
+Email this report, beside Download CSV, schedules the report's data every day,
+every Monday, or on a cron expression of your own, read in a time zone you
+choose, with the board, sprint, epic, version, window and filters on the page. The same report with other choices is a separate
 email. The subscriber and every recipient must be able to open the report
 when it is scheduled. At each run the report is drawn for each recipient,
 through the same route as the download and with their own access, and

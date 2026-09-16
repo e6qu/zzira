@@ -58,11 +58,11 @@ func (s *Store) subscriptionRecipientEmail(ctx context.Context, ws, recipient st
 // SaveReportSubscription schedules an email of a report, identified by its
 // path and choices. The caller checks that the subscriber and every recipient
 // can open the report; leaving recipients empty sends it to the subscriber.
-func (s *Store) SaveReportSubscription(ctx context.Context, ws, user, report, expression string, recipients []string) (*models.ReportSubscription, error) {
+func (s *Store) SaveReportSubscription(ctx context.Context, ws, user, report, expression, timezone string, recipients []string) (*models.ReportSubscription, error) {
 	if report == "" || len(report) > 2000 {
 		return nil, fmt.Errorf("%w: choose a report", ErrReportSubscriptionValidation)
 	}
-	next, err := nextFilterSubscriptionRun(expression, time.Now())
+	next, err := nextSubscriptionRun(expression, timezone, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrReportSubscriptionValidation, strings.TrimPrefix(err.Error(), ErrFilterValidation.Error()+": "))
 	}
@@ -74,12 +74,12 @@ func (s *Store) SaveReportSubscription(ctx context.Context, ws, user, report, ex
 		return nil, fmt.Errorf("%w: %s", ErrReportSubscriptionValidation, problem)
 	}
 	encoded, _ := json.Marshal(clean)
-	subscription := &models.ReportSubscription{Report: report, UserID: user, CronExpression: expression, Recipients: clean, Enabled: true, NextRunAt: next.Format(time.RFC3339)}
+	subscription := &models.ReportSubscription{Report: report, UserID: user, CronExpression: expression, Timezone: timezone, Recipients: clean, Enabled: true, NextRunAt: next.Format(time.RFC3339)}
 	err = s.Pool.QueryRow(ctx, `
-		INSERT INTO report_subscriptions(workspace_id,user_id,report,cron_expression,recipients,enabled,next_run_at)
-		VALUES($1,$2,$3,$4,$5,true,$6)
-		ON CONFLICT(workspace_id,user_id,report,cron_expression) DO UPDATE SET recipients=EXCLUDED.recipients,enabled=true,next_run_at=EXCLUDED.next_run_at,last_error=''
-		RETURNING id`, ws, user, report, expression, encoded, next).Scan(&subscription.ID)
+		INSERT INTO report_subscriptions(workspace_id,user_id,report,cron_expression,timezone,recipients,enabled,next_run_at)
+		VALUES($1,$2,$3,$4,$5,$6,true,$7)
+		ON CONFLICT(workspace_id,user_id,report,cron_expression) DO UPDATE SET timezone=EXCLUDED.timezone,recipients=EXCLUDED.recipients,enabled=true,next_run_at=EXCLUDED.next_run_at,last_error=''
+		RETURNING id`, ws, user, report, expression, timezone, encoded, next).Scan(&subscription.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,7 @@ func (s *Store) DeleteReportSubscription(ctx context.Context, ws, user, report s
 
 // ReportSubscriptions lists the caller's emails of a report.
 func (s *Store) ReportSubscriptions(ctx context.Context, ws, user, report string) ([]models.ReportSubscription, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id,report,user_id,cron_expression,recipients,enabled,
+	rows, err := s.Pool.Query(ctx, `SELECT id,report,user_id,cron_expression,timezone,recipients,enabled,
 		COALESCE(to_char(next_run_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),COALESCE(to_char(last_run_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),last_error,last_result_count
 		FROM report_subscriptions WHERE workspace_id=$1 AND user_id=$2 AND report=$3 ORDER BY id`, ws, user, report)
 	if err != nil {
@@ -111,7 +111,7 @@ func (s *Store) ReportSubscriptions(ctx context.Context, ws, user, report string
 	for rows.Next() {
 		var subscription models.ReportSubscription
 		var raw []byte
-		if err := rows.Scan(&subscription.ID, &subscription.Report, &subscription.UserID, &subscription.CronExpression, &raw, &subscription.Enabled, &subscription.NextRunAt, &subscription.LastRunAt, &subscription.LastError, &subscription.LastResultCount); err != nil {
+		if err := rows.Scan(&subscription.ID, &subscription.Report, &subscription.UserID, &subscription.CronExpression, &subscription.Timezone, &raw, &subscription.Enabled, &subscription.NextRunAt, &subscription.LastRunAt, &subscription.LastError, &subscription.LastResultCount); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(raw, &subscription.Recipients); err != nil {
@@ -188,17 +188,17 @@ func (r *ReportSubscriptionRunner) enqueueDue(ctx context.Context, workspaceID s
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var id int64
-	var expression string
+	var expression, timezone string
 	var scheduled time.Time
-	err = tx.QueryRow(ctx, `SELECT id,cron_expression,next_run_at FROM report_subscriptions
-		WHERE workspace_id=$1 AND enabled AND next_run_at<=$2 ORDER BY next_run_at,id FOR UPDATE SKIP LOCKED LIMIT 1`, workspaceID, r.now()).Scan(&id, &expression, &scheduled)
+	err = tx.QueryRow(ctx, `SELECT id,cron_expression,timezone,next_run_at FROM report_subscriptions
+		WHERE workspace_id=$1 AND enabled AND next_run_at<=$2 ORDER BY next_run_at,id FOR UPDATE SKIP LOCKED LIMIT 1`, workspaceID, r.now()).Scan(&id, &expression, &timezone, &scheduled)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return tx.Commit(ctx)
 	}
 	if err != nil {
 		return err
 	}
-	next, err := nextFilterSubscriptionRun(expression, scheduled)
+	next, err := nextSubscriptionRun(expression, timezone, scheduled)
 	if err != nil {
 		return err
 	}

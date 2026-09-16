@@ -81,13 +81,13 @@ func TestDashboardSubscriptionsEmailEachRecipientTheirView(t *testing.T) {
 	addGadget("com.zzira:velocity", models.GadgetConfig{})
 
 	// Recipients must be members who can view the dashboard.
-	if _, err := st.SaveDashboardSubscription(ctx, workspaceID, ownerID, private.ID, "0 8 * * *", []string{viewerID}); !errors.Is(err, ErrDashboardValidation) {
+	if _, err := st.SaveDashboardSubscription(ctx, workspaceID, ownerID, private.ID, "0 8 * * *", "", []string{viewerID}); !errors.Is(err, ErrDashboardValidation) {
 		t.Fatalf("private dashboard recipient error = %v", err)
 	}
-	if _, err := st.SaveDashboardSubscription(ctx, workspaceID, ownerID, shared.ID, "0 8 * * 9", nil); !errors.Is(err, ErrDashboardValidation) {
+	if _, err := st.SaveDashboardSubscription(ctx, workspaceID, ownerID, shared.ID, "0 8 * * 9", "", nil); !errors.Is(err, ErrDashboardValidation) {
 		t.Fatalf("bad schedule error = %v", err)
 	}
-	subscription, err := st.SaveDashboardSubscription(ctx, workspaceID, viewerID, shared.ID, "0 8 * * 1", []string{ownerID, viewerID})
+	subscription, err := st.SaveDashboardSubscription(ctx, workspaceID, viewerID, shared.ID, "0 8 * * 1", "", []string{ownerID, viewerID})
 	if err != nil {
 		t.Fatal(err)
 	}

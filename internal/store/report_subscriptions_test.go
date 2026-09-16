@@ -46,13 +46,13 @@ func TestReportSubscriptionsEmailEachRecipientTheReportAsTheySeeIt(t *testing.T)
 	})
 	const report = "/projects/RS/reports/created-vs-resolved?days=7"
 
-	if _, err := st.SaveReportSubscription(ctx, workspaceID, ownerID, report, "0 8 * * 9", nil); !errors.Is(err, ErrReportSubscriptionValidation) {
+	if _, err := st.SaveReportSubscription(ctx, workspaceID, ownerID, report, "0 8 * * 9", "", nil); !errors.Is(err, ErrReportSubscriptionValidation) {
 		t.Fatalf("bad schedule error = %v", err)
 	}
-	if _, err := st.SaveReportSubscription(ctx, workspaceID, ownerID, report, "0 8 * * 1", []string{NewID("usr")}); !errors.Is(err, ErrReportSubscriptionValidation) {
+	if _, err := st.SaveReportSubscription(ctx, workspaceID, ownerID, report, "0 8 * * 1", "", []string{NewID("usr")}); !errors.Is(err, ErrReportSubscriptionValidation) {
 		t.Fatalf("stranger recipient error = %v", err)
 	}
-	subscription, err := st.SaveReportSubscription(ctx, workspaceID, ownerID, report, "0 8 * * 1", []string{ownerID, viewerID, viewerID})
+	subscription, err := st.SaveReportSubscription(ctx, workspaceID, ownerID, report, "0 8 * * 1", "", []string{ownerID, viewerID, viewerID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestReportSubscriptionsEmailEachRecipientTheReportAsTheySeeIt(t *testing.T)
 
 	// A recipient who can no longer open the report, or who left the site,
 	// fails the run and is named in its error.
-	if _, err := st.SaveReportSubscription(ctx, workspaceID, ownerID, report, "0 8 * * 1", []string{viewerID, leaverID}); err != nil {
+	if _, err := st.SaveReportSubscription(ctx, workspaceID, ownerID, report, "0 8 * * 1", "", []string{viewerID, leaverID}); err != nil {
 		t.Fatal(err)
 	}
 	blocked[viewerID] = true
