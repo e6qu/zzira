@@ -65,7 +65,8 @@ var (
 	automationActionTypes = []automationOption{
 		{"jira.issue.add-label", "Add label"}, {"jira.issue.remove-label", "Remove label"}, {"jira.issue.assign", "Assign work item"}, {"jira.issue.transition", "Transition work item"},
 		{"jira.issue.comment", "Comment on work item"}, {"jira.issue.edit:summary", "Edit summary"}, {"jira.issue.edit:duedate", "Set due date"},
-		{"jira.issue.edit:priority", "Set priority"}, {"jira.issue.create-subtask", "Create sub-task"},
+		{"jira.issue.edit:priority", "Set priority"}, {"jira.issue.edit:description", "Set description"},
+		{"jira.issue.log-work", "Log work"}, {"jira.issue.create-subtask", "Create sub-task"},
 		{"jira.issue.email:assignee", "Email the assignee"}, {"jira.issue.email:reporter", "Email the reporter"},
 		{"jira.issue.email:watchers", "Email the watchers"},
 		{automation.WebRequestActionType + ":POST", "Send web request (POST)"},
@@ -616,7 +617,9 @@ func automationFormActions(types, values []string) ([]map[string]any, error) {
 			actionValue = map[string]string{"comment": value}
 		case "jira.issue.create-subtask":
 			actionValue = map[string]string{"summary": value}
-		case "jira.issue.edit:summary", "jira.issue.edit:duedate", "jira.issue.edit:priority":
+		case "jira.issue.log-work":
+			actionValue = map[string]string{"duration": value}
+		case "jira.issue.edit:summary", "jira.issue.edit:duedate", "jira.issue.edit:priority", "jira.issue.edit:description":
 			actionValue = map[string]string{"field": strings.TrimPrefix(actionType, "jira.issue.edit:"), "value": value}
 			actionType = "jira.issue.edit"
 		default:
@@ -801,6 +804,8 @@ func automationActionViews(components []automationComponentJSON) []automationAct
 			view.Value = fields["comment"]
 		case "jira.issue.create-subtask":
 			view.Value = fields["summary"]
+		case "jira.issue.log-work":
+			view.Value = fields["duration"]
 		case "jira.issue.edit":
 			view.Type, view.Value = "jira.issue.edit:"+fields["field"], fields["value"]
 		case "jira.issue.link":
