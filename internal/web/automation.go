@@ -65,7 +65,8 @@ var (
 	}
 	automationRelatedTypes    = []automationOption{{"sub-tasks", "Sub-tasks"}, {"parent", "Parent"}, {"linked", "Linked work items"}}
 	automationConditionFields = []automationOption{
-		{"jql", "Matches JQL"}, {"status", "Status"}, {"priority", "Priority"}, {"issuetype", "Work type"}, {"assignee", "Assignee"},
+		{"jql", "Matches JQL"}, {"related:sub-tasks", "Sub-tasks match JQL"}, {"related:parent", "Parent matches JQL"},
+		{"related:linked", "Linked work matches JQL"}, {"status", "Status"}, {"priority", "Priority"}, {"issuetype", "Work type"}, {"assignee", "Assignee"},
 		{"reporter", "Reporter"}, {"labels", "Labels"}, {"summary", "Summary"}, {"duedate", "Due date"},
 		{"resolution", "Resolution"}, {"created", "Created"}, {"resolved", "Resolved"}, {"parent", "Parent"}, {"key", "Work item key"},
 	}
@@ -468,6 +469,19 @@ func automationFormConditions(fields, operators, values []string) ([]map[string]
 		if index < len(values) {
 			value = strings.TrimSpace(values[index])
 		}
+		if related, ok := strings.CutPrefix(field, "related:"); ok {
+			if automationOptionName(automationRelatedTypes, related) == "" {
+				return nil, fmt.Errorf("unsupported related work items")
+			}
+			condition := map[string]any{"relatedType": related, "jql": value}
+			if related == "linked" {
+				condition["linkTypes"] = []string{}
+			}
+			components = append(components, map[string]any{
+				"component": "CONDITION", "schemaVersion": 1, "type": "jira.issue.related.condition", "value": condition,
+			})
+			continue
+		}
 		if field == "jql" {
 			if value == "" {
 				return nil, fmt.Errorf("a JQL condition needs a query")
@@ -576,7 +590,7 @@ func automationEditorUnsupported(payload json.RawMessage) string {
 	for index, component := range rule.Components {
 		switch component.Component {
 		case "CONDITION":
-			if component.Type != "jira.issue.condition" && component.Type != "jira.jql.condition" {
+			if component.Type != "jira.issue.condition" && component.Type != "jira.jql.condition" && component.Type != "jira.issue.related.condition" {
 				return "some of its conditions"
 			}
 		case "BRANCH":
@@ -589,7 +603,7 @@ func automationEditorUnsupported(payload json.RawMessage) string {
 			acting := false
 			for _, child := range component.Children {
 				switch {
-				case child.Component == "CONDITION" && (child.Type == "jira.issue.condition" || child.Type == "jira.jql.condition") && !acting:
+				case child.Component == "CONDITION" && (child.Type == "jira.issue.condition" || child.Type == "jira.jql.condition" || child.Type == "jira.issue.related.condition") && !acting:
 				case editableAction(child):
 					acting = true
 				default:
@@ -652,6 +666,15 @@ func automationConditionViews(components []automationComponentJSON) []automation
 			}
 			automationComponentValue(component.Value, &value)
 			conditions = append(conditions, automationConditionView{Field: "jql", Value: value.JQL})
+			continue
+		}
+		if component.Type == "jira.issue.related.condition" {
+			var value struct {
+				RelatedType string `json:"relatedType"`
+				JQL         string `json:"jql"`
+			}
+			automationComponentValue(component.Value, &value)
+			conditions = append(conditions, automationConditionView{Field: "related:" + value.RelatedType, Value: value.JQL})
 			continue
 		}
 		if component.Type != "jira.issue.condition" {

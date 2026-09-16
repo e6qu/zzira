@@ -426,3 +426,43 @@ test('admin builds a rule that starts when work is linked', async ({ page }) => 
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
 });
+
+test('admin builds a rule whose condition asks whether related work matches', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const issue = async (summary: string, parent?: string) => {
+    const fields: Record<string, unknown> = { project: { key: 'ZZ' }, summary, issuetype: { name: parent ? 'Sub-task' : 'Task' } };
+    if (parent) fields.parent = { key: parent };
+    const created = await page.request.post('/rest/api/3/issue', { headers, data: { fields } });
+    expect(created.status(), await created.text()).toBe(201);
+    return (await created.json()).key as string;
+  };
+  const parent = await issue(`Related condition parent ${stamp}`);
+  await issue(`Open detail ${stamp}`, parent);
+  const label = `has-open-${stamp}`;
+
+  await page.goto('/settings/automation/new');
+  await page.getByLabel('Rule name').fill(`E2E related condition ${stamp}`);
+  await page.getByLabel('JQL query').fill(`key = ${parent}`);
+  await page.getByRole('combobox', { name: 'Condition field', exact: true }).selectOption('related:sub-tasks');
+  await page.getByLabel('Compared with', { exact: true }).fill(`summary ~ "Open detail ${stamp}"`);
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(label);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  // The editor shows the saved related condition rather than turning saving off.
+  await expect(page.getByRole('note')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save rule', exact: true })).toBeEnabled();
+  await expect(page.getByRole('combobox', { name: 'Condition field', exact: true }).first()).toHaveValue('related:sub-tasks');
+
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => (await (await page.request.get(`/rest/api/3/issue/${parent}`, { headers })).json()).fields.labels, { timeout: 15_000 }).toContain(label);
+
+  await page.goto(ruleURL);
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});

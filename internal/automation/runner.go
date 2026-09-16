@@ -367,7 +367,7 @@ func validateExecutionActor(payload json.RawMessage, actorID string) error {
 // Actions and conditions the runner executes.
 var (
 	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true}
-	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true}
+	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true, "jira.issue.related.condition": true}
 )
 
 // relatedTypes are the related work items a branch can run for.

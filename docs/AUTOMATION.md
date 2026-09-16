@@ -121,6 +121,7 @@ action left it. Scheduled, event and manual runs evaluate:
 |---|---|---|
 | `jira.jql.condition` | `{"jql":"priority = High"}` | The work item matches the JQL for the rule actor |
 | `jira.issue.condition` | `{"field":"status","operator":"EQUALS","value":"In Progress"}` | The field compares as asked |
+| `jira.issue.related.condition` | `{"relatedType":"linked","jql":"status = Done"}` | Related work matches the JQL: `sub-tasks`, `parent` or `linked`. A blank query holds when any related work exists at all. Linked work may be narrowed by `linkTypes` |
 
 Fields conditions compare `status`, `priority`, `issuetype`, `assignee`,
 `reporter`, `labels`, `summary`, `duedate`, `resolution`, `created`,

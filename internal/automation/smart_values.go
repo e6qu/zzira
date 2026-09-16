@@ -88,6 +88,35 @@ func (r *Runner) condition(ctx context.Context, run *claimedRun, issue *models.I
 			return false, errors.New("JQL condition requires value.jql")
 		}
 		return r.matchesJQL(ctx, run, issue, value.JQL)
+	case "jira.issue.related.condition":
+		var value struct {
+			RelatedType string   `json:"relatedType"`
+			LinkTypes   []string `json:"linkTypes"`
+			JQL         string   `json:"jql"`
+		}
+		if err := jsonUnmarshal(raw, &value); err != nil || strings.TrimSpace(value.RelatedType) == "" {
+			return false, errors.New("related work items condition requires value.relatedType")
+		}
+		// The branch resolver already finds a work item's related work, and a
+		// condition is handed the same run and work item, so it asks the same
+		// question without traversing links again.
+		related, err := r.relatedIssues(ctx, run, issue, item)
+		if err != nil {
+			return false, err
+		}
+		if strings.TrimSpace(value.JQL) == "" {
+			return len(related) > 0, nil
+		}
+		for _, other := range related {
+			matches, err := r.matchesJQL(ctx, run, other, value.JQL)
+			if err != nil {
+				return false, err
+			}
+			if matches {
+				return true, nil
+			}
+		}
+		return false, nil
 	case "jira.issue.condition":
 		var value struct {
 			Field, Operator, Value string
