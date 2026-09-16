@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/jql"
@@ -37,6 +38,9 @@ type claimedRun struct {
 	// WebhookData is the body of the request that ran an incoming webhook
 	// rule, which its actions read as {{webhookData}}.
 	WebhookData json.RawMessage
+	// WebResponse is the answer the rule's last web request received, which
+	// later actions read as {{webResponse}}.
+	WebResponse *webResponse
 	RuleName    string
 	ScopeARIs   []string
 	// TriggerIssue is the work item the rule started from while branches run
@@ -422,7 +426,7 @@ func validateExecutionActor(payload json.RawMessage, actorID string) error {
 
 // Actions and conditions the runner executes.
 var (
-	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true}
+	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true}
 	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true, "jira.issue.related.condition": true}
 )
 
@@ -574,7 +578,7 @@ func (r *Runner) relatedIssues(ctx context.Context, run *claimedRun, issue *mode
 func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue, action component) (bool, error) {
 	// Every action this rule catalog holds acts on a work item. Jira fails
 	// such an action when the trigger supplied none, rather than skipping it.
-	if issue == nil && action.Type != "jira.issue.create" && !strings.HasPrefix(action.Type, "jira.issue.create:") {
+	if issue == nil && action.Type != "jira.issue.create" && action.Type != WebRequestActionType && !strings.HasPrefix(action.Type, "jira.issue.create:") {
 		return false, errors.New("this action needs a work item, and the webhook named none")
 	}
 	valueRaw := decodeComponentValue(action.Value)
@@ -858,6 +862,54 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 			sent = true
 		}
 		return sent, nil
+	case "jira.issue.log-work":
+		var value struct {
+			Duration string `json:"duration"`
+			Comment  string `json:"comment"`
+		}
+		if err := json.Unmarshal(valueRaw, &value); err != nil || strings.TrimSpace(value.Duration) == "" {
+			return false, errors.New("log work action requires value.duration")
+		}
+		spent, err := render(value.Duration)
+		if err != nil {
+			return false, err
+		}
+		// A duration is read the way the site reads every other one, so a
+		// week and a day mean what its time tracking says they mean.
+		configuration, err := r.Service.Store.JiraSiteConfiguration(ctx, run.WorkspaceID)
+		if err != nil {
+			return false, err
+		}
+		seconds, err := models.ParseJiraDuration(strings.TrimSpace(spent), configuration.TimeTracking)
+		if err != nil {
+			return false, fmt.Errorf("log work action: %w", err)
+		}
+		if seconds <= 0 {
+			return false, errors.New("log work action needs a duration above zero")
+		}
+		var comment json.RawMessage
+		if strings.TrimSpace(value.Comment) != "" {
+			text, err := render(value.Comment)
+			if err != nil {
+				return false, err
+			}
+			comment = adf.ParagraphDoc(strings.TrimSpace(text))
+		}
+		worklog, _, err := r.Service.Commands.AddWorklog(ctx, run.ActorID, run.WorkspaceID, issue.ID, comment, int(seconds))
+		return worklog != nil, err
+	case WebRequestActionType:
+		var value struct {
+			Method string `json:"method"`
+			URL    string `json:"url"`
+		}
+		if err := json.Unmarshal(valueRaw, &value); err != nil || strings.TrimSpace(value.URL) == "" {
+			return false, errors.New("web request action requires value.url")
+		}
+		address, err := render(value.URL)
+		if err != nil {
+			return false, err
+		}
+		return r.sendWebRequest(ctx, run, issue, value.Method, address)
 	case "jira.issue.comment":
 		var value struct {
 			Comment string `json:"comment"`
@@ -901,6 +953,12 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 				return false, nil
 			}
 			input.DueDate = &text
+		case "description":
+			// The work item already reads as the rule would leave it.
+			if strings.TrimSpace(adf.PlainText(issue.Description)) == text {
+				return false, nil
+			}
+			input.Description = adf.ParagraphDoc(text)
 		case "priority":
 			current := ""
 			if issue.Priority != nil {

@@ -69,6 +69,14 @@ func (r *Runner) renderSmartValues(ctx context.Context, run *claimedRun, issue *
 		if value, ok := values[name]; ok {
 			return value
 		}
+		if run.WebResponse != nil {
+			switch name {
+			case "webResponse", "webResponse.body":
+				return run.WebResponse.Body
+			case "webResponse.status":
+				return strconv.Itoa(run.WebResponse.Status)
+			}
+		}
 		if name == "webhookData" || strings.HasPrefix(name, "webhookData.") {
 			return webhookValue(run.WebhookData, strings.TrimPrefix(strings.TrimPrefix(name, "webhookData"), "."))
 		}

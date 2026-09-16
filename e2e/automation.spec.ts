@@ -44,7 +44,7 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
   const name = `E2E schedule ${Date.now()}`;
   const label = `scheduled-${Date.now()}`;
   await page.getByLabel('Rule name').fill(name);
-  await page.getByLabel('Description').fill('Marks a demo work item through the durable runner');
+  await page.getByRole('textbox', { name: 'Description' }).fill('Marks a demo work item through the durable runner');
   await page.getByLabel('Run every').fill('60');
   await page.getByLabel('Timezone').fill('Europe/Bucharest');
   await page.getByLabel('JQL query').fill(`key = ${fixtureKey}`);
@@ -97,6 +97,81 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
   await expect(page.getByRole('link', { name, exact: true })).toHaveCount(0);
+});
+
+
+test('admin builds a rule that sets a description and logs work', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const fixture = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary: `Edit and log work ${Date.now()}`, issuetype: { name: 'Task' } } } });
+  expect(fixture.status()).toBe(201);
+  const fixtureKey = (await fixture.json()).key as string;
+
+  await page.goto('/settings/automation');
+  await page.getByRole('link', { name: 'Create rule', exact: true }).click();
+  const name = `E2E edit and log ${Date.now()}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByLabel('Run every').fill('60');
+  await page.getByLabel('Timezone').fill('UTC');
+  await page.getByLabel('JQL query').fill(`key = ${fixtureKey}`);
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.edit:description');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('Swept by {{rule.name}}');
+  await page.getByRole('combobox', { name: 'Additional action', exact: true }).selectOption('jira.issue.log-work');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).nth(1).fill('2h');
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => {
+    await page.goto(ruleURL);
+    return await page.locator('.automation-audit tbody').innerText();
+  }, { timeout: 15_000 }).toContain('SUCCESS');
+
+  const issue = await (await page.request.get(`/rest/api/3/issue/${fixtureKey}`, { headers })).json();
+  expect(JSON.stringify(issue.fields.description)).toContain(`Swept by ${name}`);
+  expect(issue.fields.timespent).toBe(7200);
+
+  // Both saved actions round-trip rather than turning saving off.
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue('jira.issue.edit:description');
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).nth(1)).toHaveValue('jira.issue.log-work');
+});
+
+
+test('admin builds a rule that sends a web request', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const fixture = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary: `Web request rule work ${Date.now()}`, issuetype: { name: 'Task' } } } });
+  expect(fixture.status()).toBe(201);
+  const fixtureKey = (await fixture.json()).key as string;
+
+  await page.goto('/settings/automation');
+  await page.getByRole('link', { name: 'Create rule', exact: true }).click();
+  const name = `E2E web request ${Date.now()}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByLabel('Run every').fill('60');
+  await page.getByLabel('Timezone').fill('UTC');
+  await page.getByLabel('JQL query').fill(`key = ${fixtureKey}`);
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.outgoing-webhook:POST');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('http://127.0.0.1:9/hook');
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+
+  // The editor shows the saved action rather than turning saving off.
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue('jira.issue.outgoing-webhook:POST');
+  await expect(page.getByRole('combobox', { name: 'Value', exact: true }).first()).toHaveValue('http://127.0.0.1:9/hook');
+
+  // The rule runs the action, and an address on a private network is refused
+  // rather than reaching the site's own network.
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => {
+    await page.goto(ruleURL);
+    return await page.locator('.automation-audit tbody').innerText();
+  }, { timeout: 15_000 }).toContain('FAILED');
+  await expect(page.locator('.automation-audit tbody')).toContainText('private network');
 });
 
 

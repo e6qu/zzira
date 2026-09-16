@@ -79,7 +79,8 @@ The worker executes these action component types in order:
 | `jira.issue.assign` | `{"accountId":"..."}` | Assigns an active member; `ACTOR` and `UNASSIGNED` are accepted |
 | `jira.issue.transition` | `{"statusId":"10001"}` | Uses a valid current-workflow transition to the target status |
 | `jira.issue.comment` | `{"comment":"Picked up by {{initiator.displayName}}"}` | Adds a comment as the rule actor |
-| `jira.issue.edit` | `{"field":"summary","value":"[{{issue.key}}] {{issue.summary}}"}` | Sets the `summary`, `duedate` (yyyy-MM-dd; blank clears it) or `priority` (by name or id) when it differs |
+| `jira.issue.edit` | `{"field":"summary","value":"[{{issue.key}}] {{issue.summary}}"}` | Sets the `summary`, `duedate` (yyyy-MM-dd; blank clears it), `priority` (by name or id) or `description` when it differs |
+| `jira.issue.log-work` | `{"duration":"3h 30m"}` | Logs work against the work item as the rule actor. The duration renders smart values and is read with the site's own time tracking, so a week and a day mean what it says they mean; a duration of zero or less stops the rule |
 | `jira.issue.create-subtask` | `{"summary":"Review {{issue.key}}"}` | Raises a sub-task of the work item, taking the project scheme's sub-task work type. The summary renders smart values. A sub-task of that name already under the work item changes nothing, so a rule that runs again does not mint a second one; a work item that is itself a sub-task, or a project offering no sub-task type, stops the rule |
 | `jira.issue.create` | `{"issueTypeId":"it_task","summary":"Follow up on {{issue.key}}"}` | Raises a work item beside the one the rule runs for, in its project. The work type comes from the project's own scheme, so a rule cannot raise a type the project does not offer, and sub-task types are refused because they need a parent. The summary renders smart values. Work of that type and summary already in the project changes nothing, so a scheduled rule does not raise one every interval |
 | `jira.issue.email` | `{"recipient":"assignee","body":"{{issue.key}} needs you"}` | Queues plain-text mail to the work item's `assignee`, `reporter` or `watchers` through the site's delivery outbox. The body renders smart values; the subject is the work item's key and summary, because a rule names one message. Recipients without an address, and deactivated accounts, are skipped, so work nobody is assigned or watching sends nothing |
@@ -92,9 +93,16 @@ larger results fail before any actions run.
 
 Other triggers, components, branch types, smart values and connection payloads
 remain available through the rule API, but the worker records an explicit failed
-audit entry when asked to execute unsupported behavior. Page creation, work
-creation and incoming-request triggers, web requests, usage limits and
-the rest of Jira's trigger, condition and action catalog remain gaps.
+audit entry when asked to execute unsupported behavior. Page creation triggers,
+usage limits and the rest of Jira's trigger, condition and action catalog
+remain gaps. A rule sends a web request with the send web request action: it
+names its method, as a link action names its link type, and carries the address,
+which may hold smart values. A work item, when the rule has one, is sent as the
+body in Jira's format. The answer reaches later actions as `{{webResponse}}`,
+with `{{webResponse.status}}` for its status; an answer outside the 2xx range
+fails the rule, and an address on a private network is refused. Work item creation starts a rule through the work item
+created trigger below, and a request starts one through the incoming webhook
+trigger above.
 
 ## The incoming webhook trigger
 
@@ -184,7 +192,8 @@ that does not hold skips only that related work item.
 
 The rule editor at `/settings/automation` offers the scheduled, work item
 event and incoming webhook triggers with their options, work item fields and JQL conditions, the
-label, assign, transition, comment, edit summary and due date actions, and one
+label, assign, transition, comment, edit summary, description, due date and log
+work actions, and one
 related work items branch placed after them with its own field and JQL
 conditions followed by its actions. It does not show triggers, conditions,
 actions or branches it cannot edit, such as the manual trigger, a branch whose
