@@ -665,3 +665,39 @@ func TestCollapsedCustomFieldsSearchEveryMember(t *testing.T) {
 		t.Fatal("collapsed name")
 	}
 }
+
+func TestProjectsWhereUserHasPermission(t *testing.T) {
+	resolver := FieldResolver{Columns: map[string]string{"project": "pr.id"}}
+	query, err := Parse(`project IN projectsWhereUserHasPermission("BROWSE_PROJECTS")`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := Compile(query, "usr_1", resolver)
+	if compiled.Err != nil {
+		t.Fatal(compiled.Err)
+	}
+	// The permission is asked of the searching user for each project reached.
+	for _, fragment := range []string{"jira_has_project_permission(pr.workspace_id, pr.id,", "upper("} {
+		if !strings.Contains(compiled.Where, fragment) {
+			t.Fatalf("compiled where = %q, want %q", compiled.Where, fragment)
+		}
+	}
+	if len(compiled.Args) == 0 {
+		t.Fatalf("the permission and user are bound as arguments: %+v", compiled.Args)
+	}
+
+	// Jira's function takes exactly one permission.
+	for _, jql := range []string{
+		`project IN projectsWhereUserHasPermission()`,
+		`project IN projectsWhereUserHasPermission("")`,
+		`project IN projectsWhereUserHasPermission(BROWSE_PROJECTS, EDIT_ISSUES)`,
+	} {
+		parsed, parseErr := Parse(jql)
+		if parseErr != nil {
+			continue
+		}
+		if result := Compile(parsed, "usr_1", resolver); result.Err == nil {
+			t.Fatalf("%s compiled without a single permission", jql)
+		}
+	}
+}

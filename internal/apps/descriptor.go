@@ -367,7 +367,7 @@ func builtInJQLFunction(name string) bool {
 	switch name {
 	case "closedsprints", "currentuser", "earliestunreleasedversion", "endofday", "endofmonth", "endofweek", "endofyear",
 		"futuresprints", "latestreleasedversion", "linkedissues", "linkedworkitems", "membersof", "now", "opensprints",
-		"projectsleadbyuser", "projectswhereuserhasrole", "releasedversions", "spacesleadbyuser", "spaceswhereuserhasrole",
+		"projectsleadbyuser", "projectswhereuserhaspermission", "projectswhereuserhasrole", "releasedversions", "spacesleadbyuser", "spaceswhereuserhaspermission", "spaceswhereuserhasrole",
 		"standardissuetypes", "standardworktypes", "startofday", "startofmonth", "startofweek", "startofyear",
 		"subtaskissuetypes", "subtaskworktypes", "unreleasedversions", "updatedby", "votedissues", "votedworkitems",
 		"watchedissues", "watchedworkitems":
