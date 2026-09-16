@@ -64,10 +64,17 @@ func (r *Runner) renderSmartValues(ctx context.Context, run *claimedRun, issue *
 }
 
 // conditionFields are the work item fields a fields condition compares.
-var conditionFields = map[string]bool{"status": true, "priority": true, "issuetype": true, "assignee": true, "reporter": true, "labels": true, "summary": true, "duedate": true}
+var conditionFields = map[string]bool{"status": true, "priority": true, "issuetype": true, "assignee": true, "reporter": true, "labels": true, "summary": true, "duedate": true,
+	"resolution": true, "created": true, "resolved": true, "parent": true, "key": true}
+
+// conditionDateFields hold an ISO day or time, which is what an ordering
+// comparison reads. Ordering any other field holds for nothing.
+var conditionDateFields = map[string]bool{"duedate": true, "created": true, "resolved": true}
 
 // conditionOperators are the comparisons a fields condition makes.
-var conditionOperators = map[string]bool{"EQUALS": true, "NOT_EQUALS": true, "CONTAINS": true, "IS_EMPTY": true, "IS_NOT_EMPTY": true}
+var conditionOperators = map[string]bool{"EQUALS": true, "NOT_EQUALS": true, "CONTAINS": true, "NOT_CONTAINS": true,
+	"STARTS_WITH": true, "ENDS_WITH": true, "IS_ONE_OF": true, "IS_NOT_ONE_OF": true,
+	"GREATER_THAN": true, "LESS_THAN": true, "IS_EMPTY": true, "IS_NOT_EMPTY": true}
 
 // condition reports whether a rule's condition holds for a work item.
 func (r *Runner) condition(ctx context.Context, run *claimedRun, issue *models.Issue, item component) (bool, error) {
@@ -126,6 +133,24 @@ func fieldConditionHolds(issue *models.Issue, field, operator, expected string) 
 		if issue.DueDate != "" {
 			actual = []string{issue.DueDate}
 		}
+	case "resolution":
+		if issue.Resolution != nil {
+			actual = []string{issue.Resolution.Name, issue.Resolution.ID}
+		}
+	case "resolved":
+		if issue.ResolvedAt != "" {
+			actual = []string{issue.ResolvedAt}
+		}
+	case "created":
+		if issue.CreatedAt != "" {
+			actual = []string{issue.CreatedAt}
+		}
+	case "parent":
+		if issue.Parent != nil {
+			actual = []string{issue.Parent.Key, issue.Parent.Summary, issue.Parent.ID}
+		}
+	case "key":
+		actual = []string{issue.Key}
 	}
 	present := len(actual) > 0 && actual[0] != ""
 	expected = strings.ToLower(strings.TrimSpace(expected))
@@ -148,6 +173,44 @@ func fieldConditionHolds(issue *models.Issue, field, operator, expected string) 
 		return !matches(func(value string) bool { return value == expected })
 	case "CONTAINS":
 		return matches(func(value string) bool { return strings.Contains(value, expected) })
+	case "NOT_CONTAINS":
+		return !matches(func(value string) bool { return strings.Contains(value, expected) })
+	case "STARTS_WITH":
+		return matches(func(value string) bool { return strings.HasPrefix(value, expected) })
+	case "ENDS_WITH":
+		return matches(func(value string) bool { return strings.HasSuffix(value, expected) })
+	case "IS_ONE_OF", "IS_NOT_ONE_OF":
+		listed := matches(func(value string) bool {
+			for _, want := range strings.Split(expected, ",") {
+				if want = strings.TrimSpace(want); want != "" && value == want {
+					return true
+				}
+			}
+			return false
+		})
+		return listed == (operator == "IS_ONE_OF")
+	case "GREATER_THAN", "LESS_THAN":
+		// Ordering reads the ISO day or time a date field holds. Comparing a
+		// day with a time compares the days they fall on.
+		if !conditionDateFields[field] {
+			return false
+		}
+		return matches(func(value string) bool {
+			left, right := value, expected
+			if len(right) == 10 && len(left) > 10 {
+				left = left[:10]
+			}
+			if len(left) == 10 && len(right) > 10 {
+				right = right[:10]
+			}
+			if left == "" || right == "" {
+				return false
+			}
+			if operator == "GREATER_THAN" {
+				return left > right
+			}
+			return left < right
+		})
 	}
 	return false
 }

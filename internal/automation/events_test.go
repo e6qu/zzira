@@ -14,7 +14,9 @@ import (
 
 func TestFieldConditionsSmartValuesAndEventMatching(t *testing.T) {
 	issue := &models.Issue{Key: "EVT-7", Summary: "Fix login", Status: models.Status{ID: "st_todo", Name: "To Do"}, IssueType: models.IssueType{ID: "it_task", Name: "Task"},
-		Labels: []string{"Backend"}, Assignee: &models.User{ID: "usr_1", DisplayName: "Ana"}}
+		Labels: []string{"Backend"}, Assignee: &models.User{ID: "usr_1", DisplayName: "Ana"},
+		Resolution: &models.Resolution{ID: "res_done", Name: "Done"}, CreatedAt: "2026-09-01T10:00:00Z",
+		Parent: &models.IssueParent{ID: "iss_1", Key: "EVT-1", Summary: "Sign in epic"}}
 	for _, check := range []struct {
 		field, operator, value string
 		want                   bool
@@ -24,6 +26,15 @@ func TestFieldConditionsSmartValuesAndEventMatching(t *testing.T) {
 		{"assignee", "EQUALS", "usr_1", true}, {"assignee", "EQUALS", "ana", true}, {"reporter", "IS_EMPTY", "", true},
 		{"priority", "IS_NOT_EMPTY", "", false}, {"duedate", "IS_EMPTY", "", true}, {"summary", "EQUALS", "fix", false},
 		{"issuetype", "NOT_EQUALS", "task", false},
+		{"resolution", "EQUALS", "done", true}, {"resolution", "IS_NOT_EMPTY", "", true},
+		{"key", "STARTS_WITH", "evt-", true}, {"key", "ENDS_WITH", "-7", true},
+		{"summary", "NOT_CONTAINS", "logout", true}, {"summary", "NOT_CONTAINS", "login", false},
+		{"status", "IS_ONE_OF", "done, to do", true}, {"status", "IS_NOT_ONE_OF", "done, in progress", true},
+		{"parent", "EQUALS", "evt-1", true}, {"parent", "CONTAINS", "sign in", true},
+		{"created", "LESS_THAN", "2026-09-02", true}, {"created", "GREATER_THAN", "2026-09-02", false},
+		{"created", "GREATER_THAN", "2026-08-31T23:00:00Z", true},
+		// Ordering holds for nothing on a field that is not a date.
+		{"summary", "GREATER_THAN", "a", false},
 	} {
 		if got := fieldConditionHolds(issue, check.field, check.operator, check.value); got != check.want {
 			t.Fatalf("%s %s %q = %v", check.field, check.operator, check.value, got)

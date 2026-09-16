@@ -120,10 +120,16 @@ action left it. Scheduled, event and manual runs evaluate:
 | `jira.issue.condition` | `{"field":"status","operator":"EQUALS","value":"In Progress"}` | The field compares as asked |
 
 Fields conditions compare `status`, `priority`, `issuetype`, `assignee`,
-`reporter`, `labels`, `summary` or `duedate`, ignoring case, with `EQUALS`,
-`NOT_EQUALS`, `CONTAINS`, `IS_EMPTY` or `IS_NOT_EMPTY`. People match by account
-ID or display name, statuses, priorities and work types by name or ID, and
-labels by any label.
+`reporter`, `labels`, `summary`, `duedate`, `resolution`, `created`,
+`resolved`, `parent` or `key`, ignoring case, with `EQUALS`, `NOT_EQUALS`,
+`CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `IS_ONE_OF`,
+`IS_NOT_ONE_OF`, `GREATER_THAN`, `LESS_THAN`, `IS_EMPTY` or `IS_NOT_EMPTY`.
+`IS_ONE_OF` and `IS_NOT_ONE_OF` take the values separated by commas.
+`GREATER_THAN` and `LESS_THAN` read the ISO day or time that `duedate`,
+`created` or `resolved` holds, comparing the days when one side is a day and
+the other a time, and hold for nothing on any other field. People match by
+account ID or display name, statuses, priorities, work types and resolutions by
+name or ID, a parent by its key, summary or ID, and labels by any label.
 
 Label, assignee, comment, edit and condition values render smart values:
 `{{issue.key}}`, `{{issue.summary}}`, `{{issue.status.name}}`,

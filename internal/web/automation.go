@@ -66,9 +66,12 @@ var (
 	automationConditionFields = []automationOption{
 		{"jql", "Matches JQL"}, {"status", "Status"}, {"priority", "Priority"}, {"issuetype", "Work type"}, {"assignee", "Assignee"},
 		{"reporter", "Reporter"}, {"labels", "Labels"}, {"summary", "Summary"}, {"duedate", "Due date"},
+		{"resolution", "Resolution"}, {"created", "Created"}, {"resolved", "Resolved"}, {"parent", "Parent"}, {"key", "Work item key"},
 	}
 	automationConditionOperators = []automationOption{
-		{"EQUALS", "equals"}, {"NOT_EQUALS", "does not equal"}, {"CONTAINS", "contains"}, {"IS_EMPTY", "is empty"}, {"IS_NOT_EMPTY", "is not empty"},
+		{"EQUALS", "equals"}, {"NOT_EQUALS", "does not equal"}, {"CONTAINS", "contains"}, {"NOT_CONTAINS", "does not contain"},
+		{"STARTS_WITH", "starts with"}, {"ENDS_WITH", "ends with"}, {"IS_ONE_OF", "is one of"}, {"IS_NOT_ONE_OF", "is not one of"},
+		{"GREATER_THAN", "is after"}, {"LESS_THAN", "is before"}, {"IS_EMPTY", "is empty"}, {"IS_NOT_EMPTY", "is not empty"},
 	}
 )
 
