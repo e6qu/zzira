@@ -115,3 +115,14 @@ func indexOf(s, sub string) int {
 	}
 	return -1
 }
+
+func TestMentionedAccounts(t *testing.T) {
+	doc := json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Ask "},{"type":"mention","attrs":{"id":"usr_b","text":"@Bea"}},{"type":"mention","attrs":{"id":"usr_a"}}]},{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"usr_b"}},{"type":"mention","attrs":{"text":"@nobody"}}]}]}]}]}`)
+	got := MentionedAccounts(Normalize(doc))
+	if len(got) != 2 || got[0] != "usr_b" || got[1] != "usr_a" {
+		t.Fatalf("mentioned = %v", got)
+	}
+	if MentionedAccounts(nil) != nil || MentionedAccounts(json.RawMessage(`not json`)) != nil {
+		t.Fatal("an empty or broken document mentions nobody")
+	}
+}

@@ -17,11 +17,11 @@ import (
 
 func scanServiceDesk(row interface{ Scan(...any) error }) (*models.ServiceDesk, error) {
 	desk := &models.ServiceDesk{}
-	err := row.Scan(&desk.ID, &desk.WorkspaceID, &desk.ProjectID, &desk.ProjectKey, &desk.ProjectName, &desk.ProjectTypeKey, &desk.PortalName, &desk.CustomerAccessOpen, &desk.AttachmentsEnabled, &desk.FeedbackEnabled)
+	err := row.Scan(&desk.ID, &desk.WorkspaceID, &desk.ProjectID, &desk.ProjectKey, &desk.ProjectName, &desk.ProjectTypeKey, &desk.PortalName, &desk.PortalDescription, &desk.PortalLogoURL, &desk.AnnouncementsEnabled, &desk.AnnouncementTitle, &desk.AnnouncementMessage, &desk.CustomerAccessOpen, &desk.AttachmentsEnabled, &desk.FeedbackEnabled, &desk.DisabledCustomerNotifications)
 	return desk, err
 }
 
-const serviceDeskSelect = `SELECT sd.id,sd.workspace_id,p.id,p.key,p.name,p.project_type_key,sd.portal_name,sd.customer_access_open,sd.attachments_enabled,sd.feedback_enabled FROM service_desks sd JOIN projects p ON p.id=sd.project_id AND p.lifecycle_state='ACTIVE' `
+const serviceDeskSelect = `SELECT sd.id,sd.workspace_id,p.id,p.key,p.name,p.project_type_key,sd.portal_name,sd.portal_description,sd.portal_logo_url,sd.announcements_enabled,sd.announcement_title,sd.announcement_message,sd.customer_access_open,sd.attachments_enabled,sd.feedback_enabled,sd.disabled_customer_notifications FROM service_desks sd JOIN projects p ON p.id=sd.project_id AND p.lifecycle_state='ACTIVE' `
 
 func (s *Store) ServiceDesks(ctx context.Context, workspaceID string) ([]models.ServiceDesk, error) {
 	rows, err := s.Pool.Query(ctx, serviceDeskSelect+`WHERE sd.workspace_id=$1 ORDER BY sd.id::bigint`, workspaceID)
@@ -254,7 +254,7 @@ func (s *Store) CreateServiceRequest(ctx context.Context, workspaceID, issueID, 
 		INSERT INTO service_sla_cycles(request_issue_id,metric_id,started_at,goal_id,goal_name,goal_millis)
 		SELECT $1,m.id,now(),g.id,g.name,g.goal_millis FROM service_sla_metrics m
 		JOIN service_sla_goals g ON g.metric_id=m.id AND g.jql=''
-		WHERE m.service_desk_id=$2`, issueID, serviceDeskID); err != nil {
+		WHERE m.service_desk_id=$2 AND 'issue_created'=ANY(m.start_conditions)`, issueID, serviceDeskID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO service_request_subscriptions(request_issue_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, issueID, customerID); err != nil {
@@ -509,6 +509,11 @@ func (s *Store) createServiceApproval(ctx context.Context, workspaceID, requestI
 		if result.RowsAffected() == 0 {
 			return nil, false, fmt.Errorf("approver %q is not an active user in this site", userID)
 		}
+		for _, groupID := range rule.ApproverGroups[userID] {
+			if _, err := tx.Exec(ctx, `INSERT INTO service_request_approver_groups(approval_id,user_id,group_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, id, userID, groupID); err != nil {
+				return nil, false, err
+			}
+		}
 		if _, err := tx.Exec(ctx, `INSERT INTO service_request_subscriptions(request_issue_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, requestIssueID, userID); err != nil {
 			return nil, false, err
 		}
@@ -606,6 +611,25 @@ func (s *Store) AnswerServiceApproval(ctx context.Context, requestIssueID, appro
 		return nil, err
 	}
 	final = serviceApprovalDecision(approved, declined, total, conditionType, conditionValue)
+	if conditionType == "numberPerPrincipal" {
+		rows, err := tx.Query(ctx, `SELECT count(*) FILTER (WHERE r.decision='approved'),count(*)
+			FROM service_request_approver_groups g JOIN service_request_approvers r ON r.approval_id=g.approval_id AND r.user_id=g.user_id
+			WHERE g.approval_id=$1 GROUP BY g.group_id`, approvalID)
+		if err != nil {
+			return nil, err
+		}
+		groups, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (serviceApprovalGroupTally, error) {
+			var tally serviceApprovalGroupTally
+			err := row.Scan(&tally.Approved, &tally.Total)
+			return tally, err
+		})
+		if err != nil {
+			return nil, err
+		}
+		if len(groups) > 0 {
+			final = serviceApprovalGroupDecision(declined, groups, conditionValue)
+		}
+	}
 	if final != "pending" {
 		if _, err := tx.Exec(ctx, `UPDATE service_request_approvals SET final_decision=$2,completed_at=now() WHERE id=$1`, approvalID, final); err != nil {
 			return nil, err
@@ -636,6 +660,31 @@ func serviceApprovalDecision(approved, declined, total int, conditionType string
 		return "approved"
 	}
 	return "pending"
+}
+
+// serviceApprovalGroupTally counts one approver group's approvers and their
+// approvals.
+type serviceApprovalGroupTally struct {
+	Approved, Total int
+}
+
+// serviceApprovalGroupDecision decides an approval whose approvers came from
+// groups under Jira's numberPerPrincipal condition: any decline declines it,
+// and it is approved once every group has the number of approvals required,
+// at most the group's size.
+func serviceApprovalGroupDecision(declined int, groups []serviceApprovalGroupTally, perGroup int) string {
+	if declined > 0 {
+		return "declined"
+	}
+	if len(groups) == 0 {
+		return "pending"
+	}
+	for _, group := range groups {
+		if group.Approved < max(min(perGroup, group.Total), 1) {
+			return "pending"
+		}
+	}
+	return "approved"
 }
 
 func scanServiceQueue(row interface{ Scan(...any) error }) (*models.ServiceQueue, error) {

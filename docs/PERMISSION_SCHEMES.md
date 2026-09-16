@@ -80,6 +80,16 @@ project-only permission query, assignee, reporter, and custom-field holders
 match when at least one active issue in that project supplies the relationship,
 which matches Jira's context-dependent permission-query behavior.
 
+Administrators check a decision with the permission helper
+(`/admin/permission-helper`, linked from the Global permissions section of
+administration). Given a person, a work item and a project permission, it says
+whether the person holds it under the project's scheme and why: through the
+site or organization administrator role or Administer Jira, or through the
+named grants. Each grant is tried alone inside a rolled-back savepoint, so the
+explanation comes from the same `jira_has_project_permission` check that
+decides access. For Browse projects it also notes a security level that hides
+the work item.
+
 ## Evidence and current boundary
 
 - `internal/api3/permission_schemes_test.go` covers the 16 operations,

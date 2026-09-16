@@ -28,6 +28,8 @@ const (
 	CustomFieldMultiVersion    = "multiversion"
 	// CustomFieldTeam holds the id of an Atlassian team.
 	CustomFieldTeam = "team"
+	// CustomFieldAsset holds the id of an Assets object.
+	CustomFieldAsset = "cmdb"
 )
 
 // CustomFieldTypeLabel names a custom field type as Jira's collapsed JQL
@@ -152,6 +154,7 @@ var CustomFieldTypeKeys = map[string]string{
 	CustomFieldVersion:         "com.atlassian.jira.plugin.system.customfieldtypes:version",
 	CustomFieldMultiVersion:    "com.atlassian.jira.plugin.system.customfieldtypes:multiversion",
 	CustomFieldTeam:            "com.atlassian.teams:rm-teams-custom-field-team",
+	CustomFieldAsset:           "com.atlassian.jira.plugins.cmdb:cmdb-object-cf",
 }
 
 // IsOptionFieldType reports whether a custom field type takes options.
@@ -348,6 +351,10 @@ type CustomFieldContext struct {
 	ProjectIDs    []string `json:"-"`
 	IssueTypeIDs  []string `json:"-"`
 	DefaultValue  string   `json:"-"`
+	// AssetsMultiple lets an Assets object field in this context hold several
+	// objects, which Jira configures on the field rather than by giving it a
+	// different type.
+	AssetsMultiple bool `json:"-"`
 }
 
 // CustomFieldOption is one choice a select custom field offers within the

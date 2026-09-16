@@ -45,6 +45,10 @@ func TestIssueTriageCommands(t *testing.T) {
 	if _, err := st.Pool.Exec(ctx, `INSERT INTO memberships(workspace_id,user_id,role) VALUES('ws_default',$1,'member')`, actorID); err != nil {
 		t.Fatal(err)
 	}
+	// Autowatch is off so the watch commands below start from not watching.
+	if err := st.SetUserPreference(ctx, "ws_default", actorID, store.UserPreferenceAutowatchDisabled, "true"); err != nil {
+		t.Fatal(err)
+	}
 	svc := &Service{Store: st}
 	first, _, err := svc.CreateIssue(ctx, CreateIssueInput{
 		ActorID: actorID, WorkspaceID: "ws_default", ProjectIDOrKey: "ZZ", Summary: "triage first", IssueTypeID: "it_task",
@@ -62,6 +66,7 @@ func TestIssueTriageCommands(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM issues WHERE id=ANY($1::text[])`, []string{first.ID, second.ID})
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM actions WHERE workspace_id='ws_default' AND actor_id=$1`, actorID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM jira_user_preferences WHERE workspace_id='ws_default' AND user_id=$1`, actorID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE workspace_id='ws_default' AND user_id=$1`, actorID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, actorID)
 	})
@@ -102,6 +107,20 @@ func TestIssueTriageCommands(t *testing.T) {
 	}
 	if action, err := svc.SetVoting(ctx, actorID, "ws_default", first.Key, false); err != nil || action == nil {
 		t.Fatalf("SetVoting remove action=%v err=%v", action, err)
+	}
+
+	// With autowatch back on, commenting makes the commenter a watcher.
+	if watchers, err := st.WatchersByIssue(ctx, second.ID); err != nil || len(watchers) != 0 {
+		t.Fatalf("watchers before comment = %v err=%v", watchers, err)
+	}
+	if err := st.DeleteUserPreference(ctx, "ws_default", actorID, store.UserPreferenceAutowatchDisabled); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := svc.AddComment(ctx, AddCommentInput{ActorID: actorID, WorkspaceID: "ws_default", IssueIDOrKey: second.Key, PlainText: "Following this"}); err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+	if watchers, err := st.WatchersByIssue(ctx, second.ID); err != nil || len(watchers) != 1 || watchers[0] != actorID {
+		t.Fatalf("watchers after comment = %v err=%v", watchers, err)
 	}
 }
 

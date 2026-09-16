@@ -1113,3 +1113,66 @@ func (s *Store) OrganizationAuditEventByID(ctx context.Context, organizationID s
 	event.CreatedAt = formatAdminTime(createdAt)
 	return event, nil
 }
+
+// AccessibleProducts lists the site's enabled products someone may use: an
+// active member of the organization's directory with a role on the product,
+// directly or through a group, as Atlassian's app switcher offers them.
+func (s *Store) AccessibleProducts(ctx context.Context, workspaceID, userID string) ([]*models.Product, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT p.id::text,p.site_id::text,p.product_key,p.name,p.enabled,p.plan,p.created_at
+		FROM products p
+		JOIN sites si ON si.id=p.site_id
+		JOIN users u ON u.id=$2 AND u.active
+		WHERE si.workspace_id=$1 AND p.enabled
+		  AND EXISTS (
+		    SELECT 1 FROM directories d JOIN directory_users du ON du.directory_id=d.id
+		    WHERE d.organization_id=si.organization_id AND d.active AND du.user_id=$2 AND du.active)
+		  AND EXISTS (
+		    SELECT 1 FROM role_bindings rb
+		    WHERE rb.scope_type='product' AND rb.scope_id=p.id::text
+		      AND rb.role_key IN ('atlassian/user','atlassian/admin','atlassian/guest','atlassian/customer',
+		        'atlassian/contributor','atlassian/basic','atlassian/stakeholder',
+		        'atlassian/product-user','atlassian/product-admin')
+		      AND (rb.principal_type='user' AND rb.principal_id=$2 OR
+		        rb.principal_type='group' AND EXISTS (
+		          SELECT 1 FROM group_members gm WHERE gm.group_id::text=rb.principal_id AND gm.user_id=$2)))
+		ORDER BY array_position(ARRAY['jira-software','jira-service-management','confluence'], p.product_key), p.name`, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	products := make([]*models.Product, 0)
+	for rows.Next() {
+		product := &models.Product{}
+		var createdAt time.Time
+		if err := rows.Scan(&product.ID, &product.SiteID, &product.Key, &product.Name, &product.Enabled, &product.Plan, &createdAt); err != nil {
+			return nil, err
+		}
+		product.CreatedAt = formatAdminTime(createdAt)
+		products = append(products, product)
+	}
+	return products, rows.Err()
+}
+
+// WorkspaceAgentAccounts lists the workspace's active app accounts, the
+// non-human principals a workflow post function can ask to run.
+func (s *Store) WorkspaceAgentAccounts(ctx context.Context, workspaceID string) ([]*models.User, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT u.id,u.display_name
+		FROM memberships m JOIN users u ON u.id=m.user_id
+		WHERE m.workspace_id=$1 AND u.active AND u.id LIKE 'app!_%' ESCAPE '!'
+		ORDER BY u.display_name,u.id`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	agents := []*models.User{}
+	for rows.Next() {
+		agent := &models.User{}
+		if err := rows.Scan(&agent.ID, &agent.DisplayName); err != nil {
+			return nil, err
+		}
+		agents = append(agents, agent)
+	}
+	return agents, rows.Err()
+}

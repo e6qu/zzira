@@ -56,6 +56,10 @@ type profilePageData struct {
 	Reported   []*models.Issue
 	Identities []profileIdentityView
 	Saved      string
+	// NotifyOwnChanges and Autowatch are the signed-in person's own
+	// notification preferences.
+	NotifyOwnChanges bool
+	Autowatch        bool
 }
 
 type profileIdentityView struct {
@@ -123,8 +127,15 @@ type workflowEditorData struct {
 	Events   []store.NotificationEventDefinition
 	// ApproverFields are the user picker fields a status approval can name.
 	ApproverFields []*models.CustomField
-	CanEdit        bool
-	CanAssign      bool
+	// AgentAccounts are the app accounts a transition's post function can ask
+	// to run.
+	AgentAccounts []*models.User
+	// TransitionFields are the custom fields a transition's rules can name
+	// beside the system fields. A transition screen is not among them, because
+	// the transition dialog renders only system field controls.
+	TransitionFields []*models.CustomField
+	CanEdit          bool
+	CanAssign        bool
 }
 
 type statusDirectoryData struct {
@@ -146,6 +157,10 @@ type workflowSchemesData struct {
 	Schemes   []workflowSchemeCard
 	Workflows []workflow.Workflow
 	CanCreate bool
+	// Saved and Error are what the page says after a scheme is created or
+	// deleted, including why a deletion was refused.
+	Saved string
+	Error string
 }
 
 type workflowSchemeMappingView struct {
@@ -368,6 +383,16 @@ func (h *Handler) ProfilePage(w http.ResponseWriter, r *http.Request, accountID 
 	}
 	data := profilePageData{Profile: profile, Self: profile.ID == user.ID, Assigned: assigned, Reported: reported, Saved: r.URL.Query().Get("saved")}
 	if data.Self {
+		if data.NotifyOwnChanges, err = h.Store.UserPreferenceEnabled(r.Context(), wsID, user.ID, store.UserPreferenceNotifyOwnChanges, false); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		autowatchDisabled, err := h.Store.UserPreferenceEnabled(r.Context(), wsID, user.ID, store.UserPreferenceAutowatchDisabled, false)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		data.Autowatch = !autowatchDisabled
 		identities, err := h.Store.OIDCIdentitiesByUser(r.Context(), user.ID)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -400,6 +425,30 @@ func (h *Handler) ProfilePage(w http.ResponseWriter, r *http.Request, accountID 
 		}
 	}
 	h.writeWorkspacePage(w, r, "page_profile", user, wsID, data, "people", "")
+}
+
+// UpdateNotificationPreferences saves the signed-in person's personal
+// notification settings: whether their own changes notify them and whether
+// work they create or comment on is watched automatically.
+func (h *Handler) UpdateNotificationPreferences(w http.ResponseWriter, r *http.Request) {
+	user, wsID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	ownChanges, autowatch := r.PostFormValue("ownChanges"), r.PostFormValue("autowatch")
+	if (ownChanges != "true" && ownChanges != "false") || (autowatch != "enabled" && autowatch != "disabled") {
+		http.Error(w, "choose a setting for your own changes and for autowatch", http.StatusBadRequest)
+		return
+	}
+	if err := h.Store.SetUserPreference(r.Context(), wsID, user.ID, store.UserPreferenceNotifyOwnChanges, ownChanges); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := h.Store.SetUserPreference(r.Context(), wsID, user.ID, store.UserPreferenceAutowatchDisabled, strconv.FormatBool(autowatch == "disabled")); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/people/"+url.PathEscape(user.ID)+"?saved="+url.QueryEscape("Notification preferences saved"), http.StatusSeeOther)
 }
 
 func (h *Handler) UnlinkIdentityProvider(w http.ResponseWriter, r *http.Request) {
@@ -508,7 +557,7 @@ func (h *Handler) WorkflowSchemesPage(w http.ResponseWriter, r *http.Request) {
 	for _, item := range workflows {
 		workflowNames[item.ID] = item.Name
 	}
-	data := workflowSchemesData{Workflows: workflows}
+	data := workflowSchemesData{Workflows: workflows, Saved: r.URL.Query().Get("saved"), Error: r.URL.Query().Get("error")}
 	data.CanCreate, _ = h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
 	for _, scheme := range schemes {
 		projects, err := h.Store.ProjectsForWorkflowScheme(r.Context(), workspaceID, scheme.ID)
@@ -604,6 +653,28 @@ func (h *Handler) CreateWorkflowScheme(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(scheme.ID), http.StatusSeeOther)
+}
+
+// DeleteWorkflowScheme removes a workflow scheme no project uses. The site's
+// default scheme stays, and a scheme a project still routes through says so
+// rather than disappearing.
+func (h *Handler) DeleteWorkflowScheme(w http.ResponseWriter, r *http.Request, schemeID string) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	err := h.Store.DeleteWorkflowScheme(r.Context(), workspaceID, user.ID, schemeID)
+	if errors.Is(err, store.ErrAdminConflict) || errors.Is(err, store.ErrAdminValidation) {
+		message := strings.TrimSpace(strings.TrimPrefix(err.Error(), store.ErrAdminConflict.Error()+":"))
+		message = strings.TrimSpace(strings.TrimPrefix(message, store.ErrAdminValidation.Error()+":"))
+		http.Redirect(w, r, "/settings/workflow-schemes?error="+url.QueryEscape(message), http.StatusSeeOther)
+		return
+	}
+	if err != nil {
+		statusAdminError(w, err)
+		return
+	}
+	http.Redirect(w, r, "/settings/workflow-schemes?saved="+url.QueryEscape("Scheme deleted"), http.StatusSeeOther)
 }
 
 func (h *Handler) SaveWorkflowSchemeDraft(w http.ResponseWriter, r *http.Request, schemeID string) {
@@ -850,6 +921,11 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 		http.Error(w, "Could not load custom fields.", http.StatusInternalServerError)
 		return
 	}
+	agentAccounts, err := h.Store.WorkspaceAgentAccounts(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "Could not load agent accounts.", http.StatusInternalServerError)
+		return
+	}
 	approverFields := make([]*models.CustomField, 0)
 	for _, field := range fields {
 		if field.Type == models.CustomFieldUser || field.Type == models.CustomFieldMultiUser {
@@ -857,7 +933,7 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 		}
 	}
 	h.writeWorkspacePage(w, r, "page_workflow", user, wsID, workflowEditorData{
-		Workflow: wf, Initial: initial, Global: global, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks, Events: events, ApproverFields: approverFields,
+		Workflow: wf, Initial: initial, Global: global, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks, Events: events, ApproverFields: approverFields, TransitionFields: fields, AgentAccounts: agentAccounts,
 		CanEdit: admin && wf.ID != workflow.Default().ID, CanAssign: admin,
 	}, "workflows", "")
 }
@@ -1058,7 +1134,15 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		fields = append(fields, changedField)
 	}
 	if len(fields) > 0 {
-		transition.Screen = &workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleTransitionScreen, Parameters: map[string]string{"fields": strings.Join(fields, ",")}}
+		if r.PostFormValue("screen_mode") == "remind" {
+			parameters := map[string]string{"remindingFieldIds": strings.Join(fields, ","), "remindingAlwaysAsk": formBool(r, "screen_remind_always")}
+			if message := strings.TrimSpace(r.PostFormValue("screen_remind_message")); message != "" {
+				parameters["remindingMessage"] = message
+			}
+			transition.Screen = &workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleRemindToUpdateFields, Parameters: parameters}
+		} else {
+			transition.Screen = &workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleTransitionScreen, Parameters: map[string]string{"fields": strings.Join(fields, ",")}}
+		}
 	}
 	conditions := make([]workflow.Rule, 0, 2)
 	if restriction := r.PostFormValue("restriction"); restriction == "block-users" || restriction == "block-all" {
@@ -1081,6 +1165,26 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 				"fieldId": field, "fieldValue": string(values), "comparator": r.PostFormValue("condition_comparator"), "comparisonType": r.PostFormValue("condition_type"),
 			},
 		})
+	}
+	switch approval := r.PostFormValue("approval_condition"); approval {
+	case "block-in-progress":
+		conditions = append(conditions, workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleBlockInProgressApproval, Parameters: map[string]string{}})
+	case "approved", "rejected":
+		key := workflow.RuleApprovalsBlockUntilApproved
+		if approval == "rejected" {
+			key = workflow.RuleApprovalsBlockUntilRejected
+		}
+		// Jira sends the status's approval with the condition; ours is the one
+		// the editor already configures for the status the transition leaves.
+		configuration := "{}"
+		for _, status := range wf.Statuses {
+			if len(transition.From) > 0 && status.StatusReference == transition.From[0] && status.ApprovalConfiguration != nil {
+				if encoded, err := json.Marshal(status.ApprovalConfiguration); err == nil {
+					configuration = string(encoded)
+				}
+			}
+		}
+		conditions = append(conditions, workflow.Rule{ID: store.NewID("rule"), RuleKey: key, Parameters: map[string]string{"approvalConfigurationJson": configuration}})
 	}
 	if statusID := r.PostFormValue("previous_status_condition"); statusID != "" {
 		conditions = append(conditions, workflow.Rule{
@@ -1109,13 +1213,17 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 	if fields := r.PostForm["required_field"]; len(fields) > 0 {
 		transition.Validators = append(transition.Validators, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleValidateFieldValue,
-			Parameters: map[string]string{"ruleType": "fieldRequired", "fieldsRequired": strings.Join(fields, ","), "errorMessage": "Complete the required transition fields."},
+			Parameters: map[string]string{"ruleType": "fieldRequired", "fieldsRequired": strings.Join(fields, ","), "errorMessage": workflowValidatorMessage(r, "required_error", "Complete the required transition fields.")},
 		})
 	}
 	if changedField != "" {
+		parameters := map[string]string{"ruleType": "fieldChanged", "fieldKey": changedField,
+			"errorMessage": workflowValidatorMessage(r, "changed_error", "Change the selected field during the transition.")}
+		if exempt := strings.TrimSpace(r.PostFormValue("changed_exempt_groups")); exempt != "" {
+			parameters["groupsExemptFromValidation"] = exempt
+		}
 		transition.Validators = append(transition.Validators, workflow.Rule{
-			ID: store.NewID("rule"), RuleKey: workflow.RuleValidateFieldValue,
-			Parameters: map[string]string{"ruleType": "fieldChanged", "fieldKey": changedField, "errorMessage": "Change the selected field during the transition."},
+			ID: store.NewID("rule"), RuleKey: workflow.RuleValidateFieldValue, Parameters: parameters,
 		})
 	}
 	if field := strings.TrimSpace(r.PostFormValue("regexp_field_validator")); field != "" {
@@ -1233,6 +1341,25 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		}
 		transition.Actions = append(transition.Actions, workflow.Rule{
 			ID: store.NewID("rule"), RuleKey: workflow.RuleTriggerWebhook, Parameters: map[string]string{"webhookId": webhookID},
+		})
+	}
+	// A transition can ask one of the workspace's agent accounts to run, with
+	// the prompt it is given. An account that is not an active agent is
+	// refused here rather than when someone transitions the work item.
+	if agentID := strings.TrimSpace(r.PostFormValue("trigger_agent")); agentID != "" {
+		agents, agentErr := h.Store.WorkspaceAgentAccounts(r.Context(), wsID)
+		if agentErr != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if !slices.ContainsFunc(agents, func(agent *models.User) bool { return agent.ID == agentID }) {
+			http.Error(w, "the transition agent is not an active agent account", http.StatusBadRequest)
+			return
+		}
+		transition.Actions = append(transition.Actions, workflow.Rule{
+			ID: store.NewID("rule"), RuleKey: workflow.RuleTriggerAgent, Parameters: map[string]string{
+				"agentId": agentID, "promptValue": strings.TrimSpace(r.PostFormValue("trigger_agent_prompt")),
+			},
 		})
 	}
 	wf.Transitions = append(wf.Transitions, transition)
@@ -1383,6 +1510,16 @@ func workflowStatusIDs(wf workflow.Workflow) map[string]bool {
 }
 
 // workflowRuleSummary names the kinds of rule a transition carries.
+// workflowValidatorMessage is what a validator says when it stops a
+// transition. An administrator may write it; an empty message keeps the
+// wording the validator shipped with.
+func workflowValidatorMessage(r *http.Request, field, fallback string) string {
+	if message := strings.TrimSpace(r.PostFormValue(field)); message != "" {
+		return message
+	}
+	return fallback
+}
+
 func workflowRuleSummary(transition workflow.Transition) []string {
 	rules := make([]string, 0, 4)
 	if transition.Conditions != nil {

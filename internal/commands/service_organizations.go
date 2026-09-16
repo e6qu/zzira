@@ -31,9 +31,6 @@ func (s *Service) requireServiceDeskAgent(ctx context.Context, workspaceID, serv
 	return nil
 }
 
-// requireServiceDeskAdmin allows a service desk's administrators: site
-// administrators and the people who administer the desk's project, as Jira
-// Service Management's service desk administrator permission does.
 // requireServiceDeskAdminAgent requires the agent access Jira asks of project
 // administrators managing request type properties.
 func (s *Service) requireServiceDeskAdminAgent(ctx context.Context, workspaceID, serviceDeskID, actorID string) error {
@@ -47,6 +44,9 @@ func (s *Service) requireServiceDeskAdminAgent(ctx context.Context, workspaceID,
 	return nil
 }
 
+// requireServiceDeskAdmin allows a service desk's administrators: site
+// administrators and the people who administer the desk's project, as Jira
+// Service Management's service desk administrator permission does.
 func (s *Service) requireServiceDeskAdmin(ctx context.Context, workspaceID, serviceDeskID, actorID string) error {
 	admin, err := s.Store.IsServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID)
 	if err != nil {
@@ -159,11 +159,14 @@ func (s *Service) InviteServiceDeskCustomer(ctx context.Context, actorID, worksp
 	if err := s.Store.SetServiceDeskCustomers(ctx, workspaceID, serviceDeskID, []string{customer.ID}, true); err != nil {
 		return nil, err
 	}
-	// An invitation is an email, as Jira sends.
-	subject := "You're invited to the " + desk.PortalName + " help center"
-	body := "Hi " + customer.DisplayName + ",\n\nYou can now raise and follow requests with " + desk.PortalName + ".\n/service/portals/" + desk.ID
-	if err := s.Store.QueueEmail(ctx, workspaceID, customer.Email, subject, body); err != nil {
-		return nil, err
+	// An invitation is an email, as Jira sends, unless the desk turned the
+	// Customer invited notification off.
+	if desk.CustomerNotificationEnabled(models.CustomerNotificationInvited) {
+		subject := "You're invited to the " + desk.PortalName + " help center"
+		body := "Hi " + customer.DisplayName + ",\n\nYou can now raise and follow requests with " + desk.PortalName + ".\n/service/portals/" + desk.ID
+		if err := s.Store.QueueEmail(ctx, workspaceID, customer.Email, subject, body); err != nil {
+			return nil, err
+		}
 	}
 	return customer, nil
 }
@@ -189,6 +192,121 @@ func (s *Service) SetServiceDeskAttachmentsEnabled(ctx context.Context, actorID,
 		return err
 	}
 	return s.Store.SetServiceDeskAttachmentsEnabled(ctx, workspaceID, serviceDeskID, enabled)
+}
+
+// UpdateServiceHelpCenter saves the help center's branding and announcement
+// for site administrators, as Jira Service Management's help center
+// customization does: names and titles on one line, logo and banner as site
+// paths or http(s) addresses, and hex colours.
+func (s *Service) UpdateServiceHelpCenter(ctx context.Context, actorID, workspaceID string, center models.ServiceHelpCenter) error {
+	if err := s.requireServiceAdmin(ctx, workspaceID, actorID); err != nil {
+		return err
+	}
+	for _, field := range []*string{&center.Name, &center.HomeTitle, &center.LogoURL, &center.BannerURL, &center.BannerColour, &center.BannerTextColour,
+		&center.NavigationBackgroundColour, &center.NavigationTextColour, &center.AnnouncementTitle, &center.AnnouncementMessage} {
+		*field = strings.TrimSpace(*field)
+	}
+	for label, value := range map[string]string{"help center name": center.Name, "home page title": center.HomeTitle, "announcement title": center.AnnouncementTitle} {
+		if len(value) > 255 || strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("the %s must be at most 255 characters on one line", label)
+		}
+	}
+	if len(center.AnnouncementMessage) > 2000 {
+		return fmt.Errorf("the announcement message accepts at most 2000 characters")
+	}
+	if center.AnnouncementMessage != "" && center.AnnouncementTitle == "" {
+		return fmt.Errorf("an announcement needs a title")
+	}
+	for label, value := range map[string]string{"logo": center.LogoURL, "banner image": center.BannerURL} {
+		if value != "" && !lookAndFeelURL(value) {
+			return fmt.Errorf("the %s must be a site path or an http or https URL", label)
+		}
+	}
+	for label, value := range map[string]string{"banner, link and button colour": center.BannerColour, "banner text colour": center.BannerTextColour,
+		"navigation background colour": center.NavigationBackgroundColour, "navigation text colour": center.NavigationTextColour} {
+		if value != "" && !lookAndFeelColour.MatchString(value) {
+			return fmt.Errorf("the %s must be a hex colour such as #0052CC", label)
+		}
+	}
+	return s.Store.UpdateServiceHelpCenter(ctx, workspaceID, actorID, center)
+}
+
+// SetServiceDeskAnnouncementsEnabled lets or stops a desk's agents adding a
+// portal announcement; only the desk's administrators decide.
+func (s *Service) SetServiceDeskAnnouncementsEnabled(ctx context.Context, actorID, workspaceID, serviceDeskID string, enabled bool) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	return s.Store.SetServiceDeskAnnouncementsEnabled(ctx, workspaceID, serviceDeskID, enabled)
+}
+
+// UpdateServiceDeskAnnouncement sets or clears a portal's announcement for the
+// desk's agents and administrators, while the portal lets agents add
+// announcements.
+func (s *Service) UpdateServiceDeskAnnouncement(ctx context.Context, actorID, workspaceID, serviceDeskID, title, message string) error {
+	agent, err := s.Store.IsServiceAgent(ctx, workspaceID, serviceDeskID, actorID)
+	if err != nil {
+		return err
+	}
+	admin, err := s.Store.IsServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID)
+	if err != nil {
+		return err
+	}
+	if !agent && !admin {
+		return fmt.Errorf("service agent access is required")
+	}
+	desk, err := s.Store.ServiceDesk(ctx, workspaceID, serviceDeskID)
+	if err != nil {
+		return fmt.Errorf("service desk does not exist")
+	}
+	if !desk.AnnouncementsEnabled {
+		return fmt.Errorf("agents cannot add announcements to this portal")
+	}
+	title, message = strings.TrimSpace(title), strings.TrimSpace(message)
+	if len(title) > 255 || strings.ContainsAny(title, "\r\n") {
+		return fmt.Errorf("the announcement title must be at most 255 characters on one line")
+	}
+	if len(message) > 2000 {
+		return fmt.Errorf("the announcement message accepts at most 2000 characters")
+	}
+	if message != "" && title == "" {
+		return fmt.Errorf("an announcement needs a title")
+	}
+	return s.Store.UpdateServiceDeskAnnouncement(ctx, workspaceID, actorID, serviceDeskID, title, message)
+}
+
+// UpdateServiceDeskPortal changes a portal's name, introduction text and logo,
+// as Jira's portal settings do, for the desk's administrators. The logo is a
+// site path or an http(s) address, like the site's own logo.
+func (s *Service) UpdateServiceDeskPortal(ctx context.Context, actorID, workspaceID, serviceDeskID, name, description, logoURL string) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	name, description, logoURL = strings.TrimSpace(name), strings.TrimSpace(description), strings.TrimSpace(logoURL)
+	if name == "" || len(name) > 255 || strings.ContainsAny(name, "\r\n") {
+		return fmt.Errorf("the portal name must be 1 to 255 characters on one line")
+	}
+	if len(description) > 1000 {
+		return fmt.Errorf("the introduction text accepts at most 1000 characters")
+	}
+	if logoURL != "" && !lookAndFeelURL(logoURL) {
+		return fmt.Errorf("the logo must be a site path or an http or https URL")
+	}
+	return s.Store.UpdateServiceDeskPortal(ctx, workspaceID, actorID, serviceDeskID, name, description, logoURL)
+}
+
+// SetServiceDeskCustomerNotification turns one of Jira's customer notifications
+// on or off for a service desk.
+func (s *Service) SetServiceDeskCustomerNotification(ctx context.Context, actorID, workspaceID, serviceDeskID, key string, enabled bool) error {
+	if err := s.requireServiceDeskAdmin(ctx, workspaceID, serviceDeskID, actorID); err != nil {
+		return err
+	}
+	for _, notification := range models.ServiceCustomerNotifications() {
+		if notification.Key == key {
+			return s.Store.SetServiceDeskCustomerNotification(ctx, workspaceID, serviceDeskID, key, enabled)
+		}
+	}
+	return fmt.Errorf("%q is not a customer notification", key)
 }
 
 // SetServiceDeskFeedbackEnabled turns customer satisfaction feedback on or off

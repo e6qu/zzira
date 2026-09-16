@@ -50,6 +50,10 @@ type pageData struct {
 	Navigation   *workspaceNavigation
 	Announcement *models.AnnouncementBanner
 	Site         *render.SiteLook
+	// WikiLook is the Confluence look and feel wiki pages apply, if any.
+	WikiLook *wikiLookView
+	// ServiceLook is the help center branding service pages apply, if any.
+	ServiceLook *serviceLookView
 }
 
 // SiteLook is the look and feel the page shows.
@@ -69,6 +73,11 @@ func siteLookFor(properties map[string]string) render.SiteLook {
 	}
 	look.LogoURL, look.FaviconURL = properties["jira.lf.logo.url"], properties["jira.lf.favicon.url"]
 	look.NavigationBackground, look.NavigationHighlight = properties["jira.lf.navigation.bgcolour"], properties["jira.lf.navigation.highlightcolour"]
+	look.ShowTitle = properties["jira.lf.logo.show.application.title"] == "true"
+	look.FaviconHiResURL = properties["jira.lf.favicon.hires.url"]
+	if colour := strings.TrimSpace(properties["jira.lf.hero.button.base.bg.colour"]); lookAndFeelColour.MatchString(colour) && whiteTextContrast(colour) >= 4.5 {
+		look.HeroButtonBackground = colour
+	}
 	look.DateComplete, look.DateDay = models.SiteDateLayouts(properties)
 	return look
 }
@@ -666,7 +675,9 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
-	appContexts = selectIssueContextModules(appContexts)
+	issueFacts := h.appConditionFactsFor(r.Context(), wsID, user, nil, issue)
+	appPanels = appModulesShown(appPanels, issueFacts)
+	appContexts = selectIssueContextModules(appModulesShown(appContexts, issueFacts))
 	issueProperties := map[string]json.RawMessage{}
 	if len(appContexts) > 0 {
 		issueProperties, err = h.Store.IssueProperties(r.Context(), issue.ID)
@@ -682,6 +693,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	appActivityTabs = appModulesShown(appActivityTabs, issueFacts)
 	appIssueContent, err := h.Store.AppIssueContentForIssue(r.Context(), wsID, issue.ID)
 	if err != nil {
 		return nil, err
@@ -1400,7 +1412,7 @@ func encodeWebCustomField(fieldType, value string) (json.RawMessage, error) {
 		"option", models.CustomFieldSelect:
 		encoded, err := json.Marshal(value)
 		return encoded, err
-	case models.CustomFieldDate, models.CustomFieldURL, "user", models.CustomFieldUser, "group", models.CustomFieldGroup, models.CustomFieldProject, "projectpicker", models.CustomFieldVersion:
+	case models.CustomFieldDate, models.CustomFieldURL, "user", models.CustomFieldUser, "group", models.CustomFieldGroup, models.CustomFieldProject, "projectpicker", models.CustomFieldVersion, models.CustomFieldAsset:
 		return json.Marshal(value)
 	case models.CustomFieldCascadingSelect, "option-with-child":
 		parent, child, _ := strings.Cut(value, ":")

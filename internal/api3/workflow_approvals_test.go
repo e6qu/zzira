@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/e6qu/zzira/internal/models"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -222,5 +223,35 @@ func TestWorkflowStatusApprovals(t *testing.T) {
 	decide(approverID, declinedKey, declinedID, "decline")
 	if status := statusOf(declinedKey); status != "st_todo" {
 		t.Fatalf("the declined request is in %s, not its declined transition's status", status)
+	}
+
+	// Approvers who came from groups need the number per group under
+	// numberPerPrincipal: one security approval is not enough without one from
+	// operations.
+	groupKey, _ := raise("Production access")
+	groupIssue, err := st.IssueByIDOrKey(ctx, workspaceID, groupKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	perGroup, created, err := st.CreateStatusServiceApproval(ctx, workspaceID, groupIssue.ID, adminID, "Security and operations", []string{adminID, approverID}, "group-approval:"+groupKey,
+		models.ServiceApproval{ConditionType: "numberPerPrincipal", ConditionValue: 1, ApproverGroups: map[string][]string{adminID: {"security"}, approverID: {"operations"}}})
+	if err != nil || !created {
+		t.Fatalf("group approval = %+v created=%t err=%v", perGroup, created, err)
+	}
+	groupDecision := func() string {
+		t.Helper()
+		var decision string
+		if err := st.Pool.QueryRow(ctx, `SELECT final_decision FROM service_request_approvals WHERE id=$1`, perGroup.ID).Scan(&decision); err != nil {
+			t.Fatal(err)
+		}
+		return decision
+	}
+	decide(adminID, groupKey, perGroup.ID, "approve")
+	if decision := groupDecision(); decision != "pending" {
+		t.Fatalf("one group's approval decided %s", decision)
+	}
+	decide(approverID, groupKey, perGroup.ID, "approve")
+	if decision := groupDecision(); decision != "approved" {
+		t.Fatalf("an approval from each group decided %s", decision)
 	}
 }

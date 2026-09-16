@@ -356,6 +356,34 @@ func PlainText(raw json.RawMessage) string {
 	return strings.TrimRight(collectText(doc), "\n")
 }
 
+// MentionedAccounts lists the account ids a document mentions, once each, in
+// document order.
+func MentionedAccounts(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var doc Node
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var accounts []string
+	var walk func(Node)
+	walk = func(n Node) {
+		if n.Type == "mention" {
+			if id, _ := n.Attrs["id"].(string); id != "" && !seen[id] {
+				seen[id] = true
+				accounts = append(accounts, id)
+			}
+		}
+		for _, child := range n.Content {
+			walk(child)
+		}
+	}
+	walk(doc)
+	return accounts
+}
+
 // Equal compares two ADF documents semantically (by re-encoding canonical form).
 func Equal(a, b json.RawMessage) bool {
 	var na, nb Node

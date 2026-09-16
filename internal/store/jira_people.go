@@ -327,6 +327,51 @@ func (s *Store) UserPropertyValues(ctx context.Context, workspaceID, key string)
 // UserPreferenceLocaleKey is where a person's locale is kept.
 const UserPreferenceLocaleKey = "jira.user.locale"
 
+// Jira's notification preference keys: whether your own changes notify you,
+// and whether work you create or comment on is watched automatically.
+const (
+	UserPreferenceNotifyOwnChanges  = "user.notify.own.changes"
+	UserPreferenceAutowatchDisabled = "user.autowatch.disabled"
+)
+
+// UserPreferenceEnabled reads a true/false preference, falling back when the
+// person never set it.
+func (s *Store) UserPreferenceEnabled(ctx context.Context, workspaceID, accountID, key string, fallback bool) (bool, error) {
+	return userPreferenceEnabled(ctx, s.Pool, workspaceID, accountID, key, fallback)
+}
+
+func userPreferenceEnabled(ctx context.Context, q rowQuerier, workspaceID, accountID, key string, fallback bool) (bool, error) {
+	var value string
+	err := q.QueryRow(ctx, `SELECT value FROM jira_user_preferences WHERE workspace_id=$1 AND user_id=$2 AND key=$3`, workspaceID, accountID, key).Scan(&value)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fallback, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return strings.EqualFold(strings.TrimSpace(value), "true"), nil
+}
+
+// AutowatchIssue adds a member as a watcher of work they created or commented
+// on, unless the site turned watching off or they turned Jira's autowatch
+// preference off.
+func (s *Store) AutowatchIssue(ctx context.Context, workspaceID, accountID, issueID string) error {
+	configuration, err := s.JiraSiteConfiguration(ctx, workspaceID)
+	if err != nil || !configuration.WatchingEnabled {
+		return err
+	}
+	disabled, err := s.UserPreferenceEnabled(ctx, workspaceID, accountID, UserPreferenceAutowatchDisabled, false)
+	if err != nil || disabled {
+		return err
+	}
+	var member bool
+	if err = s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships WHERE workspace_id=$1 AND user_id=$2)`, workspaceID, accountID).Scan(&member); err != nil || !member {
+		return err
+	}
+	_, err = s.AddWatcher(ctx, accountID, workspaceID, issueID, accountID)
+	return err
+}
+
 func validPreferenceKey(key string) error {
 	if strings.TrimSpace(key) == "" || len(key) > 255 {
 		return fmt.Errorf("%w: a preference key is required", ErrPeopleNotFound)

@@ -3,6 +3,7 @@ package api3
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -53,6 +54,7 @@ func TestNotificationSchemeContractAndDelivery(t *testing.T) {
 		exec(`DELETE FROM projects WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM actions WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM jira_user_preferences WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM workspaces WHERE id=$1`, workspaceID)
 		for _, id := range []string{adminID, recipientID} {
 			exec(`DELETE FROM api_tokens WHERE user_id=$1`, id)
@@ -161,6 +163,15 @@ func TestNotificationSchemeContractAndDelivery(t *testing.T) {
 	if notificationCount != 1 || emailCount != 1 || deliveryCount != 1 {
 		t.Fatalf("inbox=%d email=%d deliveries=%d", notificationCount, emailCount, deliveryCount)
 	}
+	var htmlBody string
+	if err = st.Pool.QueryRow(ctx, `SELECT html_body FROM email_outbox WHERE workspace_id=$1 AND recipient=$2`, workspaceID, recipientID+"@example.test").Scan(&htmlBody); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`href="/browse/` + issue.Key + `"`, ">Ship notification schemes</a>", ">Notifications / <a", "View work item", `href="/profile"`} {
+		if !strings.Contains(htmlBody, want) {
+			t.Fatalf("html email lacks %q: %s", want, htmlBody)
+		}
+	}
 	var issueID string
 	var issueActionSeq int64
 	if err = st.Pool.QueryRow(ctx, `SELECT i.id,a.seq FROM issues i JOIN actions a ON a.workspace_id=i.workspace_id AND a.entity_type='issue' AND a.entity_id=i.id WHERE i.workspace_id=$1 AND i.jira_id=$2::bigint ORDER BY a.seq LIMIT 1`, workspaceID, issue.ID).Scan(&issueID, &issueActionSeq); err != nil {
@@ -187,6 +198,94 @@ func TestNotificationSchemeContractAndDelivery(t *testing.T) {
 	}
 	if notificationCount != 1 || emailCount != 1 {
 		t.Fatalf("restricted delivery leaked: inbox=%d email=%d", notificationCount, emailCount)
+	}
+
+	// The notification helper explains the same decisions.
+	diagnosis, err := st.DiagnoseIssueNotification(ctx, workspaceID, recipientID, issueID, 1)
+	if err != nil || !diagnosis.Notified() || diagnosis.SchemeName != "Delivery notifications" || diagnosis.EventName != "Issue created" || len(diagnosis.Rules) != 1 || diagnosis.Rules[0].NotificationType != "User" {
+		t.Fatalf("created diagnosis = %+v err=%v", diagnosis, err)
+	}
+	if diagnosis, err = st.DiagnoseIssueNotification(ctx, workspaceID, recipientID, issueID, 6); err != nil || diagnosis.Notified() || len(diagnosis.Rules) != 0 || !diagnosis.CanBrowse {
+		t.Fatalf("commented diagnosis = %+v err=%v", diagnosis, err)
+	}
+	var privateIssueID string
+	if err = st.Pool.QueryRow(ctx, `SELECT id FROM issues WHERE workspace_id=$1 AND summary='Private notification'`, workspaceID).Scan(&privateIssueID); err != nil {
+		t.Fatal(err)
+	}
+	if diagnosis, err = st.DiagnoseIssueNotification(ctx, workspaceID, recipientID, privateIssueID, 1); err != nil || diagnosis.Notified() || len(diagnosis.Rules) != 1 || diagnosis.CanSeeSecurityLevel {
+		t.Fatalf("restricted diagnosis = %+v err=%v", diagnosis, err)
+	}
+	if _, err = st.DiagnoseIssueNotification(ctx, workspaceID, recipientID, issueID, 999); !errors.Is(err, store.ErrNotificationSchemeValidation) {
+		t.Fatalf("unknown event err = %v", err)
+	}
+
+	// The reporter's own changes stay silent until they choose "Notify me".
+	call(adminID, http.MethodPut, schemePath+"/notification", `{"notificationSchemeEvents":[{"event":{"id":"1"},"notifications":[{"notificationType":"Reporter"}]}]}`, http.StatusNoContent)
+	adminInbox := func() int {
+		t.Helper()
+		var count int
+		if countErr := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2`, workspaceID, adminID).Scan(&count); countErr != nil {
+			t.Fatal(countErr)
+		}
+		return count
+	}
+	before := adminInbox()
+	call(adminID, http.MethodPost, "/rest/api/3/issue", `{"fields":{"project":{"key":"`+projectKey+`"},"summary":"Quiet own change","issuetype":{"name":"Task"}}}`, http.StatusCreated)
+	if adminInbox() != before {
+		t.Fatalf("own change notified the reporter by default")
+	}
+	call(adminID, http.MethodPut, "/rest/api/3/mypreferences?key="+store.UserPreferenceNotifyOwnChanges, `true`, http.StatusNoContent)
+	call(adminID, http.MethodPost, "/rest/api/3/issue", `{"fields":{"project":{"key":"`+projectKey+`"},"summary":"Announced own change","issuetype":{"name":"Task"}}}`, http.StatusCreated)
+	if adminInbox() != before+1 {
+		t.Fatalf("own change inbox = %d, want %d", adminInbox(), before+1)
+	}
+
+	// A mention notifies the newly mentioned person once, whatever the scheme
+	// says; mentioning yourself notifies nobody.
+	mentionDoc := func(text string, accounts ...string) string {
+		content := []string{`{"type":"text","text":"` + text + ` "}`}
+		for _, account := range accounts {
+			content = append(content, `{"type":"mention","attrs":{"id":"`+account+`","text":"@person"}}`)
+		}
+		return `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[` + strings.Join(content, ",") + `]}]}`
+	}
+	mentions := func(userID string) int {
+		t.Helper()
+		var count int
+		if countErr := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE workspace_id=$1 AND user_id=$2 AND kind='issue_mentioned'`, workspaceID, userID).Scan(&count); countErr != nil {
+			t.Fatal(countErr)
+		}
+		return count
+	}
+	var mentioned struct {
+		Key string `json:"key"`
+	}
+	decode := func(response *httptest.ResponseRecorder, into any) {
+		t.Helper()
+		if decodeErr := json.Unmarshal(response.Body.Bytes(), into); decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+	}
+	decode(call(adminID, http.MethodPost, "/rest/api/3/issue", `{"fields":{"project":{"key":"`+projectKey+`"},"summary":"Mention in description","issuetype":{"name":"Task"},"description":`+mentionDoc("Please review", recipientID, adminID)+`}}`, http.StatusCreated), &mentioned)
+	if mentions(recipientID) != 1 || mentions(adminID) != 0 {
+		t.Fatalf("description mentions: recipient=%d admin=%d", mentions(recipientID), mentions(adminID))
+	}
+	var mentionComment struct {
+		ID string `json:"id"`
+	}
+	decode(call(adminID, http.MethodPost, "/rest/api/3/issue/"+mentioned.Key+"/comment", `{"body":`+mentionDoc("Over to you", recipientID)+`}`, http.StatusCreated), &mentionComment)
+	if mentions(recipientID) != 2 {
+		t.Fatalf("comment mention count = %d", mentions(recipientID))
+	}
+	var mentionEmails int
+	if err = st.Pool.QueryRow(ctx, `SELECT count(*) FROM email_outbox WHERE workspace_id=$1 AND recipient=$2 AND subject LIKE '%mentioned you%'`, workspaceID, recipientID+"@example.test").Scan(&mentionEmails); err != nil || mentionEmails != 2 {
+		t.Fatalf("mention emails = %d err=%v", mentionEmails, err)
+	}
+	// Keeping a mention while editing tells nobody again.
+	call(adminID, http.MethodPut, "/rest/api/3/issue/"+mentioned.Key+"/comment/"+mentionComment.ID, `{"body":`+mentionDoc("Still yours", recipientID)+`}`, http.StatusOK)
+	call(adminID, http.MethodPut, "/rest/api/3/issue/"+mentioned.Key, `{"fields":{"description":`+mentionDoc("Reviewed", recipientID)+`}}`, http.StatusNoContent)
+	if mentions(recipientID) != 2 {
+		t.Fatalf("unchanged mentions notified again: %d", mentions(recipientID))
 	}
 
 	call(adminID, http.MethodDelete, schemePath, "", http.StatusBadRequest)

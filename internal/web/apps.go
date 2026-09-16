@@ -29,7 +29,7 @@ func (h *Handler) AppModulePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	module, err := h.Store.ActiveAppModule(r.Context(), workspaceID, r.PathValue("module"))
-	if err != nil {
+	if err != nil || !appModuleShown(*module, h.appConditionFactsFor(r.Context(), workspaceID, user, nil, nil)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -47,7 +47,7 @@ func (h *Handler) ProjectAppModulePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	module, err := h.Store.ActiveAppModule(r.Context(), workspaceID, r.PathValue("module"))
-	if err != nil || module.Location != "jira.project.page" {
+	if err != nil || module.Location != "jira.project.page" || !appModuleShown(*module, h.appConditionFactsFor(r.Context(), workspaceID, user, project, nil)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -68,7 +68,7 @@ func (h *Handler) ProjectAdminAppModulePage(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	module, err := h.Store.ActiveAppModule(r.Context(), workspaceID, r.PathValue("module"))
-	if err != nil || module.Location != "jira.project.settings" {
+	if err != nil || module.Location != "jira.project.settings" || !appModuleShown(*module, h.appConditionFactsFor(r.Context(), workspaceID, user, project, nil)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -84,7 +84,7 @@ func (h *Handler) AdminAppModulePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	module, err := h.Store.ActiveAppModule(r.Context(), workspaceID, r.PathValue("module"))
-	if err != nil || module.Location != "jira.admin" {
+	if err != nil || module.Location != "jira.admin" || !appModuleShown(*module, h.appConditionFactsFor(r.Context(), workspaceID, user, nil, nil)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -125,12 +125,37 @@ func (h *Handler) AppModuleFrame(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "App credential encryption is unavailable", http.StatusServiceUnavailable)
 		return
 	}
+	// A frame opens only for someone the module's conditions admit, in the
+	// project and on the work item its context names.
+	contextValues := appModuleContextValues(r)
+	if len(module.Conditions) > 0 {
+		var project *models.Project
+		var issue *models.Issue
+		if key := contextValues.Get("issue.key"); key != "" {
+			found, issueErr := h.Store.IssueByIDOrKey(r.Context(), workspaceID, key)
+			if issueErr != nil {
+				http.NotFound(w, r)
+				return
+			}
+			issue = found
+		} else if key := contextValues.Get("project.key"); key != "" {
+			found, projectErr := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, key)
+			if projectErr != nil {
+				http.NotFound(w, r)
+				return
+			}
+			project = found
+		}
+		if !appModuleShown(*module, h.appConditionFactsFor(r.Context(), workspaceID, user, project, issue)) {
+			http.NotFound(w, r)
+			return
+		}
+	}
 	secret, err := h.ProviderSecrets.Open(module.SecretCiphertext, workspaceID+"/"+module.AppKey)
 	if err != nil {
 		http.Error(w, "App credentials are unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	contextValues := appModuleContextValues(r)
 	target, err := appRuntime.ConnectModuleURL(module.BaseURL, module.RemoteURL, h.BaseURL, workspaceID, secret, "zzira-"+module.ID, contextValues, time.Now().UTC())
 	if err != nil {
 		http.Error(w, "Remote app module is invalid", http.StatusBadGateway)

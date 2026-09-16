@@ -38,6 +38,16 @@ for the site itself. A space may show the global settings, its own custom ones,
 or its theme's — and choosing `theme` is refused when the space has no theme,
 because there would be nothing to show.
 
+## Wiki pages show the custom look
+
+Wiki pages apply the custom look and feel: a space's own custom settings when
+the space selects them, otherwise the site's, and ZZIRA's own look while the
+site keeps the defaults. The header takes its background and primary
+navigation colour; headings, links, and borders and dividers take theirs in the
+light theme, which the chosen colours are meant for, so the dark theme stays
+readable. Only plain colours (hex, `rgb()`/`rgba()` or colour names) are
+written into the page, so a stored value cannot inject other styles.
+
 ## The default theme is not a choice
 
 `GET /settings/theme` leaves it out: it is what a site shows when no theme is
@@ -56,6 +66,10 @@ which is the same distinction the space theme read makes.
   theme cannot show a theme and can once it has one, that the default theme is
   absent from the list but readable by key, and that changing any of it is
   administration.
+- `internal/web/wiki_look_and_feel_test.go` covers the CSS written from the
+  settings, and `e2e/wiki_space_tools.spec.ts` sees a custom heading colour on a
+  wiki page and its removal after a reset; `TestSiteSettings` checks which
+  settings a page shows.
 - `migrations/152_site_look_and_feel.sql` is exercised from a clean PostgreSQL
   schema.
 

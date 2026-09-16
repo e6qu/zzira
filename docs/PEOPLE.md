@@ -91,6 +91,9 @@ swapped for itself.
 404. `/rest/api/3/mypreferences/locale` reads the locale and sets it from a
 supported list; any other locale is 400. With no locale set, the browser's
 `Accept-Language` decides.
+`user.notify.own.changes` and `user.autowatch.disabled` hold the My changes and
+Autowatch notification preferences that the profile page also edits; see
+[NOTIFICATION_SCHEMES.md](NOTIFICATION_SCHEMES.md).
 
 `/rest/api/3/user/properties?accountId=` lists property keys, and
 `/user/properties/{key}` reads, stores and removes a JSON value. `PUT` answers 201

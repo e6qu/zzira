@@ -250,6 +250,8 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const projectAdminTitle = `Project controls ${suffix}`;
   const reportTitle = `Delivery risk ${suffix}`;
   const dashboardItemTitle = `Release health ${suffix}`;
+  const hiddenPageTitle = `Newcomer guide ${suffix}`;
+  const hiddenPanelTitle = `Assignee notes ${suffix}`;
   const hiddenItemTitle = `Newcomer tips ${suffix}`;
   const issueContextTitle = `Delivery context ${suffix}`;
   const issueGlanceTitle = `Legacy glance ${suffix}`;
@@ -262,9 +264,15 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
     authentication: { type: 'jwt' },
     scopes: ['READ', 'WRITE'],
     modules: {
-      generalPages: [{ key: 'remote-releases', url: '/remote-page?view=releases', name: { value: moduleTitle } }],
+      generalPages: [
+        { key: 'remote-releases', url: '/remote-page?view=releases', name: { value: moduleTitle } },
+        { key: 'newcomer-guide', url: '/remote-page?view=guide', name: { value: hiddenPageTitle }, conditions: [{ condition: 'user_is_admin', invert: true }] },
+      ],
       adminPages: [{ key: 'site-controls', url: '/remote-site-admin', name: { value: siteAdminTitle }, weight: 70, params: { source: 'site' } }],
-      webPanels: [{ key: 'remote-risk', url: '/remote-panel?selected={issue.key}', location: 'atl.jira.view.issue.right.context', name: { value: panelTitle } }],
+      webPanels: [
+        { key: 'remote-risk', url: '/remote-panel?selected={issue.key}', location: 'atl.jira.view.issue.right.context', name: { value: panelTitle }, conditions: [{ condition: 'has_issue_permission', params: { permission: 'EDIT_ISSUES' } }] },
+        { key: 'assignee-notes', url: '/remote-panel?selected={issue.key}', location: 'atl.jira.view.issue.right.context', name: { value: hiddenPanelTitle }, conditions: [{ condition: 'is_issue_reported_by_current_user', invert: true }] },
+      ],
       contentBylineItems: [{ key: 'remote-review', url: '/remote-review?content={content.id}', name: { value: bylineTitle } }],
       jiraIssueFields: [{ key: 'remote-risk-score', name: { value: fieldName }, description: { value: 'Risk supplied by the Connect app' }, type: 'number' }],
       webItems: [{ key: 'remote-shortcut', url: '/remote-shortcut', location: 'system.top.navigation.bar', name: { value: shortcutTitle } }],
@@ -296,6 +304,8 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await expect(page.getByRole('heading', { name: siteAdminTitle, level: 1 })).toBeVisible();
   await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote site controls' })).toBeVisible();
   await accessible(page);
+  // A page whose condition leaves out administrators is not offered to one.
+  await expect(page.locator('#workspace-navigation').getByRole('link', { name: hiddenPageTitle })).toHaveCount(0);
   await page.locator('#workspace-navigation').getByRole('link', { name: moduleTitle }).click();
   await expect(page.getByRole('heading', { name: moduleTitle, level: 1 })).toBeVisible();
   const remote = page.frameLocator('iframe.app-module-frame');
@@ -389,6 +399,9 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await expect(issueContext.locator('.issue-context-status-icon')).toBeVisible();
   const issuePanel = page.locator('.app-context-module', { has: page.getByRole('heading', { name: panelTitle, level: 2 }) });
   await expect(issuePanel).toBeVisible();
+  // A panel for people who did not report the work item is not shown to its
+  // reporter.
+  await expect(page.getByRole('heading', { name: hiddenPanelTitle, level: 2 })).toHaveCount(0);
   await expect(issuePanel.frameLocator('iframe').getByRole('heading', { name: 'Remote issue risk' })).toBeVisible();
   await page.locator('details.more-fields').click();
   const issueField = page.getByLabel(fieldName);

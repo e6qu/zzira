@@ -273,3 +273,73 @@ func TestScheduledRunnerDisablesAfterTenFailures(t *testing.T) {
 		t.Fatalf("rule state=%s failures=%d", rule.State, rule.ConsecutiveFailures)
 	}
 }
+
+func TestRunnerLinksWorkItems(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID := store.NewID("prj")
+	sourceID, targetID := store.NewID("iss"), store.NewID("iss")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id) VALUES($1,$2,'LNK','Linking','wf_default')`, projectID, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	for _, seed := range []struct{ id, key, summary string }{{sourceID, "LNK-1", "Blocking work"}, {targetID, "LNK-2", "Blocked work"}} {
+		if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,updated_seq) VALUES($1,$2,$3,$4,$5,'st_todo','it_task',0)`,
+			seed.id, fx.ws, projectID, seed.key, seed.summary); err != nil {
+			t.Fatal(err)
+		}
+	}
+	blocksID, err := fx.store.LinkTypeIDByName(fx.ctx, fx.ws, "Blocks")
+	if err != nil || blocksID == "" {
+		t.Fatalf("seeded Blocks link type = %q, %v", blocksID, err)
+	}
+
+	// The rule's work item blocks the one its action names.
+	actions := []map[string]any{{"component": "ACTION", "type": "jira.issue.link", "value": map[string]string{"linkTypeId": blocksID, "issueKey": "LNK-2"}}}
+	body, _ := json.Marshal(ruleBody("Link blocked work", fx.admin, "ENABLED", "key = LNK-1", actions))
+	uuid, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &Runner{Service: fx.service}
+	if err := fx.service.EnqueueNow(fx.ctx, fx.ws, uuid); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	links, err := fx.store.LinksByIssue(fx.ctx, sourceID)
+	if err != nil || len(links) != 1 {
+		t.Fatalf("links = %+v, %v", links, err)
+	}
+	if links[0].OutwardID != sourceID || links[0].InwardID != targetID {
+		t.Fatalf("the rule's work item is not the outward side: %+v", links[0])
+	}
+
+	// Running again leaves the one link, because the rule asks for a link that
+	// already holds.
+	if err := fx.service.EnqueueNow(fx.ctx, fx.ws, uuid); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	if links, err = fx.store.LinksByIssue(fx.ctx, sourceID); err != nil || len(links) != 1 {
+		t.Fatalf("links after a second run = %+v, %v", links, err)
+	}
+
+	// A work item cannot link to itself, and an unknown key stops the rule.
+	selfActions := []map[string]any{{"component": "ACTION", "type": "jira.issue.link", "value": map[string]string{"linkTypeId": blocksID, "issueKey": "LNK-1"}}}
+	selfBody, _ := json.Marshal(ruleBody("Link to itself", fx.admin, "ENABLED", "key = LNK-1", selfActions))
+	selfUUID, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, selfBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fx.service.EnqueueNow(fx.ctx, fx.ws, selfUUID); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	if links, err = fx.store.LinksByIssue(fx.ctx, sourceID); err != nil || len(links) != 1 {
+		t.Fatalf("a work item linked to itself: %+v, %v", links, err)
+	}
+}

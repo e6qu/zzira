@@ -56,3 +56,35 @@ actually holds:
 
 Each permission appears once, with an id that stays the same for that
 principal and permission in that space.
+
+## Space tools in the browser
+A space's page links to its **Templates** and **Analytics**, and its
+administrators can archive the space or restore it to current from there.
+
+The templates page lists the space's own content templates, the site's
+templates the space inherits, and the blueprints with any site or space changes
+applied. Space administrators create, edit and delete the space's own templates:
+a name, a description, whether it is for pages or blog posts, a storage-format
+body and labels. Every page template offers **Create page from**, which opens the
+page editor with the template's body; a template from another space cannot be
+used.
+
+The analytics page counts views, and distinct viewers, of the space's current
+pages and blog posts over the last 7, 30 or 90 days, most viewed first and at
+most 50. It counts only content the reader can see, so the numbers never reveal
+restricted pages.
+
+Archiving sets the space's status to `archived` and shows it as an archived
+space; restoring returns it to `current`.
+
+Space administrators can also export a space from its page. **Export to HTML**
+queues a task that writes the space's current pages and blog posts that the
+administrator can see into a zip: an `index.html` linking every page and blog
+post, and one HTML file for each with its body rendered as the space shows it.
+Attachments are not included. The space page lists the administrator's latest
+five exports with their state, and a finished export downloads only for the
+person who asked for it; an email with the download link is sent when it is
+ready. The export carries each page's and blog post's current attachments that the
+person exporting can see, linked from the page, up to 100 MiB of files;
+attachments past that are listed without their files. Importing a space is
+not supported.

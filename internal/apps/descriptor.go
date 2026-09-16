@@ -106,6 +106,8 @@ type moduleWire struct {
 	Body     string `json:"body"`
 	URL      string `json:"url"`
 	Position int    `json:"position"`
+	// Conditions are validated Connect conditions, kept with the module.
+	Conditions json.RawMessage `json:"conditions,omitempty"`
 }
 
 func ParseDescriptor(raw []byte) (models.AppDescriptor, error) {
@@ -197,7 +199,7 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 			return models.AppDescriptor{}, fmt.Errorf("module keys must be unique and valid; title and body limits must be respected")
 		}
 		moduleKeys[input.Key] = true
-		descriptor.Modules = append(descriptor.Modules, models.AppModule{Key: input.Key, Type: input.Type, Location: input.Location, Title: input.Title, Body: input.Body, RemoteURL: input.URL, Position: input.Position})
+		descriptor.Modules = append(descriptor.Modules, models.AppModule{Key: input.Key, Type: input.Type, Location: input.Location, Title: input.Title, Body: input.Body, RemoteURL: input.URL, Position: input.Position, Conditions: input.Conditions})
 	}
 	functionNames := map[string]bool{}
 	if len(wire.JQLFunctions) > 0 && !scopes["read:jira-work"] {
@@ -365,7 +367,7 @@ func builtInJQLFunction(name string) bool {
 	switch name {
 	case "closedsprints", "currentuser", "earliestunreleasedversion", "endofday", "endofmonth", "endofweek", "endofyear",
 		"futuresprints", "latestreleasedversion", "linkedissues", "linkedworkitems", "membersof", "now", "opensprints",
-		"projectsleadbyuser", "projectswhereuserhasrole", "releasedversions", "spacesleadbyuser", "spaceswhereuserhasrole",
+		"projectsleadbyuser", "projectswhereuserhaspermission", "projectswhereuserhasrole", "releasedversions", "spacesleadbyuser", "spaceswhereuserhaspermission", "spaceswhereuserhasrole",
 		"standardissuetypes", "standardworktypes", "startofday", "startofmonth", "startofweek", "startofyear",
 		"subtaskissuetypes", "subtaskworktypes", "unreleasedversions", "updatedby", "votedissues", "votedworkitems",
 		"watchedissues", "watchedworkitems":

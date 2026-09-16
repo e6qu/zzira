@@ -78,8 +78,9 @@ func TestCreateIssueToSyncPipeline(t *testing.T) {
 		t.Fatalf("payload issue key = %q, want %q", payload.Issue.Key, issue.Key)
 	}
 
-	// Station 3: the sync range contains exactly the new action. The default
-	// notification preference suppresses the reporter's own create event.
+	// Station 3: the sync range contains the new action and the creator's
+	// autowatch. The default notification preference suppresses the
+	// reporter's own create event.
 	head, err := st.Head(ctx, "ws_default")
 	if err != nil {
 		t.Fatal(err)
@@ -91,13 +92,13 @@ func TestCreateIssueToSyncPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(actions) != 1 || actions[0].Seq != action.Seq {
+	if len(actions) != 2 || actions[0].Seq != action.Seq || actions[1].EntityType != models.EntityWatcher || actions[1].EntityID != issue.ID {
 		t.Fatalf("ActionsSince returned %d actions", len(actions))
 	}
 
 	// Determinism: the same (workspace, since, head) returns the same range.
 	again, err := st.ActionsSince(ctx, "ws_default", "usr_test", action.Seq-1, 100)
-	if err != nil || len(again) != 1 || again[0].Seq != actions[0].Seq {
+	if err != nil || len(again) != 2 || again[0].Seq != actions[0].Seq {
 		t.Fatalf("sync range not deterministic")
 	}
 

@@ -18,12 +18,12 @@ var (
 	ErrFieldContextConflict   = errors.New("custom field context conflicts with another")
 )
 
-const customFieldContextColumns = `id::text,field_id,name,description,all_projects,all_issue_types`
+const customFieldContextColumns = `id::text,field_id,name,description,all_projects,all_issue_types,assets_multiple`
 
 func scanCustomFieldContext(row pgx.Row) (*models.CustomFieldContext, error) {
 	found := &models.CustomFieldContext{}
 	if err := row.Scan(&found.ID, &found.FieldID, &found.Name, &found.Description,
-		&found.AllProjects, &found.AllIssueTypes); err != nil {
+		&found.AllProjects, &found.AllIssueTypes, &found.AssetsMultiple); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrFieldContextNotFound
 		}
@@ -433,6 +433,39 @@ func (s *Store) ChangeCustomFieldContextScope(ctx context.Context, workspaceID, 
 
 // SetCustomFieldContextDefault stores the default value a context applies. An
 // empty raw value clears it.
+// SetCustomFieldContextAssetsMultiple says whether an Assets object field
+// holds several objects in this context, which Jira configures on the field
+// rather than by giving it a different type.
+func (s *Store) SetCustomFieldContextAssetsMultiple(ctx context.Context, workspaceID, actorID, fieldID, contextID string, multiple bool) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
+		return err
+	}
+	found, err := customFieldContextTx(ctx, tx, fieldID, contextID)
+	if err != nil {
+		return err
+	}
+	var fieldType string
+	if err = tx.QueryRow(ctx, `SELECT type FROM custom_fields WHERE id=$1`, fieldID).Scan(&fieldType); err != nil {
+		return err
+	}
+	if fieldType != models.CustomFieldAsset {
+		return fmt.Errorf("%w: only an Assets object field holds several objects", ErrFieldContextValidation)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE custom_field_contexts SET assets_multiple=$2,updated_at=now() WHERE id=$1`, found.ID, multiple); err != nil {
+		return err
+	}
+	if err = appendProjectGovernanceAction(ctx, tx, workspaceID, actorID, "custom_field_context_assets", found.ID, models.OpUpsert,
+		map[string]any{"contextId": found.ID, "assetsMultiple": multiple}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func (s *Store) SetCustomFieldContextDefault(ctx context.Context, workspaceID, actorID, fieldID, contextID, value string) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {

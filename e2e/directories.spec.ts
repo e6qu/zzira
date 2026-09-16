@@ -155,6 +155,14 @@ test('project workflow creation, editor, transition changes, and assignment work
   });
   expect(webhookResponse.status()).toBe(201);
   const webhookID = String((await webhookResponse.json()).self).split('/').pop() as string;
+  const fieldStamp = Date.now();
+  const workflowFieldName = `Workflow field ${fieldStamp}`;
+  const fieldResponse = await page.request.post('/rest/api/3/field', {
+    headers: { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' },
+    data: { name: workflowFieldName, type: 'text' },
+  });
+  expect(fieldResponse.status()).toBe(201);
+  const workflowFieldID = (await fieldResponse.json()).id as string;
   await page.getByRole('link', { name: 'Workflows', exact: true }).click();
   await expect(page).toHaveURL('/settings/workflows');
   await expect(page.getByRole('heading', { name: 'Workflows', level: 1 })).toBeVisible();
@@ -183,6 +191,10 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-to', 'st_done');
   await page.selectOption('#transition-restriction', 'allow-reporter');
   await page.locator('fieldset').filter({ hasText: 'Required before transition' }).getByLabel('Description').check();
+  await page.fill('#transition-required-error', 'Describe the work before review');
+  await page.selectOption('#transition-screen-mode', 'remind');
+  await page.fill('#transition-screen-remind-message', 'Check the estimate before moving on');
+  await page.getByLabel('Remind every time, not only when a field is empty').check();
   await page.selectOption('#transition-assignee-effect', 'to-current-user');
   await page.selectOption('#transition-update-field', 'labels');
   await page.selectOption('#transition-update-mode', 'append');
@@ -194,6 +206,8 @@ test('project workflow creation, editor, transition changes, and assignment work
   await expect(page.locator('#transition-trigger-webhook')).toContainText('https://example.invalid/workflow-ui');
   await page.selectOption('#transition-trigger-webhook', { label: 'https://example.invalid/workflow-ui' });
   await page.selectOption('#transition-changed-field-validator', 'labels');
+  await page.fill('#transition-changed-error', 'Relabel the work before review');
+  await page.fill('#transition-changed-exempt', 'Release managers');
   await page.selectOption('#transition-regexp-field-validator', 'description');
   await page.fill('#transition-regexp-pattern', '^.+$');
   await page.fill('#transition-regexp-error', 'Describe the review');
@@ -218,7 +232,9 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.selectOption('#transition-from', 'st_done');
   await page.selectOption('#transition-to', 'st_todo');
   await page.selectOption('#transition-restriction', 'block-users');
-  await page.selectOption('#transition-condition-field', 'summary');
+  await expect(page.locator('#transition-condition-field')).toContainText(workflowFieldName);
+  await page.selectOption('#transition-condition-field', workflowFieldID);
+  await page.locator('fieldset').filter({ hasText: 'Required before transition' }).getByLabel(workflowFieldName).check();
   await page.selectOption('#transition-condition-comparator', '=');
   await page.selectOption('#transition-condition-type', 'STRING');
   await page.fill('#transition-condition-value', 'Emergency reopen');
@@ -226,6 +242,7 @@ test('project workflow creation, editor, transition changes, and assignment work
   await page.getByLabel('Most recent only').first().check();
   await page.selectOption('#transition-previous-validator', 'st_done');
   await page.locator('fieldset').filter({ hasText: 'Status-history validator options' }).getByLabel('Most recent only').check();
+  await page.selectOption('#transition-approval-condition', 'block-in-progress');
   await page.selectOption('#transition-separation-from', 'st_todo');
   await page.selectOption('#transition-separation-to', 'st_inprogress');
   await page.getByRole('button', { name: 'Add transition' }).click();
@@ -335,6 +352,19 @@ test('workflow schemes publish safely and migrate incompatible project statuses'
   await expect(page.getByRole('status')).toContainText('Scheme saved');
   await expect(page.getByText('Published', { exact: true })).toBeVisible();
   await expect(page.locator('.workflow-editor-header')).toContainText('Version 2');
+
+  await page.goto('/settings/workflow-schemes');
+  await expect(page.getByRole('button', { name: `Delete ${schemeName}` })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Delete Default workflow scheme' })).toHaveCount(0);
+  const throwawayScheme = `Throwaway scheme ${Date.now()}`;
+  await page.fill('#scheme-name', throwawayScheme);
+  await page.getByRole('button', { name: 'Create scheme' }).click();
+  await page.goto('/settings/workflow-schemes');
+  await page.getByRole('button', { name: `Delete ${throwawayScheme}` }).click();
+  await expect(page.getByRole('status')).toContainText('Scheme deleted');
+  await expect(page.getByText(throwawayScheme, { exact: true })).toHaveCount(0);
+  await page.goto(`/settings/workflow-schemes`);
+  await page.getByRole('link', { name: schemeName, exact: true }).click();
 
   await page.selectOption('#scheme-project', await demoProjectID(page));
   await page.getByRole('button', { name: 'Preview assignment' }).click();

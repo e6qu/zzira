@@ -11,7 +11,9 @@ type EmailDelivery struct {
 	Recipient string
 	Subject   string
 	Body      string
-	Attempt   int
+	// HTMLBody is the message's HTML alternative, or "" for plain text alone.
+	HTMLBody string
+	Attempt  int
 }
 
 func (s *Store) ClaimEmailDelivery(ctx context.Context) (*EmailDelivery, error) {
@@ -31,8 +33,8 @@ func (s *Store) ClaimEmailDelivery(ctx context.Context) (*EmailDelivery, error) 
 		)
 		UPDATE email_outbox e SET state='delivering',locked_at=now()
 		FROM due WHERE e.id=due.id
-		RETURNING e.id,e.recipient,e.subject,e.body,e.attempt_count`).
-		Scan(&delivery.ID, &delivery.Recipient, &delivery.Subject, &delivery.Body, &delivery.Attempt)
+		RETURNING e.id,e.recipient,e.subject,e.body,e.html_body,e.attempt_count`).
+		Scan(&delivery.ID, &delivery.Recipient, &delivery.Subject, &delivery.Body, &delivery.HTMLBody, &delivery.Attempt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil

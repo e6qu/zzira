@@ -22,10 +22,21 @@ func (s *Service) SetServiceRequestSubscription(ctx context.Context, actorID, wo
 	return s.Store.SetServiceRequestSubscription(ctx, request.Issue.ID, actorID, subscribed)
 }
 
-func (s *Service) notifyServiceRequestUsers(ctx context.Context, actorID, workspaceID string, request *models.ServiceRequest, userIDs []string, kind, message string, agentsOnly bool) error {
+// notifyServiceRequestUsers tells people who can see a request about a
+// change. A customer notification, when named, reaches customers only while
+// the desk has it turned on.
+func (s *Service) notifyServiceRequestUsers(ctx context.Context, actorID, workspaceID string, request *models.ServiceRequest, userIDs []string, kind, message string, agentsOnly bool, customerNotification ...string) error {
 	actor, err := s.Store.UserByID(ctx, actorID)
 	if err != nil {
 		return err
+	}
+	customersNotified := true
+	if len(customerNotification) > 0 {
+		desk, deskErr := s.Store.ServiceDesk(ctx, workspaceID, request.ServiceDesk.ID)
+		if deskErr != nil {
+			return deskErr
+		}
+		customersNotified = desk.CustomerNotificationEnabled(customerNotification[0])
 	}
 	seen := map[string]bool{}
 	for _, userID := range userIDs {
@@ -37,7 +48,7 @@ func (s *Service) notifyServiceRequestUsers(ctx context.Context, actorID, worksp
 		if err != nil {
 			return err
 		}
-		if agentsOnly && !canManage {
+		if (agentsOnly || !customersNotified) && !canManage {
 			continue
 		}
 		if _, err := s.Store.ServiceRequest(ctx, workspaceID, userID, request.Issue.ID, canManage); err != nil {
@@ -65,12 +76,39 @@ func (s *Service) notifyServiceRequestUsers(ctx context.Context, actorID, worksp
 	return nil
 }
 
-func (s *Service) notifyServiceRequestSubscribers(ctx context.Context, actorID, workspaceID string, request *models.ServiceRequest, kind, message string, agentsOnly bool) error {
+func (s *Service) notifyServiceRequestSubscribers(ctx context.Context, actorID, workspaceID string, request *models.ServiceRequest, kind, message string, agentsOnly bool, customerNotification ...string) error {
 	userIDs, err := s.Store.ServiceRequestSubscriberIDs(ctx, request.Issue.ID)
 	if err != nil {
 		return err
 	}
-	return s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, userIDs, kind, message, agentsOnly)
+	return s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, userIDs, kind, message, agentsOnly, customerNotification...)
+}
+
+// notifyServiceRequestCreated confirms to the reporter that their request was
+// received, as Jira's Request created customer notification does.
+func (s *Service) notifyServiceRequestCreated(ctx context.Context, workspaceID, serviceDeskID, customerID, issueID string) error {
+	desk, err := s.Store.ServiceDesk(ctx, workspaceID, serviceDeskID)
+	if err != nil || !desk.CustomerNotificationEnabled(models.CustomerNotificationRequestCreated) {
+		return err
+	}
+	request, err := s.Store.ServiceRequest(ctx, workspaceID, customerID, issueID, false)
+	if err != nil {
+		return err
+	}
+	message := "received your request " + request.Issue.Key
+	if _, err := s.Store.CreateNotification(ctx, workspaceID, &models.Notification{
+		ID: store.NewID("ntf"), TargetUser: customerID, ActorID: customerID, ActorName: desk.PortalName,
+		Kind: "service_created", EntityType: models.EntityServiceRequest, EntityID: request.Issue.Key, Message: message,
+	}); err != nil {
+		return err
+	}
+	recipient, err := s.Store.UserByID(ctx, customerID)
+	if err != nil || !recipient.Active || recipient.Email == "" {
+		return err
+	}
+	subject := "[" + request.Issue.Key + "] " + request.Issue.Summary
+	body := desk.PortalName + " " + message + ".\n\n" + request.Issue.Key + " — " + request.Issue.Summary + "\n/service/requests/" + request.Issue.Key
+	return s.Store.QueueEmail(ctx, workspaceID, recipient.Email, subject, body)
 }
 
 func (s *Service) PutServiceRequestFeedback(ctx context.Context, actorID, workspaceID, issueIDOrKey, feedbackType string, rating int, comment string) (*models.ServiceRequestFeedback, error) {

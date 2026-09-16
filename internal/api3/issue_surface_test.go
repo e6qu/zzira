@@ -273,6 +273,24 @@ func TestIssueSurfaceContract(t *testing.T) {
 	if page.Total != 1 || page.Comments[0].ID != open.ID {
 		t.Fatalf("comments a non-member sees = %+v", page)
 	}
+	// A mention in a comment the person cannot read does not tell them.
+	mentionAuditor := `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"mention","attrs":{"id":"` + auditor + `","text":"@Aud"}}]}]}`
+	auditorMentions := func() int {
+		t.Helper()
+		var count int
+		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications WHERE user_id=$1 AND kind='issue_mentioned'`, auditor).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	call(admin, "POST", "/rest/api/3/issue/ISS-2/comment", `{"body":`+mentionAuditor+`,"visibility":{"type":"group","value":"issue-surface-leads"}}`, 201)
+	if auditorMentions() != 0 {
+		t.Fatal("a restricted comment's mention reached someone outside its group")
+	}
+	call(admin, "POST", "/rest/api/3/issue/ISS-2/comment", `{"body":`+mentionAuditor+`}`, 201)
+	if auditorMentions() != 1 {
+		t.Fatalf("open comment mention count = %d", auditorMentions())
+	}
 	decode(call(admin, "GET", "/rest/api/3/issue/ISS-1/comment?orderBy=-created&expand=renderedBody", "", 200), &page)
 	if page.Total != 2 || page.Comments[0].ID != restricted.ID || page.Comments[0].RenderedBody == nil {
 		t.Fatalf("newest-first comments = %+v", page)
@@ -339,7 +357,8 @@ func TestIssueSurfaceContract(t *testing.T) {
 		IssuesIsWatching map[string]bool `json:"issuesIsWatching"`
 	}
 	decode(call(admin, "POST", "/rest/api/3/issue/watching", `{"issueIds":["`+jiraID("ISS-1")+`","`+jiraID("ISS-2")+`","999999"]}`, 200), &watching)
-	if !watching.IssuesIsWatching[jiraID("ISS-1")] || watching.IssuesIsWatching[jiraID("ISS-2")] || watching.IssuesIsWatching["999999"] {
+	// Commenting on ISS-2 through the Blocks link autowatched it for admin.
+	if !watching.IssuesIsWatching[jiraID("ISS-1")] || !watching.IssuesIsWatching[jiraID("ISS-2")] || watching.IssuesIsWatching["999999"] {
 		t.Fatalf("bulk watching = %+v", watching.IssuesIsWatching)
 	}
 

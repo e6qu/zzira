@@ -122,6 +122,26 @@ test('create a project, use its board, and update settings through UI and API', 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
   await page.setViewportSize({ width: 1280, height: 720 });
+  // A project's configuration is saved as a template a new project starts from.
+  await page.goto(`/projects/${key}/settings`);
+  const templates = page.locator('#project-templates');
+  await expect(templates).toContainText('No project templates yet');
+  const templateName = `Delivery template ${Date.now()}`;
+  await templates.getByLabel('Template name').fill(templateName);
+  await templates.getByLabel('Description').fill('Starts from this project.');
+  await templates.getByLabel('Configuration').selectOption('SNAPSHOT');
+  await templates.getByRole('button', { name: 'Save template' }).click();
+  await expect(page.getByRole('status')).toContainText('Template saved.');
+  await expect(page.locator('#project-templates')).toContainText(templateName);
+  await expect(page.locator('#project-templates')).toContainText('Copied configuration');
+  // One name per site, and the refusal says why rather than failing silently.
+  await page.locator('#project-templates').getByLabel('Template name').fill(templateName);
+  await page.locator('#project-templates').getByRole('button', { name: 'Save template' }).click();
+  await expect(page.getByRole('alert')).toContainText('A template with this name already exists.');
+  await page.locator('#project-templates').getByRole('button', { name: `Remove ${templateName}` }).click();
+  await expect(page.getByRole('status')).toContainText('Template removed.');
+  await expect(page.locator('#project-templates')).toContainText('No project templates yet');
+
   await page.goto(`/projects/${key}/settings`);
   await page.getByRole('button', { name: 'Archive project', exact: true }).click();
   await expect(page).toHaveURL(/\/projects\?status=archived&notice=/);

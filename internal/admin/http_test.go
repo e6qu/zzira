@@ -309,6 +309,32 @@ func TestOrganizationAndGroupAPIJourney(t *testing.T) {
 	if blocked, blockErr := st.IPAllowlistBlocks(ctx, workspaceID, "confluence", "203.0.113.9"); blockErr != nil || blocked {
 		t.Fatalf("the allowlist blocked a product it does not cover: blocked=%v err=%v", blocked, blockErr)
 	}
+	// The middleware in front of the products applies it: an outside address
+	// is refused the covered product, while allowlisted addresses, other
+	// products and administration still get through.
+	allowlisted := st.IPAllowlistHandler(workspaceID, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	through := func(path, remote string) int {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.RemoteAddr = remote
+		response := httptest.NewRecorder()
+		allowlisted.ServeHTTP(response, request)
+		return response.Code
+	}
+	for _, check := range []struct {
+		path, remote string
+		want         int
+	}{
+		{"/service/portals", "203.0.113.9:40000", http.StatusForbidden},
+		{"/rest/servicedeskapi/request", "203.0.113.9:40000", http.StatusForbidden},
+		{"/service/portals", "192.0.2.10:40000", http.StatusNoContent},
+		{"/wiki/spaces", "203.0.113.9:40000", http.StatusNoContent},
+		{"/admin", "203.0.113.9:40000", http.StatusNoContent},
+	} {
+		if code := through(check.path, check.remote); code != check.want {
+			t.Fatalf("%s from %s = %d, want %d", check.path, check.remote, code, check.want)
+		}
+	}
 	call(http.MethodDelete, resourcePath, adminToken, nil, http.StatusNoContent)
 	call(http.MethodDelete, policyPath, adminToken, nil, http.StatusAccepted)
 	call(http.MethodGet, policyPath, adminToken, nil, http.StatusNotFound)

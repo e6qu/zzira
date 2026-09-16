@@ -11,6 +11,20 @@ import (
 type ConnectConditionFacts struct {
 	LoggedIn  bool
 	SiteAdmin bool
+	// ProjectPermission and IssuePermission answer whether the person holds
+	// a permission in the project or on the work item the module is shown
+	// with; nil when the module is shown without one.
+	ProjectPermission func(permission string) bool
+	IssuePermission   func(permission string) bool
+	// Issue describes the work item the module is shown with, nil without one.
+	Issue *ConnectIssueFacts
+}
+
+// ConnectIssueFacts are what conditions may ask about a work item.
+type ConnectIssueFacts struct {
+	AssignedToCurrentUser bool
+	ReportedByCurrentUser bool
+	Unassigned            bool
 }
 
 // connectCondition is one Connect condition, or a group of them joined by AND
@@ -25,7 +39,11 @@ type connectCondition struct {
 
 // supportedConnectConditions are the Connect conditions this site evaluates
 // exactly; a module naming any other is refused when the app is installed.
-var supportedConnectConditions = map[string]bool{"user_is_logged_in": true, "user_is_admin": true, "user_is_sysadmin": true}
+var supportedConnectConditions = map[string]bool{
+	"user_is_logged_in": true, "user_is_admin": true, "user_is_sysadmin": true,
+	"has_project_permission": true, "has_issue_permission": true,
+	"is_issue_assigned_to_current_user": true, "is_issue_reported_by_current_user": true, "is_issue_unassigned": true,
+}
 
 // connectConditions validates a module's conditions and returns them in the
 // form kept with the module, or nil when there are none.
@@ -68,6 +86,11 @@ func validateConnectCondition(condition connectCondition, depth int) error {
 	if !supportedConnectConditions[condition.Condition] {
 		return fmt.Errorf("unsupported condition %q", condition.Condition)
 	}
+	if condition.Condition == "has_project_permission" || condition.Condition == "has_issue_permission" {
+		if permission, _ := condition.Params["permission"].(string); strings.TrimSpace(permission) == "" {
+			return fmt.Errorf("condition %q names a permission", condition.Condition)
+		}
+	}
 	return nil
 }
 
@@ -107,6 +130,19 @@ func connectConditionMet(condition connectCondition, facts ConnectConditionFacts
 			met = facts.LoggedIn
 		case "user_is_admin", "user_is_sysadmin":
 			met = facts.SiteAdmin
+		case "has_project_permission", "has_issue_permission":
+			permission, _ := condition.Params["permission"].(string)
+			check := facts.ProjectPermission
+			if condition.Condition == "has_issue_permission" {
+				check = facts.IssuePermission
+			}
+			met = check != nil && check(strings.ToUpper(strings.TrimSpace(permission)))
+		case "is_issue_assigned_to_current_user":
+			met = facts.Issue != nil && facts.Issue.AssignedToCurrentUser
+		case "is_issue_reported_by_current_user":
+			met = facts.Issue != nil && facts.Issue.ReportedByCurrentUser
+		case "is_issue_unassigned":
+			met = facts.Issue != nil && facts.Issue.Unassigned
 		}
 	}
 	return met != condition.Invert

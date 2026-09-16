@@ -213,10 +213,14 @@ PR 1 work adds the remaining built-in functions and multi-value fields;
 project-aware validation warnings; exact historical versioned representations
 and richer rendered values.
 
-The remaining built-in catalog includes permission-scheme and
-customer/organization functions. Those
-functions depend on their owning PR 1/JSM state models and are implemented with
-those models instead of returning approximate results.
+`projectsWhereUserHasPermission(permission)` and its Confluence spelling
+`spacesWhereUserHasPermission(permission)` ask the permission schemes which
+projects the searching user holds a permission in, by the same rule that grants
+the permission everywhere else.
+
+The remaining built-in catalog includes the customer and organization
+functions. Those functions depend on their owning JSM state models and are
+implemented with those models instead of returning approximate results.
 
 Some Jira history fields cannot be queried until their mutations persist a
 structured diff. Unsupported functions fail during compilation instead of

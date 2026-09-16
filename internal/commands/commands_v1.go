@@ -148,7 +148,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 			return nil, nil, fmt.Errorf("security level would hide this issue from you")
 		}
 	}
-	if err := s.normalizeOptionFields(ctx, in.WorkspaceID, issue.ProjectID, issue.IssueType.ID, in.Fields); err != nil {
+	if err := s.normalizeOptionFields(ctx, in.WorkspaceID, issue.ProjectID, issue.IssueType.ID, in.Fields, nil); err != nil {
 		return nil, nil, err
 	}
 	if err := s.validateCustomFields(ctx, issue.ProjectID, in.Fields); err != nil {
@@ -214,6 +214,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	if err = s.enforceCustomFieldContexts(ctx, in.WorkspaceID, issue.ProjectID, issue.IssueType.ID, in.Fields); err != nil {
 		return nil, nil, err
 	}
+	previous, previousDescription := *issue, issue.Description
 	issue, action, err := s.Store.UpdateIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, update)
 	if err != nil {
 		return nil, nil, err
@@ -237,12 +238,13 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		if err := s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, eventID, notificationKind, notificationVerb); err != nil {
 			return issue, action, err
 		}
-	}
-	if in.StatusID != nil {
-		if err := s.syncServiceSLAsAfterIssueChange(ctx, in.ActorID, in.WorkspaceID, issue, time.Now().UTC()); err != nil {
-			return nil, nil, err
+		if in.Description != nil {
+			if err := s.deliverMentions(ctx, in.WorkspaceID, in.ActorID, issue.ID, action, previousDescription, issue.Description, nil); err != nil {
+				return issue, action, err
+			}
 		}
-	} else if err := s.Store.ReconcileServiceSLAPauses(ctx, in.WorkspaceID, in.ActorID, issue.ID, time.Now().UTC()); err != nil {
+	}
+	if err := s.syncServiceSLAsAfterIssueChange(ctx, in.ActorID, in.WorkspaceID, &previous, issue, time.Now().UTC()); err != nil {
 		return nil, nil, err
 	}
 	return issue, action, nil
@@ -329,6 +331,27 @@ func (s *Service) validateCustomFields(ctx context.Context, projectID string, va
 			var value string
 			if err := json.Unmarshal(raw, &value); err != nil || value == "" {
 				return fmt.Errorf("custom field %q must be an id", id)
+			}
+		case models.CustomFieldAsset:
+			// An Assets object field holds one object, or several when its
+			// context is configured for them.
+			var value string
+			if json.Unmarshal(raw, &value) == nil {
+				if value == "" {
+					return fmt.Errorf("custom field %q must be an id", id)
+				}
+				break
+			}
+			var values []string
+			if err := json.Unmarshal(raw, &values); err != nil || len(values) == 0 {
+				return fmt.Errorf("custom field %q must be an id, or a list of them", id)
+			}
+			seen := map[string]bool{}
+			for _, value := range values {
+				if value == "" || seen[value] {
+					return fmt.Errorf("custom field %q must list each Assets object once", id)
+				}
+				seen[value] = true
 			}
 		case models.CustomFieldCascadingSelect:
 			var value struct {
@@ -432,7 +455,7 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	if len(update.Description) > 1<<20 {
 		return nil, nil, fmt.Errorf("description must be at most 1 MiB")
 	}
-	if err := s.normalizeOptionFields(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID, update.Fields); err != nil {
+	if err := s.normalizeOptionFields(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID, update.Fields, nil); err != nil {
 		return nil, nil, err
 	}
 	if err := s.validateCustomFields(ctx, issue.ProjectID, update.Fields); err != nil {
@@ -534,6 +557,9 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 		context.FieldValues[field] = workflowFieldRaw(issue, &update, field)
 	}
 	context.Permissions, err = authz.JiraPermissions(ctx, s.Store, workspaceID, actorID)
+	if err == nil {
+		context.ActorGroups, err = workflowActorGroups(ctx, s.Store, workspaceID, actorID)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -600,7 +626,7 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 			return nil, nil, fmt.Errorf("workflow assignee is not an active workspace member")
 		}
 	}
-	if err := s.normalizeOptionFields(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID, update.Fields); err != nil {
+	if err := s.normalizeOptionFields(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID, update.Fields, nil); err != nil {
 		return nil, nil, err
 	}
 	if err := s.validateCustomFields(ctx, issue.ProjectID, update.Fields); err != nil {
@@ -610,14 +636,14 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	if err != nil {
 		return nil, nil, err
 	}
-	eventID, notificationKind, notificationVerb := int64(16), "issue_transitioned", "transitioned"
+	eventID, notificationKind, notificationVerb := int64(13), "issue_transitioned", "transitioned"
 	if strings.EqualFold(updated.Status.Category, "done") && !strings.EqualFold(issue.Status.Category, "done") {
 		eventID, notificationKind, notificationVerb = 4, "issue_resolved", "resolved"
 		if strings.Contains(strings.ToLower(updated.Status.Name), "closed") {
 			eventID, notificationKind, notificationVerb = 5, "issue_closed", "closed"
 		}
 	} else if !strings.EqualFold(updated.Status.Category, "done") && strings.EqualFold(issue.Status.Category, "done") {
-		eventID, notificationKind, notificationVerb = 8, "issue_reopened", "reopened"
+		eventID, notificationKind, notificationVerb = 7, "issue_reopened", "reopened"
 	}
 	// A transition configured with an event fires that event instead.
 	if custom, parseErr := strconv.ParseInt(t.CustomIssueEventID, 10, 64); parseErr == nil && custom > 0 {
@@ -626,7 +652,7 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	if err = s.deliverIssueEvent(ctx, workspaceID, actorID, updated, action, eventID, notificationKind, notificationVerb); err != nil {
 		return updated, action, err
 	}
-	if err := s.syncServiceSLAsAfterIssueChange(ctx, actorID, workspaceID, updated, time.Now().UTC()); err != nil {
+	if err := s.syncServiceSLAsAfterIssueChange(ctx, actorID, workspaceID, issue, updated, time.Now().UTC()); err != nil {
 		return nil, nil, err
 	}
 	if updated.Status.ID != issue.Status.ID {
@@ -883,6 +909,12 @@ func (s *Service) AddComment(ctx context.Context, in AddCommentInput) (*models.C
 		return nil, nil, err
 	}
 	if err = s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, 6, "issue_commented", "commented on"); err != nil {
+		return comment, action, err
+	}
+	if err = s.deliverMentions(ctx, in.WorkspaceID, in.ActorID, issue.ID, action, nil, comment.Body, comment); err != nil {
+		return comment, action, err
+	}
+	if err = s.Store.AutowatchIssue(ctx, in.WorkspaceID, in.ActorID, issue.ID); err != nil {
 		return comment, action, err
 	}
 	return comment, action, nil

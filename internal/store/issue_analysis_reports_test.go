@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -88,5 +89,50 @@ func TestCreatedVsResolvedAndResolutionTime(t *testing.T) {
 	}
 	if resolution.AverageSeconds != (6*3600+6*24*3600+48*3600+2*3600)/4 {
 		t.Fatalf("average resolution = %d", resolution.AverageSeconds)
+	}
+
+	recent, err := st.RecentlyCreated(ctx, workspaceID, actorID, projectID, 3, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Work created each day is split by whether it is resolved now.
+	if len(recent.Days) != 3 || recent.Created != 4 || recent.Resolved != 3 ||
+		recent.Days[0].Resolved != 2 || recent.Days[0].Unresolved != 0 || recent.Days[1].Resolved != 0 || recent.Days[1].Unresolved != 1 || recent.Days[2].Resolved != 1 || recent.Days[2].Unresolved != 0 {
+		t.Fatalf("recently created = %+v", recent)
+	}
+
+	age, err := st.AverageAge(ctx, workspaceID, actorID, projectID, 3, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Age is measured at each day's end, and at now for today.
+	type aged struct {
+		unresolved int
+		average    int64
+	}
+	for index, expected := range []aged{{2, (14 + 135) * 3600 / 2}, {2, (38 + 15) * 3600 / 2}, {1, 35 * 3600}} {
+		if index >= len(age.Days) || (aged{age.Days[index].Unresolved, age.Days[index].AverageSeconds}) != expected {
+			t.Fatalf("average age day %d = %+v, want %+v", index, age.Days, expected)
+		}
+	}
+
+	for field, expected := range map[string][]int{"created": {2, 1, 1}, "resolved": {1, 1, 2}, "updated": {0, 0, 0}} {
+		since, err := st.TimeSince(ctx, workspaceID, actorID, projectID, field, 3, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		total := 0
+		for index, count := range expected {
+			total += count
+			if since.Days[index].Count != count {
+				t.Fatalf("time since %s = %+v, want %v", field, since.Days, expected)
+			}
+		}
+		if since.Total != total || since.Field != field {
+			t.Fatalf("time since %s total = %+v", field, since)
+		}
+	}
+	if _, err := st.TimeSince(ctx, workspaceID, actorID, projectID, "duedate", 3, now); !errors.Is(err, ErrDashboardValidation) {
+		t.Fatalf("unknown time since field error = %v", err)
 	}
 }

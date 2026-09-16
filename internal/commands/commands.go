@@ -48,6 +48,9 @@ type CreateIssueInput struct {
 	// seconds; nil leaves one unset.
 	OriginalEstimate  *int64
 	RemainingEstimate *int64
+	// AssetSchemas scopes an Assets object field, by field id, to one Assets
+	// schema: the scope a service request type's form gives it.
+	AssetSchemas map[string]string
 }
 
 // DeleteIssue removes the issue transactionally, then cleans up attachment
@@ -117,7 +120,7 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	}
 	// Jira accepts an option as its id, {"id"} or {"value"}; every check below
 	// sees the option ids a work item stores.
-	if err = s.normalizeOptionFields(ctx, in.WorkspaceID, project.ID, issueType.ID, in.Fields); err != nil {
+	if err = s.normalizeOptionFields(ctx, in.WorkspaceID, project.ID, issueType.ID, in.Fields, in.AssetSchemas); err != nil {
 		return nil, nil, err
 	}
 	if err = s.enforceFieldConfiguration(ctx, in, project.ID, issueType.ID); err != nil {
@@ -271,6 +274,12 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if err = s.deliverIssueEvent(ctx, in.WorkspaceID, in.ActorID, issue, action, eventID, notificationKind, "created"); err != nil {
 		return issue, action, err
 	}
+	if err = s.deliverMentions(ctx, in.WorkspaceID, in.ActorID, issue.ID, action, nil, issue.Description, nil); err != nil {
+		return issue, action, err
+	}
+	if err = s.Store.AutowatchIssue(ctx, in.WorkspaceID, in.ActorID, issue.ID); err != nil {
+		return issue, action, err
+	}
 	if len(triggers.TriggeredWebhookIDs) > 0 || len(triggers.TriggeredAgents) > 0 {
 		triggers.SuppressChangelog, triggers.SuppressEvents = true, true
 		if _, _, err = s.Store.UpdateIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, triggers); err != nil {
@@ -278,6 +287,15 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 		}
 	}
 	return issue, action, nil
+}
+
+// deliverMentions notifies the people a description or comment newly
+// mentions.
+func (s *Service) deliverMentions(ctx context.Context, workspaceID, actorID, issueID string, action *models.Action, previous, document json.RawMessage, comment *models.Comment) error {
+	if action == nil {
+		return nil
+	}
+	return s.Store.DeliverIssueMentions(ctx, workspaceID, actorID, issueID, action.Seq, previous, document, comment)
 }
 
 func (s *Service) deliverIssueEvent(ctx context.Context, workspaceID, actorID string, issue *models.Issue, action *models.Action, eventID int64, kind, verb string) error {
@@ -513,7 +531,24 @@ func (s *Service) enforceCustomFieldContexts(ctx context.Context, workspaceID, p
 // select, account ids for user pickers ({"accountId"}), group ids for group
 // pickers ({"groupId"} or {"name"}), and lists for the multi-value fields, where
 // a single value is taken as a list of one.
-func (s *Service) normalizeOptionFields(ctx context.Context, workspaceID, projectID, issueTypeID string, fields map[string]json.RawMessage) error {
+// workflowActorGroups names the groups a transition's validators can exempt
+// the actor from, by name and by id. Someone the site directory does not hold,
+// such as a portal customer or an app account, belongs to no group: an
+// exemption relaxes a validator, so not knowing the actor's groups keeps the
+// validator applying rather than stopping the transition.
+func workflowActorGroups(ctx context.Context, st *store.Store, workspaceID, actorID string) ([]string, error) {
+	groups, err := st.UserGroups(ctx, workspaceID, actorID)
+	if err != nil {
+		return nil, nil
+	}
+	names := make([]string, 0, len(groups)*2)
+	for _, group := range groups {
+		names = append(names, group.Name, group.ID)
+	}
+	return names, nil
+}
+
+func (s *Service) normalizeOptionFields(ctx context.Context, workspaceID, projectID, issueTypeID string, fields map[string]json.RawMessage, assetSchemas map[string]string) error {
 	if len(fields) == 0 {
 		return nil
 	}
@@ -769,6 +804,37 @@ func (s *Service) normalizeOptionFields(ctx context.Context, workspaceID, projec
 				ids = append(ids, id)
 			}
 			fields[field], _ = json.Marshal(ids)
+		case models.CustomFieldAsset:
+			resolve := func(item json.RawMessage) (string, error) {
+				ref, _, ok := scalar(item, "id", "objectKey")
+				if !ok || ref == "" {
+					return "", fmt.Errorf("%s must name an Assets object by id or objectKey", field)
+				}
+				objectID, _, err := s.Store.ServiceAssetObjectInProject(ctx, workspaceID, projectID, ref, assetSchemas[field])
+				if err != nil {
+					return "", fmt.Errorf("%s names the Assets object %q, which is not in this service project", field, ref)
+				}
+				return objectID, nil
+			}
+			// A field configured to hold several objects takes a list, as
+			// Jira's Assets field does with its multiple cardinality.
+			if len(raw) > 0 && raw[0] == '[' {
+				ids := []string{}
+				for _, item := range list(raw) {
+					id, err := resolve(item)
+					if err != nil {
+						return err
+					}
+					ids = append(ids, id)
+				}
+				fields[field], _ = json.Marshal(ids)
+				continue
+			}
+			objectID, err := resolve(raw)
+			if err != nil {
+				return err
+			}
+			fields[field], _ = json.Marshal(objectID)
 		case models.CustomFieldLabels:
 			labels := []string{}
 			for _, item := range list(raw) {
@@ -819,6 +885,10 @@ func (s *Service) runInitialTransition(ctx context.Context, in CreateIssueInput,
 		return created, err
 	}
 	context.Permissions = permissions
+	context.ActorGroups, err = workflowActorGroups(ctx, s.Store, in.WorkspaceID, in.ActorID)
+	if err != nil {
+		return created, err
+	}
 	if err = initial.ValidateRules(context); err != nil {
 		return created, err
 	}

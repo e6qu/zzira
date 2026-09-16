@@ -45,7 +45,7 @@ func (s *Store) RegisterDynamicAppModules(ctx context.Context, installation *mod
 			}
 		case "webPanels", "webItems", "jiraIssueGlances", "jiraIssueContexts", "jiraIssueContents":
 			value := module.Module
-			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,$3,$4,$5,$6,$7,$8,true)`, installation.ID, value.Key, value.Type, value.Location, value.Title, value.Body, value.RemoteURL, 10000+count+position); err != nil {
+			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic,conditions) VALUES($1,$2,$3,$4,$5,$6,$7,$8,true,$9)`, installation.ID, value.Key, value.Type, value.Location, value.Title, value.Body, value.RemoteURL, 10000+count+position, moduleConditions(value.Conditions)); err != nil {
 				return err
 			}
 		case "webhooks":
@@ -154,9 +154,10 @@ func restoreDynamicAppModules(ctx context.Context, tx pgx.Tx, installationID str
 	rows.Close()
 	for position, module := range stored {
 		var input struct {
-			URL      string `json:"url"`
-			Location string `json:"location"`
-			Name     struct {
+			URL        string          `json:"url"`
+			Conditions json.RawMessage `json:"conditions"`
+			Location   string          `json:"location"`
+			Name       struct {
 				Value string `json:"value"`
 			} `json:"name"`
 		}
@@ -170,11 +171,11 @@ func restoreDynamicAppModules(ctx context.Context, tx pgx.Tx, installationID str
 			}
 		case "jiraIssueGlances", "jiraIssueContexts", "jiraIssueContents":
 			value := module.translated.Module
-			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,$3,$4,$5,$6,$7,$8,true)`, installationID, module.key, value.Type, value.Location, value.Title, value.Body, value.RemoteURL, 10000+position); err != nil {
+			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic,conditions) VALUES($1,$2,$3,$4,$5,$6,$7,$8,true,$9)`, installationID, module.key, value.Type, value.Location, value.Title, value.Body, value.RemoteURL, 10000+position, moduleConditions(value.Conditions)); err != nil {
 				return err
 			}
 		case "webPanels":
-			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,'jira:issuePanel','jira.issue.view',$3,'',$4,$5,true)`, installationID, module.key, input.Name.Value, input.URL, 10000+position); err != nil {
+			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic,conditions) VALUES($1,$2,'jira:issuePanel','jira.issue.view',$3,'',$4,$5,true,$6)`, installationID, module.key, input.Name.Value, input.URL, 10000+position, moduleConditions(input.Conditions)); err != nil {
 				return err
 			}
 		case "webItems":
@@ -187,7 +188,7 @@ func restoreDynamicAppModules(ctx context.Context, tx pgx.Tx, installationID str
 			default:
 				return fmt.Errorf("stored dynamic web item location %q is unsupported", input.Location)
 			}
-			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic) VALUES($1,$2,$3,$4,$5,'',$6,$7,true)`, installationID, module.key, moduleType, location, input.Name.Value, input.URL, 10000+position); err != nil {
+			if _, err := tx.Exec(ctx, `INSERT INTO app_modules(installation_id,module_key,module_type,location,title,body,remote_url,position,dynamic,conditions) VALUES($1,$2,$3,$4,$5,'',$6,$7,true,$8)`, installationID, module.key, moduleType, location, input.Name.Value, input.URL, 10000+position, moduleConditions(input.Conditions)); err != nil {
 				return err
 			}
 		case "webhooks":

@@ -83,3 +83,35 @@ func nullableTime(moment time.Time) any {
 	}
 	return moment
 }
+
+// WikiViewCount is how often content was viewed, and by how many people.
+type WikiViewCount struct {
+	Views, Viewers int
+}
+
+// WikiContentViewCounts counts the views and distinct viewers of the given
+// content of one type since from, or ever when from is zero. Callers pass only
+// content the reader can see.
+func (s *Store) WikiContentViewCounts(ctx context.Context, ws, contentType string, ids []string, from time.Time) (map[string]WikiViewCount, error) {
+	counts := map[string]WikiViewCount{}
+	if len(ids) == 0 {
+		return counts, nil
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT content_id::text,count(*),count(DISTINCT user_id) FROM wiki_content_views
+		WHERE workspace_id=$1 AND content_type=$2 AND content_id = ANY($3::text[]::bigint[])
+		AND ($4::timestamptz IS NULL OR viewed_at >= $4)
+		GROUP BY content_id`, ws, contentType, ids, nullableTime(from))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var count WikiViewCount
+		if err := rows.Scan(&id, &count.Views, &count.Viewers); err != nil {
+			return nil, err
+		}
+		counts[id] = count
+	}
+	return counts, rows.Err()
+}

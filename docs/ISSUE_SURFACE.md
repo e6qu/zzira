@@ -69,6 +69,10 @@ issue is 400; an unknown one is 404. Changes need *Link issues* and *Edit issues
 
 ## Watchers and assignment
 
+Creating or commenting on a work item makes the member a watcher unless their
+Autowatch preference or the site's watching switch is off, and a mention in a
+description or comment notifies the person mentioned (see
+[NOTIFICATION_SCHEMES.md](NOTIFICATION_SCHEMES.md)).
 `GET /issue/{key}/watchers` lists watchers to people with *View voters and
 watchers*; everyone sees `watchCount` and `isWatching`. `POST` with no body
 watches for the caller; naming someone else needs *Manage watchers*, and that

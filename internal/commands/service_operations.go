@@ -115,8 +115,8 @@ func (s *Service) UpdateServiceOperationsProfile(ctx context.Context, actorID, w
 func (s *Service) CreateServiceIncidentUpdate(ctx context.Context, actorID, workspaceID, issueIDOrKey, audience, message string) (*models.ServiceIncidentUpdate, error) {
 	audience = strings.TrimSpace(audience)
 	message = strings.TrimSpace(message)
-	if audience != "public" && audience != "internal" {
-		return nil, fmt.Errorf("incident update audience must be public or internal")
+	if audience != "public" && audience != "internal" && audience != "stakeholders" {
+		return nil, fmt.Errorf("incident update audience must be public, internal or stakeholders")
 	}
 	if message == "" || len(message) > 10000 {
 		return nil, fmt.Errorf("incident update must contain 1 to 10000 characters")
@@ -137,8 +137,94 @@ func (s *Service) CreateServiceIncidentUpdate(ctx context.Context, actorID, work
 	if err != nil {
 		return nil, err
 	}
+	if audience == "stakeholders" {
+		// Stakeholder updates stay with the response team on the request and
+		// reach stakeholders by email.
+		if err := s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_incident_update", "published a stakeholder update on "+request.Issue.Key, true); err != nil {
+			return nil, err
+		}
+		if err := s.emailServiceIncidentStakeholders(ctx, actorID, workspaceID, request, message); err != nil {
+			return nil, err
+		}
+		return update, nil
+	}
 	if err := s.notifyServiceRequestSubscribers(ctx, actorID, workspaceID, request, "service_incident_update", "published a "+audience+" incident update on "+request.Issue.Key, audience == "internal"); err != nil {
 		return nil, err
 	}
 	return update, nil
+}
+
+// emailServiceIncidentStakeholders sends a stakeholder update to every
+// stakeholder address once.
+func (s *Service) emailServiceIncidentStakeholders(ctx context.Context, actorID, workspaceID string, request *models.ServiceRequest, message string) error {
+	actor, err := s.Store.UserByID(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	emails, err := s.Store.ServiceIncidentStakeholderEmails(ctx, request.Issue.ID)
+	if err != nil {
+		return err
+	}
+	subject := "[" + request.Issue.Key + "] Stakeholder update: " + request.Issue.Summary
+	body := "Stakeholder update on " + request.Issue.Key + " — " + request.Issue.Summary + "\n\n" + message + "\n\nFrom " + actor.DisplayName
+	for _, email := range emails {
+		if err := s.Store.QueueEmail(ctx, workspaceID, email, subject, body); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// agentServiceRequest finds a request its agent is changing.
+func (s *Service) agentServiceRequest(ctx context.Context, actorID, workspaceID, issueIDOrKey string) (*models.ServiceRequest, error) {
+	canManage, err := s.Store.CanManageServiceRequest(ctx, workspaceID, actorID, issueIDOrKey)
+	if err != nil || !canManage {
+		return nil, fmt.Errorf("service agent access is required")
+	}
+	request, err := s.Store.ServiceRequest(ctx, workspaceID, actorID, issueIDOrKey, true)
+	if err != nil {
+		return nil, fmt.Errorf("request does not exist")
+	}
+	return request, nil
+}
+
+// SetServiceIncidentRole gives a major incident role to an agent, or clears
+// it, and tells the new holder.
+func (s *Service) SetServiceIncidentRole(ctx context.Context, actorID, workspaceID, issueIDOrKey, role, userID string) error {
+	request, err := s.agentServiceRequest(ctx, actorID, workspaceID, issueIDOrKey)
+	if err != nil {
+		return err
+	}
+	userID = strings.TrimSpace(userID)
+	if err := s.Store.SetServiceIncidentRole(ctx, workspaceID, actorID, request.Issue.ID, role, userID); err != nil {
+		return err
+	}
+	if userID == "" {
+		return nil
+	}
+	for _, definition := range models.ServiceIncidentRoleDefinitions {
+		if definition.Key == role {
+			return s.notifyServiceRequestUsers(ctx, actorID, workspaceID, request, []string{userID}, "service_incident_role", "made you "+definition.Name+" on "+request.Issue.Key, true)
+		}
+	}
+	return nil
+}
+
+// AddServiceIncidentStakeholder adds a site member or an email address as a
+// stakeholder of a major incident.
+func (s *Service) AddServiceIncidentStakeholder(ctx context.Context, actorID, workspaceID, issueIDOrKey, userID, email string) error {
+	request, err := s.agentServiceRequest(ctx, actorID, workspaceID, issueIDOrKey)
+	if err != nil {
+		return err
+	}
+	return s.Store.AddServiceIncidentStakeholder(ctx, workspaceID, actorID, request.Issue.ID, strings.TrimSpace(userID), email)
+}
+
+// RemoveServiceIncidentStakeholder removes a stakeholder from a request.
+func (s *Service) RemoveServiceIncidentStakeholder(ctx context.Context, actorID, workspaceID, issueIDOrKey, stakeholderID string) error {
+	request, err := s.agentServiceRequest(ctx, actorID, workspaceID, issueIDOrKey)
+	if err != nil {
+		return err
+	}
+	return s.Store.RemoveServiceIncidentStakeholder(ctx, workspaceID, actorID, request.Issue.ID, stakeholderID)
 }

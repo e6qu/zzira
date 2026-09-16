@@ -1,5 +1,14 @@
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
+import * as fs from 'fs';
+import * as path from 'path';
+
+function apiAuthHeader(): string {
+  const email = 'demo@zzira.dev';
+  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
+  const token = process.env.ZZIRA_API_TOKEN ?? tokens[email];
+  return 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
+}
 
 async function login(page: Page, email = 'demo@zzira.dev', password = 'demo1234') {
   await page.goto('/login');
@@ -22,6 +31,10 @@ async function accessible(page: Page) {
 
 test('admin creates, runs, audits, disables and deletes scheduled automation', async ({ page, browser }) => {
   await login(page);
+  // Own the work item the rule runs on instead of relying on earlier specs.
+  const fixture = await page.request.post('/rest/api/3/issue', { headers: { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' }, data: { fields: { project: { key: 'ZZ' }, summary: `Scheduled rule work ${Date.now()}`, issuetype: { name: 'Task' } } } });
+  expect(fixture.status()).toBe(201);
+  const fixtureKey = (await fixture.json()).key as string;
   await page.getByRole('link', { name: 'Automation', exact: true }).click();
   await expect(page).toHaveURL('/settings/automation');
   await expect(page.getByRole('heading', { name: 'Automation rules', exact: true })).toBeVisible();
@@ -31,10 +44,10 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
   const name = `E2E schedule ${Date.now()}`;
   const label = `scheduled-${Date.now()}`;
   await page.getByLabel('Rule name').fill(name);
-  await page.getByLabel('Description').fill('Marks the first demo work item through the durable runner');
+  await page.getByLabel('Description').fill('Marks a demo work item through the durable runner');
   await page.getByLabel('Run every').fill('60');
   await page.getByLabel('Timezone').fill('Europe/Bucharest');
-  await page.getByLabel('JQL query').fill('key = ZZ-1');
+  await page.getByLabel('JQL query').fill(`key = ${fixtureKey}`);
   await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
   await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(label);
   await accessible(page);
@@ -49,7 +62,7 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
     return await page.locator('.automation-audit tbody').innerText();
   }, { timeout: 15_000 }).toContain('SUCCESS');
   await expect(page.locator('.automation-audit tbody')).toContainText('1');
-  const issueResponse = await page.request.get('/rest/api/3/issue/ZZ-1');
+  const issueResponse = await page.request.get(`/rest/api/3/issue/${fixtureKey}`);
   expect(issueResponse.ok()).toBe(true);
   const issue = await issueResponse.json();
   expect(issue.fields.labels).toContain(label);
@@ -79,4 +92,270 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
   await expect(page.getByRole('link', { name, exact: true })).toHaveCount(0);
+});
+
+
+test('admin builds an event rule with a condition and smart values that runs when work is commented', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const created = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary: `Event rule work ${stamp}`, issuetype: { name: 'Task' } } } });
+  expect(created.status()).toBe(201);
+  const key = (await created.json()).key as string;
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E event ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('jira.issue.event.trigger:commented');
+  await page.getByLabel('JQL query').fill(`key = ${key}`);
+  await page.getByRole('combobox', { name: 'Condition field', exact: true }).selectOption('key');
+  await page.getByRole('combobox', { name: 'Comparison', exact: true }).selectOption('IS_ONE_OF');
+  await page.getByLabel('Compared with', { exact: true }).fill(`${key}, ZZ-0`);
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('commented-{{issue.key}}');
+  await page.getByRole('combobox', { name: 'Additional action', exact: true }).selectOption('jira.issue.comment');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).nth(1).fill('Thanks {{initiator.displayName}}, {{issue.key}} is {{issue.status.name}}');
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  // The editor shows the saved trigger, condition and actions.
+  await expect(page.getByRole('combobox', { name: 'Trigger', exact: true })).toHaveValue('jira.issue.event.trigger:commented');
+  await expect(page.getByRole('combobox', { name: 'Condition field', exact: true }).first()).toHaveValue('key');
+  await expect(page.getByRole('combobox', { name: 'Comparison', exact: true }).first()).toHaveValue('IS_ONE_OF');
+  await expect(page.getByLabel('Compared with', { exact: true }).first()).toHaveValue(`${key}, ZZ-0`);
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).nth(1)).toHaveValue('jira.issue.comment');
+  await page.goto('/settings/automation');
+  await expect(page.getByRole('article').filter({ hasText: name })).toContainText('Work item commented');
+
+  const comment = await page.request.post(`/rest/api/3/issue/${key}/comment`, { headers, data: { body: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Please take a look' }] }] } } });
+  expect(comment.status()).toBe(201);
+  await expect.poll(async () => (await (await page.request.get(`/rest/api/3/issue/${key}`, { headers })).json()).fields.labels, { timeout: 15_000 }).toContain(`commented-${key}`);
+  const comments = await (await page.request.get(`/rest/api/3/issue/${key}/comment`, { headers })).json();
+  const texts = comments.comments.map((item: any) => JSON.stringify(item.body));
+  // The rule's own comment does not start it again.
+  expect(texts.filter((text: string) => text.includes(`Thanks Demo User, ${key} is To Do`))).toHaveLength(1);
+  await page.goto(ruleURL);
+  await expect(page.locator('.automation-audit tbody')).toContainText('SUCCESS');
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});
+
+test('admin schedules a rule with a Quartz cron expression', async ({ page }) => {
+  await login(page);
+  const name = `E2E cron ${Date.now()}`;
+  const fill = async (expression: string) => {
+    await page.goto('/settings/automation/new');
+    await page.getByLabel('Rule name').fill(name);
+    await page.getByLabel('Timezone').fill('Europe/Bucharest');
+    await page.getByLabel('Cron expression').fill(expression);
+    await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
+    await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('weekday-morning');
+  };
+  // Quartz features the scheduler does not run are refused.
+  await fill('0 0 9 ? * MON#2');
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page.locator('body')).toContainText('L, W and # are not supported');
+
+  await fill('0 0 9 ? * MON-FRI');
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  await expect(page.getByLabel('Cron expression')).toHaveValue('0 0 9 ? * MON-FRI');
+  await expect(page.getByRole('combobox', { name: 'Trigger', exact: true })).toHaveValue('jira.jql.scheduled');
+  await page.goto('/settings/automation');
+  const card = page.getByRole('article').filter({ hasText: name });
+  await expect(card).toContainText('Scheduled · Cron 0 0 9 ? * MON-FRI in Europe/Bucharest · Next run');
+
+  await page.goto(ruleURL);
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});
+
+test('the editor keeps a branched rule it cannot show by turning saving off', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const tenant = await (await page.request.get('/_edge/tenant_info')).json();
+  const base = `/gateway/api/automation/public/jira/${tenant.cloudId}/rest/v1/rule`;
+  const me = await (await page.request.get('/rest/api/3/myself', { headers })).json();
+  const name = `E2E branch ${Date.now()}`;
+  const created = await page.request.post(base, { headers, data: { rule: {
+    name, state: 'ENABLED', actor: { type: 'ACCOUNT_ID', actor: me.accountId },
+    trigger: { component: 'TRIGGER', type: 'jira.issue.event.trigger:created', schemaVersion: 1, value: { jql: 'project = ZZ' } },
+    components: [{ component: 'BRANCH', type: 'jira.issue.related', schemaVersion: 1, value: { relatedType: 'sub-tasks' },
+      // A condition after a branch's action is something the editor does not show,
+      // because saving it as conditions then actions would change what it does.
+      children: [{ component: 'ACTION', type: 'jira.issue.add-label', schemaVersion: 1, value: { label: 'from-{{triggerIssue.key}}' } },
+        { component: 'CONDITION', type: 'jira.jql.condition', schemaVersion: 1, value: { jql: 'status != Done' } }] }],
+  }, connections: [] } });
+  expect(created.status(), await created.text()).toBe(201);
+  const uuid = (await created.json()).ruleUuid as string;
+
+  await page.goto(`/settings/automation/${uuid}`);
+  await expect(page.getByRole('note')).toContainText('The editor does not show its branches, so saving here is turned off');
+  await expect(page.getByRole('button', { name: 'Save rule', exact: true })).toBeDisabled();
+  await expect(page.getByRole('combobox', { name: 'Trigger', exact: true })).toHaveValue('jira.issue.event.trigger:created');
+  await accessible(page);
+  // Saving is refused by the server too, so the branch survives.
+  // A form submitted from this page carries its origin, which session posts require.
+  const refused = await page.request.post(`/settings/automation/${uuid}`, { headers: { Origin: new URL(page.url()).origin }, form: { operation: 'save', name, trigger_type: 'jira.issue.event.trigger:created', action_type: 'jira.issue.add-label', action_value: 'flattened' } });
+  expect(refused.status()).toBe(400);
+  expect(await refused.text()).toContain('the editor does not show its branches');
+  const rule = await (await page.request.get(`${base}/${uuid}`, { headers })).json();
+  expect(rule.rule.components[0].component).toBe('BRANCH');
+
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});
+
+test('admin builds a rule with a JQL condition and a branch for linked work in the editor', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const issue = async (summary: string) => {
+    const created = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary, issuetype: { name: 'Task' } } } });
+    expect(created.status()).toBe(201);
+    return (await created.json()).key as string;
+  };
+  const blocker = await issue(`Blocker ${stamp}`);
+  const blocked = await issue(`Blocked ${stamp}`);
+  const link = await page.request.post('/rest/api/3/issueLink', { headers, data: { type: { name: 'Blocks' }, inwardIssue: { key: blocker }, outwardIssue: { key: blocked } } });
+  expect(link.status(), await link.text()).toBe(201);
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E branch editor ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByLabel('JQL query').fill(`key = ${blocker}`);
+  await page.getByRole('combobox', { name: 'Condition field', exact: true }).selectOption('jql');
+  await page.getByLabel('Compared with', { exact: true }).fill('status != Done');
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(`blocker-${stamp}`);
+  await page.getByRole('combobox', { name: 'Related work items', exact: true }).selectOption('linked');
+  await page.getByLabel('Link types').fill('Blocks');
+  // Only related work that is not done is labelled.
+  await page.getByRole('combobox', { name: 'Branch condition field', exact: true }).selectOption('jql');
+  await page.getByLabel('Branch compared with').fill('status != Done');
+  await page.getByRole('combobox', { name: 'Additional branch action', exact: true }).selectOption('jira.issue.add-label');
+  await page.getByRole('combobox', { name: 'Branch value', exact: true }).first().fill('blocked-by-{{triggerIssue.key}}');
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  // The editor shows the whole rule, so saving stays available.
+  await expect(page.getByRole('note')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save rule', exact: true })).toBeEnabled();
+  await expect(page.getByRole('combobox', { name: 'Condition field', exact: true }).first()).toHaveValue('jql');
+  await expect(page.getByRole('combobox', { name: 'Related work items', exact: true })).toHaveValue('linked');
+  await expect(page.getByLabel('Link types')).toHaveValue('Blocks');
+  await expect(page.getByRole('combobox', { name: 'Branch action', exact: true })).toHaveValue('jira.issue.add-label');
+  await expect(page.getByRole('combobox', { name: 'Branch condition field', exact: true }).first()).toHaveValue('jql');
+  await expect(page.getByLabel('Branch compared with').first()).toHaveValue('status != Done');
+
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => (await (await page.request.get(`/rest/api/3/issue/${blocked}`, { headers })).json()).fields.labels, { timeout: 15_000 }).toContain(`blocked-by-${blocker}`);
+  expect((await (await page.request.get(`/rest/api/3/issue/${blocker}`, { headers })).json()).fields.labels).toContain(`blocker-${stamp}`);
+
+  // Saving again from the editor keeps the branch.
+  await page.goto(ruleURL);
+  await page.getByRole('button', { name: 'Save rule', exact: true }).click();
+  await expect(page).toHaveURL(ruleURL);
+  await expect(page.getByRole('combobox', { name: 'Related work items', exact: true })).toHaveValue('linked');
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});
+
+test('admin creates a rule from a template in the gallery', async ({ page }) => {
+  await login(page);
+  await page.goto('/settings/automation');
+  await page.getByRole('link', { name: 'Browse templates', exact: true }).click();
+  await expect(page).toHaveURL('/settings/automation/templates');
+  await expect(page.getByRole('heading', { name: 'Rule templates', level: 1 })).toBeVisible();
+  const card = page.getByRole('region', { name: 'Assign unassigned work', exact: true });
+  await expect(card.getByRole('list', { name: 'Assign unassigned work categories' })).toContainText('Scheduled');
+  const name = `E2E template ${Date.now()}`;
+  const fill = async () => {
+    await card.getByLabel('Rule name').fill(name);
+    await card.getByLabel('Rule home').selectOption({ label: 'ZZIRA Demo (ZZ)' });
+    await card.getByLabel('Assignee').selectOption({ label: 'Demo User' });
+    await card.getByLabel('State').selectOption('DISABLED');
+  };
+  await fill();
+  await accessible(page);
+  await card.getByRole('button', { name: 'Create rule from Assign unassigned work' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  // The template's trigger, scope and action open in the editor.
+  await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible();
+  await expect(page.getByText('DISABLED', { exact: true }).first()).toBeVisible();
+  await expect(page.getByLabel('JQL query')).toHaveValue('assignee is EMPTY AND statusCategory != Done');
+  await expect(page.getByLabel('Run every')).toHaveValue('60');
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true })).toHaveValue('jira.issue.assign');
+  await expect(page.getByRole('button', { name: 'Save rule', exact: true })).toBeEnabled();
+
+  // A second rule with the same name is refused with the form kept.
+  await page.goto('/settings/automation/templates');
+  await fill();
+  await card.getByRole('button', { name: 'Create rule from Assign unassigned work' }).click();
+  await expect(page.getByRole('alert')).toHaveText('A rule with this name already exists.');
+  await expect(card.getByLabel('Rule name')).toHaveValue(name);
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  await page.goto(ruleURL);
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});
+
+test('admin builds a rule that links one work item to another', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const issue = async (summary: string) => {
+    const created = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary, issuetype: { name: 'Task' } } } });
+    expect(created.status()).toBe(201);
+    return (await created.json()).key as string;
+  };
+  const source = await issue(`Link source ${stamp}`);
+  const target = await issue(`Link target ${stamp}`);
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E link ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByLabel('JQL query').fill(`key = ${source}`);
+  // The editor offers the site's link types, so the action is chosen by name.
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption({ label: 'Link: this work item blocks' });
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(target);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+
+  // The editor shows the saved link action, so saving stays available.
+  await expect(page.getByRole('note')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save rule', exact: true })).toBeEnabled();
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue(/^jira\.issue\.link:/);
+  await expect(page.getByRole('combobox', { name: 'Value', exact: true }).first()).toHaveValue(target);
+
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => {
+    const response = await page.request.get(`/rest/api/3/issue/${source}?fields=issuelinks`, { headers });
+    const body = await response.json();
+    return JSON.stringify(body.fields?.issuelinks ?? []);
+  }, { timeout: 15_000 }).toContain(target);
+
+  await page.goto(ruleURL);
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
 });

@@ -79,18 +79,29 @@ type wikiData struct {
 	SpaceName, SpaceKey, SpaceDescription string
 	Private                               bool
 	WatchingSpace                         bool
-	WatchingPage                          bool
-	WatchingBlogPost                      bool
-	WatchedLabels                         map[string]bool
-	MoveTargets                           []wikiMoveGroup
-	Starred                               []*models.WikiPage
-	PageFavourite                         bool
-	PageOwnerName                         string
-	OwnerChoices                          []*models.User
-	Draft                                 *store.WikiContentDraft
-	CanPurge                              bool
-	ChildPageCount                        int
-	ArchivedChildCount                    int
+	// SpaceTemplates, SiteTemplates and BlueprintTemplates are what a space's
+	// templates page lists, and EditingTemplate the space template being edited.
+	SpaceTemplates, SiteTemplates, BlueprintTemplates []wikiTemplateView
+	EditingTemplate                                   *wikiTemplateView
+	// Analytics are a space's most viewed content over AnalyticsDays.
+	Analytics                 []wikiAnalyticsRow
+	AnalyticsDays             int
+	AnalyticsWindows          []int
+	TotalViews, ViewedContent int
+	// SpaceExports are the reader's latest exports of the space.
+	SpaceExports       []store.WikiSpaceExportTask
+	WatchingPage       bool
+	WatchingBlogPost   bool
+	WatchedLabels      map[string]bool
+	MoveTargets        []wikiMoveGroup
+	Starred            []*models.WikiPage
+	PageFavourite      bool
+	PageOwnerName      string
+	OwnerChoices       []*models.User
+	Draft              *store.WikiContentDraft
+	CanPurge           bool
+	ChildPageCount     int
+	ArchivedChildCount int
 }
 
 // wikiMoveGroup is one space's worth of pages a page can be moved beside or
@@ -425,7 +436,14 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{ContentStateSettings: stateSettings, Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "")
+	exports := []store.WikiSpaceExportTask{}
+	if canManageSpace {
+		if exports, err = h.Store.WikiSpaceExportTasks(r.Context(), ws, user.ID, space.ID); err != nil {
+			http.Error(w, "Could not load space exports.", 500)
+			return
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{ContentStateSettings: stateSettings, SpaceExports: exports, Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "")
 }
 
 // WikiSpaceContentStateSettings saves whether the space's pages carry content
@@ -1321,6 +1339,15 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 	}
 	page := &models.WikiPage{SpaceID: space.ID, ParentID: r.URL.Query().Get("parent"), Status: "current", Body: models.WikiBody{Representation: "storage"}, Version: models.WikiVersion{Number: 1}}
 	canEdit := true
+	// A new page can start from a page template the space can use.
+	if templateID := r.URL.Query().Get("template"); templateID != "" && r.PathValue("page") == "" && r.Method != http.MethodPost {
+		template, templateErr := h.Store.WikiTemplate(r.Context(), ws, user.ID, templateID)
+		if templateErr != nil || template.TemplateType != "page" || (template.SpaceKey != "" && template.SpaceKey != space.Key) {
+			http.NotFound(w, r)
+			return
+		}
+		page.Body.Value = template.Body
+	}
 	if id := r.PathValue("page"); id != "" {
 		page, err = h.Store.WikiPage(r.Context(), ws, user.ID, id)
 		if err != nil {
@@ -1484,6 +1511,7 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 				http.Error(w, "Could not load page apps.", 500)
 				return
 			}
+			data.AppByline = appModulesShown(data.AppByline, h.appConditionFactsFor(r.Context(), ws, user, nil, nil))
 			data.PageProperties, err = h.Store.WikiPageProperties(r.Context(), ws, user.ID, page.ID, "")
 			if err != nil {
 				http.Error(w, "Could not load page properties.", 500)
