@@ -173,6 +173,9 @@ func (h *Handler) AutomationCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body, err := automationPayload(r)
+	if err == nil {
+		err = h.validateAutomationLinkTypes(r, workspaceID, body)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -233,7 +236,9 @@ func (h *Handler) AutomationUpdate(w http.ResponseWriter, r *http.Request) {
 		} else if missing := automationEditorUnsupported(existing.Payload); missing != "" {
 			err = fmt.Errorf("the editor does not show %s; change this rule through the Automation API", missing)
 		} else if body, err = automationPayload(r); err == nil {
-			err = h.Automation.UpdateRule(r.Context(), workspaceID, h.currentUser(r).ID, uuid, body)
+			if err = h.validateAutomationLinkTypes(r, workspaceID, body); err == nil {
+				err = h.Automation.UpdateRule(r.Context(), workspaceID, h.currentUser(r).ID, uuid, body)
+			}
 		}
 	default:
 		err = fmt.Errorf("unknown operation")
@@ -263,8 +268,16 @@ func (h *Handler) automationEditorData(r *http.Request, workspaceID string, rule
 	if err != nil {
 		return automationEditorData{}, err
 	}
+	linkTypes, err := h.Store.LinkTypes(r.Context(), workspaceID)
+	if err != nil {
+		return automationEditorData{}, err
+	}
+	actionTypes := append([]automationOption{}, automationActionTypes...)
+	for _, linkType := range linkTypes {
+		actionTypes = append(actionTypes, automationOption{"jira.issue.link:" + linkType.ID, "Link: this work item " + linkType.Outward})
+	}
 	data := automationEditorData{Rule: rule, Members: members, Statuses: statuses, CloudID: cloudID,
-		Triggers: automationTriggers, ActionTypes: automationActionTypes, ConditionFields: automationConditionFields, ConditionOperators: automationConditionOperators,
+		Triggers: automationTriggers, ActionTypes: actionTypes, ConditionFields: automationConditionFields, ConditionOperators: automationConditionOperators,
 		RelatedTypes: automationRelatedTypes}
 	if rule == nil {
 		data.Trigger = automationTriggerView{Type: "jira.jql.scheduled"}
@@ -298,6 +311,48 @@ func (h *Handler) automationEditorData(r *http.Request, workspaceID string, rule
 	data.Branch = parseAutomationBranch(rule.Payload)
 	data.Branch.Conditions = append(data.Branch.Conditions, automationConditionView{})
 	return data, nil
+}
+
+// validateAutomationLinkTypes refuses a rule naming a link type the site does
+// not hold, so a link action is checked when the rule is saved rather than
+// when it next runs.
+func (h *Handler) validateAutomationLinkTypes(r *http.Request, workspaceID string, body json.RawMessage) error {
+	var rule struct {
+		Components []automationComponentJSON `json:"components"`
+	}
+	if json.Unmarshal(body, &rule) != nil {
+		return nil
+	}
+	named := map[string]bool{}
+	var collect func(components []automationComponentJSON)
+	collect = func(components []automationComponentJSON) {
+		for _, component := range components {
+			if component.Type == "jira.issue.link" {
+				var fields map[string]string
+				automationComponentValue(component.Value, &fields)
+				named[fields["linkTypeId"]] = true
+			}
+			collect(component.Children)
+		}
+	}
+	collect(rule.Components)
+	if len(named) == 0 {
+		return nil
+	}
+	linkTypes, err := h.Store.LinkTypes(r.Context(), workspaceID)
+	if err != nil {
+		return err
+	}
+	held := map[string]bool{}
+	for _, linkType := range linkTypes {
+		held[linkType.ID] = true
+	}
+	for id := range named {
+		if !held[id] {
+			return fmt.Errorf("a link action names a link type this site does not hold")
+		}
+	}
+	return nil
 }
 
 func automationPayload(r *http.Request) (json.RawMessage, error) {
@@ -450,6 +505,15 @@ func automationFormActions(types, values []string) ([]map[string]any, error) {
 			return nil, fmt.Errorf("every action needs a value")
 		}
 		var actionValue map[string]string
+		// A link action names its link type in the action, as an edit names
+		// the field it sets.
+		if linkTypeID := strings.TrimPrefix(actionType, "jira.issue.link:"); linkTypeID != actionType && strings.TrimSpace(linkTypeID) != "" {
+			components = append(components, map[string]any{
+				"component": "ACTION", "schemaVersion": 1, "type": "jira.issue.link",
+				"value": map[string]string{"linkTypeId": linkTypeID, "issueKey": value},
+			})
+			continue
+		}
 		switch actionType {
 		case "jira.issue.add-label":
 			actionValue = map[string]string{"label": value}
@@ -506,7 +570,7 @@ func automationEditorUnsupported(payload json.RawMessage) string {
 		return "its trigger"
 	}
 	editableAction := func(component automationComponentJSON) bool {
-		return (component.Component == "" || component.Component == "ACTION") && (component.Type == "jira.issue.edit" || automationOptionName(automationActionTypes, component.Type) != "")
+		return (component.Component == "" || component.Component == "ACTION") && (component.Type == "jira.issue.edit" || component.Type == "jira.issue.link" || automationOptionName(automationActionTypes, component.Type) != "")
 	}
 	for index, component := range rule.Components {
 		switch component.Component {
@@ -633,6 +697,8 @@ func automationActionViews(components []automationComponentJSON) []automationAct
 			view.Value = fields["comment"]
 		case "jira.issue.edit":
 			view.Type, view.Value = "jira.issue.edit:"+fields["field"], fields["value"]
+		case "jira.issue.link":
+			view.Type, view.Value = "jira.issue.link:"+fields["linkTypeId"], fields["issueKey"]
 		}
 		actions = append(actions, view)
 	}

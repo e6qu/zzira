@@ -366,7 +366,7 @@ func validateExecutionActor(payload json.RawMessage, actorID string) error {
 
 // Actions and conditions the runner executes.
 var (
-	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true}
+	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true}
 	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true}
 )
 
@@ -586,6 +586,45 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 			}
 		}
 		return false, fmt.Errorf("no workflow transition from %s to status %s", issue.Status.Name, value.StatusID)
+	case "jira.issue.link":
+		var value struct {
+			LinkTypeID string `json:"linkTypeId"`
+			IssueKey   string `json:"issueKey"`
+		}
+		if err := json.Unmarshal(valueRaw, &value); err != nil || strings.TrimSpace(value.LinkTypeID) == "" || strings.TrimSpace(value.IssueKey) == "" {
+			return false, errors.New("link action requires value.linkTypeId and value.issueKey")
+		}
+		key, err := render(value.IssueKey)
+		if err != nil {
+			return false, err
+		}
+		if key = strings.TrimSpace(key); key == "" {
+			return false, errors.New("link action rendered an empty work item key")
+		}
+		other, err := r.Service.Store.IssueByIDOrKey(ctx, run.WorkspaceID, key)
+		if err != nil {
+			return false, fmt.Errorf("link action names %s, which is not a work item of this site", key)
+		}
+		if other.ID == issue.ID {
+			return false, nil
+		}
+		// The link the rule names already holding means there is nothing to do.
+		links, err := r.Service.Store.LinksByIssue(ctx, issue.ID)
+		if err != nil {
+			return false, err
+		}
+		for _, link := range links {
+			if link.TypeID != value.LinkTypeID {
+				continue
+			}
+			if (link.InwardID == issue.ID && link.OutwardID == other.ID) || (link.OutwardID == issue.ID && link.InwardID == other.ID) {
+				return false, nil
+			}
+		}
+		if _, _, err := r.Service.Store.CreateIssueLink(ctx, run.ActorID, run.WorkspaceID, value.LinkTypeID, other.ID, issue.ID); err != nil {
+			return false, err
+		}
+		return true, nil
 	case "jira.issue.comment":
 		var value struct {
 			Comment string `json:"comment"`

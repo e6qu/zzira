@@ -316,3 +316,46 @@ test('admin creates a rule from a template in the gallery', async ({ page }) => 
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
 });
+
+test('admin builds a rule that links one work item to another', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const issue = async (summary: string) => {
+    const created = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary, issuetype: { name: 'Task' } } } });
+    expect(created.status()).toBe(201);
+    return (await created.json()).key as string;
+  };
+  const source = await issue(`Link source ${stamp}`);
+  const target = await issue(`Link target ${stamp}`);
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E link ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByLabel('JQL query').fill(`key = ${source}`);
+  // The editor offers the site's link types, so the action is chosen by name.
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption({ label: 'Link: this work item blocks' });
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(target);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+
+  // The editor shows the saved link action, so saving stays available.
+  await expect(page.getByRole('note')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save rule', exact: true })).toBeEnabled();
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue(/^jira\.issue\.link:/);
+  await expect(page.getByRole('combobox', { name: 'Value', exact: true }).first()).toHaveValue(target);
+
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => {
+    const response = await page.request.get(`/rest/api/3/issue/${source}?fields=issuelinks`, { headers });
+    const body = await response.json();
+    return JSON.stringify(body.fields?.issuelinks ?? []);
+  }, { timeout: 15_000 }).toContain(target);
+
+  await page.goto(ruleURL);
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});
