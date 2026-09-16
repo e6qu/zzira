@@ -68,6 +68,7 @@ var (
 		{"jira.issue.assign:random", "Assign work item (random)"}, {"jira.issue.transition", "Transition work item"},
 		{"jira.issue.comment", "Comment on work item"}, {"jira.issue.edit:summary", "Edit summary"}, {"jira.issue.edit:duedate", "Set due date"},
 		{"jira.issue.edit:priority", "Set priority"}, {"jira.issue.edit:description", "Set description"},
+		{"jira.issue.edit:labels", "Set labels"},
 		{"jira.issue.log-work", "Log work"}, {"jira.issue.create-subtask", "Create sub-task"},
 		{"jira.issue.email:assignee", "Email the assignee"}, {"jira.issue.email:reporter", "Email the reporter"},
 		{"jira.issue.email:watchers", "Email the watchers"},
@@ -624,7 +625,7 @@ func automationFormActions(types, values []string) ([]map[string]any, error) {
 			actionValue = map[string]string{"summary": value}
 		case "jira.issue.log-work":
 			actionValue = map[string]string{"duration": value}
-		case "jira.issue.edit:summary", "jira.issue.edit:duedate", "jira.issue.edit:priority", "jira.issue.edit:description":
+		case "jira.issue.edit:summary", "jira.issue.edit:duedate", "jira.issue.edit:priority", "jira.issue.edit:description", "jira.issue.edit:labels":
 			actionValue = map[string]string{"field": strings.TrimPrefix(actionType, "jira.issue.edit:"), "value": value}
 			actionType = "jira.issue.edit"
 		default:

@@ -972,6 +972,23 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 				return false, nil
 			}
 			input.DueDate = &text
+		case "labels":
+			// Jira's edit sets the labels the rule names, rather than adding
+			// to what the work item carries, which is what add label does.
+			wanted := []string{}
+			for _, label := range strings.Split(text, ",") {
+				if label = strings.TrimSpace(label); label != "" {
+					wanted = append(wanted, label)
+				}
+			}
+			current := append([]string{}, issue.Labels...)
+			held := append([]string{}, wanted...)
+			slices.Sort(current)
+			slices.Sort(held)
+			if slices.Equal(current, held) {
+				return false, nil
+			}
+			input.Labels = &wanted
 		case "description":
 			// The work item already reads as the rule would leave it.
 			if strings.TrimSpace(adf.PlainText(issue.Description)) == text {
