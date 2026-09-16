@@ -59,8 +59,14 @@ This is a partial version/release implementation, not full Jira Cloud fidelity:
   appear on the unfiltered list, because a version moves within the project's
   whole order rather than within the rows a filter leaves on screen. Dragging
   is not implemented; the buttons reach the keyboard and need no script.
-- `moveUnfixedIssuesTo`, cross-project releases and configurable release notes
-  or exports remain gaps. Unsupported request options are explicit errors.
+- Releasing a version can move the work it did not finish to another version in
+  the same project: `moveUnfixedIssuesTo` on a version update, and a choice in
+  the release form. Work already done stays with the version that shipped it,
+  and the move happens when a version is released rather than every time a
+  released version is saved. The field is a version self link, as Jira sends
+  it, and is not applicable when creating a version.
+- Cross-project releases and configurable release notes or exports remain gaps.
+  Unsupported request options are explicit errors.
 - Unresolved counts currently treat the Done status category as resolved; a
   separate Jira resolution field and its workflow semantics remain unfinished.
 - Dates use ISO dates and UTC for overdue calculation, with fixed English display

@@ -304,4 +304,69 @@ func TestVersionLifecycleMembershipAndVisibility(t *testing.T) {
 	if fmt.Sprint(got["projectId"]) != project.ID {
 		t.Fatalf("numeric project id: %#v", got)
 	}
+
+	// ---- releasing a version moves the work it did not finish ----
+
+	shipping, nextUp := create("5.0", "VR"), create("6.0", "VR")
+	link := func(id string) string { return "https://zzira.test/rest/api/3/version/" + id }
+	shippedWork := func(summary string) string {
+		t.Helper()
+		created := call(actor, "POST", "/rest/api/3/issue", map[string]any{"fields": map[string]any{"project": map[string]string{"key": "VR"},
+			"summary": summary, "issuetype": map[string]string{"name": "Task"}, "fixVersions": []map[string]string{{"id": shipping}}}}, 201)
+		return created["key"].(string)
+	}
+	finished, unfinished := shippedWork("Finished work"), shippedWork("Unfinished work")
+	fixVersionIDs := func(key string) string {
+		t.Helper()
+		entry := call(actor, "GET", "/rest/api/3/issue/"+key+"?fields=fixVersions", nil, 200)
+		ids := []string{}
+		for _, ref := range entry["fields"].(map[string]any)["fixVersions"].([]any) {
+			ids = append(ids, fmt.Sprint(ref.(map[string]any)["id"]))
+		}
+		return strings.Join(ids, ",")
+	}
+	// One of the two is done, so the release carries work of both kinds.
+	available := call(actor, "GET", "/rest/api/3/issue/"+finished+"/transitions", nil, 200)
+	done := ""
+	for _, raw := range available["transitions"].([]any) {
+		transition := raw.(map[string]any)
+		to, ok := transition["to"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if category, ok := to["statusCategory"].(map[string]any); ok && fmt.Sprint(category["key"]) == "done" {
+			done = fmt.Sprint(transition["id"])
+		}
+	}
+	if done == "" {
+		t.Fatal("no transition reaches a done status")
+	}
+	call(actor, "POST", "/rest/api/3/issue/"+finished+"/transitions", map[string]any{"transition": map[string]string{"id": done}}, 204)
+
+	// The field is a version self link, is not applicable when creating, and
+	// names a different version in the same project.
+	call(actor, "POST", "/rest/api/3/version", map[string]any{"project": "VR", "name": "7.0", "moveUnfixedIssuesTo": link(nextUp)}, 400)
+	call(actor, "PUT", "/rest/api/3/version/"+shipping, map[string]any{"moveUnfixedIssuesTo": link(shipping)}, 400)
+	call(actor, "PUT", "/rest/api/3/version/"+shipping, map[string]any{"moveUnfixedIssuesTo": link(other)}, 400)
+	saved := call(actor, "PUT", "/rest/api/3/version/"+shipping, map[string]any{"moveUnfixedIssuesTo": link(nextUp)}, 200)
+	if fmt.Sprint(saved["moveUnfixedIssuesTo"]) != link(nextUp) {
+		t.Fatalf("moveUnfixedIssuesTo=%v", saved)
+	}
+
+	// Naming the version moves nothing; releasing it does.
+	if fixVersionIDs(unfinished) != shipping {
+		t.Fatalf("unfinished work moved before the release: %v", fixVersionIDs(unfinished))
+	}
+	call(actor, "PUT", "/rest/api/3/version/"+shipping, map[string]any{"released": true}, 200)
+	if fixVersionIDs(unfinished) != nextUp {
+		t.Fatalf("unfinished work did not move: %v", fixVersionIDs(unfinished))
+	}
+	if fixVersionIDs(finished) != shipping {
+		t.Fatalf("finished work should stay with the release that shipped it: %v", fixVersionIDs(finished))
+	}
+	// Saving the released version again leaves the work where it is.
+	call(actor, "PUT", "/rest/api/3/version/"+shipping, map[string]any{"description": "shipped"}, 200)
+	if fixVersionIDs(finished) != shipping {
+		t.Fatalf("a later save moved finished work: %v", fixVersionIDs(finished))
+	}
 }

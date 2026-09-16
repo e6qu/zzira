@@ -42,6 +42,9 @@ type releasesData struct {
 	MyApproval *models.VersionApprover
 	Admin      bool
 	Editing    bool
+	// OtherVersions are the project's unreleased versions apart from this one,
+	// which is where a release can send work it did not finish.
+	OtherVersions []*models.Version
 	// Reorderable is false while a filter is on, because a version moves
 	// within the project's whole order rather than within the rows on screen.
 	Reorderable bool
@@ -167,6 +170,16 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := releasesData{Project: project, Version: version, Admin: admin, Editing: r.URL.Query().Get("edit") == "1"}
+	siblings, err := h.Store.ProjectVersions(r.Context(), project.ID)
+	if err != nil {
+		http.Error(w, "Could not load releases.", 500)
+		return
+	}
+	for _, sibling := range siblings {
+		if sibling.ID != version.ID && !sibling.Released && !sibling.Archived {
+			data.OtherVersions = append(data.OtherVersions, sibling)
+		}
+	}
 	status := 200
 	if r.Method == http.MethodPost {
 		if !parseForm(w, r) {
@@ -189,6 +202,8 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 					date = time.Now().UTC().Format("2006-01-02")
 				}
 				up.ReleaseDate = &date
+				target := strings.TrimSpace(r.PostFormValue("moveUnfixedIssuesTo"))
+				up.MoveUnfixedIssuesTo = &target
 			}
 			_, opErr = h.Store.SaveVersion(r.Context(), ws, user.ID, project.ID, version.ID, up)
 		case "archive", "unarchive":

@@ -15,6 +15,9 @@ type Version struct {
 	Position    int64  `json:"-"`
 	// DriverID is the account responsible for the release.
 	DriverID string `json:"driver,omitempty"`
+	// MoveUnfixedIssuesToID is the version unresolved work moves to when this
+	// version is released; clients see it as a self link, never as an id.
+	MoveUnfixedIssuesToID string `json:"-"`
 }
 
 // VersionApprover is a person asked to approve a release.
