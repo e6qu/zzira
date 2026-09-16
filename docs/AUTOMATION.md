@@ -80,6 +80,7 @@ The worker executes these action component types in order:
 | `jira.issue.transition` | `{"statusId":"10001"}` | Uses a valid current-workflow transition to the target status |
 | `jira.issue.comment` | `{"comment":"Picked up by {{initiator.displayName}}"}` | Adds a comment as the rule actor |
 | `jira.issue.edit` | `{"field":"summary","value":"[{{issue.key}}] {{issue.summary}}"}` | Sets the `summary`, `duedate` (yyyy-MM-dd; blank clears it) or `priority` (by name or id) when it differs |
+| `jira.issue.create-subtask` | `{"summary":"Review {{issue.key}}"}` | Raises a sub-task of the work item, taking the project scheme's sub-task work type. The summary renders smart values. A sub-task of that name already under the work item changes nothing, so a rule that runs again does not mint a second one; a work item that is itself a sub-task, or a project offering no sub-task type, stops the rule |
 | `jira.issue.link` | `{"linkTypeId":"lt_blocks","issueKey":"ZZ-7"}` | Links the work item to the one named, which takes the link type's inward phrase. The key renders smart values. A link that already holds, or a work item naming itself, changes nothing; a key of another site stops the rule |
 
 JQL evaluation and every mutation run as the stored rule actor. Issue security
@@ -89,9 +90,10 @@ larger results fail before any actions run.
 
 Other triggers, components, branch types, smart values and connection payloads
 remain available through the rule API, but the worker records an explicit failed
-audit entry when asked to execute unsupported behavior. Issue and page
-creation, email and web requests, usage limits and the
-rest of Jira's trigger, condition and action catalog remain gaps.
+audit entry when asked to execute unsupported behavior. Page creation, work
+item creation above sub-task level, webhook and incoming-request triggers,
+email and web requests, usage limits and the rest of Jira's trigger, condition
+and action catalog remain gaps.
 
 ## Event triggers, conditions and smart values
 

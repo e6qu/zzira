@@ -459,3 +459,47 @@ func TestRunnerRemovesLabel(t *testing.T) {
 		t.Fatalf("labels after removing the rendered label = %v, want none", got)
 	}
 }
+
+func TestRunnerCreatesSubtask(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID, parentID := store.NewID("prj"), store.NewID("iss")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id,issue_seq) VALUES($1,$2,'SUB','Sub-tasks','wf_default',1)`, projectID, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO issues(id,workspace_id,project_id,key,summary,status_id,issuetype_id,updated_seq) VALUES($1,$2,$3,'SUB-1','Parent work','st_todo','it_task',0)`,
+		parentID, fx.ws, projectID); err != nil {
+		t.Fatal(err)
+	}
+
+	// The summary renders smart values, so the sub-task names its parent.
+	actions := []map[string]any{{"component": "ACTION", "type": "jira.issue.create-subtask", "value": map[string]string{"summary": "Checklist for {{issue.key}}"}}}
+	body, _ := json.Marshal(ruleBody("Raise a checklist", fx.admin, "ENABLED", "key = SUB-1", actions))
+	uuid, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &Runner{Service: fx.service}
+	// Running twice proves the second run finds the sub-task already there and
+	// raises no duplicate.
+	for range 2 {
+		if err := fx.service.EnqueueNow(fx.ctx, fx.ws, uuid); err != nil {
+			t.Fatal(err)
+		}
+		if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+			t.Fatal(err)
+		}
+	}
+	children, err := fx.store.ChildIssues(fx.ctx, fx.ws, parentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(children) != 1 {
+		t.Fatalf("children = %d, want 1", len(children))
+	}
+	if children[0].Summary != "Checklist for SUB-1" {
+		t.Errorf("summary = %q", children[0].Summary)
+	}
+	if !children[0].IssueType.Subtask {
+		t.Errorf("work type = %+v, want a sub-task type", children[0].IssueType)
+	}
+}

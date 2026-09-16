@@ -466,3 +466,48 @@ test('admin builds a rule whose condition asks whether related work matches', as
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
 });
+
+test('admin builds a rule that raises a sub-task under the work item', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const created = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary: `Sub-task parent ${stamp}`, issuetype: { name: 'Task' } } } });
+  expect(created.status()).toBe(201);
+  const parent = (await created.json()).key as string;
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E sub-task ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByLabel('JQL query').fill(`key = ${parent}`);
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.create-subtask');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('Checklist for {{issue.key}}');
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+
+  // The editor shows the saved action, so the rule stays editable there.
+  await expect(page.getByRole('note')).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue('jira.issue.create-subtask');
+  await expect(page.getByRole('combobox', { name: 'Value', exact: true }).first()).toHaveValue('Checklist for {{issue.key}}');
+
+  // The summary renders smart values, so the sub-task names its parent.
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => {
+    const response = await page.request.get(`/rest/api/3/issue/${parent}?fields=subtasks`, { headers });
+    const body = await response.json();
+    return JSON.stringify(body.fields?.subtasks ?? []);
+  }, { timeout: 15_000 }).toContain(`Checklist for ${parent}`);
+
+  // Running again finds the sub-task already there and raises no second one.
+  await page.goto(ruleURL);
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await page.waitForTimeout(3_000);
+  const after = await page.request.get(`/rest/api/3/issue/${parent}?fields=subtasks`, { headers });
+  expect((await after.json()).fields.subtasks).toHaveLength(1);
+
+  await page.goto(ruleURL);
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});

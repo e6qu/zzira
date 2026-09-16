@@ -366,7 +366,7 @@ func validateExecutionActor(payload json.RawMessage, actorID string) error {
 
 // Actions and conditions the runner executes.
 var (
-	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true}
+	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true}
 	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true, "jira.issue.related.condition": true}
 )
 
@@ -648,6 +648,53 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 			return false, err
 		}
 		return true, nil
+	case "jira.issue.create-subtask":
+		var value struct {
+			Summary string `json:"summary"`
+		}
+		if err := json.Unmarshal(valueRaw, &value); err != nil || strings.TrimSpace(value.Summary) == "" {
+			return false, errors.New("create sub-task action requires value.summary")
+		}
+		summary, err := render(value.Summary)
+		if err != nil {
+			return false, err
+		}
+		if summary = strings.TrimSpace(summary); summary == "" {
+			return false, errors.New("create sub-task action rendered an empty summary")
+		}
+		// A sub-task of that name already hanging under the work item means
+		// there is nothing to do, so a rule that runs again does not mint a
+		// second one.
+		children, err := r.Service.Store.ChildIssues(ctx, run.WorkspaceID, issue.ID)
+		if err != nil {
+			return false, err
+		}
+		for _, child := range children {
+			if strings.EqualFold(child.Summary, summary) {
+				return false, nil
+			}
+		}
+		// The sub-task takes the project's own sub-task work type, so a rule
+		// cannot raise one the project's scheme does not offer.
+		issueTypes, err := r.Service.Store.ProjectIssueTypes(ctx, run.WorkspaceID, issue.ProjectID, nil)
+		if err != nil {
+			return false, err
+		}
+		subtaskTypeID := ""
+		for _, issueType := range issueTypes {
+			if issueType.Subtask {
+				subtaskTypeID = issueType.ID
+				break
+			}
+		}
+		if subtaskTypeID == "" {
+			return false, errors.New("the project offers no sub-task work type")
+		}
+		created, _, err := r.Service.Commands.CreateIssue(ctx, commands.CreateIssueInput{
+			ActorID: run.ActorID, WorkspaceID: run.WorkspaceID, ProjectIDOrKey: issue.ProjectID,
+			Summary: summary, IssueTypeID: subtaskTypeID, ParentIDOrKey: issue.ID,
+		})
+		return created != nil, err
 	case "jira.issue.comment":
 		var value struct {
 			Comment string `json:"comment"`
