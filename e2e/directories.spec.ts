@@ -353,6 +353,19 @@ test('workflow schemes publish safely and migrate incompatible project statuses'
   await expect(page.getByText('Published', { exact: true })).toBeVisible();
   await expect(page.locator('.workflow-editor-header')).toContainText('Version 2');
 
+  await page.goto('/settings/workflow-schemes');
+  await expect(page.getByRole('button', { name: `Delete ${schemeName}` })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Delete Default workflow scheme' })).toHaveCount(0);
+  const throwawayScheme = `Throwaway scheme ${Date.now()}`;
+  await page.fill('#scheme-name', throwawayScheme);
+  await page.getByRole('button', { name: 'Create scheme' }).click();
+  await page.goto('/settings/workflow-schemes');
+  await page.getByRole('button', { name: `Delete ${throwawayScheme}` }).click();
+  await expect(page.getByRole('status')).toContainText('Scheme deleted');
+  await expect(page.getByText(throwawayScheme, { exact: true })).toHaveCount(0);
+  await page.goto(`/settings/workflow-schemes`);
+  await page.getByRole('link', { name: schemeName, exact: true }).click();
+
   await page.selectOption('#scheme-project', await demoProjectID(page));
   await page.getByRole('button', { name: 'Preview assignment' }).click();
   await expect(page.getByText('All current work item statuses exist in the target workflows.')).toBeVisible();

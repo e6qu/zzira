@@ -157,6 +157,10 @@ type workflowSchemesData struct {
 	Schemes   []workflowSchemeCard
 	Workflows []workflow.Workflow
 	CanCreate bool
+	// Saved and Error are what the page says after a scheme is created or
+	// deleted, including why a deletion was refused.
+	Saved string
+	Error string
 }
 
 type workflowSchemeMappingView struct {
@@ -553,7 +557,7 @@ func (h *Handler) WorkflowSchemesPage(w http.ResponseWriter, r *http.Request) {
 	for _, item := range workflows {
 		workflowNames[item.ID] = item.Name
 	}
-	data := workflowSchemesData{Workflows: workflows}
+	data := workflowSchemesData{Workflows: workflows, Saved: r.URL.Query().Get("saved"), Error: r.URL.Query().Get("error")}
 	data.CanCreate, _ = h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
 	for _, scheme := range schemes {
 		projects, err := h.Store.ProjectsForWorkflowScheme(r.Context(), workspaceID, scheme.ID)
@@ -649,6 +653,28 @@ func (h *Handler) CreateWorkflowScheme(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(scheme.ID), http.StatusSeeOther)
+}
+
+// DeleteWorkflowScheme removes a workflow scheme no project uses. The site's
+// default scheme stays, and a scheme a project still routes through says so
+// rather than disappearing.
+func (h *Handler) DeleteWorkflowScheme(w http.ResponseWriter, r *http.Request, schemeID string) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	err := h.Store.DeleteWorkflowScheme(r.Context(), workspaceID, user.ID, schemeID)
+	if errors.Is(err, store.ErrAdminConflict) || errors.Is(err, store.ErrAdminValidation) {
+		message := strings.TrimSpace(strings.TrimPrefix(err.Error(), store.ErrAdminConflict.Error()+":"))
+		message = strings.TrimSpace(strings.TrimPrefix(message, store.ErrAdminValidation.Error()+":"))
+		http.Redirect(w, r, "/settings/workflow-schemes?error="+url.QueryEscape(message), http.StatusSeeOther)
+		return
+	}
+	if err != nil {
+		statusAdminError(w, err)
+		return
+	}
+	http.Redirect(w, r, "/settings/workflow-schemes?saved="+url.QueryEscape("Scheme deleted"), http.StatusSeeOther)
 }
 
 func (h *Handler) SaveWorkflowSchemeDraft(w http.ResponseWriter, r *http.Request, schemeID string) {
