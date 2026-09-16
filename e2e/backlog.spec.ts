@@ -210,3 +210,62 @@ test('backlog journey creates, plans, ranks, starts, updates, and completes a sp
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test('parallel sprints stay off until the site switch turns them on', async ({ page }) => {
+  const first = `Parallel first ${Date.now()}`;
+  const second = `Parallel second ${Date.now()}`;
+  const features = () => page.locator('form[action="/admin/jira-configuration/features"]');
+  const parallelSwitch = () => features().locator('label').filter({ hasText: 'Parallel sprints' }).getByRole('checkbox');
+  const setParallel = async (on: boolean) => {
+    await page.goto('/admin');
+    await (on ? parallelSwitch().check() : parallelSwitch().uncheck());
+    await features().getByRole('button', { name: 'Save features' }).click();
+    await page.goto('/admin');
+    await expect(parallelSwitch()).toBeChecked({ checked: on });
+  };
+
+  await login(page);
+  // Jira leaves parallel sprints off, and a board then runs one sprint at a time.
+  await setParallel(false);
+  await page.goto('/board/brd_default/backlog');
+  for (const name of [first, second]) {
+    await page.locator('.create-sprint > summary').click();
+    await page.fill('#new-sprint-name', name);
+    await Promise.all([
+      page.waitForURL('/board/brd_default/backlog'),
+      page.locator('.create-sprint form').getByRole('button', { name: 'Create sprint' }).click(),
+    ]);
+  }
+
+  const start = async (name: string, expectation: 'started' | 'refused') => {
+    const sprint = sprintSection(page, name);
+    await sprint.locator('.start-sprint > summary').click();
+    await Promise.all([
+      page.waitForURL(/\/board\/brd_default\/backlog/),
+      sprint.locator('.start-sprint form').getByRole('button', { name: 'Start sprint' }).click(),
+    ]);
+    if (expectation === 'started') {
+      await expect(sprintSection(page, name)).toContainText('active');
+    } else {
+      await expect(page.locator('p.backlog-error')).toContainText('complete the active sprint before starting another');
+    }
+  };
+
+  await start(first, 'started');
+  await start(second, 'refused');
+
+  // With the site switch on, the board runs both sprints at once.
+  await setParallel(true);
+  await page.goto('/board/brd_default/backlog');
+  await start(second, 'started');
+  await expect(sprintSection(page, first)).toContainText('active');
+
+  for (const name of [first, second]) {
+    const sprint = sprintSection(page, name);
+    await Promise.all([
+      page.waitForURL(/\/board\/brd_default\/backlog/),
+      sprint.getByRole('button', { name: 'Complete sprint' }).click(),
+    ]);
+  }
+  await setParallel(false);
+});

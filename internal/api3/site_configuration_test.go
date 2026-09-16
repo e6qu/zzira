@@ -85,6 +85,9 @@ func TestJiraSiteConfigurationContractJourney(t *testing.T) {
 	}
 
 	configuration := call(memberID, http.MethodGet, "/rest/api/3/configuration", "", "", http.StatusOK).(map[string]any)
+	if configuration["parallelSprintsEnabled"] != false {
+		t.Fatalf("parallel sprints default = %v, want false as Jira leaves it", configuration["parallelSprintsEnabled"])
+	}
 	if configuration["attachmentsEnabled"] != true || configuration["timeTrackingEnabled"] != true {
 		t.Fatalf("default configuration = %#v", configuration)
 	}

@@ -177,7 +177,7 @@ func (h *Handler) globalJiraConfiguration(w http.ResponseWriter, r *http.Request
 	}
 	result := map[string]any{
 		"attachmentsEnabled": cfg.AttachmentsEnabled, "issueLinkingEnabled": cfg.IssueLinkingEnabled,
-		"subTasksEnabled": cfg.SubTasksEnabled, "timeTrackingEnabled": cfg.TimeTrackingEnabled,
+		"subTasksEnabled": cfg.SubTasksEnabled, "parallelSprintsEnabled": cfg.ParallelSprintsEnabled, "timeTrackingEnabled": cfg.TimeTrackingEnabled,
 		"unassignedIssuesAllowed": cfg.UnassignedIssuesAllowed, "votingEnabled": cfg.VotingEnabled,
 		"watchingEnabled": cfg.WatchingEnabled,
 	}

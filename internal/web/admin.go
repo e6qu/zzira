@@ -508,7 +508,7 @@ func (h *Handler) UpdateAdminJiraConfiguration(w http.ResponseWriter, r *http.Re
 			AttachmentsEnabled: r.PostForm.Has("attachmentsEnabled"), IssueLinkingEnabled: r.PostForm.Has("issueLinkingEnabled"),
 			SubTasksEnabled: r.PostForm.Has("subTasksEnabled"), TimeTrackingEnabled: r.PostForm.Has("timeTrackingEnabled"),
 			UnassignedIssuesAllowed: r.PostForm.Has("unassignedIssuesAllowed"), VotingEnabled: r.PostForm.Has("votingEnabled"),
-			WatchingEnabled: r.PostForm.Has("watchingEnabled"),
+			WatchingEnabled: r.PostForm.Has("watchingEnabled"), ParallelSprintsEnabled: r.PostForm.Has("parallelSprintsEnabled"),
 		}
 		err = h.Commands.UpdateGlobalJiraConfiguration(r.Context(), workspaceID, user.ID, cfg)
 		message = "Jira features saved"
