@@ -511,6 +511,8 @@ func main() {
 	mux.HandleFunc("POST /settings/issue-security-schemes", webHandler.IssueSecuritySchemesPage)
 	mux.HandleFunc("POST /settings/issue-security-schemes/{id}", webHandler.IssueSecuritySchemeMutation)
 	mux.HandleFunc("GET /settings/statuses", webHandler.StatusesPage)
+	mux.HandleFunc("GET /settings/hierarchy", webHandler.HierarchyPage)
+	mux.HandleFunc("POST /settings/hierarchy", webHandler.HierarchyMutation)
 	mux.HandleFunc("GET /settings/workflow-schemes", webHandler.WorkflowSchemesPage)
 	mux.HandleFunc("POST /settings/workflow-schemes", webHandler.CreateWorkflowScheme)
 	mux.HandleFunc("GET /settings/workflow-schemes/{id}", func(w http.ResponseWriter, r *http.Request) {

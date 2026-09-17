@@ -1204,17 +1204,21 @@ func (h *Handler) projectHierarchy(w http.ResponseWriter, r *http.Request, works
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	names := map[int]string{1: "Epic", 0: "Base", -1: "Subtask"}
+	levels, err := h.Store.HierarchyLevels(r.Context(), workspaceID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	hierarchy := []map[string]any{}
-	for _, level := range []int{1, 0, -1} {
+	for _, level := range levels {
 		types := []map[string]any{}
 		for _, issueType := range issueTypes {
-			if issueType.HierarchyLevel == level {
+			if issueType.HierarchyLevel == level.Level {
 				types = append(types, map[string]any{"id": issueType.JiraID, "name": issueType.Name, "avatarId": issueType.AvatarID})
 			}
 		}
 		if len(types) > 0 {
-			hierarchy = append(hierarchy, map[string]any{"level": level, "name": names[level], "issueTypes": types})
+			hierarchy = append(hierarchy, map[string]any{"level": level.Level, "name": level.Name, "issueTypes": types})
 		}
 	}
 	projectID, _ := strconv.ParseInt(project.ID, 10, 64)

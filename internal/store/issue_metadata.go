@@ -30,7 +30,7 @@ var (
 
 const effectiveIssueTypeSelect = `SELECT t.id, t.jira_id, COALESCE(t.workspace_id,''),
 	COALESCE(o.name,t.name), t.icon, t.subtask, COALESCE(o.description,t.description),
-	t.hierarchy_level, COALESCE(o.avatar_id,t.avatar_id,0)
+	COALESCE(o.hierarchy_level,t.hierarchy_level), COALESCE(o.avatar_id,t.avatar_id,0)
 	FROM issue_types t
 	LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$1 AND o.entity_type='issuetype' AND o.entity_id=t.id
 	WHERE (t.workspace_id IS NULL OR t.workspace_id=$1) AND NOT COALESCE(o.deleted,FALSE)`

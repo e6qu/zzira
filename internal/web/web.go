@@ -595,21 +595,15 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 			return nil, err
 		}
 	}
+	// The work item's parent comes from one level above its own work type.
 	parentOptions := []models.CreateFieldOption{}
-	if issue.IssueType.Subtask {
-		meta, err := h.Store.IssueCreateMetadata(r.Context(), wsID, user.ID)
-		if err != nil {
-			return nil, err
-		}
-		for _, projectMeta := range meta.Projects {
-			if projectMeta.Project.ID != issue.ProjectID {
-				continue
-			}
-			for _, field := range projectMeta.Fields {
-				if field.ID == "parent" {
-					parentOptions = field.Options
-				}
-			}
+	meta, err := h.Store.IssueCreateMetadata(r.Context(), wsID, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, projectMeta := range meta.Projects {
+		if projectMeta.Project.ID == issue.ProjectID {
+			parentOptions = projectMeta.ParentOptionsForIssueType(issue.IssueType.ID)
 		}
 	}
 	linkViews := make([]models.IssueLinkView, 0, len(links))
@@ -1358,15 +1352,22 @@ func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID
 		}
 		values[field.ID] = strings.Trim(field.Default, `"`)
 	}
-	if !selectedSubtask {
-		visibleFields := make([]models.CreateFieldMeta, 0, len(selected.Fields))
-		for _, field := range selected.Fields {
-			if field.ID != "parent" {
-				visibleFields = append(visibleFields, field)
-			}
+	// Parent offers the work items one level above the chosen work type, and
+	// is left out when that level holds none.
+	parents := selected.ParentOptionsForIssueType(values["issuetype"])
+	visibleFields := make([]models.CreateFieldMeta, 0, len(selected.Fields))
+	for _, field := range selected.Fields {
+		if field.ID != "parent" {
+			visibleFields = append(visibleFields, field)
+			continue
 		}
-		selected.Fields = visibleFields
+		if len(parents) == 0 && !selectedSubtask {
+			continue
+		}
+		field.Options = parents
+		visibleFields = append(visibleFields, field)
 	}
+	selected.Fields = visibleFields
 	return createDialogData{Metadata: meta, Selected: selected, SelectedIssueTypeSubtask: selectedSubtask, Values: values}, nil
 }
 

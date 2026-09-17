@@ -397,6 +397,9 @@ type CreateFieldOption struct {
 	ID   string `json:"id,omitempty"`
 	Key  string `json:"key,omitempty"`
 	Name string `json:"name"`
+	// HierarchyLevel is the work type hierarchy level of a parent option, so a
+	// form offers only the parents one level above the work type chosen.
+	HierarchyLevel int `json:"-"`
 }
 
 // CreateFieldMeta is the canonical create-form schema shared by the browser
@@ -440,6 +443,33 @@ type CreateProjectMeta struct {
 type CustomFieldContextInfo struct {
 	Default string
 	Options []CreateFieldOption
+}
+
+// ParentOptionsForIssueType lists the work items a work type may have as a
+// parent: those one level above it in the site's work type hierarchy.
+func (m CreateProjectMeta) ParentOptionsForIssueType(issueTypeID string) []CreateFieldOption {
+	level, known := 0, false
+	for _, issueType := range m.IssueTypes {
+		if issueType.ID == issueTypeID || issueType.Name == issueTypeID {
+			level, known = issueType.HierarchyLevel, true
+			break
+		}
+	}
+	if !known {
+		return nil
+	}
+	options := []CreateFieldOption{}
+	for _, field := range m.Fields {
+		if field.ID != "parent" {
+			continue
+		}
+		for _, option := range field.Options {
+			if option.HierarchyLevel == level+1 {
+				options = append(options, option)
+			}
+		}
+	}
+	return options
 }
 
 // FieldsForIssueType narrows and orders the project's fields to what the work
