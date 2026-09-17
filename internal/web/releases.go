@@ -34,7 +34,9 @@ type releasesData struct {
 	// Unresolved counts the work whose resolution is empty, which is what a
 	// release asks about and what it can move, whatever status that work is in.
 	Unresolved int
-	Delivery   []models.DeliveryItem
+	// Notes are the version's release notes as the person asked for them.
+	Notes    releaseNotes
+	Delivery []models.DeliveryItem
 	// DeploymentsDisabled hides delivery evidence a project turned off.
 	DeploymentsDisabled bool
 	// Driver, Members and Approvers describe who is responsible for and who
@@ -261,6 +263,7 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 			data.Unresolved++
 		}
 	}
+	data.Notes = buildReleaseNotes(project.Name, version.Name, h.BaseURL, data.Issues, r.URL.Query())
 	issueKeys := make([]string, 0, len(data.Issues))
 	for _, issue := range data.Issues {
 		issueKeys = append(issueKeys, issue.Key)
