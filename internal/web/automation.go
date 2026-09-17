@@ -69,7 +69,7 @@ var (
 		{"jira.issue.comment", "Comment on work item"}, {"jira.issue.edit:summary", "Edit summary"}, {"jira.issue.edit:duedate", "Set due date"},
 		{"jira.issue.edit:priority", "Set priority"}, {"jira.issue.edit:description", "Set description"},
 		{"jira.issue.edit:labels", "Set labels"},
-		{"jira.issue.log-work", "Log work"}, {"jira.issue.create-subtask", "Create sub-task"},
+		{"jira.issue.log-work", "Log work"}, {"jira.issue.delete", "Delete work item"}, {"jira.issue.create-subtask", "Create sub-task"},
 		{"jira.issue.email:assignee", "Email the assignee"}, {"jira.issue.email:reporter", "Email the reporter"},
 		{"jira.issue.email:watchers", "Email the watchers"},
 		{automation.WebRequestActionType + ":POST", "Send web request (POST)"},
@@ -569,6 +569,13 @@ func automationFormActions(types, values []string) ([]map[string]any, error) {
 		if index < len(values) {
 			value = strings.TrimSpace(values[index])
 		}
+		// Deleting takes no value, as it takes none in Jira.
+		if actionType == "jira.issue.delete" {
+			components = append(components, map[string]any{
+				"component": "ACTION", "schemaVersion": 1, "type": "jira.issue.delete", "value": map[string]string{},
+			})
+			continue
+		}
 		if value == "" {
 			return nil, fmt.Errorf("every action needs a value")
 		}
@@ -815,6 +822,8 @@ func automationActionViews(components []automationComponentJSON) []automationAct
 			view.Value = fields["summary"]
 		case "jira.issue.log-work":
 			view.Value = fields["duration"]
+		case "jira.issue.delete":
+			view.Value = ""
 		case "jira.issue.edit":
 			view.Type, view.Value = "jira.issue.edit:"+fields["field"], fields["value"]
 		case "jira.issue.link":
