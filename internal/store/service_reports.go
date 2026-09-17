@@ -33,6 +33,9 @@ func (s *Store) ServiceReport(ctx context.Context, workspaceID, serviceDeskID st
 	return s.ServiceReportFiltered(ctx, workspaceID, serviceDeskID, models.ServiceReportFilter{}, days, now)
 }
 
+// ServiceReportFiltered reports a desk's requests. A request is open while it
+// has no resolution and resolved once it has one, which is how the desk's own
+// queues, such as All open requests, decide it.
 func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceDeskID string, filter models.ServiceReportFilter, days int, now time.Time) (*models.ServiceReport, error) {
 	if days != 7 && days != 30 && days != 90 {
 		return nil, fmt.Errorf("service report window must be 7, 30, or 90 days")
@@ -48,15 +51,15 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 		Priorities: []models.ServiceReportSegment{}, Organizations: []models.ServiceReportSegment{}}
 	if err := s.Pool.QueryRow(ctx, `
 		SELECT count(*),
-		       count(*) FILTER (WHERE st.category <> 'done'),
-		       count(*) FILTER (WHERE st.category = 'done')
+		       count(*) FILTER (WHERE i.resolution_id IS NULL),
+		       count(*) FILTER (WHERE i.resolution_id IS NOT NULL)
 		FROM service_requests sr
 		JOIN service_desks sd ON sd.id=sr.service_desk_id
 		JOIN issues i ON i.id=sr.issue_id
 		JOIN statuses st ON st.id=i.status_id
 		WHERE sr.workspace_id=$1 AND sd.id=$2 AND `+window+`
 		  AND ($4='' OR sr.request_type_id=$4) AND ($5='' OR sr.channel=$5)
-		  AND ($6='' OR ($6='open' AND st.category<>'done') OR ($6='resolved' AND st.category='done'))`, workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status).Scan(
+		  AND ($6='' OR ($6='open' AND i.resolution_id IS NULL) OR ($6='resolved' AND i.resolution_id IS NOT NULL))`, workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status).Scan(
 		&report.TotalRequests, &report.OpenRequests, &report.ResolvedRequests); err != nil {
 		return nil, err
 	}
@@ -68,7 +71,7 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 		JOIN statuses st ON st.id=i.status_id
 		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND `+window+`
 		  AND ($4='' OR sr.request_type_id=$4) AND ($5='' OR sr.channel=$5)
-		  AND ($6='' OR ($6='open' AND st.category<>'done') OR ($6='resolved' AND st.category='done'))`, workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status).Scan(
+		  AND ($6='' OR ($6='open' AND i.resolution_id IS NULL) OR ($6='resolved' AND i.resolution_id IS NOT NULL))`, workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status).Scan(
 		&report.SatisfactionResponses, &report.AverageSatisfaction); err != nil {
 		return nil, err
 	}
@@ -79,7 +82,7 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 		  SELECT i.created_at FROM service_requests sr JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
 		  WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND `+window+`
 		    AND ($5='' OR sr.request_type_id=$5) AND ($6='' OR sr.channel=$6)
-		    AND ($7='' OR ($7='open' AND st.category<>'done') OR ($7='resolved' AND st.category='done'))
+		    AND ($7='' OR ($7='open' AND i.resolution_id IS NULL) OR ($7='resolved' AND i.resolution_id IS NOT NULL))
 		) filtered ON filtered.created_at::date=d.day::date
 		GROUP BY d.day ORDER BY d.day`, workspaceID, serviceDeskID, from, now.UTC(), filter.RequestTypeID, filter.Channel, filter.Status)
 	if err != nil {
@@ -100,7 +103,7 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 		SELECT sr.issue_id FROM service_requests sr JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
 		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND `+window+`
 		  AND ($4='' OR sr.request_type_id=$4) AND ($5='' OR sr.channel=$5)
-		  AND ($6='' OR ($6='open' AND st.category<>'done') OR ($6='resolved' AND st.category='done'))`, workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status)
+		  AND ($6='' OR ($6='open' AND i.resolution_id IS NULL) OR ($6='resolved' AND i.resolution_id IS NOT NULL))`, workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +144,7 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 		JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
 		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND `+window+`
 		  AND ($4='' OR sr.request_type_id=$4) AND ($5='' OR sr.channel=$5)
-		  AND ($6='' OR ($6='open' AND st.category<>'done') OR ($6='resolved' AND st.category='done'))
+		  AND ($6='' OR ($6='open' AND i.resolution_id IS NULL) OR ($6='resolved' AND i.resolution_id IS NOT NULL))
 		GROUP BY rt.id,rt.name ORDER BY count(*) DESC,rt.name`, workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status)
 	if err != nil {
 		return nil, err
@@ -163,7 +166,7 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 		JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
 		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND `+window+`
 		  AND ($4='' OR sr.request_type_id=$4) AND ($5='' OR sr.channel=$5)
-		  AND ($6='' OR ($6='open' AND st.category<>'done') OR ($6='resolved' AND st.category='done'))
+		  AND ($6='' OR ($6='open' AND i.resolution_id IS NULL) OR ($6='resolved' AND i.resolution_id IS NOT NULL))
 		GROUP BY sr.channel ORDER BY count(*) DESC,sr.channel`, workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status)
 	if err != nil {
 		return nil, err
@@ -182,7 +185,7 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 	}
 	filters := `sr.workspace_id=$1 AND sr.service_desk_id=$2 AND ` + window + `
 		  AND ($4='' OR sr.request_type_id=$4) AND ($5='' OR sr.channel=$5)
-		  AND ($6='' OR ($6='open' AND st.category<>'done') OR ($6='resolved' AND st.category='done'))`
+		  AND ($6='' OR ($6='open' AND i.resolution_id IS NULL) OR ($6='resolved' AND i.resolution_id IS NOT NULL))`
 	args := []any{workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status}
 	// A request without a priority is shown as None, as Jira shows it.
 	if report.Priorities, err = s.serviceReportSegments(ctx, `
