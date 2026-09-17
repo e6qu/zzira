@@ -29,7 +29,7 @@ func Templates() []TemplateSummary {
 			summary.Categories = append(summary.Categories, templateCategoryNames[key])
 		}
 		for _, parameter := range template.Parameters {
-			summary.Parameters = append(summary.Parameters, TemplateParameter{Type: parameter.Type, Key: parameter.Key, Required: parameter.Required})
+			summary.Parameters = append(summary.Parameters, TemplateParameter(parameter))
 		}
 		out = append(out, summary)
 	}

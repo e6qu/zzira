@@ -94,7 +94,7 @@ func resetDatabase(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer admin.Close(ctx)
+	defer func() { _ = admin.Close(ctx) }()
 	if _, err := admin.Exec(ctx, `DROP DATABASE IF EXISTS zzira_load WITH (FORCE)`); err != nil {
 		return err
 	}
@@ -160,7 +160,7 @@ func timeGet(url, email, token string) (time.Duration, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 && resp.StatusCode != 304 {
 		return 0, fmt.Errorf("sync http %d", resp.StatusCode)
 	}

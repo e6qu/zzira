@@ -159,7 +159,7 @@ func spacePermissionDisplayName(key, target string) string {
 		"read": "View", "create": "Add", "update": "Edit", "delete": "Delete", "administer": "Administer",
 	}[key]
 	if verb == "" {
-		verb = strings.Title(key)
+		verb = strings.ToUpper(key[:1]) + key[1:]
 	}
 	noun := map[string]string{
 		"space": "space", "page": "pages", "blogpost": "blog posts", "comment": "comments",

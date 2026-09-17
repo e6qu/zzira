@@ -1442,12 +1442,6 @@ func projectKeyOf(i *models.Issue) string {
 	return i.Key
 }
 
-// ---- comments ----
-
-type addCommentRequest struct {
-	Body json.RawMessage `json:"body"`
-}
-
 // ---- transitions ----
 
 func (h *Handler) listTransitions(w http.ResponseWriter, r *http.Request, idOrKey string) {

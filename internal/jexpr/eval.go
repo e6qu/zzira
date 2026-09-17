@@ -209,11 +209,6 @@ func (e *EvalError) Error() string {
 	return "Evaluation failed: \"" + e.Snippet + "\" - " + e.Message
 }
 
-// Errorf reports a runtime failure from an entity or loader.
-func Errorf(format string, args ...any) error {
-	return &EvalError{Message: fmt.Sprintf(format, args...)}
-}
-
 func (c *Context) fail(node Node, message string) error {
 	return &EvalError{Message: message, Snippet: c.snippet(node)}
 }

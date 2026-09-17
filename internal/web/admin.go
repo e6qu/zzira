@@ -486,7 +486,7 @@ func (h *Handler) UpdateAdminJiraConfiguration(w http.ResponseWriter, r *http.Re
 	}
 	section := r.PathValue("section")
 	var err error
-	message := "Jira configuration saved"
+	var message string
 	switch section {
 	case "announcement":
 		err = h.Commands.UpdateAnnouncementBanner(r.Context(), workspaceID, user.ID, models.AnnouncementBanner{

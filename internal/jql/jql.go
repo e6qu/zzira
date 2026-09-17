@@ -1007,9 +1007,10 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 			}
 		}
 		col := `i.fields->>'` + f.ID + `'`
-		if f.Type == models.CustomFieldNumber {
+		switch f.Type {
+		case models.CustomFieldNumber:
 			col = `NULLIF(i.fields->>'` + f.ID + `','')::numeric`
-		} else if f.Type == models.CustomFieldDatetime {
+		case models.CustomFieldDatetime:
 			col = `NULLIF(i.fields->>'` + f.ID + `','')::timestamptz`
 		}
 		res.Columns[f.ID] = col
@@ -1787,7 +1788,7 @@ func (c *compiler) historyValueMatch(key, side string, values []string) string {
 	parts := make([]string, 0, len(values))
 	for _, value := range values {
 		placeholder := c.arg(c.fieldValue(key, value))
-		columns := []string{}
+		var columns []string
 		switch side {
 		case "from":
 			columns = []string{"from", "fromString"}

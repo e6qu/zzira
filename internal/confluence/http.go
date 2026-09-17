@@ -1387,9 +1387,10 @@ func (h *Handler) spaces(w http.ResponseWriter, r *http.Request, ws, actor strin
 	}
 	sort.SliceStable(filtered, func(i, j int) bool {
 		left, right := filtered[i].ID, filtered[j].ID
-		if field == "key" {
+		switch field {
+		case "key":
 			left, right = filtered[i].Key, filtered[j].Key
-		} else if field == "name" {
+		case "name":
 			left, right = filtered[i].Name, filtered[j].Name
 		}
 		if field == "id" {

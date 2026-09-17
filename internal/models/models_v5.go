@@ -1,7 +1,5 @@
 package models
 
-import "encoding/json"
-
 // Rank is the LexoRank ordering key; carried on issue snapshots so replicas
 // order board columns without extra state.
 const (
@@ -135,10 +133,4 @@ type SprintIssuePayload struct {
 type RankUpdatePayload struct {
 	IssueID string `json:"issueId"`
 	Rank    string `json:"rank"`
-}
-
-// IssueJSON is a JSON round-trip helper for worker-side payload construction.
-func IssueJSON(i Issue) json.RawMessage {
-	b, _ := json.Marshal(IssueUpsertPayload{Issue: i})
-	return b
 }

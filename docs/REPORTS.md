@@ -16,7 +16,7 @@ sequence for each deployment key.
 | Deployment frequency | Count of successful production deployment keys, plus a weekly rate |
 | Lead time for changes | Median time from a linked commit to its first later successful production deployment |
 | Change failure rate | Failed and rolled-back production events divided by successful, failed and rolled-back terminal events |
-| Time to restore service | Median time from creation to first Done transition for Jira Service Management incidents |
+| Time to restore service | Median time from creation to resolution for Jira Service Management incidents |
 
 The chart uses accessible SVG with a title and description. A keyboard
 reachable table exposes every daily value, and the complete report is covered

@@ -406,8 +406,8 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 		"jsm-project-admins":  "JSM project administrators",
 		"anonymous-users":     "Anonymous users",
 	}
-	roleUsers := []*models.User{}
-	roleGroups := []models.WikiRestrictionSubject{}
+	var roleUsers []*models.User
+	var roleGroups []models.WikiRestrictionSubject
 	roleUsers, err = h.Store.MembersByWorkspace(r.Context(), ws)
 	if err != nil {
 		http.Error(w, "Could not load space role users.", 500)
@@ -850,7 +850,7 @@ func (h *Handler) WikiBlogAttachmentCreate(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Choose a file to attach.", 400)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	post, err := h.Store.WikiBlogPost(r.Context(), ws, user.ID, r.PathValue("blogpost"))
 	if err != nil || post.SpaceID != r.PathValue("space") || post.Status != "current" {
 		http.NotFound(w, r)
@@ -1366,7 +1366,7 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 		}
 		canEdit = allowed
 		if edit && !canEdit {
-			http.Error(w, "You do not have permission to edit this page.", 403)
+			http.Error(w, "You do not have permission to edit this page.", http.StatusForbidden)
 			return
 		}
 		if edit {
@@ -1771,7 +1771,7 @@ func (h *Handler) WikiAttachmentCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Choose a file to attach.", 400)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	page, err := h.wikiPageForComment(r, ws, user.ID)
 	if err != nil {
 		status, message := wikiWebError(err)

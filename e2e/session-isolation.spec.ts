@@ -1,4 +1,12 @@
 import { expect, test, Page } from '@playwright/test';
+import * as fs from 'fs';
+import * as path from 'path';
+
+function apiAuthHeader(): string {
+  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
+  const token = process.env.ZZIRA_API_TOKEN ?? tokens['demo@zzira.dev'];
+  return 'Basic ' + Buffer.from(`demo@zzira.dev:${token}`).toString('base64');
+}
 
 const DEMO = { email: 'demo@zzira.dev', password: 'demo1234' };
 
@@ -17,6 +25,16 @@ async function privatePageCacheEntries(page: Page): Promise<number> {
     return entries.reduce((total, cacheEntries) => total + cacheEntries.length, 0);
   });
 }
+
+// Two journeys open a work item from the list, which a fresh site lacks, so the
+// spec raises one rather than relying on another spec having run.
+test.beforeAll(async ({ request }) => {
+  const created = await request.post('/rest/api/3/issue', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { fields: { project: { key: 'ZZ' }, summary: `Session isolation work ${Date.now()}`, issuetype: { name: 'Task' } } },
+  });
+  expect(created.status()).toBe(201);
+});
 
 test('sign-out clears authenticated page caches and rotates the local replica', async ({ page }) => {
   await login(page);

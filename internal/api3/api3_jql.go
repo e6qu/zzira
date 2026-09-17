@@ -678,12 +678,13 @@ func jqlNodeStructure(node jql.Node) map[string]any {
 	case jql.Clause:
 		op := value.Op
 		operand := jqlOperands(value.Values, value.Op == "in" || value.Op == "notin")
-		if op == "notin" {
+		switch op {
+		case "notin":
 			op = "not in"
-		} else if op == "empty" {
+		case "empty":
 			op = "is"
 			operand = jqlOperand("empty")
-		} else if op == "notempty" {
+		case "notempty":
 			op = "is not"
 			operand = jqlOperand("empty")
 		}

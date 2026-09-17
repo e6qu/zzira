@@ -189,7 +189,7 @@ func TestJiraSoftwareContract(t *testing.T) {
 		return rank
 	}
 	call(http.MethodPut, agile+"/issue/rank", `{"issues":["`+task+`"],"rankBeforeIssue":"`+epic+`"}`, http.StatusNoContent)
-	if !(rankOf(task) < rankOf(epic)) {
+	if rankOf(task) >= rankOf(epic) {
 		t.Fatalf("rank %s=%s %s=%s", task, rankOf(task), epic, rankOf(epic))
 	}
 	partial := call(http.MethodPut, agile+"/issue/rank", `{"issues":["`+story+`","NOPE-1"],"rankAfterIssue":"`+secondEpic+`"}`, http.StatusMultiStatus)
@@ -199,7 +199,7 @@ func TestJiraSoftwareContract(t *testing.T) {
 	}
 	call(http.MethodPut, agile+"/issue/rank", `{"issues":["`+story+`"],"rankAfterIssue":"`+epic+`","rankCustomFieldId":1}`, http.StatusBadRequest)
 	call(http.MethodPut, agile+"/epic/"+secondEpic+"/rank", `{"rankBeforeEpic":"`+epic+`"}`, http.StatusNoContent)
-	if !(rankOf(secondEpic) < rankOf(epic)) {
+	if rankOf(secondEpic) >= rankOf(epic) {
 		t.Fatal("epic rank did not move")
 	}
 	call(http.MethodPut, agile+"/epic/"+secondEpic+"/rank", `{"rankBeforeEpic":"`+story+`"}`, http.StatusNotFound)
@@ -254,7 +254,7 @@ func TestJiraSoftwareContract(t *testing.T) {
 		t.Fatal(inSprint)
 	}
 	call(http.MethodPost, agile+"/backlog/"+fmt.Sprint(created["id"])+"/issue", `{"issues":["`+story+`"],"rankBeforeIssue":"`+secondEpic+`"}`, http.StatusNoContent)
-	if backlog := call(http.MethodGet, agile+"/issue/"+story, "", http.StatusOK); backlog["fields"].(map[string]any)["sprint"] != nil || !(rankOf(story) < rankOf(secondEpic)) {
+	if backlog := call(http.MethodGet, agile+"/issue/"+story, "", http.StatusOK); backlog["fields"].(map[string]any)["sprint"] != nil || rankOf(story) >= rankOf(secondEpic) {
 		t.Fatal(backlog)
 	}
 

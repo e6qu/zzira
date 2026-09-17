@@ -349,9 +349,10 @@ func validateJQLFunction(input jqlFunctionWire, format string, moduleKeys map[st
 	operators, operatorSeen := make([]string, 0, len(input.Operators)), map[string]bool{}
 	for _, value := range input.Operators {
 		value = strings.ToLower(strings.TrimSpace(value))
-		if value == "not in" {
+		switch value {
+		case "not in":
 			value = "not_in"
-		} else if value == "is not" {
+		case "is not":
 			value = "is_not"
 		}
 		if !allowedOperators[value] || operatorSeen[value] {
@@ -382,7 +383,7 @@ func validAppCallbackPath(value string) bool {
 		return false
 	}
 	parsed, err := url.Parse(value)
-	return err == nil && parsed.IsAbs() == false && parsed.Host == "" && parsed.User == nil && parsed.Fragment == ""
+	return err == nil && !parsed.IsAbs() && parsed.Host == "" && parsed.User == nil && parsed.Fragment == ""
 }
 
 func ensureJSONEnd(decoder *json.Decoder) error {

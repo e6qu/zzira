@@ -159,9 +159,10 @@ func validateJQLFunctionArguments(function models.AppJQLFunction, arguments []st
 }
 
 func appJQLOperator(operator string) string {
-	if operator == "notin" {
+	switch operator {
+	case "notin":
 		return "not_in"
-	} else if operator == "isnot" {
+	case "isnot":
 		return "is_not"
 	}
 	return strings.ToLower(operator)
@@ -213,7 +214,7 @@ func (e *JQLFunctionEvaluator) evaluate(ctx context.Context, workspaceID string,
 	if err != nil {
 		return nil, fmt.Errorf("evaluate function %s(): %w", function.Name, err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(response.Body, 64<<10))
 	if err != nil {
 		return nil, err

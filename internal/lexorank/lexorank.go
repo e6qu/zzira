@@ -84,7 +84,8 @@ func after(s string) (string, error) {
 func between(a, b string) (string, error) {
 	var out []byte
 	for i := 0; ; i++ {
-		ia, ib := 0, idx(maxChar) // exhausted side opens toward the alphabet start
+		// An exhausted lower bound opens toward the alphabet start.
+		ia, ib := 0, 0
 		pastB := i >= len(b)
 		if i < len(a) {
 			ia = idx(a[i])
@@ -114,6 +115,3 @@ func between(a, b string) (string, error) {
 func midCharStr(_ string) string {
 	return string(charAt(len(alphabet) / 2))
 }
-
-// Initial returns the rank for the first card in a column.
-func Initial() string { return "u" }

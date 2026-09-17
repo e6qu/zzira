@@ -45,10 +45,6 @@ func (h *Handler) authorizeMember(w http.ResponseWriter, r *http.Request) (strin
 
 // ---- ARIs ----
 
-func issueARI(cloudID string, issueID int64) string {
-	return "ari:cloud:jira:" + cloudID + ":issue/" + strconv.FormatInt(issueID, 10)
-}
-
 func projectARI(cloudID, projectID string) string {
 	return "ari:cloud:jira:" + cloudID + ":project/" + projectID
 }
