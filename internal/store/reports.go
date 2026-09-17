@@ -172,7 +172,11 @@ func (s *Store) doraRecoveryTimes(ctx context.Context, workspaceID, projectID, u
 		  SELECT i.id,MIN(created.created_at) AS opened_at
 		  FROM issues i
 		  JOIN actions created ON created.workspace_id=i.workspace_id AND created.entity_type='issue' AND created.entity_id=i.id AND created.op='upsert'
-		  WHERE i.workspace_id=$1 AND i.project_id=$2 AND 'incident'=ANY(i.labels)
+		  -- An incident is a Jira Service Management incident request, which
+		  -- is how every other incident reader here knows one; a label anyone
+		  -- can add or remove is not.
+		  JOIN service_request_operations operation ON operation.request_issue_id=i.id AND operation.kind='incident'
+		  WHERE i.workspace_id=$1 AND i.project_id=$2
 		    AND `+VisibleIssuePredicate("i", "$3")+`
 		  GROUP BY i.id
 		), recovered AS (
