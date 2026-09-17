@@ -442,6 +442,11 @@ func validPriorityInput(in PriorityInput, creating bool) (PriorityInput, error) 
 	if in.StatusColor != nil && !hexColor.MatchString(*in.StatusColor) {
 		return in, fmt.Errorf("%w: statusColor is a 3-digit or 6-digit hexadecimal colour such as #FFF or #06f", ErrIssueMetadataValidation)
 	}
+	// An empty iconUrl on an edit leaves the icon alone; a priority always has
+	// one.
+	if !creating && in.IconURL != nil && strings.TrimSpace(*in.IconURL) == "" {
+		in.IconURL = nil
+	}
 	if in.IconURL != nil && in.AvatarID != nil {
 		return in, fmt.Errorf("%w: either iconUrl or avatarId may be given, not both", ErrIssueMetadataValidation)
 	}
@@ -450,6 +455,13 @@ func validPriorityInput(in PriorityInput, creating bool) (PriorityInput, error) 
 	}
 	return in, nil
 }
+
+// PriorityIconNames are Jira's built-in priority icons, most important first.
+var PriorityIconNames = []string{"highest", "high", "medium", "low", "lowest", "blocker", "critical", "major", "minor", "trivial"}
+
+// DefaultPriorityIconURL is the icon a priority created without one takes, so
+// every priority a client reads has an icon to show.
+const DefaultPriorityIconURL = "/images/icons/priorities/medium.svg"
 
 // CreatePriority adds a priority to the site, last in order, and to the site's
 // default priority scheme.
@@ -475,6 +487,9 @@ func (s *Store) CreatePriority(ctx context.Context, workspaceID string, in Prior
 	}
 	if in.IconURL != nil {
 		icon = *in.IconURL
+	}
+	if strings.TrimSpace(icon) == "" {
+		icon = DefaultPriorityIconURL
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO priorities(id,workspace_id,name,description,status_color,icon_url,avatar_id,position)
 		VALUES($1,$2,$3,$4,$5,$6,$7,(SELECT COALESCE(max(COALESCE(o.position,p.position)),0)+1 FROM priorities p
