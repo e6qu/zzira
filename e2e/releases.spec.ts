@@ -114,6 +114,15 @@ test('plan a release, assign scope, publish notes, archive and delete', async ({
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.locator('[data-theme-toggle]').click();
   await page.goto(releaseURL);
+  // Release notes come grouped by work type, in the format asked for.
+  const notes = page.getByRole('region', { name: 'Release notes' });
+  await notes.getByLabel('Plain text').check();
+  await notes.getByRole('button', { name: 'Build release notes' }).click();
+  await expect(page).toHaveURL(/notesFormat=text/);
+  const copied = await page.getByLabel('Release notes to copy').inputValue();
+  expect(copied).toMatch(new RegExp(`\\n\\*\\* [^\\n]+\\n    \\* \\[${issue.key}\\] - `));
+  await accessible(page);
+  await page.goto(releaseURL);
   await page.getByRole('link', { name: 'Open in search' }).click();
   await expect(page.locator('.issue-list')).toContainText(issue.key);
   await page.goto(`/browse/${issue.key}`);

@@ -66,7 +66,11 @@ This is a partial version/release implementation, not full Jira Cloud fidelity:
   and the move happens when a version is released rather than every time a
   released version is saved. The field is a version self link, as Jira sends
   it, and is not applicable when creating a version.
-- Cross-project releases and configurable release notes or exports remain gaps.
+- Release notes group a version's work by work type, as Jira's do. A person
+  chooses which work types to include and a format: styled on the page, or plain
+  text or Markdown to copy. Plain text follows Jira's release notes layout, a
+  `** Type` heading over `* [KEY] - Summary` lines. Notes list only the work the
+  person can see. Cross-project releases remain a gap.
   Unsupported request options are explicit errors.
 - Unresolved work is work whose resolution is empty, as Jira has it: that is
   what `unresolvedIssueCount` counts and what releasing a version moves. Reaching
