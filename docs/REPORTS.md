@@ -111,7 +111,8 @@ from their lifecycle actions.
 
 Service managers and agents can open `/service/agent/{desk}/reports` for a
 permission-scoped 7, 30, or 90 day service overview. It reports request volume,
-current open and resolved counts, requests with any breached SLA cycle, CSAT
+current open and resolved counts (a request is open while it has no resolution
+and resolved once it has one, as the desk's own queues decide it), requests with any breached SLA cycle, CSAT
 average and response count, and an exact daily intake series. The daily chart
 has an accessible text alternative and keyboard-reachable data table. SLA
 breaches are calculated with the same desk calendar and holidays used on the

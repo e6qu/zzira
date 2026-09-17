@@ -1622,6 +1622,18 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err != nil || resolvedReport.TotalRequests != 1 || resolvedReport.OpenRequests != 0 || resolvedReport.ResolvedRequests != 1 || resolvedReport.SatisfactionResponses != 1 {
 		t.Fatalf("resolved service report = %+v, %v", resolvedReport, err)
 	}
+	// A request is resolved when it has a resolution, as the desk's queues
+	// decide it: a done request whose resolution is cleared is open again.
+	var resolutionID string
+	if err := st.Pool.QueryRow(ctx, `SELECT resolution_id FROM issues WHERE workspace_id=$1 AND key=$2`, workspaceID, issueKey).Scan(&resolutionID); err != nil {
+		t.Fatalf("the finished request has no resolution: %v", err)
+	}
+	exec(`UPDATE issues SET resolution_id=NULL WHERE workspace_id=$1 AND key=$2`, workspaceID, issueKey)
+	reopened, err := st.ServiceReport(ctx, workspaceID, serviceDeskID, 30, time.Now().UTC())
+	if err != nil || reopened.ResolvedRequests != report.ResolvedRequests-1 || reopened.OpenRequests != report.OpenRequests+1 {
+		t.Fatalf("with the resolution cleared = %+v, %v; before = %+v", reopened, err, report)
+	}
+	exec(`UPDATE issues SET resolution_id=$3 WHERE workspace_id=$1 AND key=$2`, workspaceID, issueKey, resolutionID)
 	incidentReport, err := st.ServiceReportFiltered(ctx, workspaceID, serviceDeskID, models.ServiceReportFilter{RequestTypeID: incidentTypeID, Channel: "portal"}, 30, time.Now().UTC())
 	if err != nil || incidentReport.TotalRequests < 3 || len(incidentReport.RequestTypes) != 1 || incidentReport.RequestTypes[0].ID != incidentTypeID {
 		t.Fatalf("segmented incident report = %+v, %v", incidentReport, err)
