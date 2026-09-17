@@ -16,15 +16,17 @@ sequence for each deployment key.
 | Deployment frequency | Count of successful production deployment keys, plus a weekly rate |
 | Lead time for changes | Median time from a linked commit to its first later successful production deployment |
 | Change failure rate | Failed and rolled-back production events divided by successful, failed and rolled-back terminal events |
-| Time to restore service | Median time from creation to first Done transition for work items labeled `incident` |
+| Time to restore service | Median time from creation to first Done transition for Jira Service Management incidents |
 
 The chart uses accessible SVG with a title and description. A keyboard
 reachable table exposes every daily value, and the complete report is covered
 in light and dark themes and at 320 px width.
 
-Jira Service Management incident request types currently add the `incident`
-label that feeds recovery time; dedicated incident relationships and service
-configuration remain. Deployment approvals, configurable
+Recovery time counts Jira Service Management incidents — requests raised as
+incidents — which is how the site's incident teams, escalations and incident
+updates already know one. The `incident` label an incident request carries is
+not what makes it one, so a work item merely labeled `incident` is not counted,
+and an incident whose label is removed still is. Deployment approvals, configurable
 environment mapping, excluded-period calendars, and team filters and targets remain.
 Every Jira and Agile report named in the plan is now available.
 

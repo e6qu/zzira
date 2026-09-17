@@ -259,7 +259,9 @@ test('releasing a version moves the work it did not finish', async ({ page }) =>
 
   // Release it, sending what is not done to the next version.
   await page.goto(`/projects/ZZ/releases/${shipping}`);
-  await page.getByLabel('Work that is not done').selectOption({ label: `Move it to ${nextName}` });
+  // The release asks about unresolved work, as Jira's release dialog does.
+  await expect(page.getByText('1 of 2 work items are unresolved.')).toBeVisible();
+  await page.getByLabel('Unresolved work').selectOption({ label: `Move it to ${nextName}` });
   await page.getByRole('button', { name: 'Release version' }).click();
   await expect(page.getByText('Released', { exact: true }).first()).toBeVisible();
 
@@ -267,7 +269,7 @@ test('releasing a version moves the work it did not finish', async ({ page }) =>
     const response = await page.request.get(`/rest/api/3/issue/${key}?fields=fixVersions`, { headers });
     return ((await response.json()).fields.fixVersions as Array<{ id: string }>).map(v => v.id);
   };
-  // Work that is not done moved; work that shipped stayed with the release.
+  // Unresolved work moved; resolved work stayed with the release that shipped it.
   expect(await fixVersions(unfinished)).toEqual([next]);
   expect(await fixVersions(finished)).toEqual([shipping]);
 });

@@ -50,6 +50,7 @@ func TestBuildAndDeploymentContractJourney(t *testing.T) {
 	t.Cleanup(func() {
 		exec(`DELETE FROM actions WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM issues WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM service_desks WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM projects WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM organization_audit_events WHERE actor_id=$1`, actorID)
 		exec(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
@@ -92,10 +93,23 @@ func TestBuildAndDeploymentContractJourney(t *testing.T) {
 	if err != nil || len(items) != 3 || items[0].Kind != "deployment" || items[2].Kind != "build" {
 		t.Fatalf("delivery items = %+v, %v", items, err)
 	}
-	incident, _, err := service.CreateIssue(ctx, commands.CreateIssueInput{ActorID: actorID, WorkspaceID: workspaceID, ProjectIDOrKey: projectID, Summary: "Production incident", IssueTypeID: "it_task", Labels: []string{"incident"}})
+	// Recovery time counts Jira Service Management incidents: requests raised
+	// as incidents. The real one carries no label; the decoy carries only the
+	// label, and must not count.
+	incident, _, err := service.CreateIssue(ctx, commands.CreateIssueInput{ActorID: actorID, WorkspaceID: workspaceID, ProjectIDOrKey: projectID, Summary: "Production incident", IssueTypeID: "it_task"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	decoy, _, err := service.CreateIssue(ctx, commands.CreateIssueInput{ActorID: actorID, WorkspaceID: workspaceID, ProjectIDOrKey: projectID, Summary: "Labeled, not an incident", IssueTypeID: "it_task", Labels: []string{"incident"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var deskID string
+	if err := st.Pool.QueryRow(ctx, `INSERT INTO service_desks(workspace_id,project_id,portal_name) VALUES($1,$2,'Delivery desk') RETURNING id`, workspaceID, projectID).Scan(&deskID); err != nil {
+		t.Fatal(err)
+	}
+	exec(`INSERT INTO service_requests(issue_id,workspace_id,service_desk_id,customer_id,channel) VALUES($1,$2,$3,$4,'portal')`, incident.ID, workspaceID, deskID, actorID)
+	exec(`INSERT INTO service_request_operations(request_issue_id,kind,updated_by) VALUES($1,'incident',$2)`, incident.ID, actorID)
 	wf, err := st.WorkflowForProjectAndIssueType(ctx, projectID, incident.IssueType.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -110,9 +124,13 @@ func TestBuildAndDeploymentContractJourney(t *testing.T) {
 	if doneTransition == "" {
 		t.Fatal("default workflow does not have a direct Done transition")
 	}
-	if _, _, err := service.TransitionIssue(ctx, actorID, workspaceID, incident.Key, doneTransition); err != nil {
-		t.Fatal(err)
+	for _, key := range []string{incident.Key, decoy.Key} {
+		if _, _, err := service.TransitionIssue(ctx, actorID, workspaceID, key, doneTransition); err != nil {
+			t.Fatal(err)
+		}
 	}
+	exec(`UPDATE actions SET created_at='2026-09-06T10:00:00Z' WHERE workspace_id=$1 AND entity_id=$2 AND payload->'diff'->'status' IS NULL`, workspaceID, decoy.ID)
+	exec(`UPDATE actions SET created_at='2026-09-06T10:05:00Z' WHERE workspace_id=$1 AND entity_id=$2 AND payload->'diff'->'status' IS NOT NULL`, workspaceID, decoy.ID)
 	exec(`UPDATE actions SET created_at='2026-09-06T10:00:00Z' WHERE workspace_id=$1 AND entity_id=$2 AND payload->'diff'->'status' IS NULL`, workspaceID, incident.ID)
 	exec(`UPDATE actions SET created_at='2026-09-06T12:30:00Z' WHERE workspace_id=$1 AND entity_id=$2 AND payload->'diff'->'status' IS NOT NULL`, workspaceID, incident.ID)
 	reportUntil, _ := time.Parse(time.RFC3339, "2026-09-07T00:00:00Z")

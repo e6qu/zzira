@@ -51,8 +51,9 @@ versions in the same project, and invalid requests roll back the entire operatio
 
 This is a partial version/release implementation, not full Jira Cloud fidelity:
 
-- Permissions use workspace membership and the administrator role. Jira project
-  roles, anonymous browsing and granular version permissions remain gaps.
+- Managing versions asks the project's permission scheme for Administer
+  projects, as Jira does, so project roles and groups granted it manage
+  versions. Reading follows the work items a person can see.
 - Versions carry an explicit order. The move endpoint takes `after`, or a
   position of First, Earlier, Later or Last, and the release list offers a
   project administrator buttons to move a version up or down. Those buttons
@@ -67,8 +68,12 @@ This is a partial version/release implementation, not full Jira Cloud fidelity:
   it, and is not applicable when creating a version.
 - Cross-project releases and configurable release notes or exports remain gaps.
   Unsupported request options are explicit errors.
-- Unresolved counts currently treat the Done status category as resolved; a
-  separate Jira resolution field and its workflow semantics remain unfinished.
+- Unresolved work is work whose resolution is empty, as Jira has it: that is
+  what `unresolvedIssueCount` counts and what releasing a version moves. Reaching
+  a done status sets the site's default resolution and leaving one clears it, so
+  the two agree on the default path; where they differ, resolution decides. The
+  release page's to do, in progress and done breakdown follows status
+  categories, which is how Jira draws it.
 - Dates use ISO dates and UTC for overdue calculation, with fixed English display
   dates. User-locale/site-timezone formatting is not yet configurable. A date can
   be cleared with an empty string; null is treated as omitted.

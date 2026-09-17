@@ -31,7 +31,10 @@ type releasesData struct {
 	Version  *models.Version
 	Issues   []*models.Issue
 	Progress models.VersionProgress
-	Delivery []models.DeliveryItem
+	// Unresolved counts the work whose resolution is empty, which is what a
+	// release asks about and what it can move, whatever status that work is in.
+	Unresolved int
+	Delivery   []models.DeliveryItem
 	// DeploymentsDisabled hides delivery evidence a project turned off.
 	DeploymentsDisabled bool
 	// Driver, Members and Approvers describe who is responsible for and who
@@ -253,6 +256,11 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Progress = store.VersionProgress(data.Issues)
+	for _, issue := range data.Issues {
+		if issue.Resolution == nil {
+			data.Unresolved++
+		}
+	}
 	issueKeys := make([]string, 0, len(data.Issues))
 	for _, issue := range data.Issues {
 		issueKeys = append(issueKeys, issue.Key)
