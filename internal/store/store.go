@@ -24,6 +24,10 @@ import (
 type Store struct {
 	Pool           *pgxpool.Pool
 	AppJQLExpander func(context.Context, string, *jql.Query) error
+	// IssueExpressionEvaluator computes a Jira expression for one work item as
+	// a person, returning its JSON value. The server wires it to the API's
+	// expression runtime.
+	IssueExpressionEvaluator func(ctx context.Context, workspaceID, userID, issueID, expression string) (json.RawMessage, error)
 }
 
 // ExpandAppJQL applies the installed-app function runtime when configured by

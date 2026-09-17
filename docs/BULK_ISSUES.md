@@ -79,10 +79,12 @@ REST bulk operations need the global **Bulk change** permission
 
 ## UI
 
-The issue navigator (`/issues/{projectKey}`) lets site administrators select
-rows on the current page and bulk delete, move (project, type, parent) or
+The issue navigator (`/issues/{projectKey}`) lets people with the Bulk change
+global permission select rows on the current page and bulk delete, move (project, type, parent) or
 transition them, choosing whether to notify watchers. Progress is shown at
-`/issues/{projectKey}/bulk/{taskId}`.
+`/issues/{projectKey}/bulk/{taskId}` to the submitter and administrators. Each
+work item still needs the project permission its operation needs
+([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)).
 
 ## Gaps
 
@@ -90,8 +92,7 @@ See [PLAN.md](../PLAN.md).
 
 - `editedFieldsInput.issueType` and `status` are refused (pointing to bulk
   move and bulk transition) instead of being edited in place.
-- The navigator offers no bulk edit, watch or unwatch, and gates bulk actions
-  on site administration rather than the Bulk change permission.
+- The navigator offers no bulk edit, watch or unwatch.
 
 ## See also
 

@@ -46,20 +46,26 @@ Malformed ids, unknown expansions, invalid holders, duplicate grants or scheme n
 - **Browse projects** hides denied projects and work items before serialization.
 - **Issue-dependent holders.** Assignee, reporter and custom field holders are checked against the specific work item on direct reads. In a project-only query, they match when any active work item in the project supplies the relationship, as in Jira.
 - **Project configuration.** Administer projects (implied by Administer Jira) covers components, versions and release approvers, properties, features, sender email, details, project-scoped statuses, roles and effective-permission views. Administer Jira is still required for global statuses, project creation, categories, archive, trash, restore, delete, and scheme assignment (`internal/api3/project_administration_test.go`).
-- **Permissions checked on work item actions:**
+- **Work item actions.** `internal/commands` checks these for every caller — REST, pages, bulk tasks, automation (as the rule actor), plans and board drags (`internal/commands/permission_enforcement_test.go`):
 
   | Action | Permission |
   | --- | --- |
+  | Create | Create issues; plus Assign issues for an assignee, Modify reporter for another reporter, Set issue security for a level, Schedule issues for a due date, Resolve issues for fix versions |
+  | Edit fields | Edit issues; plus Set issue security, Schedule issues or Resolve issues for those fields |
+  | Assign | Assign issues; the assignee needs Assignable user |
+  | Transition, board column moves | Transition issues; a move runs a workflow transition into the column's status |
+  | Rank, sprint and backlog moves | Schedule issues; sprint and backlog moves also Edit issues |
+  | Sprints | Manage sprints in the board's project |
+  | Links | Link issues on the outward work item (REST also asks Edit issues) |
+  | Others' watches | Manage watchers |
+  | Move | Move issues where the work item is, Create issues where it goes |
+  | Delete | Delete issues |
   | Comments | Add comments; edit or delete all / own comments |
   | Attachments | Create attachments; delete all / own attachments |
   | Worklogs | Work on issues to log; edit or delete all / own worklogs |
-  | Assignee pickers, assignable-user search, automation assignment | Assignable user |
-  | Links | Link issues and Edit issues |
-  | Work item properties | Edit issues |
-  | Deleting | Delete issues |
-  | Others' watches | Manage watchers |
+  | Properties | Edit issues |
 
-  Edit metadata needs Edit issues; the transitions list needs Transition issues, as does bulk transition.
+  A portal customer raises and transitions their own requests without project permissions; a service agent needs Service desk agent in the desk's project. Refusals are `403` except where Jira answers `400`: create, edit and transition, reported against the field when one is involved. Bulk operations also need the Bulk change global permission. The workflow validator `system:check-permission-validator` evaluates the project's scheme.
 
 **Permission helper** (`/admin/permission-helper`). Given a person, a work item and a project permission, it says whether the person holds it and why: the administrator role, Administer Jira, or the named grants. Each grant is tested alone in a rolled-back savepoint using `jira_has_project_permission`. For Browse projects it also reports a security level that hides the work item.
 
@@ -67,9 +73,6 @@ Malformed ids, unknown expansions, invalid holders, duplicate grants or scheme n
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- Create issues, Edit issues, Transition issues, Assign issues, Resolve issues, Close issues, Schedule issues, Modify reporter, Move issues, Set issue security, Manage sprints and Service desk agent are not checked when a work item is created, updated, transitioned, assigned or moved. Those commands check only Browse projects and issue security (`internal/commands/commands.go` `CreateIssue`, `internal/commands/commands_v1.go` `UpdateIssue`, `transitionIssueWithUpdate`).
-- Assignable user limits the assignee pickers, assignable-user search and automation, but a direct assignment only requires an active member.
-- The workflow validator `system:check-permission-validator` checks a fixed permission set derived from site roles (`internal/authz/jira_permissions.go`), not the project's permission scheme.
 - No copy action for permission schemes in the UI.
 
 ## Tests

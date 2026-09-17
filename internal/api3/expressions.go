@@ -930,3 +930,27 @@ func (l *expressionLoader) issueRecord(issue *models.Issue) *jexpr.Record {
 		Bean: func(*jexpr.Context) (any, error) { return h.IssueBean(issue), nil },
 	}
 }
+
+// EvaluateIssueExpression computes a Jira expression with issue and user in
+// context, as the bulk issue property update does for each work item.
+func (h *Handler) EvaluateIssueExpression(ctx context.Context, workspaceID, userID, issueID, expression string) (json.RawMessage, error) {
+	loader := &expressionLoader{h: h, ctx: ctx, workspaceID: workspaceID, userID: userID}
+	issue, err := loader.Issue(ctx, issueID)
+	if err != nil {
+		return nil, err
+	}
+	variables := map[string]jexpr.Value{"issue": issue, "user": nil}
+	if user, userErr := h.Store.UserByID(ctx, userID); userErr == nil {
+		variables["user"] = loader.userRecord(user)
+	}
+	evaluation := &jexpr.Context{Ctx: ctx, Variables: variables, Loader: loader, Limits: jexpr.DefaultLimits}
+	value, err := evaluation.Evaluate(expression)
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := evaluation.ToJSON(value)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(encoded)
+}

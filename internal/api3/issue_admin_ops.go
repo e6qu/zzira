@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/e6qu/zzira/internal/jexpr"
 	"github.com/e6qu/zzira/internal/store"
 )
 
@@ -406,15 +407,21 @@ func (h *Handler) issuePropertiesBulkRoute(w http.ResponseWriter, r *http.Reques
 		request = store.IssuePropertyBulkRequest{Mode: "delete-filtered", Key: key, CurrentValue: body.CurrentValue}
 		entityIDs := body.EntityIDs
 		if r.Method == http.MethodPut {
-			if strings.TrimSpace(body.Expression) != "" {
-				jiraError(w, http.StatusBadRequest, "Setting a property from a Jira expression isn't supported; send the value instead.")
+			expression := strings.TrimSpace(body.Expression)
+			switch {
+			case expression != "" && len(body.Value) > 0 && string(body.Value) != "null":
+				jiraError(w, http.StatusBadRequest, "Specify either a value or an expression, not both.")
 				return
-			}
-			if !validPropertyValue(body.Value) {
+			case expression != "":
+				if _, err := jexpr.Parse(expression); err != nil {
+					jiraError(w, http.StatusBadRequest, "The expression is invalid: "+err.Error())
+					return
+				}
+			case !validPropertyValue(body.Value):
 				jiraError(w, http.StatusBadRequest, "The property value must be valid, non-empty JSON of at most 32768 characters.")
 				return
 			}
-			request = store.IssuePropertyBulkRequest{Mode: "set-filtered", Key: key, Value: body.Value}
+			request = store.IssuePropertyBulkRequest{Mode: "set-filtered", Key: key, Value: body.Value, Expression: expression}
 			entityIDs = nil
 			if body.Filter != nil {
 				request.CurrentValue, request.HasProperty, entityIDs = body.Filter.CurrentValue, body.Filter.HasProperty, body.Filter.EntityIDs

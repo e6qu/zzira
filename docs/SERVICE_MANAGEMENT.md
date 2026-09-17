@@ -28,7 +28,7 @@ checks and 320 px reflow.
 |---|---|
 | Site administrator | Everything on every desk. Creates and reactivates portal-only customers, invites customers, revokes portal access, deletes organizations, edits Assets, sets the operations policy, customizes the help center |
 | Service desk administrator (administers the project) | Request types, request type fields, queues, desk customers, knowledge base links, calendars, SLAs, portal settings, per-desk attachment/feedback/notification switches, deployment gating. Request type properties also need agent access |
-| Agent (on the desk roster) | Reads every request of the desk (`requestOwnership=ALL_REQUESTS`), raises requests for enrolled customers, adds internal notes, assigns and transitions requests, runs bulk queue actions, creates organizations, manages participants and approvals, reads Assets |
+| Agent (on the desk roster, holding Service desk agent in the project) | Reads every request of the desk (`requestOwnership=ALL_REQUESTS`), raises requests for enrolled customers, adds internal notes, assigns and transitions requests, runs bulk queue actions, creates organizations, manages participants and approvals, reads Assets |
 | Customer | Their own requests (as reporter, participant, organization member or approver), public comments and public files |
 
 - **Desk roster:** site administrators add and remove active members. Removing

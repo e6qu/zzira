@@ -214,8 +214,11 @@ All four operations answer 303 with a task:
   by `entityIds` and `currentValue`.
 
 Only work items the caller can see and edit change. An update overlapping one already
-queued or running on the same work items is 409. A value given as a Jira
-`expression` is 400.
+queued or running on the same work items is 409. `PUT` takes either `value` or a
+Jira `expression`, evaluated per work item with `issue` and `user` in context; a
+work item the expression fails on, or whose value exceeds 32,768 characters,
+keeps its property. An unparsable expression, or both `value` and `expression`,
+is 400.
 
 ## Issue panels
 
@@ -229,8 +232,3 @@ panel, named by its module id, on projects, and answers 202 with a task id.
 - `migrations/165_jira_issue_surface.sql`
 - Tests: `internal/api3/issue_surface_test.go`
 
-## Gaps
-
-Tracked in [PLAN.md](../PLAN.md).
-
-- Bulk work item property updates do not evaluate a Jira `expression`, although `/rest/api/3/expression/eval` exists.

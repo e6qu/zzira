@@ -89,6 +89,7 @@ func TestIssueSurfaceContract(t *testing.T) {
 		}
 	})
 	h := &Handler{Store: st, Commands: &commands.Service{Store: st}, WorkspaceSlug: ws, BaseURL: "https://zzira.test"}
+	st.IssueExpressionEvaluator = h.EvaluateIssueExpression
 	runner := &store.APITaskRunner{Store: st}
 	drain := func() {
 		t.Helper()
@@ -640,7 +641,20 @@ func TestIssueSurfaceContract(t *testing.T) {
 	call(admin, "POST", "/rest/api/3/issue/properties/multi", `{"issues":[{"issueID":`+jiraID("ISS-1")+`,"properties":{"reviewed":true}}]}`, 303)
 	drain()
 	call(admin, "GET", "/rest/api/3/issue/ISS-1/properties/reviewed", "", 200)
-	call(admin, "PUT", "/rest/api/3/issue/properties/triage", `{"expression":"issue.summary"}`, 400)
+	// An expression computes each work item's own value.
+	call(admin, "PUT", "/rest/api/3/issue/properties/origin", `{"expression":"{ key: issue.key }","filter":{"entityIds":[`+jiraID("ISS-1")+`,`+jiraID("ISS-2")+`]}}`, 303)
+	drain()
+	var origin struct {
+		Value struct{ Key string } `json:"value"`
+	}
+	for _, key := range []string{"ISS-1", "ISS-2"} {
+		decode(call(admin, "GET", "/rest/api/3/issue/"+key+"/properties/origin", "", 200), &origin)
+		if origin.Value.Key != key {
+			t.Fatalf("expression property on %s = %+v", key, origin)
+		}
+	}
+	call(admin, "PUT", "/rest/api/3/issue/properties/origin", `{"expression":"issue.(","filter":{}}`, 400)
+	call(admin, "PUT", "/rest/api/3/issue/properties/origin", `{"expression":"issue.key","value":1}`, 400)
 	call(admin, "POST", "/rest/api/3/issue/properties", `{"entitiesIds":[],"properties":{}}`, 400)
 
 	// Issue panels are pinned only by an installed panel's module id.
