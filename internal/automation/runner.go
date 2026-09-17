@@ -435,7 +435,7 @@ func validateExecutionActor(payload json.RawMessage, actorID string) error {
 
 // Actions and conditions the runner executes.
 var (
-	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true, "jira.issue.delete": true}
+	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true, "jira.issue.delete": true, WikiPageActionType: true}
 	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true, "jira.issue.related.condition": true}
 )
 
@@ -890,6 +890,15 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 			sent = true
 		}
 		return sent, nil
+	case WikiPageActionType:
+		var value struct {
+			SpaceKey string `json:"spaceKey"`
+			Title    string `json:"title"`
+		}
+		if err := json.Unmarshal(valueRaw, &value); err != nil || strings.TrimSpace(value.SpaceKey) == "" {
+			return false, errors.New("create page action requires value.spaceKey")
+		}
+		return r.createWikiPage(ctx, run, issue, value.SpaceKey, value.Title, render)
 	case "jira.issue.delete":
 		// Jira deletes as the rule actor, so a rule may delete only what its
 		// actor may delete.
