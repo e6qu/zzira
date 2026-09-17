@@ -44,7 +44,8 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 	// The window ends with the day of now, so a report for an earlier now is
 	// the same length of time before it.
 	window := "i.created_at >= $3 AND i.created_at < $3 + make_interval(days => " + strconv.Itoa(days) + ")"
-	report := &models.ServiceReport{WindowDays: days, Daily: make([]models.ServiceReportDay, 0), RequestTypes: []models.ServiceReportSegment{}, Channels: []models.ServiceReportSegment{}}
+	report := &models.ServiceReport{WindowDays: days, Daily: make([]models.ServiceReportDay, 0), RequestTypes: []models.ServiceReportSegment{}, Channels: []models.ServiceReportSegment{},
+		Priorities: []models.ServiceReportSegment{}, Organizations: []models.ServiceReportSegment{}}
 	if err := s.Pool.QueryRow(ctx, `
 		SELECT count(*),
 		       count(*) FILTER (WHERE st.category <> 'done'),
@@ -179,5 +180,52 @@ func (s *Store) ServiceReportFiltered(ctx context.Context, workspaceID, serviceD
 	if err := channelRows.Err(); err != nil {
 		return nil, err
 	}
+	filters := `sr.workspace_id=$1 AND sr.service_desk_id=$2 AND ` + window + `
+		  AND ($4='' OR sr.request_type_id=$4) AND ($5='' OR sr.channel=$5)
+		  AND ($6='' OR ($6='open' AND st.category<>'done') OR ($6='resolved' AND st.category='done'))`
+	args := []any{workspaceID, serviceDeskID, from, filter.RequestTypeID, filter.Channel, filter.Status}
+	// A request without a priority is shown as None, as Jira shows it.
+	if report.Priorities, err = s.serviceReportSegments(ctx, `
+		SELECT COALESCE(pr.id,''),COALESCE(pro.name,pr.name,'None'),count(*) FROM service_requests sr
+		JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
+		LEFT JOIN priorities pr ON pr.id=i.priority_id
+		LEFT JOIN issue_metadata_overrides pro ON pro.workspace_id=i.workspace_id AND pro.entity_type='priority' AND pro.entity_id=pr.id
+		WHERE `+filters+`
+		GROUP BY 1,2 ORDER BY count(*) DESC,2`, args); err != nil {
+		return nil, err
+	}
+	// A request belongs to the desk's organizations its customer is in, which
+	// is who Jira Service Management shares it with.
+	if report.Organizations, err = s.serviceReportSegments(ctx, `
+		SELECT COALESCE(o.id,''),COALESCE(o.name,'No organization'),count(*) FROM service_requests sr
+		JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
+		LEFT JOIN (
+		  SELECT org.id,org.name,ou.user_id FROM service_organizations org
+		  JOIN service_organization_users ou ON ou.organization_id=org.id
+		  JOIN service_desk_organizations dorg ON dorg.organization_id=org.id AND dorg.service_desk_id=$2
+		  WHERE org.workspace_id=$1
+		) o ON o.user_id=sr.customer_id
+		WHERE `+filters+`
+		GROUP BY 1,2 ORDER BY count(*) DESC,2`, args); err != nil {
+		return nil, err
+	}
 	return report, nil
+}
+
+// serviceReportSegments counts the report's requests by one breakdown.
+func (s *Store) serviceReportSegments(ctx context.Context, query string, args []any) ([]models.ServiceReportSegment, error) {
+	rows, err := s.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	segments := []models.ServiceReportSegment{}
+	for rows.Next() {
+		var segment models.ServiceReportSegment
+		if err := rows.Scan(&segment.ID, &segment.Name, &segment.Count); err != nil {
+			return nil, err
+		}
+		segments = append(segments, segment)
+	}
+	return segments, rows.Err()
 }

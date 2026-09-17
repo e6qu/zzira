@@ -1600,6 +1600,24 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err != nil || report.TotalRequests < 5 || report.ResolvedRequests < 1 || report.SatisfactionResponses != 1 || report.AverageSatisfaction != 5 || len(report.Daily) != 30 || len(report.RequestTypes) == 0 || len(report.Channels) == 0 {
 		t.Fatalf("service report = %+v, %v", report, err)
 	}
+	// Each request has one priority, so the priority breakdown accounts for
+	// every request exactly once; organizations can overlap, but none holds
+	// more requests than the report.
+	prioritySum := 0
+	for _, segment := range report.Priorities {
+		prioritySum += segment.Count
+	}
+	if prioritySum != report.TotalRequests {
+		t.Fatalf("priority breakdown sums to %d, want the %d requests: %+v", prioritySum, report.TotalRequests, report.Priorities)
+	}
+	if len(report.Organizations) == 0 {
+		t.Fatal("the report has no organization breakdown")
+	}
+	for _, segment := range report.Organizations {
+		if segment.Count < 1 || segment.Count > report.TotalRequests {
+			t.Fatalf("organization segment %+v is outside the report's %d requests", segment, report.TotalRequests)
+		}
+	}
 	resolvedReport, err := st.ServiceReportFiltered(ctx, workspaceID, serviceDeskID, models.ServiceReportFilter{Status: "resolved"}, 30, time.Now().UTC())
 	if err != nil || resolvedReport.TotalRequests != 1 || resolvedReport.OpenRequests != 0 || resolvedReport.ResolvedRequests != 1 || resolvedReport.SatisfactionResponses != 1 {
 		t.Fatalf("resolved service report = %+v, %v", resolvedReport, err)
