@@ -346,6 +346,10 @@ type ServiceReport struct {
 	AverageSatisfaction                           float64
 	Daily                                         []ServiceReportDay
 	RequestTypes, Channels                        []ServiceReportSegment
+	// Priorities and Organizations break the same requests down by priority
+	// and by the organizations their customers belong to on the desk. A
+	// customer in several organizations counts in each.
+	Priorities, Organizations []ServiceReportSegment
 }
 
 type ServiceOperationsSettings struct {

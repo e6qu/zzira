@@ -614,6 +614,8 @@ test('admin creates a service project with Jira Service Management request types
   await expect(page.getByText('4.0 / 5')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Request types', level: 2 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Channels', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Priorities', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Organizations', level: 2 })).toBeVisible();
   await expect(page.getByRole('img', { name: 'Daily request volume for the selected 30 day period' })).toBeVisible();
   await page.getByLabel('Status').selectOption('resolved');
   await page.getByRole('button', { name: 'Apply filters' }).click();

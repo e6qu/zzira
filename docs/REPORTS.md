@@ -117,8 +117,12 @@ has an accessible text alternative and keyboard-reachable data table. SLA
 breaches are calculated with the same desk calendar and holidays used on the
 customer request and attention queue. The Download CSV link exports the daily
 intake series for the filters on screen, and Email this report sends it on a
-schedule, with or without a previous-period comparison. Organization and
-priority segments remain.
+schedule, with or without a previous-period comparison. The same requests are
+broken down by request type, channel, priority and organization. A request
+belongs to the desk's organizations its customer is in, which is who Jira
+Service Management shares it with, so a customer in several organizations
+counts in each; requests with no priority show as None, and requests whose
+customer is in none of the desk's organizations show as No organization.
 
 ## Cumulative flow diagram and control chart
 
