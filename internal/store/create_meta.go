@@ -84,15 +84,17 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	for _, project := range projects {
 		parentOptions := []models.CreateFieldOption{}
 		parentRows, err := s.Pool.Query(ctx, `
-			SELECT i.jira_id::text, i.key, i.summary FROM issues i JOIN issue_types t ON t.id=i.issuetype_id
+			SELECT i.jira_id::text, i.key, i.summary, COALESCE(o.hierarchy_level,t.hierarchy_level)
+			FROM issues i JOIN issue_types t ON t.id=i.issuetype_id
+			LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$2 AND o.entity_type='issuetype' AND o.entity_id=t.id
 			WHERE i.project_id=$1 AND NOT t.subtask
-			ORDER BY i.updated_seq DESC, i.key LIMIT 200`, project.ID)
+			ORDER BY i.updated_seq DESC, i.key LIMIT 200`, project.ID, workspaceID)
 		if err != nil {
 			return nil, err
 		}
 		for parentRows.Next() {
 			var option models.CreateFieldOption
-			if err := parentRows.Scan(&option.ID, &option.Key, &option.Name); err != nil {
+			if err := parentRows.Scan(&option.ID, &option.Key, &option.Name, &option.HierarchyLevel); err != nil {
 				parentRows.Close()
 				return nil, err
 			}
@@ -124,7 +126,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 			{ID: "priority", Name: "Priority", Type: "priority", Section: "details", Options: priorityOptions},
 			{ID: "labels", Name: "Labels", Type: "array", Description: "Separate labels with commas. Spaces are not allowed inside a label.", Section: "details"},
 			{ID: "duedate", Name: "Due date", Type: "date", Section: "details"},
-			{ID: "parent", Name: "Parent", Type: "parent", Description: "Required for sub-tasks. Choose a work item in this project.", Section: "details", Options: parentOptions},
+			{ID: "parent", Name: "Parent", Type: "parent", Description: "Required for sub-tasks. Choose a work item one level above this work type.", Section: "details", Options: parentOptions},
 		}
 		if siteConfiguration.TimeTrackingEnabled {
 			// The original estimate a work item starts with; the remaining

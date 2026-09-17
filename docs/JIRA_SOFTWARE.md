@@ -14,7 +14,7 @@ Jira Software adds agile planning and delivery tracking to Jira projects: epics,
 
 ## Epics
 
-An epic is a work item whose work type is at hierarchy level 1. Every site gets Jira's Epic work type. Standard work items can take an epic as their parent on create, on edit, and through the Agile move operations. The epic can be in any project, as in company-managed Jira. A sub-task's parent must be in the sub-task's own project. An epic has no parent.
+An epic is a work item whose work type is at hierarchy level 1. Every site gets Jira's Epic work type. Standard work items can take an epic as their parent on create, on edit, and through the Agile move operations. The epic can be in any project, as in company-managed Jira. A sub-task's parent must be in the sub-task's own project. An epic's own parent comes from a level above it, when the site's [work type hierarchy](ISSUE_METADATA.md#work-type-hierarchy) has one.
 
 An epic has three extra fields:
 - **Name.** Defaults to the summary.
@@ -179,7 +179,6 @@ Errors use the module format, `[{"message": …}]`. Provider rate limits are des
   - No auto-scheduler.
   - No creating or configuring a plan in the browser (sources, exclusions, permissions and teams are REST-only).
   - No restoring an archived or trashed plan.
-  - No hierarchy levels above epic (work type hierarchy is limited to -1..1).
   - `inferredDates` and plan `customFields` are stored but not used.
   - No capacity derived from velocity.
   - No saved views, grouping, filters or rollups.

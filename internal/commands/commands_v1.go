@@ -158,7 +158,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 			}
 			resolved = parent.ID
 		} else if strings.TrimSpace(*in.ParentIDOrKey) != "" {
-			parent, err := s.epicParent(ctx, in.ActorID, in.WorkspaceID, issue.IssueType.HierarchyLevel, *in.ParentIDOrKey)
+			parent, err := s.hierarchyParent(ctx, in.ActorID, in.WorkspaceID, issue.IssueType.HierarchyLevel, *in.ParentIDOrKey)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -1018,17 +1018,22 @@ func (s *Service) DeleteComment(ctx context.Context, actorID, workspaceID, comme
 // work type hierarchy.
 var ErrParentHierarchy = fmt.Errorf("Given parent work item does not belong to appropriate hierarchy.")
 
-// epicParent resolves the parent of a standard issue: Jira puts standard
-// issues under an epic, which may belong to any project.
-func (s *Service) epicParent(ctx context.Context, actorID, workspaceID string, childLevel int, parentIDOrKey string) (*models.Issue, error) {
-	if childLevel != 0 {
+// hierarchyParent resolves the parent of a work item that is not a sub-task:
+// Jira puts it under a work item one level above its own in the site's work
+// type hierarchy, which may belong to any project.
+func (s *Service) hierarchyParent(ctx context.Context, actorID, workspaceID string, childLevel int, parentIDOrKey string) (*models.Issue, error) {
+	if childLevel < store.BaseHierarchyLevel {
 		return nil, ErrParentHierarchy
 	}
 	parent, err := s.visibleIssue(ctx, actorID, workspaceID, parentIDOrKey)
 	if err != nil {
-		return nil, fmt.Errorf("parent must be a visible epic")
+		name, nameErr := s.Store.HierarchyLevelName(ctx, workspaceID, childLevel+1)
+		if nameErr != nil {
+			return nil, nameErr
+		}
+		return nil, fmt.Errorf("parent must be a visible work item of the %s level", name)
 	}
-	if parent.IssueType.HierarchyLevel != 1 {
+	if parent.IssueType.HierarchyLevel != childLevel+1 {
 		return nil, ErrParentHierarchy
 	}
 	return parent, nil

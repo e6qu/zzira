@@ -15,7 +15,13 @@ Site-wide work item metadata: work types (issue types), priorities, resolutions,
 
 ## Work type hierarchy
 
-`hierarchy_level` is `1` (epic), `0` (standard) or `-1` (subtask). A database CHECK (`migrations/162_issue_metadata.sql`) limits it to that range, and `subtask` must equal `hierarchy_level = -1`. `GET /rest/api/3/project/{projectId}/hierarchy` groups a project's types into Epic, Base and Subtask ([JIRA_PLATFORM.md](JIRA_PLATFORM.md#site-and-project-reads)). Epic behavior is in [JIRA_SOFTWARE.md](JIRA_SOFTWARE.md).
+A site's levels run Subtask (`-1`), Base (`0`), Epic (`1`) and any named levels an administrator adds above Epic (`issue_type_hierarchy_levels`, `internal/store/work_type_hierarchy.go`). `subtask` equals `hierarchy_level = -1`.
+
+- **Settings:** `/settings/hierarchy` lists the levels top down with their work types. A site administrator adds a level (it goes on top), renames Epic and the levels above it, moves a work type to another level, and removes the top level once it is empty. Base and Subtask are fixed, as in Jira.
+- **Moving a work type** is refused while its work items have a parent or children, and a shared default type moves for this site only.
+- **Parent:** a work item's parent is a work item exactly one level above it — a task under an epic, an epic under the level above it. Anything else is `Given parent work item does not belong to appropriate hierarchy.` The create form and the work item view offer only the parents of the level above.
+- **REST:** `POST /rest/api/3/issuetype` creates standard types at level 0 and subtask types at −1, as Jira's API does; higher levels are set in the settings page. `GET /rest/api/3/project/{projectId}/hierarchy` reports the site's levels with their names ([JIRA_PLATFORM.md](JIRA_PLATFORM.md#site-and-project-reads)).
+- Boards and backlogs use the epic level. Epic behavior is in [JIRA_SOFTWARE.md](JIRA_SOFTWARE.md).
 
 ## Work types
 
@@ -112,7 +118,6 @@ Rules:
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- No hierarchy levels above epic (Jira Premium's configurable work type hierarchy); the CHECK constraint allows only −1 to 1, and there is no hierarchy settings page.
 - A resolution cannot be chosen on a transition or set by edit; reaching done always applies the site default.
 - No browser admin pages for work types, priorities, resolutions, work type schemes or priority schemes.
 - `alternatives` does not narrow to types that share the same workflow, field configuration and screen schemes.

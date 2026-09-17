@@ -50,7 +50,7 @@ models, and Atlassian-hosted Forge compute. Clients that hardcode
 
 ## Order
 
-1. [Work item model](#1-work-item-model) — hierarchy above epic unblocks Plans and releases.
+1. [Work item model](#1-work-item-model) — admin surfaces and the remaining field families.
 2. In parallel after 1: [Plans](#2-plans), [cross-project releases](#3-cross-project-releases),
    [boards, reports and DORA](#4-boards-reports-and-dora), [JQL and filters](#5-jql-and-filters).
 3. In parallel, independent of 1: [enterprise identity](#6-enterprise-identity),
@@ -63,14 +63,10 @@ Each numbered item is one or more substantial PRs.
 
 ## 1. Work item model
 
-**Hierarchy above epic.** Jira Premium lets admins add levels above epic
-(Initiative, Theme…) in Settings → Work type hierarchy; the Parent field links any
-level to the one above.
-- Drop the `hierarchy_level BETWEEN -1 AND 1` check; store configurable levels.
-- Hierarchy settings page; `GET /project/{id}/hierarchy` returns real levels.
-- Parent field, `parent` JQL, `hierarchyLevel` JQL, issue view and create form
-  across levels; board and backlog epic handling stays at level 1.
+**Hierarchy rollups.** Levels above epic exist ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#work-type-hierarchy)). What remains:
 - Plans, roadmaps and reports roll up through every level.
+- Boards and backlogs still treat the epic level as the top.
+- `hierarchyLevel` in JQL (see [JQL and filters](#5-jql-and-filters)).
 
 **Metadata and configuration UI.**
 - Admin pages for work types, work type schemes, priorities, priority schemes,

@@ -334,6 +334,7 @@ func (h *Handler) createMeta(w http.ResponseWriter, r *http.Request) {
 					field := source
 					if field.ID == "parent" {
 						field.Required = issueType.Subtask
+						field.Options = project.ParentOptionsForIssueType(issueType.ID)
 					}
 					fields[field.ID] = h.legacyCreateFieldBean(field)
 				}
@@ -407,6 +408,7 @@ func (h *Handler) createMetaFields(w http.ResponseWriter, r *http.Request, proje
 		field := source
 		if field.ID == "parent" {
 			field.Required = selectedType.Subtask
+			field.Options = project.ParentOptionsForIssueType(selectedType.ID)
 		}
 		values = append(values, h.createFieldBean(field))
 	}

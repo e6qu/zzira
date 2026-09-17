@@ -177,7 +177,7 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 		}
 		parentID = parent.ID
 	} else if strings.TrimSpace(in.ParentIDOrKey) != "" {
-		parent, err := s.epicParent(ctx, in.ActorID, in.WorkspaceID, issueType.HierarchyLevel, in.ParentIDOrKey)
+		parent, err := s.hierarchyParent(ctx, in.ActorID, in.WorkspaceID, issueType.HierarchyLevel, in.ParentIDOrKey)
 		if err != nil {
 			return nil, nil, err
 		}

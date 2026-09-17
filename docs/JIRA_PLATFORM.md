@@ -116,7 +116,7 @@ Levels are defined in site administration; see [CLASSIFICATION_LEVELS.md](CLASSI
 | `GET /rest/api/3/serverInfo` | `baseUrl`, `version`, `versionNumbers`, `deploymentType` `Cloud`, build and server times, display URLs. |
 | `GET /rest/api/3/label` | Labels visible to the caller, a PageBean of up to 1,000. |
 | `GET /rest/api/3/project/{projectIdOrKey}/statuses` | Each work type of the project with its workflow's statuses. |
-| `GET /rest/api/3/project/{projectId}/hierarchy` | The project's work types grouped by level (Epic, Base, Subtask). Numeric project id only. |
+| `GET /rest/api/3/project/{projectId}/hierarchy` | The project's work types grouped by the site's [hierarchy levels](ISSUE_METADATA.md#work-type-hierarchy), top down. Numeric project id only. |
 | `POST /rest/internal/api/latest/worklog/bulk` | Given 1 to 1,000 `{issueId, worklogId}` pairs, returns those that exist. |
 
 ## Plans and teams
