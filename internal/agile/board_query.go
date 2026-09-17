@@ -420,7 +420,7 @@ func (h *Handler) moveIssuesToSprintRanked(w http.ResponseWriter, r *http.Reques
 	}
 	for _, issue := range issues {
 		if err := h.Commands.PlanIssue(r.Context(), userID, workspaceID, board.ID, issue.ID, sprint.ID, "", ""); err != nil {
-			jiraError(w, http.StatusBadRequest, err.Error())
+			jiraError(w, commandStatus(err), err.Error())
 			return
 		}
 	}

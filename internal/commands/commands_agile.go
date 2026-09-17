@@ -54,20 +54,114 @@ func (s *Service) DeleteBoardAdmin(ctx context.Context, actorID, workspaceID, bo
 	return err
 }
 
+// CreateSprint adds a sprint to a board. Jira requires Manage sprints in the
+// board's project.
 func (s *Service) CreateSprint(ctx context.Context, actorID, workspaceID, boardID, name, goal string) (*models.Sprint, error) {
+	board, err := s.Store.BoardByIDInWorkspace(ctx, workspaceID, boardID)
+	if err != nil {
+		return nil, fmt.Errorf("board does not exist")
+	}
+	if err := s.requirePermission(ctx, workspaceID, actorID, board.ProjectID, "", "MANAGE_SPRINTS_PERMISSION"); err != nil {
+		return nil, err
+	}
 	sprint, _, err := s.Store.CreateSprint(ctx, actorID, workspaceID, boardID, name, goal)
 	return sprint, err
 }
 
+// manageableSprint checks the actor holds Manage sprints in the project of the
+// sprint's board.
+func (s *Service) manageableSprint(ctx context.Context, actorID, workspaceID, sprintID string) error {
+	sprint, err := s.Store.SprintByIDInWorkspace(ctx, workspaceID, sprintID)
+	if err != nil {
+		return err
+	}
+	board, err := s.Store.BoardByIDInWorkspace(ctx, workspaceID, sprint.BoardID)
+	if err != nil {
+		return err
+	}
+	return s.requirePermission(ctx, workspaceID, actorID, board.ProjectID, "", "MANAGE_SPRINTS_PERMISSION")
+}
+
+// UpdateSprint edits, starts or completes a sprint, which needs Manage sprints
+// in its board's project.
 func (s *Service) UpdateSprint(ctx context.Context, actorID, workspaceID, sprintID string, input store.SprintUpdate) (*models.Sprint, error) {
+	if err := s.manageableSprint(ctx, actorID, workspaceID, sprintID); err != nil {
+		return nil, err
+	}
 	sprint, _, err := s.Store.UpdateSprint(ctx, actorID, workspaceID, sprintID, input)
 	return sprint, err
+}
+
+// DeleteSprint removes a future sprint.
+func (s *Service) DeleteSprint(ctx context.Context, actorID, workspaceID, sprintID string) error {
+	if err := s.manageableSprint(ctx, actorID, workspaceID, sprintID); err != nil {
+		return err
+	}
+	return s.Store.DeleteSprint(ctx, actorID, workspaceID, sprintID)
+}
+
+// SwapSprints exchanges two sprints' positions; both must be manageable.
+func (s *Service) SwapSprints(ctx context.Context, actorID, workspaceID, sprintID, otherID string) error {
+	for _, id := range []string{sprintID, otherID} {
+		if err := s.manageableSprint(ctx, actorID, workspaceID, id); err != nil {
+			return err
+		}
+	}
+	return s.Store.SwapSprints(ctx, actorID, workspaceID, sprintID, otherID)
+}
+
+// SetSprintProperty stores a sprint's entity property, reporting whether it
+// was new.
+func (s *Service) SetSprintProperty(ctx context.Context, actorID, workspaceID, sprintID, key string, value []byte) (bool, error) {
+	if err := s.manageableSprint(ctx, actorID, workspaceID, sprintID); err != nil {
+		return false, err
+	}
+	return s.Store.SetSprintProperty(ctx, sprintID, key, value)
+}
+
+// DeleteSprintProperty removes a sprint's entity property.
+func (s *Service) DeleteSprintProperty(ctx context.Context, actorID, workspaceID, sprintID, key string) error {
+	if err := s.manageableSprint(ctx, actorID, workspaceID, sprintID); err != nil {
+		return err
+	}
+	return s.Store.DeleteSprintProperty(ctx, sprintID, key)
+}
+
+// MoveIssueToSprint puts a work item at the end of an open sprint, or in the
+// backlog when sprintID is empty, from any board.
+func (s *Service) MoveIssueToSprint(ctx context.Context, actorID, workspaceID, issueIDOrKey, sprintID string) error {
+	issue, err := s.planningIssue(ctx, actorID, workspaceID, issueIDOrKey)
+	if err != nil {
+		return err
+	}
+	if sprintID == "" {
+		return s.Store.RemoveIssueFromPlanning(ctx, actorID, workspaceID, issue.ID)
+	}
+	rank, err := s.Store.NextSprintRank(ctx, sprintID)
+	if err != nil {
+		return err
+	}
+	_, err = s.Store.AddIssueToSprint(ctx, actorID, workspaceID, sprintID, issue.ID, rank)
+	return err
+}
+
+// planningIssue resolves a work item the actor may move between sprints and
+// the backlog: Jira asks for Edit issues and Schedule issues.
+func (s *Service) planningIssue(ctx context.Context, actorID, workspaceID, issueIDOrKey string) (*models.Issue, error) {
+	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requirePermissions(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "EDIT_ISSUES", "SCHEDULE_ISSUES"); err != nil {
+		return nil, err
+	}
+	return issue, nil
 }
 
 // MoveIssueToBacklog removes open-sprint membership without changing the
 // issue's existing global rank. Closed sprint membership remains historical.
 func (s *Service) MoveIssueToBacklog(ctx context.Context, actorID, workspaceID, issueIDOrKey string) error {
-	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
+	issue, err := s.planningIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
 		return err
 	}
@@ -81,7 +175,7 @@ func (s *Service) PlanIssue(ctx context.Context, actorID, workspaceID, boardID, 
 	if err != nil {
 		return fmt.Errorf("board does not exist")
 	}
-	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
+	issue, err := s.planningIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
 		return err
 	}
@@ -122,6 +216,19 @@ func (s *Service) PlanIssue(ctx context.Context, actorID, workspaceID, boardID, 
 	if err := s.Store.RemoveIssueFromPlanning(ctx, actorID, workspaceID, issue.ID); err != nil {
 		return err
 	}
-	_, err = s.Store.SetIssueRank(ctx, actorID, workspaceID, issue.ID, rank, "")
+	_, err = s.Store.SetIssueRank(ctx, actorID, workspaceID, issue.ID, rank)
 	return err
+}
+
+// UpdateEpicDetails changes an epic's name, color or done flag, which are
+// edits of the epic: Jira asks for Edit issues.
+func (s *Service) UpdateEpicDetails(ctx context.Context, actorID, workspaceID, issueIDOrKey string, update store.EpicUpdate) error {
+	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
+	if err != nil {
+		return err
+	}
+	if err := s.requirePermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "EDIT_ISSUES"); err != nil {
+		return err
+	}
+	return s.Store.UpdateEpicDetails(ctx, workspaceID, issue.ID, update)
 }

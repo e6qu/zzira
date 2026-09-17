@@ -664,14 +664,7 @@ func (h *Handler) savePlanChanges(r *http.Request, userID, workspaceID string, p
 	if sprintChange != nil {
 		var sprintID string
 		_ = json.Unmarshal(sprintChange.Value, &sprintID)
-		if sprintID == "" {
-			err = h.Store.RemoveIssueFromPlanning(ctx, userID, workspaceID, issueID)
-		} else if rank, rankErr := h.Store.NextSprintRank(ctx, sprintID); rankErr != nil {
-			err = rankErr
-		} else {
-			_, err = h.Store.AddIssueToSprint(ctx, userID, workspaceID, sprintID, issueID, rank)
-		}
-		if err != nil {
+		if err = h.Commands.MoveIssueToSprint(ctx, userID, workspaceID, issueID, sprintID); err != nil {
 			return saved, fmt.Sprintf("%s: its sprint change was not saved: %s", key, err.Error())
 		}
 		if err := h.Store.DiscardPlanChange(ctx, workspaceID, plan.ID, scenario.ID, issueID, "sprint"); err == nil {

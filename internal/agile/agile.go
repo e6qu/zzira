@@ -355,6 +355,10 @@ func (h *Handler) createSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sprint, err := h.Commands.CreateSprint(r.Context(), userID, wsID, originBoard.ID, req.Name, req.Goal)
+	if errors.Is(err, commands.ErrPermission) {
+		jiraError(w, http.StatusForbidden, err.Error())
+		return
+	}
 	if errors.Is(err, store.ErrSprintValidation) {
 		jiraError(w, http.StatusBadRequest, err.Error())
 		return
@@ -395,7 +399,7 @@ func (h *Handler) moveIssuesToBacklog(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, issue := range planned {
 		if err := h.Commands.MoveIssueToBacklog(r.Context(), userID, wsID, issue.ID); err != nil {
-			jiraError(w, http.StatusBadRequest, err.Error())
+			jiraError(w, commandStatus(err), err.Error())
 			return
 		}
 	}
@@ -438,7 +442,7 @@ func (h *Handler) sprintRoute(w http.ResponseWriter, r *http.Request, parts []st
 	case len(parts) == 2 && parts[1] == "properties":
 		h.sprintProperties(w, r, sprint)
 	case len(parts) == 3 && parts[1] == "properties":
-		h.sprintProperty(w, r, sprint, parts[2])
+		h.sprintProperty(w, r, wsID, userID, sprint, parts[2])
 	default:
 		jiraError(w, http.StatusNotFound, "No resource found")
 	}
@@ -497,6 +501,10 @@ func (h *Handler) updateSprint(w http.ResponseWriter, r *http.Request, wsID, use
 	updated, err := h.Commands.UpdateSprint(r.Context(), userID, wsID, current.ID, store.SprintUpdate{
 		Name: name, Goal: goal, State: state, StartDate: startDate, EndDate: endDate,
 	})
+	if errors.Is(err, commands.ErrPermission) {
+		jiraError(w, http.StatusForbidden, err.Error())
+		return
+	}
 	if errors.Is(err, store.ErrSprintValidation) || errors.Is(err, store.ErrSprintConflict) {
 		jiraError(w, http.StatusBadRequest, err.Error())
 		return

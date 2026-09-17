@@ -256,8 +256,10 @@ func issueCommandError(w http.ResponseWriter, err error) {
 		jiraError(w, http.StatusBadRequest, "The work item is not editable in its current status.")
 	case errors.Is(err, commands.ErrCommentPermission):
 		jiraError(w, http.StatusBadRequest, "You do not have the permission to change this comment.")
-	case errors.Is(err, commands.ErrIssueDeletePermission):
-		jiraError(w, http.StatusForbidden, "You do not have permission to delete this work item.")
+	case errors.Is(err, commands.ErrNotAssignable):
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"assignee": err.Error()})
+	case errors.Is(err, commands.ErrPermission):
+		jiraError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, store.ErrCommentNotFound):
 		jiraError(w, http.StatusNotFound, "The comment does not exist.")
 	case strings.Contains(err.Error(), "not found"):
@@ -349,6 +351,10 @@ func (h *Handler) createIssueLink(w http.ResponseWriter, r *http.Request, worksp
 	}
 	// The link's source is the inward issue; the comment goes on the outward one.
 	if _, _, err = h.Commands.LinkIssue(r.Context(), actorID, workspaceID, source.ID, linkType.ID, target.ID); err != nil {
+		if errors.Is(err, commands.ErrPermission) {
+			jiraError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		issueCommandError(w, err)
 		return
 	}

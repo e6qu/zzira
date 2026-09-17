@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
@@ -182,7 +183,10 @@ func (h *Handler) CreateBacklogSprint(w http.ResponseWriter, r *http.Request, bo
 		redirectBacklog(w, r, boardID, "Sprints are turned off for this project.")
 		return
 	}
-	if _, err := h.Commands.CreateSprint(r.Context(), user.ID, wsID, boardID, name, goal); err != nil {
+	if _, err := h.Commands.CreateSprint(r.Context(), user.ID, wsID, boardID, name, goal); errors.Is(err, commands.ErrPermission) {
+		redirectBacklog(w, r, boardID, err.Error())
+		return
+	} else if err != nil {
 		log.Print("backlog: create sprint failed")
 		redirectBacklog(w, r, boardID, "The sprint could not be created.")
 		return
@@ -228,6 +232,10 @@ func (h *Handler) UpdateBacklogSprint(w http.ResponseWriter, r *http.Request, bo
 		Name: r.PostFormValue("name"), Goal: r.PostFormValue("goal"), State: r.PostFormValue("state"),
 		StartDate: startDate, EndDate: endDate,
 	})
+	if errors.Is(err, commands.ErrPermission) {
+		redirectBacklog(w, r, boardID, err.Error())
+		return
+	}
 	if errors.Is(err, store.ErrSprintValidation) || errors.Is(err, store.ErrSprintConflict) {
 		message := err.Error()
 		if _, detail, found := strings.Cut(message, ": "); found {
@@ -254,6 +262,10 @@ func (h *Handler) MoveBacklogIssue(w http.ResponseWriter, r *http.Request, board
 	}
 	err := h.Commands.PlanIssue(r.Context(), user.ID, wsID, boardID, r.PostFormValue("issue"),
 		r.PostFormValue("sprint"), r.PostFormValue("before"), r.PostFormValue("after"))
+	if errors.Is(err, commands.ErrPermission) {
+		redirectBacklog(w, r, boardID, err.Error())
+		return
+	}
 	if err != nil {
 		log.Print("backlog: plan issue failed")
 		redirectBacklog(w, r, boardID, "The work item could not be moved.")

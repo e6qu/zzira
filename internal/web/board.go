@@ -274,7 +274,7 @@ func (h *Handler) BoardPage(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	data, err := h.buildBoardView(r, user, wsID, board, admin)
 	if errors.Is(err, store.ErrBoardValidation) {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	if err != nil {
@@ -298,7 +298,7 @@ func (h *Handler) BoardFragment(w http.ResponseWriter, r *http.Request, id strin
 	}
 	data, err := h.buildBoardView(r, user, wsID, board, false)
 	if errors.Is(err, store.ErrBoardValidation) {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	if err != nil {
@@ -532,7 +532,7 @@ func (h *Handler) RankIssue(w http.ResponseWriter, r *http.Request, boardID stri
 	if err := h.Commands.SetIssueRank(r.Context(), user.ID, wsID,
 		r.PostFormValue("issue"), r.PostFormValue("before"), r.PostFormValue("after"),
 		r.PostFormValue("status")); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -31,7 +32,7 @@ func (h *Handler) sprintProperties(w http.ResponseWriter, r *http.Request, sprin
 	writeJSON(w, http.StatusOK, map[string]any{"keys": values})
 }
 
-func (h *Handler) sprintProperty(w http.ResponseWriter, r *http.Request, sprint *models.Sprint, key string) {
+func (h *Handler) sprintProperty(w http.ResponseWriter, r *http.Request, workspaceID, userID string, sprint *models.Sprint, key string) {
 	switch r.Method {
 	case http.MethodGet:
 		value, err := h.Store.SprintProperty(r.Context(), sprint.ID, key)
@@ -49,7 +50,11 @@ func (h *Handler) sprintProperty(w http.ResponseWriter, r *http.Request, sprint 
 			jiraError(w, http.StatusBadRequest, "The property value is invalid.")
 			return
 		}
-		created, err := h.Store.SetSprintProperty(r.Context(), sprint.ID, key, raw)
+		created, err := h.Commands.SetSprintProperty(r.Context(), userID, workspaceID, sprint.ID, key, raw)
+		if errors.Is(err, commands.ErrPermission) {
+			jiraError(w, http.StatusForbidden, err.Error())
+			return
+		}
 		if err != nil {
 			jiraError(w, http.StatusBadRequest, "The property key or value is invalid.")
 			return
@@ -60,7 +65,11 @@ func (h *Handler) sprintProperty(w http.ResponseWriter, r *http.Request, sprint 
 		}
 		w.WriteHeader(http.StatusOK)
 	case http.MethodDelete:
-		if err := h.Store.DeleteSprintProperty(r.Context(), sprint.ID, key); err != nil {
+		if err := h.Commands.DeleteSprintProperty(r.Context(), userID, workspaceID, sprint.ID, key); err != nil {
+			if errors.Is(err, commands.ErrPermission) {
+				jiraError(w, http.StatusForbidden, err.Error())
+				return
+			}
 			if errors.Is(err, pgx.ErrNoRows) {
 				jiraError(w, http.StatusNotFound, "The sprint property does not exist.")
 				return
@@ -75,10 +84,12 @@ func (h *Handler) sprintProperty(w http.ResponseWriter, r *http.Request, sprint 
 }
 
 func (h *Handler) deleteSprint(w http.ResponseWriter, r *http.Request, workspaceID, userID string, sprint *models.Sprint) {
-	err := h.Store.DeleteSprint(r.Context(), userID, workspaceID, sprint.ID)
+	err := h.Commands.DeleteSprint(r.Context(), userID, workspaceID, sprint.ID)
 	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, commands.ErrPermission):
+		jiraError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, store.ErrSprintConflict):
 		jiraError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, pgx.ErrNoRows):
@@ -100,10 +111,12 @@ func (h *Handler) swapSprint(w http.ResponseWriter, r *http.Request, workspaceID
 		jiraFieldError(w, http.StatusBadRequest, map[string]string{"sprintToSwapWith": "A sprint to swap with is required."})
 		return
 	}
-	err := h.Store.SwapSprints(r.Context(), userID, workspaceID, sprint.ID, request.SprintToSwapWith)
+	err := h.Commands.SwapSprints(r.Context(), userID, workspaceID, sprint.ID, request.SprintToSwapWith)
 	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, commands.ErrPermission):
+		jiraError(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, store.ErrSprintConflict):
 		jiraError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, pgx.ErrNoRows):

@@ -534,6 +534,18 @@ func evaluateCondition(rule Rule, context EvaluationContext) bool {
 }
 
 // ValidateRules evaluates validators after a transition is selected.
+// PermissionKeys lists the project permissions the transition's validators
+// require.
+func (t Transition) PermissionKeys() []string {
+	var keys []string
+	for _, validator := range t.Validators {
+		if validator.RuleKey == RuleCheckPermissionValidator && validator.Parameters["permissionKey"] != "" {
+			keys = append(keys, validator.Parameters["permissionKey"])
+		}
+	}
+	return keys
+}
+
 func (t Transition) ValidateRules(context EvaluationContext) error {
 	for _, validator := range t.Validators {
 		if IsAppRule(validator.RuleKey) {
