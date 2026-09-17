@@ -107,6 +107,7 @@ func TestIssueMetadataContract(t *testing.T) {
 		HierarchyLevel int    `json:"hierarchyLevel"`
 		IsDefault      bool   `json:"isDefault"`
 		StatusColor    string `json:"statusColor"`
+		IconURL        string `json:"iconUrl"`
 	}
 	list := func(s site, user, path string) []bean {
 		t.Helper()
@@ -185,6 +186,17 @@ func TestIssueMetadataContract(t *testing.T) {
 	call(one, one.admin, http.MethodPut, "/rest/api/3/priority/3", `{"name":"High"}`, http.StatusBadRequest)
 	call(one, one.admin, http.MethodPut, "/rest/api/3/priority/3", `{}`, http.StatusBadRequest)
 	call(one, one.admin, http.MethodPut, "/rest/api/3/priority/3", `{"statusColor":"red"}`, http.StatusBadRequest)
+
+	// A priority made without an icon still has one to show.
+	var iconless bean
+	decode(call(one, one.admin, http.MethodPost, "/rest/api/3/priority", `{"name":"Pager","statusColor":"#ff5630"}`, http.StatusCreated), &iconless)
+	if created := byName(list(one, one.member, "/rest/api/3/priority"), "Pager"); !strings.HasSuffix(created.IconURL, "/images/icons/priorities/medium.svg") {
+		t.Fatalf("a priority created without an icon: %+v", created)
+	}
+	call(one, one.admin, http.MethodPut, "/rest/api/3/priority/"+iconless.ID, `{"name":"Pager duty"}`, http.StatusNoContent)
+	if kept := byName(list(one, one.member, "/rest/api/3/priority"), "Pager duty"); !strings.HasSuffix(kept.IconURL, "/images/icons/priorities/medium.svg") {
+		t.Fatalf("an edit lost the icon: %+v", kept)
+	}
 
 	// ---- Issue types ----
 	var incident bean

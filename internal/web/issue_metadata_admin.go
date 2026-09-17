@@ -25,6 +25,7 @@ type workTypesPageData struct {
 // prioritiesPageData is the priorities settings page.
 type prioritiesPageData struct {
 	Priorities []models.Priority
+	Icons      []priorityIcon
 	Schemes    []store.PriorityScheme
 	Notice     string
 	Error      string
@@ -119,13 +120,28 @@ func (h *Handler) WorkTypesMutation(w http.ResponseWriter, r *http.Request) {
 	h.redirectMetadata(w, r, "/settings/work-types", notice, err)
 }
 
+// priorityIcon is one of Jira's built-in priority icons, for the icon picker.
+type priorityIcon struct {
+	Name string
+	URL  string
+}
+
+// priorityIcons lists the built-in icons a priority can use.
+func priorityIcons() []priorityIcon {
+	icons := make([]priorityIcon, 0, len(store.PriorityIconNames))
+	for _, name := range store.PriorityIconNames {
+		icons = append(icons, priorityIcon{Name: strings.ToUpper(name[:1]) + name[1:], URL: "/images/icons/priorities/" + name + ".svg"})
+	}
+	return icons
+}
+
 // PrioritiesPage lists the site's priorities and priority schemes.
 func (h *Handler) PrioritiesPage(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.requireAdminPage(w, r)
 	if !ok {
 		return
 	}
-	data := prioritiesPageData{Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
+	data := prioritiesPageData{Icons: priorityIcons(), Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
 	var err error
 	if data.Priorities, err = h.Store.PrioritiesForWorkspace(r.Context(), workspaceID); err != nil {
 		http.Error(w, "Could not load priorities.", http.StatusInternalServerError)
@@ -151,15 +167,15 @@ func (h *Handler) PrioritiesMutation(w http.ResponseWriter, r *http.Request) {
 	value := func(name string) string { return strings.TrimSpace(r.PostFormValue(name)) }
 	switch r.PostFormValue("action") {
 	case "create":
-		name, color, description := value("name"), value("statusColor"), r.PostFormValue("description")
+		name, color, description, icon := value("name"), value("statusColor"), r.PostFormValue("description"), value("iconUrl")
 		var created models.Priority
-		created, err = h.Store.CreatePriority(r.Context(), workspaceID, store.PriorityInput{Name: &name, StatusColor: &color, Description: &description})
+		created, err = h.Store.CreatePriority(r.Context(), workspaceID, store.PriorityInput{Name: &name, StatusColor: &color, Description: &description, IconURL: &icon})
 		if err == nil {
 			notice = created.Name + " created."
 		}
 	case "update":
-		name, color, description := value("name"), value("statusColor"), r.PostFormValue("description")
-		if err = h.Store.UpdatePriority(r.Context(), workspaceID, value("priority"), store.PriorityInput{Name: &name, StatusColor: &color, Description: &description}); err == nil {
+		name, color, description, icon := value("name"), value("statusColor"), r.PostFormValue("description"), value("iconUrl")
+		if err = h.Store.UpdatePriority(r.Context(), workspaceID, value("priority"), store.PriorityInput{Name: &name, StatusColor: &color, Description: &description, IconURL: &icon}); err == nil {
 			notice = name + " saved."
 		}
 	case "default":
