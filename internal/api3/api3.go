@@ -6,6 +6,7 @@ package api3
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -947,7 +948,32 @@ func unsupportedCreateFields(body []byte) map[string]string {
 	return nil
 }
 
+// permissionFields names the field a refused field-level permission belongs
+// to, so the refusal is reported against that field as Jira does.
+var permissionFields = map[string]string{
+	"CREATE_ISSUES": "project", "ASSIGN_ISSUES": "assignee", "MODIFY_REPORTER": "reporter",
+	"SET_ISSUE_SECURITY": "security", "SCHEDULE_ISSUES": "duedate", "RESOLVE_ISSUES": "fixVersions",
+}
+
+// permissionFieldError reports a permission refusal against its field.
+func permissionFieldError(err error) (map[string]string, bool) {
+	if errors.Is(err, commands.ErrNotAssignable) {
+		return map[string]string{"assignee": err.Error()}, true
+	}
+	var refusal *commands.PermissionError
+	if !errors.As(err, &refusal) {
+		return nil, false
+	}
+	if field, ok := permissionFields[refusal.Permission]; ok {
+		return map[string]string{field: refusal.Message}, true
+	}
+	return nil, false
+}
+
 func createIssueFieldError(err error) map[string]string {
+	if fields, ok := permissionFieldError(err); ok {
+		return fields
+	}
 	message := err.Error()
 	for _, field := range []string{"summary", "project", "priority", "assignee", "security", "labels", "description", "components", "parent"} {
 		if strings.Contains(message, field) {
@@ -1185,6 +1211,14 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		SecurityLevelID: securityID, Labels: req.Fields.Labels, DueDate: dueDate, Fields: fields, VersionOperations: req.Update,
 		OriginalEstimate: originalEstimate, RemainingEstimate: remainingEstimate,
 	}); err != nil {
+		if fields, ok := permissionFieldError(err); ok {
+			jiraFieldError(w, http.StatusBadRequest, fields)
+			return
+		}
+		if errors.Is(err, commands.ErrPermission) {
+			jiraError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		field := "fields"
 		if strings.Contains(err.Error(), "parent") || strings.Contains(err.Error(), "sub-task") {
 			field = "parent"
@@ -1560,6 +1594,14 @@ func (h *Handler) performTransition(w http.ResponseWriter, r *http.Request, idOr
 		return
 	}
 	transitioned, _, err := h.Commands.TransitionIssueWithUpdateFromAPI(r.Context(), userID, wsID, idOrKey, req.Transition.ID, update)
+	if fields, ok := permissionFieldError(err); ok {
+		jiraFieldError(w, http.StatusBadRequest, fields)
+		return
+	}
+	if errors.Is(err, commands.ErrPermission) {
+		jiraError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		issueCommandError(w, err)
 		return

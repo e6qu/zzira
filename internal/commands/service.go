@@ -93,6 +93,7 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 		ActorID: in.ActorID, ReporterID: in.CustomerID, WorkspaceID: in.WorkspaceID, ProjectIDOrKey: desk.ProjectID,
 		Summary: in.Summary, Description: in.Description, DescriptionADF: in.DescriptionADF,
 		IssueTypeID: requestType.IssueTypeID, Labels: labels, Fields: in.Fields, AssetSchemas: assetSchemas,
+		customerRequest: true,
 	})
 	if err != nil {
 		return nil, err
@@ -240,7 +241,11 @@ func (s *Service) TransitionServiceRequest(ctx context.Context, actorID, workspa
 	if err != nil {
 		return nil, fmt.Errorf("request does not exist")
 	}
-	_, _, err = s.TransitionIssue(ctx, actorID, workspaceID, request.Issue.ID, transitionID)
+	if canManage {
+		_, _, err = s.TransitionIssue(ctx, actorID, workspaceID, request.Issue.ID, transitionID)
+	} else {
+		_, _, err = s.transitionForCustomer(ctx, actorID, workspaceID, request.Issue.ID, transitionID)
+	}
 	if err != nil {
 		return nil, err
 	}

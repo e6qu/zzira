@@ -738,7 +738,7 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 				return false, nil
 			}
 		}
-		if _, _, err := r.Service.Store.CreateIssueLink(ctx, run.ActorID, run.WorkspaceID, value.LinkTypeID, other.ID, issue.ID); err != nil {
+		if _, _, err := r.Service.Commands.LinkIssue(ctx, run.ActorID, run.WorkspaceID, issue.ID, value.LinkTypeID, other.ID); err != nil {
 			return false, err
 		}
 		return true, nil

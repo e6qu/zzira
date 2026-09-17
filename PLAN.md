@@ -50,37 +50,18 @@ models, and Atlassian-hosted Forge compute. Clients that hardcode
 
 ## Order
 
-1. [Permission enforcement](#1-permission-enforcement) — correctness; blocks everything that trusts the command layer.
-2. [Work item model](#2-work-item-model) — hierarchy above epic unblocks Plans and releases.
-3. In parallel after 2: [Plans](#3-plans), [cross-project releases](#4-cross-project-releases),
-   [boards, reports and DORA](#5-boards-reports-and-dora), [JQL and filters](#6-jql-and-filters).
-4. In parallel, independent of 2: [enterprise identity](#7-enterprise-identity),
-   [automation](#8-automation), [Assets](#9-assets), [Service Management](#10-service-management),
-   [Confluence](#11-confluence), [diagrams](#12-whiteboards-and-diagrams),
-   [live collaboration](#13-live-collaboration), [apps](#14-apps).
-5. [Local-first closure](#15-local-first-closure), then [certification](#16-certification).
+1. [Work item model](#1-work-item-model) — hierarchy above epic unblocks Plans and releases.
+2. In parallel after 1: [Plans](#2-plans), [cross-project releases](#3-cross-project-releases),
+   [boards, reports and DORA](#4-boards-reports-and-dora), [JQL and filters](#5-jql-and-filters).
+3. In parallel, independent of 1: [enterprise identity](#6-enterprise-identity),
+   [automation](#7-automation), [Assets](#8-assets), [Service Management](#9-service-management),
+   [Confluence](#10-confluence), [diagrams](#11-whiteboards-and-diagrams),
+   [live collaboration](#12-live-collaboration), [apps](#13-apps).
+4. [Local-first closure](#14-local-first-closure), then [certification](#15-certification).
 
 Each numbered item is one or more substantial PRs.
 
-## 1. Permission enforcement
-
-Jira checks the project's permission scheme on every work item action. ZZIRA
-checks Browse projects, issue security, Delete, attachments, comments and
-worklogs in the command layer; the rest are checked only on some API paths.
-
-- Check in `internal/commands`, for every caller: Create issues, Edit issues,
-  Transition issues, Assign issues, Assignable user (direct assignment), Resolve
-  issues, Close issues, Schedule issues (due date), Modify reporter, Move issues,
-  Set issue security, Link issues, Manage watchers, Manage sprints, Service
-  desk agent.
-- `system:check-permission-validator` evaluates the project's scheme, not the
-  fixed role map in `internal/authz/jira_permissions.go`.
-- Navigator bulk actions check Bulk change, not site admin (`internal/web/web.go`).
-- Bulk issue property updates evaluate the Jira `expression` filter.
-- Tests: a member without each permission is refused on REST, UI, bulk,
-  automation (run-as) and offline replay.
-
-## 2. Work item model
+## 1. Work item model
 
 **Hierarchy above epic.** Jira Premium lets admins add levels above epic
 (Initiative, Theme…) in Settings → Work type hierarchy; the Parent field links any
@@ -128,7 +109,7 @@ level to the one above.
   deployments.
 - Compass components.
 
-## 3. Plans
+## 2. Plans
 
 Jira Plans (Advanced Roadmaps): cross-project plans over boards, projects and
 filters, with teams, capacity, scenarios and an auto-scheduler. ZZIRA has plan
@@ -145,7 +126,7 @@ and dependency checks.
 - Atlassian Teams REST API.
 - Fix sprint length: days in `store/plans.go`, weeks in `store/plan_planning.go`.
 
-## 4. Cross-project releases
+## 3. Cross-project releases
 
 Jira Plans create a cross-project release that groups same-named versions across
 projects. ZZIRA stores `crossProjectReleases` on a plan and returns it over REST,
@@ -157,7 +138,7 @@ but nothing shows or uses it.
 - Release hub: deployments grouped across projects, release gates, environment
   promotion, drag reordering, dates in the viewer's locale and site time zone.
 
-## 5. Boards, reports and DORA
+## 4. Boards, reports and DORA
 
 - Boards: column configuration with several statuses per column, swimlanes by
   query, epic, project and stories; `PUT …/features`; changing a board's filter
@@ -170,7 +151,7 @@ but nothing shows or uses it.
   Jira system gadgets.
 - Load test at 1M actions with mixed reads and writes.
 
-## 6. JQL and filters
+## 5. JQL and filters
 
 - Fields: `text`, `comment`, `watcher(s)`, `voter`/`votes`, `attachments`,
   `level`, `lastViewed`, `issueLinkType`, `category`, `filter`,
@@ -185,7 +166,7 @@ but nothing shows or uses it.
   `MANAGE_GROUP_FILTER_SUBSCRIPTIONS`, opt-in for empty results,
   `CREATE_SHARED_OBJECTS` on sharing.
 
-## 7. Enterprise identity
+## 6. Enterprise identity
 
 Atlassian Guard and organization administration. ZZIRA has OIDC sign-in (Google,
 Entra, Atlassian, custom), DNS domain verification, IP allowlists, and managed
@@ -204,7 +185,7 @@ profile edit, suspend, restore and remove.
 - Several sites per organization on one server.
 - Organization and site lifecycle, product access per site.
 
-## 8. Automation
+## 7. Automation
 
 ZZIRA runs the event, scheduled, manual and incoming-webhook triggers, the
 condition catalog, and 14 action types including web requests and page creation.
@@ -220,7 +201,7 @@ condition catalog, and 14 action types including web requests and page creation.
   and headers, manual trigger in the rule editor.
 - Remaining Jira action catalog, compared action by action with Atlassian's list.
 
-## 9. Assets
+## 8. Assets
 
 Jira Service Management Assets: schemas, object types with a hierarchy, typed
 attributes, objects, references, AQL, imports and a REST API. ZZIRA has per-desk
@@ -235,7 +216,7 @@ links, the Assets portal field, and the workspace discovery endpoints.
 - Imports (CSV, JSON, object schema) with mapping, reconciliation and schedules.
 - Agent browser UI for schemas and objects; per-schema roles.
 
-## 10. Service Management
+## 9. Service Management
 
 - Request type restrictions (`RESTRICTED` returns the permitted people).
 - Create, edit and delete request types in the agent UI.
@@ -244,7 +225,7 @@ links, the Assets portal field, and the workspace discovery endpoints.
 - Knowledge base ranking and analytics.
 - Post-incident review templates.
 
-## 11. Confluence
+## 10. Confluence
 
 **Content.**
 - Blog posts: version restore and delete, historical macro reads, content states,
@@ -279,7 +260,7 @@ links, the Assets portal field, and the workspace discovery endpoints.
 - Audit: site operations write records; `sysAdmin`/`superAdmin` derived; audit
   UI. Organization admin key; data security policies.
 
-## 12. Whiteboards and diagrams
+## 11. Whiteboards and diagrams
 
 ZZIRA has a form-driven canvas with stickies, text and shapes, labelled
 connectors, a fixed 1400×800 SVG render, and whiteboard lifecycle in v2.
@@ -290,11 +271,11 @@ connectors, a fixed 1400×800 SVG render, and whiteboard lifecycle in v2.
 - Connectors with anchors, routing and arrowheads; automatic graph layout.
 - Templates that add content (53 keys are accepted today and add nothing).
 - Voting, timer, sticky-to-work-item conversion, Smart Links.
-- Comments, reactions, version history, live collaboration (see 13).
+- Comments, reactions, version history, live collaboration (see 12).
 - Image and PDF export; accessible text equivalents.
 - Databases: remaining views, formulas, relations, imports and exports.
 
-## 13. Live collaboration
+## 12. Live collaboration
 
 ZZIRA polls presence (15 s) and merges page bodies (1 s), with named carets and
 offline typing.
@@ -304,7 +285,7 @@ offline typing.
 - Live whiteboards and databases; live comments and reactions.
 - Multi-user convergence tests under latency and disconnects.
 
-## 14. Apps
+## 13. Apps
 
 - Jira Connect modules: `configurePage`, `dialogs`, `webSections`,
   `keyboardShortcuts`, workflow conditions, validators and post functions (stored
@@ -321,7 +302,7 @@ offline typing.
 - DevOps: asynchronous provider processing; issue view panels for operations,
   security, feature flags and remote links.
 
-## 15. Local-first closure
+## 14. Local-first closure
 
 - Permission-shaped replicas and safe queued writes for service, knowledge,
   dashboards, releases, reports and administration.
@@ -329,7 +310,7 @@ offline typing.
   quota, account and site switching, schema upgrades, full resnapshot,
   revocation purge — tested for each replica.
 
-## 16. Certification
+## 15. Certification
 
 - Move all 1,207 operations from partial to delivered with golden
   request/response evidence.

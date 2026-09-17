@@ -600,7 +600,7 @@ func (h *Handler) ServiceAgentAssign(w http.ResponseWriter, r *http.Request) {
 		assignee = ""
 	}
 	if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{ActorID: user.ID, WorkspaceID: workspaceID, IssueIDOrKey: request.Issue.ID, AssigneeID: &assignee}); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+request.ServiceDesk.ID+"?queue="+r.FormValue("queue"))
@@ -615,7 +615,7 @@ func (h *Handler) ServiceAgentSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Commands.SetServiceDeskAgent(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PostFormValue("accountId"), r.PostFormValue("enabled") == "true"); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#agents")
@@ -634,7 +634,7 @@ func (h *Handler) ServiceOperationsSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := h.Commands.UpdateServiceOperationsSettings(r.Context(), user.ID, workspaceID, deskID, threshold, reviewDays, r.PostForm["cabMember"]); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#operations-settings")
@@ -671,7 +671,7 @@ func (h *Handler) ServiceOnCallSettings(w http.ResponseWriter, r *http.Request) 
 		err = h.Commands.CreateServiceOnCallShift(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("accountId"), r.PostFormValue("label"), *start, *end)
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#operations-settings")
@@ -695,7 +695,7 @@ func (h *Handler) ServiceEscalationSettings(w http.ResponseWriter, r *http.Reque
 		err = h.Commands.CreateServiceEscalationStep(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("accountId"), delayMinutes)
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#escalation-policy")
@@ -717,11 +717,11 @@ func (h *Handler) ServicePortalSettings(w http.ResponseWriter, r *http.Request) 
 	}
 	deskID := r.PathValue("desk")
 	if err := h.Commands.UpdateServiceDeskPortal(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("name"), r.PostFormValue("description"), r.PostFormValue("logoUrl")); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	if err := h.Commands.SetServiceDeskAnnouncementsEnabled(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("announcementsEnabled") == "true"); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#portal-settings")
@@ -738,7 +738,7 @@ func (h *Handler) ServicePortalAnnouncement(w http.ResponseWriter, r *http.Reque
 	}
 	deskID := r.PathValue("desk")
 	if err := h.Commands.UpdateServiceDeskAnnouncement(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("title"), r.PostFormValue("message")); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#portal-announcement")
@@ -756,27 +756,27 @@ func (h *Handler) ServiceCustomerSettings(w http.ResponseWriter, r *http.Request
 	switch r.PostFormValue("action") {
 	case "access":
 		if err := h.Commands.SetServiceDeskCustomerAccess(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("open") == "true"); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), commandErrorStatus(err))
 			return
 		}
 	case "notification":
 		if err := h.Commands.SetServiceDeskCustomerNotification(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("notification"), r.PostFormValue("enabled") == "true"); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), commandErrorStatus(err))
 			return
 		}
 	case "feedback":
 		if err := h.Commands.SetServiceDeskFeedbackEnabled(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("enabled") == "true"); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), commandErrorStatus(err))
 			return
 		}
 	case "attachments":
 		if err := h.Commands.SetServiceDeskAttachmentsEnabled(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("enabled") == "true"); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), commandErrorStatus(err))
 			return
 		}
 	case "invite":
 		if _, err := h.Commands.InviteServiceDeskCustomer(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("email"), r.PostFormValue("displayName")); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), commandErrorStatus(err))
 			return
 		}
 	case "add", "remove":
@@ -786,7 +786,7 @@ func (h *Handler) ServiceCustomerSettings(w http.ResponseWriter, r *http.Request
 			return
 		}
 		if err := h.Commands.SetServiceDeskCustomers(r.Context(), user.ID, workspaceID, deskID, []string{customer.ID}, r.PostFormValue("action") == "add"); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), commandErrorStatus(err))
 			return
 		}
 	default:
@@ -825,7 +825,7 @@ func (h *Handler) ServiceOrganizationSettings(w http.ResponseWriter, r *http.Req
 		err = errors.New("organization action is invalid")
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#organizations")
@@ -839,7 +839,7 @@ func (h *Handler) ServiceDeploymentGateSettings(w http.ResponseWriter, r *http.R
 	}
 	deskID := r.PathValue("desk")
 	if err := h.Commands.SetServiceDeploymentGate(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("provider"), r.PostForm["environmentType"]); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#deployment-gating")
@@ -855,7 +855,7 @@ func (h *Handler) ServiceKnowledgeSettings(w http.ResponseWriter, r *http.Reques
 	}
 	deskID := r.PathValue("desk")
 	if err := h.Commands.SetServiceDeskKnowledgeSpace(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("spaceId"), r.PostFormValue("linked") == "true"); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#knowledge-base")
@@ -883,19 +883,19 @@ func (h *Handler) ServiceQueueSettings(w http.ResponseWriter, r *http.Request) {
 	case "create":
 		queue, err := h.Commands.CreateServiceQueue(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("name"), r.PostFormValue("jql"))
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), commandErrorStatus(err))
 			return
 		}
 		redirectLocal(w, r, "/service/agent/"+deskID+"?queue="+queue.ID+"#queue-settings")
 	case "update":
 		if err := h.Commands.UpdateServiceQueue(r.Context(), user.ID, workspaceID, deskID, queueID, r.PostFormValue("name"), r.PostFormValue("jql")); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), commandErrorStatus(err))
 			return
 		}
 		redirectLocal(w, r, "/service/agent/"+deskID+"?queue="+queueID+"#queue-settings")
 	case "delete":
 		if err := h.Commands.DeleteServiceQueue(r.Context(), user.ID, workspaceID, deskID, queueID); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), commandErrorStatus(err))
 			return
 		}
 		redirectLocal(w, r, "/service/agent/"+deskID+"#queue-settings")
@@ -965,7 +965,7 @@ func (h *Handler) ServiceRequestTypeFieldSettings(w http.ResponseWriter, r *http
 	}
 	deskID, requestTypeID := r.PathValue("desk"), r.PathValue("requestType")
 	if err := h.Commands.SetServiceRequestTypeFields(r.Context(), user.ID, workspaceID, deskID, requestTypeID, fields); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#request-forms")
@@ -1012,7 +1012,7 @@ func (h *Handler) ServiceCalendars(w http.ResponseWriter, r *http.Request) {
 			r.PostFormValue("name"), r.PostFormValue("timeZone"), serviceWeekdays(r), startMinute, endMinute)
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#calendar")
@@ -1068,7 +1068,7 @@ func (h *Handler) ServiceCalendarSettings(w http.ResponseWriter, r *http.Request
 		weekdays = append(weekdays, weekday)
 	}
 	if err := h.Commands.UpdateServiceCalendar(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PostFormValue("name"), r.PostFormValue("timeZone"), weekdays, startMinute, endMinute); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#sla-settings")
@@ -1088,12 +1088,12 @@ func (h *Handler) ServiceSLASettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Commands.UpdateServiceSLAMetric(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PathValue("metric"), r.PostFormValue("pauseJql"), goalMinutes*time.Minute.Milliseconds()); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	if r.PostFormValue("conditions") != "" {
 		if err := h.Commands.UpdateServiceSLAConditions(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PathValue("metric"), r.PostForm["startCondition"], r.PostForm["stopCondition"]); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), commandErrorStatus(err))
 			return
 		}
 	}
@@ -1115,7 +1115,7 @@ func (h *Handler) ServiceSLACreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.Commands.CreateServiceSLAMetric(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PostFormValue("name"), goalMinutes*time.Minute.Milliseconds(), r.PostForm["startCondition"], r.PostForm["stopCondition"]); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#sla-settings")
@@ -1128,7 +1128,7 @@ func (h *Handler) ServiceSLADelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Commands.DeleteServiceSLAMetric(r.Context(), user.ID, workspaceID, r.PathValue("desk"), r.PathValue("metric")); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+r.PathValue("desk")+"#sla-settings")
@@ -1172,7 +1172,7 @@ func (h *Handler) ServiceSLAGoalSettings(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#sla-settings")
@@ -1196,7 +1196,7 @@ func (h *Handler) ServiceCalendarHolidaySettings(w http.ResponseWriter, r *http.
 		err = h.Commands.UpsertServiceCalendarHoliday(r.Context(), user.ID, workspaceID, deskID, calendarID, day, r.PostFormValue("name"))
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"#sla-settings")
@@ -1249,7 +1249,7 @@ func (h *Handler) ServiceHelpCenterSettings(w http.ResponseWriter, r *http.Reque
 		NavigationBackgroundColour: r.PostFormValue("navigationBackgroundColour"), NavigationTextColour: r.PostFormValue("navigationTextColour"),
 		AnnouncementTitle: r.PostFormValue("announcementTitle"), AnnouncementMessage: r.PostFormValue("announcementMessage")}
 	if err := h.Commands.UpdateServiceHelpCenter(r.Context(), user.ID, workspaceID, center); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service#help-center-settings")
@@ -1930,7 +1930,7 @@ func (h *Handler) ServiceRequestLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, _, err := h.Commands.LinkIssue(r.Context(), user.ID, workspaceID, request.Issue.ID, r.PostFormValue("type"), strings.TrimSpace(r.PostFormValue("issue"))); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#operations-links")
@@ -1951,7 +1951,7 @@ func (h *Handler) ServiceRequestLinkDelete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if _, err := h.Commands.DeleteIssueLink(r.Context(), user.ID, workspaceID, request.Issue.ID, r.PathValue("link")); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#operations-links")
@@ -1976,7 +1976,7 @@ func (h *Handler) ServiceRequestParticipant(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if _, err := h.Commands.UpdateServiceRequestParticipants(r.Context(), user.ID, workspaceID, request.Issue.ID, []string{customer.ID}, r.PostFormValue("action") == "remove"); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#participants")
@@ -2028,11 +2028,11 @@ func (h *Handler) ServiceRequestComment(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		if _, _, err := h.Commands.CreateServiceAttachmentComment(r.Context(), user.ID, workspaceID, request.Issue.ID, []string{temporary.ID}, r.PostFormValue("body"), public); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), commandErrorStatus(err))
 			return
 		}
 	} else if _, err := h.Commands.AddServiceRequestComment(r.Context(), user.ID, workspaceID, request.Issue.ID, json.RawMessage(nil), r.PostFormValue("body"), public); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#conversation")
@@ -2052,7 +2052,7 @@ func (h *Handler) ServiceRequestApproval(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if _, err := h.Commands.CreateServiceApproval(r.Context(), user.ID, workspaceID, request.Issue.ID, r.PostFormValue("name"), []string{r.PostFormValue("approver")}); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#approvals")
@@ -2072,7 +2072,7 @@ func (h *Handler) ServiceRequestApprovalDecision(w http.ResponseWriter, r *http.
 		return
 	}
 	if _, err := h.Commands.AnswerServiceApproval(r.Context(), user.ID, workspaceID, request.Issue.ID, r.PathValue("approval"), r.PostFormValue("decision")); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#approvals")
@@ -2102,7 +2102,7 @@ func (h *Handler) ServiceRequestOperations(w http.ResponseWriter, r *http.Reques
 	}
 	_, err := h.Commands.UpdateServiceOperationsProfile(r.Context(), user.ID, workspaceID, r.PathValue("key"), models.ServiceOperationsProfile{Impact: impact, Likelihood: likelihood, ChangeType: r.PostFormValue("changeType"), PlannedStart: plannedStart, PlannedEnd: plannedEnd, RollbackPlan: r.PostFormValue("rollbackPlan"), OnCallUserID: r.PostFormValue("onCallUser"), MajorIncident: r.PostFormValue("majorIncident") == "true", ReviewRequired: reviewRequired, ReviewDueAt: reviewDue, ReviewStatus: reviewStatus, ReviewSummary: r.PostFormValue("reviewSummary")})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+r.PathValue("key")+"#operations-control")
@@ -2114,7 +2114,7 @@ func (h *Handler) ServiceIncidentUpdate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if _, err := h.Commands.CreateServiceIncidentUpdate(r.Context(), user.ID, workspaceID, r.PathValue("key"), r.PostFormValue("audience"), r.PostFormValue("message")); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+r.PathValue("key")+"#incident-updates")
@@ -2147,7 +2147,7 @@ func (h *Handler) ServiceIncidentRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Commands.SetServiceIncidentRole(r.Context(), user.ID, workspaceID, r.PathValue("key"), r.PostFormValue("role"), r.PostFormValue("user_id")); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+r.PathValue("key")+"#incident-team")
@@ -2167,7 +2167,7 @@ func (h *Handler) ServiceIncidentStakeholder(w http.ResponseWriter, r *http.Requ
 		err = h.Commands.AddServiceIncidentStakeholder(r.Context(), user.ID, workspaceID, key, r.PostFormValue("user_id"), r.PostFormValue("email"))
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+key+"#incident-team")
@@ -2187,7 +2187,7 @@ func (h *Handler) ServiceRequestNotification(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err := h.Commands.SetServiceRequestSubscription(r.Context(), user.ID, workspaceID, request.Issue.ID, r.PostFormValue("subscribed") == "true"); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#notifications")
@@ -2216,7 +2216,7 @@ func (h *Handler) ServiceRequestFeedback(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#feedback")
@@ -2236,7 +2236,7 @@ func (h *Handler) ServiceRequestTransition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if _, err := h.Commands.TransitionServiceRequest(r.Context(), user.ID, workspaceID, request.Issue.ID, r.PostFormValue("transition")); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key)

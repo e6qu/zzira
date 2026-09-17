@@ -834,11 +834,20 @@ func (s *Store) IsServiceAgent(ctx context.Context, workspaceID, serviceDeskID, 
 	if err != nil || !member {
 		return false, err
 	}
-	var allowed bool
-	err = s.Pool.QueryRow(ctx, `SELECT EXISTS(
-		SELECT 1 FROM service_desk_agents a JOIN service_desks sd ON sd.id=a.service_desk_id
-		WHERE sd.workspace_id=$1 AND sd.id=$2 AND a.user_id=$3)`, workspaceID, serviceDeskID, userID).Scan(&allowed)
-	return allowed, err
+	var listed bool
+	var projectID string
+	err = s.Pool.QueryRow(ctx, `SELECT sd.project_id, EXISTS(
+		SELECT 1 FROM service_desk_agents a WHERE a.service_desk_id=sd.id AND a.user_id=$3)
+		FROM service_desks sd WHERE sd.workspace_id=$1 AND sd.id=$2`, workspaceID, serviceDeskID, userID).Scan(&projectID, &listed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil || !listed {
+		return false, err
+	}
+	// An agent also needs the project's Service desk agent permission, which
+	// the project's permission scheme grants.
+	return s.HasProjectPermission(ctx, workspaceID, userID, projectID, "", "SERVICEDESK_AGENT")
 }
 
 // ServiceDesksAdministered lists the service desks whose project the user

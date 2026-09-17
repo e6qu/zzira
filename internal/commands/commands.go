@@ -51,13 +51,17 @@ type CreateIssueInput struct {
 	// AssetSchemas scopes an Assets object field, by field id, to one Assets
 	// schema: the scope a service request type's form gives it.
 	AssetSchemas map[string]string
+	// customerRequest marks a request raised through a service portal, which
+	// Jira lets a customer raise without any project permission; the service
+	// layer has already decided the customer may.
+	customerRequest bool
 }
 
 // DeleteIssue removes the issue transactionally, then cleans up attachment
 // blobs whose metadata was cascade-deleted with it.
 // ErrIssueDeletePermission refuses deleting work without Delete issues, the
 // project permission Jira gates deletion on.
-var ErrIssueDeletePermission = errors.New("you do not have permission to delete this work item")
+var ErrIssueDeletePermission error = &PermissionError{Permission: "DELETE_ISSUES", Message: permissionMessages["DELETE_ISSUES"]}
 
 // DeleteIssue deletes work a person asked to delete, which Jira allows only
 // with the project's Delete issues permission.
@@ -143,6 +147,11 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if issueType.Subtask && !configuration.SubTasksEnabled {
 		return nil, nil, fmt.Errorf("subtasks are disabled for this site")
 	}
+	if !in.customerRequest {
+		if err = s.requireCreatePermissions(ctx, in, project.ID); err != nil {
+			return nil, nil, err
+		}
+	}
 	// Jira accepts an option as its id, {"id"} or {"value"}; every check below
 	// sees the option ids a work item stores.
 	if err = s.normalizeOptionFields(ctx, in.WorkspaceID, project.ID, issueType.ID, in.Fields, in.AssetSchemas); err != nil {
@@ -207,6 +216,9 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 			return nil, nil, fmt.Errorf("project lead is not an active workspace member")
 		}
 		in.AssigneeID = project.LeadAccountID
+	}
+	if err := s.requireAssignable(ctx, in.WorkspaceID, project.ID, "", in.AssigneeID); err != nil {
+		return nil, nil, err
 	}
 	if in.AssigneeID == "" && !configuration.UnassignedIssuesAllowed {
 		return nil, nil, fmt.Errorf("unassigned work items are disabled for this site")
@@ -312,6 +324,28 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 		}
 	}
 	return issue, action, nil
+}
+
+// requireCreatePermissions checks what Jira checks on create: Create issues,
+// and the permission behind each field that needs its own.
+func (s *Service) requireCreatePermissions(ctx context.Context, in CreateIssueInput, projectID string) error {
+	permissions := []string{"CREATE_ISSUES"}
+	if in.AssigneeID != "" && in.AssigneeID != "-1" && !in.UseProjectDefaultAssignee {
+		permissions = append(permissions, "ASSIGN_ISSUES")
+	}
+	if in.ReporterID != "" && in.ReporterID != in.ActorID {
+		permissions = append(permissions, "MODIFY_REPORTER")
+	}
+	if in.SecurityLevelID != "" {
+		permissions = append(permissions, "SET_ISSUE_SECURITY")
+	}
+	if strings.TrimSpace(in.DueDate) != "" {
+		permissions = append(permissions, "SCHEDULE_ISSUES")
+	}
+	if setsFixVersions(in.Fields) {
+		permissions = append(permissions, "RESOLVE_ISSUES")
+	}
+	return s.requirePermissions(ctx, in.WorkspaceID, in.ActorID, projectID, "", permissions...)
 }
 
 // deliverMentions notifies the people a description or comment newly
@@ -905,7 +939,7 @@ func (s *Service) runInitialTransition(ctx context.Context, in CreateIssueInput,
 		draft.Priority = &models.Priority{ID: priorityID}
 	}
 	context := workflow.ContextForIssue(in.ActorID, draft)
-	permissions, err := authz.JiraPermissions(ctx, s.Store, in.WorkspaceID, in.ActorID)
+	permissions, err := authz.JiraPermissions(ctx, s.Store, in.WorkspaceID, in.ActorID, in.ProjectIDOrKey, "", initial.PermissionKeys())
 	if err != nil {
 		return created, err
 	}

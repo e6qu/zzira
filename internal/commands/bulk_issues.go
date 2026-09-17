@@ -205,6 +205,16 @@ func (s *Service) executeBulkMoveTask(ctx context.Context, task store.APITask) e
 // bulkMoveIssue moves one work item and, across projects, the sub-tasks that
 // move with it. It returns the Jira ids moved.
 func (s *Service) bulkMoveIssue(ctx context.Context, task store.APITask, issue *models.Issue, item store.BulkIssueMoveTaskItem) ([]int64, error) {
+	// Jira asks for Move issues where the work item is, and Create issues
+	// where it goes.
+	if err := s.requirePermission(ctx, task.WorkspaceID, task.SubmittedBy, issue.ProjectID, issue.ID, "MOVE_ISSUES"); err != nil {
+		return nil, err
+	}
+	if issue.ProjectID != item.ProjectID {
+		if err := s.requirePermission(ctx, task.WorkspaceID, task.SubmittedBy, item.ProjectID, "", "CREATE_ISSUES"); err != nil {
+			return nil, err
+		}
+	}
 	children, err := s.Store.ChildIssues(ctx, task.WorkspaceID, issue.ID)
 	if err != nil {
 		return nil, err

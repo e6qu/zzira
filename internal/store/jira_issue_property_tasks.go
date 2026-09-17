@@ -27,6 +27,8 @@ type IssuePropertyBulkRequest struct {
 	PerIssue   []IssuePropertyBulkItem    `json:"perIssue,omitempty"`
 	Key        string                     `json:"key,omitempty"`
 	Value      json.RawMessage            `json:"value,omitempty"`
+	// Expression computes the value per work item instead of Value.
+	Expression string `json:"expression,omitempty"`
 	// Filter narrows the filtered modes; without IssueIDs every issue is eligible.
 	CurrentValue json.RawMessage `json:"currentValue,omitempty"`
 	HasProperty  *bool           `json:"hasProperty,omitempty"`
@@ -193,9 +195,22 @@ func (s *Store) executeIssuePropertiesTask(ctx context.Context, task APITask) er
 					continue
 				}
 				changes = append(changes, change{id, map[string]json.RawMessage{request.Key: nil}})
-			} else {
-				changes = append(changes, change{id, map[string]json.RawMessage{request.Key: request.Value}})
+				continue
 			}
+			value := request.Value
+			if request.Expression != "" {
+				if s.IssueExpressionEvaluator == nil {
+					return fmt.Errorf("jira expressions are not available")
+				}
+				computed, evalErr := s.IssueExpressionEvaluator(ctx, task.WorkspaceID, task.SubmittedBy, id, request.Expression)
+				// A work item the expression fails on, or whose value is too
+				// large, keeps its property, as Jira does.
+				if evalErr != nil || len(computed) == 0 || len(computed) > 32768 {
+					continue
+				}
+				value = computed
+			}
+			changes = append(changes, change{id, map[string]json.RawMessage{request.Key: value}})
 		}
 	default:
 		return fmt.Errorf("unknown bulk issue property mode %q", request.Mode)

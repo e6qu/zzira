@@ -39,20 +39,16 @@ type BoardConfigurationUpdate struct {
 	ColumnLimits     map[string]int
 }
 
-// SetIssueRank repositions an issue (and optionally moves it to a new status).
+// SetIssueRank repositions a work item; status changes go through a workflow
+// transition instead.
 // Rank changes materialize but stay out of the changelog.
-func (s *Store) SetIssueRank(ctx context.Context, actorID, workspaceID, issueID, rank, newStatusID string) (*models.Action, error) {
+func (s *Store) SetIssueRank(ctx context.Context, actorID, workspaceID, issueID, rank string) (*models.Action, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if newStatusID != "" {
-		if _, err := tx.Exec(ctx, `UPDATE issues SET status_id=$3 WHERE id=$1 AND workspace_id=$2`, issueID, workspaceID, newStatusID); err != nil {
-			return nil, err
-		}
-	}
 	if _, err := tx.Exec(ctx, `UPDATE issues SET rank=$3 WHERE id=$1 AND workspace_id=$2`, issueID, workspaceID, rank); err != nil {
 		return nil, err
 	}

@@ -149,6 +149,7 @@ func main() {
 		WorkspaceSlug: workspaceSlug, BaseURL: baseURL, InvitationNotificationsConfigured: smtpSender != nil,
 	}
 	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: baseURL, WorkspaceSlug: workspaceSlug, StaticDir: static}
+	st.IssueExpressionEvaluator = api.EvaluateIssueExpression
 	if providerSecrets != nil {
 		appJQL := &apps.JQLFunctionEvaluator{Store: st, Secrets: providerSecrets, Client: &http.Client{Timeout: 10 * time.Second}}
 		st.AppJQLExpander = appJQL.Expand

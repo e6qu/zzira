@@ -1503,7 +1503,7 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 		Mode: params.Mode, JQL: params.JQL, Text: params.Text, Status: params.Status, Assignee: params.Assignee,
 		Sort: params.Sort, Direction: params.Direction, Page: params.Page, SortURLs: map[string]string{},
 	}
-	data.CanBulk, err = h.Store.IsAdmin(r.Context(), wsID, user.ID)
+	data.CanBulk, err = h.Store.HasGlobalPermission(r.Context(), wsID, user.ID, "BULK_CHANGE")
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -1661,7 +1661,7 @@ func (h *Handler) SubmitBulkIssueDelete(w http.ResponseWriter, r *http.Request, 
 	if !parseForm(w, r) {
 		return
 	}
-	user, workspaceID, ok := h.requireAdminPage(w, r)
+	user, workspaceID, ok := h.requireBulkChange(w, r)
 	if !ok {
 		return
 	}
@@ -1702,7 +1702,7 @@ func (h *Handler) SubmitBulkIssueMove(w http.ResponseWriter, r *http.Request, pr
 	if !parseForm(w, r) {
 		return
 	}
-	user, workspaceID, ok := h.requireAdminPage(w, r)
+	user, workspaceID, ok := h.requireBulkChange(w, r)
 	if !ok {
 		return
 	}
@@ -1769,7 +1769,7 @@ func (h *Handler) SubmitBulkIssueTransition(w http.ResponseWriter, r *http.Reque
 	if !parseForm(w, r) {
 		return
 	}
-	user, workspaceID, ok := h.requireAdminPage(w, r)
+	user, workspaceID, ok := h.requireBulkChange(w, r)
 	if !ok {
 		return
 	}
@@ -1828,7 +1828,7 @@ func (h *Handler) SubmitBulkIssueTransition(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *Handler) BulkIssueTask(w http.ResponseWriter, r *http.Request, projectKey, taskID string) {
-	user, workspaceID, ok := h.requireAdminPage(w, r)
+	user, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
 		return
 	}
@@ -1841,6 +1841,14 @@ func (h *Handler) BulkIssueTask(w http.ResponseWriter, r *http.Request, projectK
 	if err != nil || !task.IsBulkIssueOperation() {
 		http.NotFound(w, r)
 		return
+	}
+	// A bulk task's progress is its submitter's, and administrators'.
+	if task.SubmittedBy != user.ID {
+		admin, adminErr := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+		if adminErr != nil || !admin {
+			http.NotFound(w, r)
+			return
+		}
 	}
 	data := bulkIssueTaskData{Project: project, Task: task}
 	if len(task.Result) > 0 && string(task.Result) != "null" {
@@ -1983,7 +1991,7 @@ func (h *Handler) TransitionIssue(w http.ResponseWriter, r *http.Request, key st
 		}
 	}
 	if _, _, err := h.Commands.TransitionIssueWithUpdate(r.Context(), user.ID, wsID, key, r.PostFormValue("transition"), update); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)
@@ -2016,7 +2024,7 @@ func (h *Handler) AddComment(w http.ResponseWriter, r *http.Request, key string)
 		}
 	}
 	if _, _, err := h.Commands.AddComment(r.Context(), in); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)
@@ -2118,7 +2126,7 @@ func (h *Handler) AddWorklog(w http.ResponseWriter, r *http.Request, key string)
 		}
 	}
 	if _, _, err := h.Commands.AddWorklogWithEstimate(r.Context(), user.ID, wsID, key, adf.ParagraphDoc(r.PostFormValue("comment")), int(spent), estimate); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)
@@ -2142,7 +2150,7 @@ func (h *Handler) EditTimeTracking(w http.ResponseWriter, r *http.Request, key s
 		seconds := store.ClearEstimate
 		if value != "" {
 			if seconds, err = models.ParseJiraDuration(value, configuration.TimeTracking); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				http.Error(w, err.Error(), commandErrorStatus(err))
 				return
 			}
 		}
@@ -2150,7 +2158,7 @@ func (h *Handler) EditTimeTracking(w http.ResponseWriter, r *http.Request, key s
 	}
 	if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{ActorID: user.ID, WorkspaceID: wsID, IssueIDOrKey: key,
 		OriginalEstimate: estimates["originalEstimate"], RemainingEstimate: estimates["remainingEstimate"]}); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)
@@ -2168,7 +2176,7 @@ func (h *Handler) DeleteWorklog(w http.ResponseWriter, r *http.Request, key, wor
 		return
 	}
 	if _, err := h.Commands.DeleteWorklog(r.Context(), user.ID, wsID, worklogID); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)
@@ -2186,7 +2194,7 @@ func (h *Handler) DeleteAttachment(w http.ResponseWriter, r *http.Request, key, 
 		return
 	}
 	if _, err := h.Commands.DeleteAttachment(r.Context(), user.ID, wsID, attachmentID); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)
@@ -2234,14 +2242,14 @@ func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key s
 			if strings.TrimSpace(joined) == "" {
 				encoded = json.RawMessage("null")
 			} else if encoded, err = encodeWebCustomField(definition.Type, joined); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				http.Error(w, err.Error(), commandErrorStatus(err))
 				return
 			}
 		}
 		in.Fields = map[string]json.RawMessage{fieldID: encoded}
 	}
 	if _, _, err := h.Commands.UpdateIssue(r.Context(), in); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)
@@ -2253,7 +2261,7 @@ func (h *Handler) SetWatching(w http.ResponseWriter, r *http.Request, key string
 		return
 	}
 	if _, err := h.Commands.SetWatching(r.Context(), user.ID, wsID, key, r.PostFormValue("watching") == "true"); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)
@@ -2265,7 +2273,7 @@ func (h *Handler) SetVoting(w http.ResponseWriter, r *http.Request, key string) 
 		return
 	}
 	if _, err := h.Commands.SetVoting(r.Context(), user.ID, wsID, key, r.PostFormValue("voting") == "true"); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)
@@ -2282,7 +2290,7 @@ func (h *Handler) LinkIssue(w http.ResponseWriter, r *http.Request, key string) 
 		return
 	}
 	if _, _, err := h.Commands.LinkIssue(r.Context(), user.ID, wsID, key, r.PostFormValue("type"), otherKey); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)
@@ -2294,7 +2302,7 @@ func (h *Handler) DeleteIssueLink(w http.ResponseWriter, r *http.Request, key, l
 		return
 	}
 	if _, err := h.Commands.DeleteIssueLink(r.Context(), user.ID, wsID, key, linkID); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)
@@ -2400,7 +2408,7 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 		}
 	}
 	if _, _, err := h.Commands.UpdateIssue(r.Context(), in); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), commandErrorStatus(err))
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)
@@ -2423,8 +2431,8 @@ func (h *Handler) DeleteIssue(w http.ResponseWriter, r *http.Request, key string
 		return
 	}
 	if _, err := h.Commands.DeleteIssue(r.Context(), user.ID, wsID, issue.ID, "deleted via UI"); err != nil {
-		if errors.Is(err, commands.ErrIssueDeletePermission) {
-			http.Error(w, "you do not have permission to delete this work item", http.StatusForbidden)
+		if errors.Is(err, commands.ErrPermission) {
+			http.Error(w, err.Error(), http.StatusForbidden)
 			return
 		}
 		http.Error(w, "delete failed", http.StatusInternalServerError)
@@ -2450,4 +2458,32 @@ func cleanupMultipart(r *http.Request) {
 	if err := r.MultipartForm.RemoveAll(); err != nil {
 		log.Printf("multipart cleanup: %v", err)
 	}
+}
+
+// commandErrorStatus is the status for a refused command: 403 when a project
+// permission is missing, 400 otherwise.
+func commandErrorStatus(err error) int {
+	if errors.Is(err, commands.ErrPermission) {
+		return http.StatusForbidden
+	}
+	return http.StatusBadRequest
+}
+
+// requireBulkChange admits people holding Jira's Bulk change global
+// permission, which every bulk operation needs.
+func (h *Handler) requireBulkChange(w http.ResponseWriter, r *http.Request) (*models.User, string, bool) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return nil, "", false
+	}
+	allowed, err := h.Store.HasGlobalPermission(r.Context(), workspaceID, user.ID, "BULK_CHANGE")
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return nil, "", false
+	}
+	if !allowed {
+		http.Error(w, "You do not have the Bulk change permission.", http.StatusForbidden)
+		return nil, "", false
+	}
+	return user, workspaceID, true
 }

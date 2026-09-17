@@ -318,6 +318,10 @@ func (h *Handler) updateEpic(w http.ResponseWriter, r *http.Request, workspaceID
 		if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{
 			ActorID: userID, WorkspaceID: workspaceID, IssueIDOrKey: epic.ID, Summary: req.Summary,
 		}); err != nil {
+			if errors.Is(err, commands.ErrPermission) {
+				jiraError(w, http.StatusForbidden, err.Error())
+				return
+			}
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"summary": err.Error()})
 			return
 		}
@@ -327,7 +331,11 @@ func (h *Handler) updateEpic(w http.ResponseWriter, r *http.Request, workspaceID
 		update.ColorKey = &req.Color.Key
 	}
 	if update.Name != nil || update.ColorKey != nil || update.Done != nil {
-		if err := h.Store.UpdateEpicDetails(r.Context(), workspaceID, epic.ID, update); err != nil {
+		if err := h.Commands.UpdateEpicDetails(r.Context(), userID, workspaceID, epic.ID, update); err != nil {
+			if errors.Is(err, commands.ErrPermission) {
+				jiraError(w, http.StatusForbidden, err.Error())
+				return
+			}
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
@@ -378,7 +386,7 @@ func (h *Handler) moveIssuesToEpic(w http.ResponseWriter, r *http.Request, works
 		if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{
 			ActorID: userID, WorkspaceID: workspaceID, IssueIDOrKey: issue.ID, ParentIDOrKey: &epic.Key,
 		}); err != nil {
-			jiraError(w, http.StatusBadRequest, err.Error())
+			jiraError(w, commandStatus(err), err.Error())
 			return
 		}
 	}
@@ -416,11 +424,20 @@ func (h *Handler) removeIssuesFromEpic(w http.ResponseWriter, r *http.Request, w
 		if _, _, err := h.Commands.UpdateIssue(r.Context(), commands.UpdateIssueInput{
 			ActorID: userID, WorkspaceID: workspaceID, IssueIDOrKey: issue.ID, ParentIDOrKey: &clear,
 		}); err != nil {
-			jiraError(w, http.StatusBadRequest, err.Error())
+			jiraError(w, commandStatus(err), err.Error())
 			return
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// commandStatus is the status Jira Software gives a refused command: 403 for a
+// missing permission, 400 otherwise.
+func commandStatus(err error) int {
+	if errors.Is(err, commands.ErrPermission) {
+		return http.StatusForbidden
+	}
+	return http.StatusBadRequest
 }
 
 func validRankField(value *int64) bool {
@@ -461,11 +478,11 @@ func (h *Handler) rankEpic(w http.ResponseWriter, r *http.Request, workspaceID, 
 	} else {
 		afterID = reference.ID
 	}
-	rank, err := h.Store.RankAround(r.Context(), workspaceID, epic.ID, beforeID, afterID)
-	if err == nil {
-		_, err = h.Store.SetIssueRank(r.Context(), userID, workspaceID, epic.ID, rank, "")
-	}
-	if err != nil {
+	if err := h.Commands.RankAround(r.Context(), userID, workspaceID, epic.ID, beforeID, afterID); err != nil {
+		if errors.Is(err, commands.ErrPermission) {
+			jiraError(w, http.StatusForbidden, err.Error())
+			return
+		}
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -639,11 +656,12 @@ func (h *Handler) applyIssueMoves(w http.ResponseWriter, r *http.Request, worksp
 				failed = true
 				return
 			}
-			rank, rankErr := h.Store.RankAround(r.Context(), workspaceID, issue.ID, beforeID, afterID)
-			if rankErr == nil {
-				_, rankErr = h.Store.SetIssueRank(r.Context(), userID, workspaceID, issue.ID, rank, "")
-			}
-			if rankErr != nil {
+			if rankErr := h.Commands.RankAround(r.Context(), userID, workspaceID, issue.ID, beforeID, afterID); errors.Is(rankErr, commands.ErrPermission) {
+				entry.Status, entry.Errors = http.StatusForbidden, []string{rankErr.Error()}
+				entries[index] = entry
+				failed = true
+				return
+			} else if rankErr != nil {
 				entry.Status, entry.Errors = http.StatusInternalServerError, []string{"The issue could not be ranked."}
 				entries[index] = entry
 				failed = true
@@ -714,7 +732,7 @@ func (h *Handler) moveIssuesToBoard(w http.ResponseWriter, r *http.Request, work
 			return http.StatusBadRequest, "The board has no active sprint."
 		}
 		if err := h.Commands.PlanIssue(r.Context(), userID, workspaceID, board.ID, issue.ID, activeSprint.ID, "", ""); err != nil {
-			return http.StatusBadRequest, err.Error()
+			return commandStatus(err), err.Error()
 		}
 		return 0, ""
 	})
@@ -740,7 +758,7 @@ func (h *Handler) moveIssuesToBacklogForBoard(w http.ResponseWriter, r *http.Req
 			return http.StatusBadRequest, "The issue does not belong to the board."
 		}
 		if err := h.Commands.MoveIssueToBacklog(r.Context(), userID, workspaceID, issue.ID); err != nil {
-			return http.StatusBadRequest, err.Error()
+			return commandStatus(err), err.Error()
 		}
 		return 0, ""
 	})
@@ -830,7 +848,7 @@ func (h *Handler) issueEstimation(w http.ResponseWriter, r *http.Request, worksp
 		ActorID: userID, WorkspaceID: workspaceID, IssueIDOrKey: issue.ID, Fields: map[string]json.RawMessage{fieldID: raw},
 	})
 	if err != nil {
-		jiraError(w, http.StatusBadRequest, err.Error())
+		jiraError(w, commandStatus(err), err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"fieldId": fieldID, "value": estimationValue(updated.Fields[fieldID])})

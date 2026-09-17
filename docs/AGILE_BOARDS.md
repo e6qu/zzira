@@ -6,7 +6,7 @@ Boards show a project's work in columns. They also carry the board's backlog, sp
 
 | Page | Purpose |
 |---|---|
-| `/board/{id}` | Columns with cards in rank order. Supports drag and keyboard moves, quick filters, assignee filters, WIP limit feedback, swimlanes and a work item preview. |
+| `/board/{id}` | Columns with cards in rank order. Supports drag and keyboard moves (a move to another column runs the workflow transition into its status; ranking needs Schedule issues), quick filters, assignee filters, WIP limit feedback, swimlanes and a work item preview. |
 | `/board/{id}/backlog` | Backlog and sprints: create, edit, start and complete sprints, and move and rank work items. |
 | `/board/{id}/settings` | For board administrators. Swimlanes (`none` or `assignee`), card fields (priority, assignee, labels), column WIP limits, up to 20 quick filters, and the board's administrators (users and groups). |
 | `/projects/{key}/settings` | Create and delete the project's boards (`POST /projects/{key}/boards`). |

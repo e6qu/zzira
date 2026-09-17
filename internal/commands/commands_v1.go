@@ -70,12 +70,58 @@ func (s *Service) visibleIssue(ctx context.Context, actorID, workspaceID, issueI
 	return issue, nil
 }
 
+// requireUpdatePermissions checks what Jira checks on an edit: Edit issues for
+// field changes, Assign issues for a new assignee (who must be assignable),
+// and the permission behind each field that needs its own.
+func (s *Service) requireUpdatePermissions(ctx context.Context, in UpdateIssueInput, issue *models.Issue) error {
+	currentAssigneeID := ""
+	if issue.Assignee != nil {
+		currentAssigneeID = issue.Assignee.ID
+	}
+	_, fixVersionFields := in.Fields["fixVersions"]
+	_, fixVersionOperations := in.VersionOperations["fixVersions"]
+	securityChanged := in.SecurityLevelID != nil && *in.SecurityLevelID != issue.SecurityLevelID
+	edits := in.Summary != nil || in.Description != nil || in.PriorityID != nil || in.ParentIDOrKey != nil ||
+		in.Labels != nil || in.DueDate != nil || len(in.Fields) > 0 || len(in.VersionOperations) > 0 ||
+		in.OriginalEstimate != nil || in.RemainingEstimate != nil || securityChanged
+	var permissions []string
+	if edits {
+		permissions = append(permissions, "EDIT_ISSUES")
+	}
+	assigneeChanged := in.AssigneeID != nil && *in.AssigneeID != currentAssigneeID
+	if assigneeChanged {
+		permissions = append(permissions, "ASSIGN_ISSUES")
+	}
+	if securityChanged {
+		permissions = append(permissions, "SET_ISSUE_SECURITY")
+	}
+	if in.DueDate != nil {
+		permissions = append(permissions, "SCHEDULE_ISSUES")
+	}
+	if fixVersionFields || fixVersionOperations {
+		permissions = append(permissions, "RESOLVE_ISSUES")
+	}
+	if in.StatusID != nil && *in.StatusID != issue.Status.ID {
+		permissions = append(permissions, "TRANSITION_ISSUES")
+	}
+	if err := s.requirePermissions(ctx, in.WorkspaceID, in.ActorID, issue.ProjectID, issue.ID, permissions...); err != nil {
+		return err
+	}
+	if assigneeChanged {
+		return s.requireAssignable(ctx, in.WorkspaceID, issue.ProjectID, issue.ID, *in.AssigneeID)
+	}
+	return nil
+}
+
 func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models.Issue, *models.Action, error) {
 	issue, err := s.visibleIssue(ctx, in.ActorID, in.WorkspaceID, in.IssueIDOrKey)
 	if err != nil {
 		return nil, nil, err
 	}
 	if err = s.requireEditable(ctx, issue); err != nil {
+		return nil, nil, err
+	}
+	if err = s.requireUpdatePermissions(ctx, in, issue); err != nil {
 		return nil, nil, err
 	}
 	configuration, err := s.jiraSiteConfiguration(ctx, in.WorkspaceID)
@@ -431,23 +477,43 @@ func normalizeLabels(values []string) ([]string, error) {
 // TransitionIssue validates and applies a workflow transition using the
 // issue's project workflow (Default when unassigned).
 func (s *Service) TransitionIssue(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string) (*models.Issue, *models.Action, error) {
-	return s.transitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, store.IssueUpdate{}, false)
+	return s.transitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, store.IssueUpdate{}, false, false)
+}
+
+// transitionForCustomer applies a transition a service portal customer asked
+// for. Jira lets customers move their own requests without Transition issues;
+// the service layer has already decided the customer may.
+func (s *Service) transitionForCustomer(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string) (*models.Issue, *models.Action, error) {
+	return s.transitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, store.IssueUpdate{}, false, true)
 }
 
 func (s *Service) TransitionIssueWithUpdate(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string, update store.IssueUpdate) (*models.Issue, *models.Action, error) {
-	return s.transitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, update, false)
+	return s.transitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, update, false, false)
 }
 
 // TransitionIssueWithUpdateFromAPI preserves Jira's distinction between rules
 // that block people in the UI and rules that also block REST transitions.
 func (s *Service) TransitionIssueWithUpdateFromAPI(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string, update store.IssueUpdate) (*models.Issue, *models.Action, error) {
-	return s.transitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, update, true)
+	return s.transitionIssueWithUpdate(ctx, actorID, workspaceID, issueIDOrKey, transitionID, update, true, false)
 }
 
-func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string, update store.IssueUpdate, isAPI bool) (*models.Issue, *models.Action, error) {
+func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, workspaceID, issueIDOrKey, transitionID string, update store.IssueUpdate, isAPI, customer bool) (*models.Issue, *models.Action, error) {
 	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("issue %q not found", issueIDOrKey)
+	}
+	if !customer {
+		if err := s.requirePermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "TRANSITION_ISSUES"); err != nil {
+			return nil, nil, err
+		}
+		if update.AssigneeID != nil && (issue.Assignee == nil || issue.Assignee.ID != *update.AssigneeID) {
+			if err := s.requirePermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "ASSIGN_ISSUES"); err != nil {
+				return nil, nil, err
+			}
+			if err := s.requireAssignable(ctx, workspaceID, issue.ProjectID, issue.ID, *update.AssigneeID); err != nil {
+				return nil, nil, err
+			}
+		}
 	}
 	if update.Summary != nil && (len(*update.Summary) == 0 || len(*update.Summary) > 255) {
 		return nil, nil, fmt.Errorf("summary is required (max 255 chars)")
@@ -556,7 +622,7 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	for field := range requestedFields {
 		context.FieldValues[field] = workflowFieldRaw(issue, &update, field)
 	}
-	context.Permissions, err = authz.JiraPermissions(ctx, s.Store, workspaceID, actorID)
+	context.Permissions, err = authz.JiraPermissions(ctx, s.Store, workspaceID, actorID, issue.ProjectID, issue.ID, t.PermissionKeys())
 	if err == nil {
 		context.ActorGroups, err = workflowActorGroups(ctx, s.Store, workspaceID, actorID)
 	}

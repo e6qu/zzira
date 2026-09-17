@@ -2,7 +2,10 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
+
+	"github.com/e6qu/zzira/internal/authz"
 
 	"github.com/e6qu/zzira/internal/models"
 )
@@ -26,6 +29,42 @@ func (s *Service) SetWatching(ctx context.Context, actorID, workspaceID, issueID
 	}
 	return s.Store.RemoveWatcher(ctx, actorID, workspaceID, issue.ID, actorID)
 }
+
+// SetWatcher adds or removes someone else as a watcher, which needs Manage
+// watchers; the watcher must be able to see the work item to be added.
+func (s *Service) SetWatcher(ctx context.Context, actorID, workspaceID, issueIDOrKey, accountID string, watching bool) (*models.Action, error) {
+	if accountID == actorID {
+		return s.SetWatching(ctx, actorID, workspaceID, issueIDOrKey, watching)
+	}
+	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requirePermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "MANAGE_WATCHERS"); err != nil {
+		return nil, err
+	}
+	if !watching {
+		return s.Store.RemoveWatcher(ctx, actorID, workspaceID, issue.ID, accountID)
+	}
+	configuration, err := s.jiraSiteConfiguration(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if !configuration.WatchingEnabled {
+		return nil, fmt.Errorf("watching is disabled for this site")
+	}
+	visible, err := authz.CanSeeIssue(ctx, s.Store, workspaceID, issue.ProjectID, accountID, issue.ID, issue.SecurityLevelID)
+	if err != nil {
+		return nil, err
+	}
+	if !visible {
+		return nil, ErrWatcherCannotSee
+	}
+	return s.Store.AddWatcher(ctx, actorID, workspaceID, issue.ID, accountID)
+}
+
+// ErrWatcherCannotSee refuses a watcher who cannot see the work item.
+var ErrWatcherCannotSee = errors.New("the user can't see the work item")
 
 // SetVoting records or removes the actor's vote after the ordinary issue
 // visibility check. Jira votes are always self-service.
@@ -61,6 +100,10 @@ func (s *Service) LinkIssue(ctx context.Context, actorID, workspaceID, issueIDOr
 	if !configuration.IssueLinkingEnabled {
 		return nil, nil, fmt.Errorf("work item linking is disabled for this site")
 	}
+	// Jira asks for Link issues in the project of the outward work item.
+	if err := s.requirePermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "LINK_ISSUES"); err != nil {
+		return nil, nil, err
+	}
 	other, err := s.visibleIssue(ctx, actorID, workspaceID, otherIDOrKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("linked issue %q not found", otherIDOrKey)
@@ -85,6 +128,9 @@ func (s *Service) DeleteIssueLink(ctx context.Context, actorID, workspaceID, iss
 	}
 	if _, err := s.visibleIssue(ctx, actorID, workspaceID, otherID); err != nil {
 		return nil, fmt.Errorf("issue link %q not found", linkID)
+	}
+	if err := s.requirePermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "LINK_ISSUES"); err != nil {
+		return nil, err
 	}
 	return s.Store.DeleteIssueLink(ctx, actorID, workspaceID, linkID)
 }

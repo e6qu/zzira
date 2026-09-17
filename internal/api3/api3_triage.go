@@ -3,10 +3,12 @@ package api3
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/e6qu/zzira/internal/authz"
-	"github.com/e6qu/zzira/internal/models"
+	"errors"
 	"io"
 	"net/http"
+
+	"github.com/e6qu/zzira/internal/commands"
+	"github.com/e6qu/zzira/internal/models"
 )
 
 // issueVotes implements Jira's self-service issue vote resource.
@@ -147,14 +149,10 @@ func (h *Handler) issueWatchers(w http.ResponseWriter, r *http.Request, idOrKey 
 		if !ok {
 			return
 		}
-		if accountID == userID {
-			_, err = h.Commands.SetWatching(r.Context(), userID, wsID, issue.ID, true)
-		} else {
-			if visible, visErr := authz.CanSeeIssue(r.Context(), h.Store, wsID, issue.ProjectID, target.ID, issue.ID, issue.SecurityLevelID); visErr != nil || !visible {
-				jiraError(w, http.StatusNotFound, "The user can't see the issue.")
-				return
-			}
-			_, err = h.Store.AddWatcher(r.Context(), userID, wsID, issue.ID, accountID)
+		_, err = h.Commands.SetWatcher(r.Context(), userID, wsID, issue.ID, target.ID, true)
+		if errors.Is(err, commands.ErrWatcherCannotSee) {
+			jiraError(w, http.StatusNotFound, "The user can't see the issue.")
+			return
 		}
 		if err != nil {
 			issueCommandError(w, err)
@@ -175,11 +173,7 @@ func (h *Handler) issueWatchers(w http.ResponseWriter, r *http.Request, idOrKey 
 		if _, ok := changeFor(accountID); !ok {
 			return
 		}
-		if accountID == userID {
-			_, err = h.Commands.SetWatching(r.Context(), userID, wsID, issue.ID, false)
-		} else {
-			_, err = h.Store.RemoveWatcher(r.Context(), userID, wsID, issue.ID, accountID)
-		}
+		_, err = h.Commands.SetWatcher(r.Context(), userID, wsID, issue.ID, accountID, false)
 		if err != nil {
 			issueCommandError(w, err)
 			return
