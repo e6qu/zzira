@@ -32,6 +32,7 @@ var systemScreenFields = []models.ScreenField{
 	{ID: "components", Name: "Components"},
 	{ID: "fixVersions", Name: "Fix versions"},
 	{ID: "versions", Name: "Affects versions"},
+	{ID: "resolution", Name: "Resolution"},
 	{ID: "security", Name: "Restrict to"},
 	{ID: "timetracking", Name: "Time tracking"},
 	{ID: "issuetype", Name: "Issue type"},

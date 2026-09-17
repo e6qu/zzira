@@ -46,6 +46,10 @@ type UpdateIssueInput struct {
 	// send, as Jira's notifyUsers=false does.
 	SuppressNotifications bool
 
+	// ResolutionID sets or clears the resolution: "" clears it, nil leaves the
+	// status to decide.
+	ResolutionID *string
+
 	// OriginalEstimate and RemainingEstimate change time tracking estimates in
 	// seconds: nil leaves one unchanged and store.ClearEstimate removes it.
 	OriginalEstimate  *int64
@@ -83,7 +87,7 @@ func (s *Service) requireUpdatePermissions(ctx context.Context, in UpdateIssueIn
 	securityChanged := in.SecurityLevelID != nil && *in.SecurityLevelID != issue.SecurityLevelID
 	edits := in.Summary != nil || in.Description != nil || in.PriorityID != nil || in.ParentIDOrKey != nil ||
 		in.Labels != nil || in.DueDate != nil || len(in.Fields) > 0 || len(in.VersionOperations) > 0 ||
-		in.OriginalEstimate != nil || in.RemainingEstimate != nil || securityChanged
+		in.OriginalEstimate != nil || in.RemainingEstimate != nil || securityChanged || in.ResolutionID != nil
 	var permissions []string
 	if edits {
 		permissions = append(permissions, "EDIT_ISSUES")
@@ -98,7 +102,7 @@ func (s *Service) requireUpdatePermissions(ctx context.Context, in UpdateIssueIn
 	if in.DueDate != nil {
 		permissions = append(permissions, "SCHEDULE_ISSUES")
 	}
-	if fixVersionFields || fixVersionOperations {
+	if fixVersionFields || fixVersionOperations || in.ResolutionID != nil {
 		permissions = append(permissions, "RESOLVE_ISSUES")
 	}
 	if in.StatusID != nil && *in.StatusID != issue.Status.ID {
@@ -229,6 +233,14 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		}
 		in.PriorityID = &priority.ID
 	}
+	// Jira takes a resolution by id or by name; the store keeps its own id.
+	if in.ResolutionID != nil && *in.ResolutionID != "" {
+		resolution, resolutionErr := s.Store.ResolutionInWorkspace(ctx, in.WorkspaceID, *in.ResolutionID)
+		if resolutionErr != nil {
+			return nil, nil, fmt.Errorf("resolution %q not found", *in.ResolutionID)
+		}
+		in.ResolutionID = &resolution.ID
+	}
 	if in.OriginalEstimate != nil || in.RemainingEstimate != nil {
 		timeTracking, err := s.jiraSiteConfiguration(ctx, in.WorkspaceID)
 		if err != nil {
@@ -240,6 +252,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	}
 	update := store.IssueUpdate{
 		OriginalEstimate: in.OriginalEstimate, RemainingEstimate: in.RemainingEstimate,
+		ResolutionID: in.ResolutionID,
 		Summary:           in.Summary,
 		Description:       in.Description,
 		PriorityID:        in.PriorityID,
@@ -506,6 +519,11 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 		if err := s.requirePermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "TRANSITION_ISSUES"); err != nil {
 			return nil, nil, err
 		}
+		if update.ResolutionID != nil {
+			if err := s.requirePermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "RESOLVE_ISSUES"); err != nil {
+				return nil, nil, err
+			}
+		}
 		if update.AssigneeID != nil && (issue.Assignee == nil || issue.Assignee.ID != *update.AssigneeID) {
 			if err := s.requirePermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "ASSIGN_ISSUES"); err != nil {
 				return nil, nil, err
@@ -539,6 +557,13 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 			return nil, nil, err
 		}
 		update.Labels = &labels
+	}
+	if update.ResolutionID != nil && *update.ResolutionID != "" {
+		resolution, resolutionErr := s.Store.ResolutionInWorkspace(ctx, workspaceID, *update.ResolutionID)
+		if resolutionErr != nil {
+			return nil, nil, fmt.Errorf("resolution %q not found", *update.ResolutionID)
+		}
+		update.ResolutionID = &resolution.ID
 	}
 	wf, err := s.Store.WorkflowForProjectAndIssueType(ctx, issue.ProjectID, issue.IssueType.ID)
 	if err != nil {
@@ -577,7 +602,7 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	for field, changed := range map[string]bool{
 		"summary": update.Summary != nil, "description": update.Description != nil,
 		"priority": update.PriorityID != nil, "assignee": update.AssigneeID != nil,
-		"labels": update.Labels != nil,
+		"labels": update.Labels != nil, "resolution": update.ResolutionID != nil,
 	} {
 		if changed {
 			requestedFields[field] = true
@@ -615,6 +640,9 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	}
 	if update.Labels != nil {
 		context.FieldPresent["labels"] = len(*update.Labels) > 0
+	}
+	if update.ResolutionID != nil {
+		context.FieldPresent["resolution"] = *update.ResolutionID != ""
 	}
 	for field, value := range update.Fields {
 		context.FieldPresent[field] = workflow.FieldValuePresent(value)

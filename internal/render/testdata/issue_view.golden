@@ -149,6 +149,7 @@
         <dt>Type</dt>
         <dd><span class="field-value"><span class="issue-type-mini" aria-hidden="true">✓</span>Task</span></dd>
         <dt><label for="field-priority">Priority</label></dt><dd><form class="inline-field" method="post" action="/issues/ZZ-1/fields" hx-post="/issues/ZZ-1/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="priority"><select id="field-priority" name="value"><option value="">None</option><option value="pr_medium" selected>Medium</option></select><button class="field-save" type="submit">Save priority</button></form></dd>
+        <dt>Resolution</dt><dd>Unresolved</dd>
         <dt><label for="field-assignee">Assignee</label></dt><dd><form class="inline-field" method="post" action="/issues/ZZ-1/fields" hx-post="/issues/ZZ-1/fields" hx-target="#issue-root" hx-swap="outerHTML"><input type="hidden" name="field" value="assignee"><select id="field-assignee" name="value"><option value="">Unassigned</option><option value="usr_1" selected>Demo User</option></select><button class="field-save" type="submit">Save assignee</button></form></dd>
         <dt>Reporter</dt>
         <dd><a class="person-value person-link" href="/people/usr_1">

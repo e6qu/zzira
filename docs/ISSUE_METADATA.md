@@ -69,7 +69,8 @@ Deleting a resolution moves its work items to the replacement, so no resolved wo
 ### On work items
 
 - `fields.resolution` and `fields.resolutiondate` are `null` while unresolved.
-- Entering a status in the done category sets the site's default resolution and the time. Leaving the done category clears both (`internal/store/mutations.go`). Both changes are recorded in the changelog.
+- A person chooses the resolution when a transition screen asks for it, or edits it on the work item; both need the Resolve issues permission ([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)). `fields.resolution` takes an id or a name over REST, and `null` clears it.
+- Without a chosen resolution, entering a status in the done category applies the site's default and records the time. Leaving the done category clears both (`internal/store/mutations.go`). Every change is recorded in the changelog.
 - JQL ([JQL.md](JQL.md)): `resolution = Unresolved` and `resolution is EMPTY` match unresolved items; `resolution != Unresolved` matches resolved ones; `resolution in (Done, Unresolved)` matches either; `NOT IN` never matches an unresolved item; `resolutiondate` compares the resolve time.
 - `ORDER BY priority` and `ORDER BY resolution` use the site's order, not alphabetical order.
 
@@ -129,7 +130,6 @@ All four need site administration; deleting a priority or resolution runs as a t
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- A resolution cannot be chosen on a transition or set by edit; reaching done always applies the site default.
 - The priority schemes section of `/settings/priorities` is read-only; schemes are edited over REST.
 - `alternatives` does not narrow to types that share the same workflow, field configuration and screen schemes.
 - Team-managed scoping (`scope`, `entityId`) is not modelled; every type is company-managed.

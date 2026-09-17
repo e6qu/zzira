@@ -527,6 +527,17 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		}
 		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: screenFields, ScreenCustomFields: asked, ScreenMessage: message})
 	}
+	// Resolution is offered to people who may resolve work, as Jira ties the
+	// field to the Resolve issues permission.
+	resolutions, err := h.Store.ResolutionsForWorkspace(r.Context(), wsID)
+	if err != nil {
+		return nil, err
+	}
+	resolutionValues := resolutions
+	canResolve, err := h.Store.HasProjectPermission(r.Context(), wsID, user.ID, issue.ProjectID, issue.ID, "RESOLVE_ISSUES")
+	if err != nil {
+		return nil, err
+	}
 	priorities, err := h.Store.Priorities(r.Context(), wsID)
 	if err != nil {
 		return nil, err
@@ -728,6 +739,8 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		Activity:            activity,
 		Members:             editView.Members,
 		Priorities:          priorityValues,
+		Resolutions:         resolutionValues,
+		CanResolve:          canResolve,
 		SecurityLevels:      editView.SecurityLevels,
 		SecurityLevelName:   h.Store.SecurityLevelName(r.Context(), issue.ProjectID, issue.SecurityLevelID),
 		CustomFields:        editView.CustomFields,
@@ -1981,6 +1994,8 @@ func (h *Handler) TransitionIssue(w http.ResponseWriter, r *http.Request, key st
 			update.AssigneeID = &value
 		case "priority":
 			update.PriorityID = &value
+		case "resolution":
+			update.ResolutionID = &value
 		default:
 			if strings.HasPrefix(field, "customfield_") {
 				if update.Fields == nil {
@@ -2218,6 +2233,8 @@ func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key s
 		in.AssigneeID = &value
 	case "parent":
 		in.ParentIDOrKey = &value
+	case "resolution":
+		in.ResolutionID = &value
 	case "security":
 		in.SecurityLevelID = &value
 	case "labels":
