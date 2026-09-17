@@ -252,7 +252,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	}
 	update := store.IssueUpdate{
 		OriginalEstimate: in.OriginalEstimate, RemainingEstimate: in.RemainingEstimate,
-		ResolutionID: in.ResolutionID,
+		ResolutionID:      in.ResolutionID,
 		Summary:           in.Summary,
 		Description:       in.Description,
 		PriorityID:        in.PriorityID,
