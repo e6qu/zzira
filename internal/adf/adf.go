@@ -305,14 +305,6 @@ func itoa(i int) string {
 
 func Text(text string) Node { return Node{Type: "text", Text: text} }
 
-func Strong(text string) Node {
-	return Node{Type: "text", Text: text, Mark: []Mark{{Type: "strong"}}}
-}
-
-func Em(text string) Node {
-	return Node{Type: "text", Text: text, Mark: []Mark{{Type: "em"}}}
-}
-
 func Link(text, href string) Node {
 	return Node{Type: "text", Text: text, Mark: []Mark{{Type: "link", Attrs: map[string]any{"href": href}}}}
 }
@@ -329,8 +321,6 @@ func ParagraphText(text string) Node {
 }
 
 // HardBreak is a line break inside a paragraph.
-type hardBreakNode = Node
-
 func HardBreak() Node { return Node{Type: "hardBreak"} }
 
 // Doc builds a document from blocks.

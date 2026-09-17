@@ -25,7 +25,7 @@ func TestServiceAssetInventoryRelationshipsAndRequestImpact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	t.Cleanup(st.Close)
 	if err := store.Migrate(ctx, st.Pool); err != nil {
 		t.Fatal(err)
 	}

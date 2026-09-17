@@ -83,7 +83,7 @@ func (s *SMTP) Send(ctx context.Context, message Message) error {
 		_ = connection.Close()
 		return err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	if ok, _ := client.Extension("STARTTLS"); ok {
 		if err := client.StartTLS(&tls.Config{ServerName: s.Host, MinVersion: tls.VersionTLS12}); err != nil {
 			return err

@@ -50,15 +50,6 @@ func (s *Store) SeedLoadWorkspace(ctx context.Context, slug string, n int) (toke
 	}
 
 	// Build rows in Go (payloads need real JSON snapshots), COPY into tables.
-	type actionRow struct {
-		Seq        int64
-		EntityType string
-		EntityID   string
-		Op         string
-		SchemaV    int
-		Payload    []byte
-		ActorID    string
-	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	issues := make([][]any, 0, n)
 	actions := make([][]any, 0, n)

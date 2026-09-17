@@ -351,7 +351,7 @@ func (s *Store) SetProjectEmail(ctx context.Context, workspaceID, actorID, proje
 	if err = projectAdministrator(ctx, tx, workspaceID, actorID, projectIDOrKey); err != nil {
 		return err
 	}
-	p := &models.Project{}
+	var p *models.Project
 	p, err = scanProject(tx.QueryRow(ctx, `UPDATE projects SET sender_email=$3 WHERE workspace_id=$1 AND lifecycle_state='ACTIVE' AND (id=$2 OR upper(key)=upper($2)) RETURNING `+projectSelectColumns, workspaceID, projectIDOrKey, email))
 	if err != nil {
 		return err

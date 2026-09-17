@@ -334,7 +334,7 @@ func filterSubscriptionHTML(filterName string, issues []*models.Issue, total int
 	var b strings.Builder
 	b.WriteString(`<!doctype html><html lang="en"><body style="margin:0;padding:24px;background:#f7f8f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#172b4d"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #dfe1e6;border-radius:8px"><tr><td style="padding:24px">`)
 	b.WriteString(`<h1 style="margin:0 0 4px;font-size:20px;line-height:1.3">` + escape(filterName) + `</h1>`)
-	b.WriteString(fmt.Sprintf(`<p style="margin:0 0 16px;font-size:14px;color:#626f86">%d work items match this filter.</p>`, total))
+	fmt.Fprintf(&b, `<p style="margin:0 0 16px;font-size:14px;color:#626f86">%d work items match this filter.</p>`, total)
 	if len(issues) == 0 {
 		b.WriteString(`<p style="margin:0;font-size:14px">Nothing matches it at the moment.</p>`)
 	}
@@ -343,7 +343,7 @@ func filterSubscriptionHTML(filterName string, issues []*models.Issue, total int
 		b.WriteString(`<p style="margin:0 0 8px;font-size:14px"><a href="` + link + `" style="color:#0c66e4;font-weight:600;text-decoration:none">` + escape(issue.Key) + `</a> ` + escape(issue.Summary) + `</p>`)
 	}
 	if total > len(issues) {
-		b.WriteString(fmt.Sprintf(`<p style="margin:16px 0 0;font-size:12px;color:#626f86">Showing the first %d results.</p>`, len(issues)))
+		fmt.Fprintf(&b, `<p style="margin:16px 0 0;font-size:12px;color:#626f86">Showing the first %d results.</p>`, len(issues))
 	}
 	b.WriteString(`</td></tr></table><p style="max-width:600px;margin:16px auto 0;font-size:12px;color:#626f86">You receive this because you subscribed to this filter. <a href="/filters" style="color:#0c66e4">Manage your filter emails</a></p></body></html>`)
 	return b.String()

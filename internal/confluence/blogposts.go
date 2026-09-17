@@ -11,30 +11,6 @@ import (
 	"github.com/e6qu/zzira/internal/store"
 )
 
-type blogPostBodyWrite struct {
-	Representation string           `json:"representation"`
-	Value          string           `json:"value"`
-	Storage        *models.WikiBody `json:"storage"`
-	AtlasDocFormat *models.WikiBody `json:"atlas_doc_format"`
-	Wiki           *models.WikiBody `json:"wiki"`
-}
-
-func (b blogPostBodyWrite) body() (models.WikiBody, bool) {
-	if b.Storage != nil && b.AtlasDocFormat == nil && b.Wiki == nil && b.Representation == "" {
-		return *b.Storage, b.Storage.Representation == "storage"
-	}
-	if b.Storage == nil && b.AtlasDocFormat == nil && b.Wiki == nil && b.Representation == "storage" {
-		return models.WikiBody{Representation: b.Representation, Value: b.Value}, true
-	}
-	return models.WikiBody{}, false
-}
-
-type blogPostWrite struct {
-	ID, SpaceID, Status, Title, CreatedAt string
-	Body                                  blogPostBodyWrite
-	Version                               models.WikiVersion
-}
-
 func (h *Handler) blogPostBean(post *models.WikiBlogPost, body bool) map[string]any {
 	bean := map[string]any{
 		"id": post.ID, "status": post.Status, "title": post.Title, "spaceId": post.SpaceID,

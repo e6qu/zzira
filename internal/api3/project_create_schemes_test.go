@@ -84,7 +84,7 @@ func TestCreateProjectWithSchemesAndTemplates(t *testing.T) {
 		if err != nil {
 			var text string
 			if json.Unmarshal([]byte(`"`+decoded.ID.String()+`"`), &text) == nil {
-				fmt.Sscan(text, &id)
+				_, _ = fmt.Sscan(text, &id)
 			}
 		}
 		if id == 0 {

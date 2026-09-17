@@ -668,9 +668,10 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 		if err != nil {
 			return false, err
 		}
-		if accountID == "ACTOR" {
+		switch accountID {
+		case "ACTOR":
 			accountID = run.ActorID
-		} else if accountID == "UNASSIGNED" {
+		case "UNASSIGNED":
 			accountID = ""
 		}
 		_, changed, err := r.Service.Commands.UpdateIssue(ctx, commands.UpdateIssueInput{

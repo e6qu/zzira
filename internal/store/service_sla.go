@@ -437,11 +437,12 @@ func (s *Store) ServiceRequestPublicComments(ctx context.Context, requestIssueID
 	})
 }
 
-// OpenServiceRequestIDs lists the requests of a service desk that are not done.
+// OpenServiceRequestIDs lists the requests of a service desk that have no
+// resolution, which is what the desk's SLA attention queue lists.
 func (s *Store) OpenServiceRequestIDs(ctx context.Context, workspaceID, serviceDeskID string) ([]string, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT sr.issue_id FROM service_requests sr JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
-		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND st.category<>'done' ORDER BY sr.created_at,sr.issue_id`, workspaceID, serviceDeskID)
+		WHERE sr.workspace_id=$1 AND sr.service_desk_id=$2 AND i.resolution_id IS NULL ORDER BY sr.created_at,sr.issue_id`, workspaceID, serviceDeskID)
 	if err != nil {
 		return nil, err
 	}

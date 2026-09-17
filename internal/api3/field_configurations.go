@@ -43,11 +43,11 @@ func (h *Handler) fieldConfigurationSchemeBean(scheme *models.FieldConfiguration
 }
 
 func (h *Handler) fieldConfigurationRoute(w http.ResponseWriter, r *http.Request, path string) {
-	switch {
-	case path == "/fieldconfiguration":
+	switch path {
+	case "/fieldconfiguration":
 		h.fieldConfigurationCollection(w, r)
 		return
-	case path == "/fieldconfigurationscheme":
+	case "/fieldconfigurationscheme":
 		h.fieldConfigurationSchemeCollection(w, r)
 		return
 	}

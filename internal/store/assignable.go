@@ -31,13 +31,13 @@ func (s *Store) AssignableUsersForProject(ctx context.Context, workspaceID, proj
 	return assignable, nil
 }
 
-// OpenWorkByAssignee counts each person's unresolved work in the project, by
-// the status category the site already treats as open everywhere else.
+// OpenWorkByAssignee counts each person's unresolved work in the project:
+// work with no resolution, which is what Jira means by unresolved.
 func (s *Store) OpenWorkByAssignee(ctx context.Context, projectID string) (map[string]int, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT i.assignee_id, count(*)
 		FROM issues i JOIN statuses st ON st.id = i.status_id
-		WHERE i.project_id=$1 AND i.assignee_id IS NOT NULL AND st.category <> 'done'
+		WHERE i.project_id=$1 AND i.assignee_id IS NOT NULL AND i.resolution_id IS NULL
 		GROUP BY i.assignee_id`, projectID)
 	if err != nil {
 		return nil, err

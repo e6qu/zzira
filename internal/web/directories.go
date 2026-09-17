@@ -724,12 +724,13 @@ func (h *Handler) FinishWorkflowSchemeDraft(w http.ResponseWriter, r *http.Reque
 	}
 	action := r.PostFormValue("action")
 	var err error
-	if action == "publish" {
+	switch action {
+	case "publish":
 		err = h.Store.PublishWorkflowSchemeDraft(r.Context(), workspaceID, user.ID, schemeID)
-	} else if action == "discard" {
+	case "discard":
 		err = h.Store.DiscardWorkflowSchemeDraft(r.Context(), workspaceID, user.ID, schemeID)
-	} else {
-		http.Error(w, "action must be publish or discard", 400)
+	default:
+		http.Error(w, "action must be publish or discard", http.StatusBadRequest)
 		return
 	}
 	if err != nil {

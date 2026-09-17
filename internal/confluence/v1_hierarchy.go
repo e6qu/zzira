@@ -5,18 +5,8 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/e6qu/zzira/internal/store"
 	"github.com/jackc/pgx/v5"
 )
-
-func (h *V1Handler) v1PageContentBean(relation store.WikiTreeRelation) map[string]any {
-	page := relation.Page
-	return map[string]any{
-		"id": page.ID, "type": "page", "status": page.Status, "title": page.Title,
-		"space":  map[string]string{"id": page.SpaceID},
-		"_links": map[string]string{"webui": "/spaces/" + page.SpaceID + "/pages/" + page.ID, "self": h.BaseURL + "/wiki/rest/api/content/" + page.ID},
-	}
-}
 
 func v1HierarchyDepth(w http.ResponseWriter, r *http.Request) (int, bool) {
 	raw := r.URL.Query().Get("depth")

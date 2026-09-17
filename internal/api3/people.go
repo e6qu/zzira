@@ -1182,7 +1182,7 @@ func (h *Handler) groupResource(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusBadRequest, trimErrorPrefix(err))
 			return
 		}
-		bean := h.groupNameBean(store.SiteGroup{ID: created.ID, Name: created.Name})
+		bean := h.groupNameBean(store.SiteGroup(created))
 		bean["users"] = map[string]any{"size": 0, "items": []any{}, "max-results": 50, "start-index": 0, "end-index": 0}
 		writeJSON(w, http.StatusCreated, bean)
 	case http.MethodDelete:

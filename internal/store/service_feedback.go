@@ -56,7 +56,7 @@ func (s *Store) PutServiceRequestFeedback(ctx context.Context, workspaceID, requ
 	value := &models.ServiceRequestFeedback{}
 	err := s.Pool.QueryRow(ctx, `INSERT INTO service_request_feedback(request_issue_id,reporter_id,type,rating,comment)
 		SELECT sr.issue_id,$3,$4,$5,$6 FROM service_requests sr JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
-		WHERE sr.workspace_id=$1 AND sr.issue_id=$2 AND sr.customer_id=$3 AND st.category='done'
+		WHERE sr.workspace_id=$1 AND sr.issue_id=$2 AND sr.customer_id=$3 AND i.resolution_id IS NOT NULL
 		ON CONFLICT(request_issue_id) DO UPDATE SET type=EXCLUDED.type,rating=EXCLUDED.rating,comment=EXCLUDED.comment,updated_at=now()
 		RETURNING request_issue_id,reporter_id,type,rating,comment,created_at,updated_at`, workspaceID, requestIssueID, reporterID, feedbackType, rating, comment).Scan(
 		&value.RequestIssueID, &value.ReporterID, &value.Type, &value.Rating, &value.Comment, &value.CreatedAt, &value.UpdatedAt)

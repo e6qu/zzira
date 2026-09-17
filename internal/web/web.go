@@ -434,16 +434,7 @@ func (h *Handler) memberWorkspace(r *http.Request, user *models.User) (string, b
 	return wsID, true
 }
 
-func (h *Handler) requireUser(w http.ResponseWriter, r *http.Request) string {
-	userID, err := authn.Identify(r.Context(), h.Store, r)
-	if err != nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return ""
-	}
-	return userID
-}
-
-// buildIssueView assembles everything the issue_view fragment needs.
+// issueForUser loads a work item the person can see.
 func (h *Handler) issueForUser(r *http.Request, user *models.User, wsID, idOrKey string) (*models.Issue, error) {
 	issue, err := h.Store.IssueByIDOrKey(r.Context(), wsID, idOrKey)
 	if err != nil {
@@ -1436,10 +1427,7 @@ func encodeWebCustomField(fieldType, value string) (json.RawMessage, error) {
 		}
 		return json.Marshal(cascade)
 	case "array", models.CustomFieldLabels:
-		labels := []string{}
-		for _, label := range strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ' ' }) {
-			labels = append(labels, label)
-		}
+		labels := append([]string{}, strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ' ' })...)
 		return json.Marshal(labels)
 	case "users", models.CustomFieldMultiUser, "groups", models.CustomFieldMultiGroup, "options", models.CustomFieldMultiSelect, models.CustomFieldMultiVersion:
 		ids := []string{}

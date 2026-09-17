@@ -182,9 +182,11 @@ func (s *Store) doraRecoveryTimes(ctx context.Context, workspaceID, projectID, u
 		), recovered AS (
 		  SELECT incident.id,incident.opened_at,MIN(change.created_at) AS recovered_at
 		  FROM incidents incident
+		  -- An incident is restored when it is resolved: the first change
+		  -- that gave it a resolution.
 		  JOIN actions change ON change.workspace_id=$1 AND change.entity_type='issue' AND change.entity_id=incident.id
-		  JOIN statuses status ON status.id=change.payload->'diff'->'status'->>'to' AND status.category='done'
-		  WHERE change.created_at >= $4 AND change.created_at < $5
+		  WHERE COALESCE(change.payload->'diff'->'resolution'->>'to','') <> ''
+		    AND change.created_at >= $4 AND change.created_at < $5
 		  GROUP BY incident.id,incident.opened_at
 		)
 		SELECT EXTRACT(EPOCH FROM (recovered_at-opened_at))::bigint FROM recovered WHERE recovered_at >= opened_at`, workspaceID, projectID, userID, since, until)

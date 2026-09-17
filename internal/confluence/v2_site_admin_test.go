@@ -174,7 +174,7 @@ func TestV2SiteAdministration(t *testing.T) {
 	folder := object(call(admin, "POST", "/folders", map[string]any{"spaceId": space["id"], "title": "Drawer"}, 200))
 
 	// Ids may be strings or numbers; a duplicate is answered once.
-	var numericPost json.Number = json.Number(post["id"].(string))
+	numericPost := json.Number(post["id"].(string))
 	// The administrator's key has expired, so the member's restricted page is
 	// content the administrator may not view.
 	converted := object(call(admin, "POST", "/content/convert-ids-to-types", map[string]any{"contentIds": []any{

@@ -270,7 +270,7 @@ func (o *OIDC) authenticateAtlassian(ctx context.Context, code string) (provider
 	if err != nil {
 		return providerIdentity{}, fmt.Errorf("token exchange: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
 		return providerIdentity{}, fmt.Errorf("token exchange response: %w", err)
@@ -295,7 +295,7 @@ func (o *OIDC) authenticateAtlassian(ctx context.Context, code string) (provider
 	if err != nil {
 		return providerIdentity{}, fmt.Errorf("identity lookup: %w", err)
 	}
-	defer profileResponse.Body.Close()
+	defer func() { _ = profileResponse.Body.Close() }()
 	profileBody, err := io.ReadAll(io.LimitReader(profileResponse.Body, 1<<20))
 	if err != nil {
 		return providerIdentity{}, fmt.Errorf("identity response: %w", err)

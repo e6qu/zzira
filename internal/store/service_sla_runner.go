@@ -95,7 +95,7 @@ func (s *Store) OpenServiceSLARequestIDs(ctx context.Context, workspaceID string
 		SELECT DISTINCT sr.issue_id FROM service_requests sr
 		JOIN issues i ON i.id=sr.issue_id JOIN statuses st ON st.id=i.status_id
 		JOIN service_sla_cycles c ON c.request_issue_id=sr.issue_id AND c.stopped_at IS NULL
-		WHERE sr.workspace_id=$1 AND st.category<>'done' ORDER BY sr.issue_id`, workspaceID)
+		WHERE sr.workspace_id=$1 AND i.resolution_id IS NULL ORDER BY sr.issue_id`, workspaceID)
 	if err != nil {
 		return nil, err
 	}

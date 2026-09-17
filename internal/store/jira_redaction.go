@@ -114,7 +114,7 @@ func redactADF(doc json.RawMessage, pointer string, from, to int, expected strin
 	for i, token := range tokens {
 		tokens[i] = strings.ReplaceAll(strings.ReplaceAll(token, "~1", "/"), "~0", "~")
 	}
-	var parent any = root
+	parent := root
 	for _, token := range tokens[:len(tokens)-1] {
 		switch node := parent.(type) {
 		case map[string]any:

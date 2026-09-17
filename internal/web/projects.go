@@ -159,9 +159,10 @@ func (h *Handler) projectSettings(w http.ResponseWriter, r *http.Request, key st
 		data.Saved = false
 		projectTemplateKey := r.PostFormValue("projectTemplateKey")
 		projectTypeKey := "software"
-		if projectTemplateKey == "com.atlassian.servicedesk:simplified-it-service-management" {
+		switch projectTemplateKey {
+		case "com.atlassian.servicedesk:simplified-it-service-management":
 			projectTypeKey = "service_desk"
-		} else if projectTemplateKey == "com.atlassian.jira-core-project-templates:jira-core-simplified-project-management" {
+		case "com.atlassian.jira-core-project-templates:jira-core-simplified-project-management":
 			projectTypeKey = "business"
 		}
 		data.SelectedCategoryID = r.PostFormValue("categoryId")

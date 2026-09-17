@@ -1,0 +1,20 @@
+version: "2"
+
+linters:
+  settings:
+    staticcheck:
+      # staticcheck's defaults, less two checks that do not fit this codebase:
+      # ST1005 - error strings here are the sentences people read, often Jira's
+      #          own wording, and some begin with proper nouns (Connect, JWT).
+      # QF1001 - a negated positive condition ("not an allowed character")
+      #          reads more plainly than its De Morgan expansion.
+      checks:
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -ST1005
+        - -QF1001

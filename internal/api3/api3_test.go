@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -70,10 +71,19 @@ func TestIssueBeanGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	goldenPath := "testdata/issue_bean.golden.json"
+	// A missing golden is a failure, not a pass: regenerate it on purpose with
+	// UPDATE_GOLDEN=1 and review the diff before committing it.
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		if err := os.MkdirAll(filepath.Dir(goldenPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(goldenPath, append(got, '\n'), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	want, err := os.ReadFile(goldenPath)
 	if err != nil {
-		_ = os.WriteFile(goldenPath, got, 0o644)
-		t.Skipf("golden written; re-run to verify (%s)", goldenPath)
+		t.Fatalf("the Jira contract golden %s is missing; generate it with UPDATE_GOLDEN=1: %v", goldenPath, err)
 	}
 	if !jsonEqual(want, got) {
 		t.Fatalf("IssueBean drifted from Jira contract golden.\n--- want ---\n%s\n--- got ---\n%s", want, got)

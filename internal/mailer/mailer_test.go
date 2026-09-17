@@ -14,7 +14,7 @@ func TestSMTPSendsInvitationMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	received := make(chan string, 1)
 	serverError := make(chan error, 1)
 	go func() {
@@ -23,7 +23,7 @@ func TestSMTPSendsInvitationMessage(t *testing.T) {
 			serverError <- err
 			return
 		}
-		defer connection.Close()
+		defer func() { _ = connection.Close() }()
 		reader, writer := bufio.NewReader(connection), bufio.NewWriter(connection)
 		write := func(value string) bool {
 			if _, err := writer.WriteString(value); err != nil {

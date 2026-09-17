@@ -694,7 +694,7 @@ func (h *V1Handler) v1UpdateAttachmentData(w http.ResponseWriter, r *http.Reques
 		writeError(w, err)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	comment := ""
 	if len(comments) > 0 {
 		comment = comments[0]

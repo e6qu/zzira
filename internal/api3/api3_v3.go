@@ -311,8 +311,8 @@ func (h *Handler) worklogFeedRoute(w http.ResponseWriter, r *http.Request, path 
 		writeJerr(w, e)
 		return
 	}
-	switch {
-	case path == "/worklog/updated" || path == "/worklog/deleted":
+	switch path {
+	case "/worklog/updated", "/worklog/deleted":
 		if r.Method != http.MethodGet {
 			jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
 			return
@@ -347,7 +347,7 @@ func (h *Handler) worklogFeedRoute(w http.ResponseWriter, r *http.Request, path 
 			"values": values, "since": since.UnixMilli(), "until": latest.UnixMilli(),
 			"self": h.BaseURL + "/rest/api/3" + path, "lastPage": len(values) < limit,
 		})
-	case path == "/worklog/list":
+	case "/worklog/list":
 		if r.Method != http.MethodPost {
 			jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
 			return

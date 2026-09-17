@@ -3,7 +3,6 @@ package api3
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/workflow"
@@ -61,14 +60,6 @@ func (t statusIDs) allToWire(ids []string) []string {
 		out[i] = t.toWire(id)
 	}
 	return out
-}
-
-// wireNumber is a numeric wire id as a JSON number, or the id unchanged.
-func wireNumber(id string) any {
-	if number, err := strconv.ParseInt(id, 10, 64); err == nil {
-		return number
-	}
-	return id
 }
 
 // workflowIDs translates between the UUIDs clients identify workflows by and
