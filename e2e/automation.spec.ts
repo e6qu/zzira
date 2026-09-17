@@ -100,6 +100,124 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
 });
 
 
+test('admin builds a rule that raises a page in a space', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const fixture = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary: `Page rule work ${Date.now()}`, issuetype: { name: 'Task' } } } });
+  expect(fixture.status()).toBe(201);
+  const fixtureKey = (await fixture.json()).key as string;
+
+  // The rule writes into a space, so the space exists first.
+  const spaceKey = `AUT${Date.now().toString().slice(-6)}`;
+  await page.goto('/wiki');
+  await page.locator('.wiki-create-space > summary').click();
+  await page.getByLabel('Space name').fill('Automation pages');
+  await page.getByLabel('Space key').fill(spaceKey);
+  await page.getByRole('button', { name: 'Create space', exact: true }).click();
+  await expect(page).toHaveURL(/\/wiki\/spaces\/\d+$/);
+
+  await page.goto('/settings/automation');
+  await page.getByRole('link', { name: 'Create rule', exact: true }).click();
+  const name = `E2E page ${Date.now()}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByLabel('Run every').fill('60');
+  await page.getByLabel('Timezone').fill('UTC');
+  await page.getByLabel('JQL query').fill(`key = ${fixtureKey}`);
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('confluence.page.create');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(spaceKey);
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+
+  // The saved action round-trips rather than turning saving off.
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue('confluence.page.create');
+  await expect(page.getByRole('combobox', { name: 'Value', exact: true }).first()).toHaveValue(spaceKey);
+
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => {
+    await page.goto(ruleURL);
+    return await page.locator('.automation-audit tbody').innerText();
+  }, { timeout: 15_000 }).toContain('SUCCESS');
+
+  // The page is in the space, and names the work it was raised for.
+  await page.goto('/wiki');
+  await page.getByRole('link', { name: 'Automation pages' }).first().click();
+  await expect(page.getByRole('link', { name: new RegExp(fixtureKey) }).first()).toBeVisible();
+});
+
+
+test('admin builds a rule that deletes work', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const fixture = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary: `Delete rule work ${Date.now()}`, issuetype: { name: 'Task' } } } });
+  expect(fixture.status()).toBe(201);
+  const fixtureKey = (await fixture.json()).key as string;
+
+  await page.goto('/settings/automation');
+  await page.getByRole('link', { name: 'Create rule', exact: true }).click();
+  const name = `E2E delete ${Date.now()}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByLabel('Run every').fill('60');
+  await page.getByLabel('Timezone').fill('UTC');
+  await page.getByLabel('JQL query').fill(`key = ${fixtureKey}`);
+  // Deleting takes no value, as it takes none in Jira.
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.delete');
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+
+  // The editor shows the saved action rather than turning saving off.
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue('jira.issue.delete');
+
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => {
+    await page.goto(ruleURL);
+    return await page.locator('.automation-audit tbody').innerText();
+  }, { timeout: 15_000 }).toContain('SUCCESS');
+
+  const lookup = await page.request.get(`/rest/api/3/issue/${fixtureKey}`, { headers });
+  expect(lookup.status()).toBe(404);
+});
+
+
+test('admin builds a rule that assigns by balanced workload', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const fixture = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary: `Assignment rule work ${Date.now()}`, issuetype: { name: 'Task' } } } });
+  expect(fixture.status()).toBe(201);
+  const fixtureKey = (await fixture.json()).key as string;
+
+  await page.goto('/settings/automation');
+  await page.getByRole('link', { name: 'Create rule', exact: true }).click();
+  const name = `E2E assignment ${Date.now()}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByLabel('Run every').fill('60');
+  await page.getByLabel('Timezone').fill('UTC');
+  await page.getByLabel('JQL query').fill(`key = ${fixtureKey}`);
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.assign:balanced');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('balanced');
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => {
+    await page.goto(ruleURL);
+    return await page.locator('.automation-audit tbody').innerText();
+  }, { timeout: 15_000 }).toContain('SUCCESS');
+
+  // The rule picked someone the project may assign work to.
+  const issue = await (await page.request.get(`/rest/api/3/issue/${fixtureKey}`, { headers })).json();
+  expect(issue.fields.assignee).not.toBeNull();
+
+  // The saved method round-trips rather than turning saving off.
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue('jira.issue.assign:balanced');
+});
+
+
 test('admin builds a rule that sets a description and logs work', async ({ page }) => {
   await login(page);
   const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };

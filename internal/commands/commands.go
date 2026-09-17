@@ -55,7 +55,32 @@ type CreateIssueInput struct {
 
 // DeleteIssue removes the issue transactionally, then cleans up attachment
 // blobs whose metadata was cascade-deleted with it.
+// ErrIssueDeletePermission refuses deleting work without Delete issues, the
+// project permission Jira gates deletion on.
+var ErrIssueDeletePermission = errors.New("you do not have permission to delete this work item")
+
+// DeleteIssue deletes work a person asked to delete, which Jira allows only
+// with the project's Delete issues permission.
 func (s *Service) DeleteIssue(ctx context.Context, actorID, workspaceID, issueIDOrKey, reason string) (*models.Action, error) {
+	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
+	if err != nil {
+		return nil, err
+	}
+	allowed, err := s.Store.HasProjectPermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "DELETE_ISSUES")
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, ErrIssueDeletePermission
+	}
+	return s.deleteIssueUnchecked(ctx, actorID, workspaceID, issueIDOrKey, reason)
+}
+
+// deleteIssueUnchecked deletes without asking whether the actor may. It is for
+// the site undoing work it has just created itself, such as a service request
+// whose later setup failed, where the person who asked for the request may
+// hold no permission to delete work at all.
+func (s *Service) deleteIssueUnchecked(ctx context.Context, actorID, workspaceID, issueIDOrKey, reason string) (*models.Action, error) {
 	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
 		return nil, err

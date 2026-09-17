@@ -2435,6 +2435,10 @@ func (h *Handler) DeleteIssue(w http.ResponseWriter, r *http.Request, key string
 		return
 	}
 	if _, err := h.Commands.DeleteIssue(r.Context(), user.ID, wsID, issue.ID, "deleted via UI"); err != nil {
+		if errors.Is(err, commands.ErrIssueDeletePermission) {
+			http.Error(w, "you do not have permission to delete this work item", http.StatusForbidden)
+			return
+		}
 		http.Error(w, "delete failed", http.StatusInternalServerError)
 		return
 	}

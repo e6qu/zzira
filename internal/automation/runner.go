@@ -275,6 +275,10 @@ func (r *Runner) execute(ctx context.Context, run *claimedRun) (int, int, error)
 	return total, changedIssues, nil
 }
 
+// errIssueDeleted reports that an action removed the work item the rule was
+// running for. It stops the rule for that work item without failing the run.
+var errIssueDeleted = errors.New("the work item was deleted")
+
 // eventIssue loads the work item an event run started from, reporting whether
 // the rule still applies: the rule actor can see it, it is in the rule's scope
 // and it matches the trigger's JQL.
@@ -350,6 +354,11 @@ func (r *Runner) runComponents(ctx context.Context, run *claimedRun, issue *mode
 			continue
 		}
 		didChange, err := r.apply(ctx, run, issue, item)
+		// The work item the rule was running for no longer exists, so nothing
+		// after this can run for it. The rule stops here rather than failing.
+		if errors.Is(err, errIssueDeleted) {
+			return true, nil
+		}
 		if err != nil {
 			return changed, fmt.Errorf("%s on %s: %w", item.Type, where, err)
 		}
@@ -426,7 +435,7 @@ func validateExecutionActor(payload json.RawMessage, actorID string) error {
 
 // Actions and conditions the runner executes.
 var (
-	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true}
+	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true, "jira.issue.delete": true, WikiPageActionType: true}
 	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true, "jira.issue.related.condition": true}
 )
 
@@ -632,9 +641,28 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 	case "jira.issue.assign":
 		var value struct {
 			AccountID string `json:"accountId"`
+			Method    string `json:"method"`
 		}
-		if err := json.Unmarshal(valueRaw, &value); err != nil || value.AccountID == "" {
-			return false, errors.New("assign action requires value.accountId")
+		if err := json.Unmarshal(valueRaw, &value); err != nil || (value.AccountID == "" && value.Method == "") {
+			return false, errors.New("assign action requires value.accountId or value.method")
+		}
+		// Jira picks the person when the rule names a method rather than one
+		// account, from the people the project may assign work to.
+		if value.Method != "" {
+			if !assignmentMethods[value.Method] {
+				return false, fmt.Errorf("assign action cannot pick by %q", value.Method)
+			}
+			picked, err := r.pickAssignee(ctx, run, issue, value.Method)
+			if err != nil {
+				return false, err
+			}
+			if issue.Assignee != nil && issue.Assignee.ID == picked {
+				return false, nil
+			}
+			_, changed, err := r.Service.Commands.UpdateIssue(ctx, commands.UpdateIssueInput{
+				ActorID: run.ActorID, WorkspaceID: run.WorkspaceID, IssueIDOrKey: issue.ID, AssigneeID: &picked,
+			})
+			return changed != nil, err
 		}
 		accountID, err := render(value.AccountID)
 		if err != nil {
@@ -862,6 +890,22 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 			sent = true
 		}
 		return sent, nil
+	case WikiPageActionType:
+		var value struct {
+			SpaceKey string `json:"spaceKey"`
+			Title    string `json:"title"`
+		}
+		if err := json.Unmarshal(valueRaw, &value); err != nil || strings.TrimSpace(value.SpaceKey) == "" {
+			return false, errors.New("create page action requires value.spaceKey")
+		}
+		return r.createWikiPage(ctx, run, issue, value.SpaceKey, value.Title, render)
+	case "jira.issue.delete":
+		// Jira deletes as the rule actor, so a rule may delete only what its
+		// actor may delete.
+		if _, err := r.Service.Commands.DeleteIssue(ctx, run.ActorID, run.WorkspaceID, issue.ID, "deleted by automation rule "+run.RuleName); err != nil {
+			return false, err
+		}
+		return true, errIssueDeleted
 	case "jira.issue.log-work":
 		var value struct {
 			Duration string `json:"duration"`
@@ -953,6 +997,23 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 				return false, nil
 			}
 			input.DueDate = &text
+		case "labels":
+			// Jira's edit sets the labels the rule names, rather than adding
+			// to what the work item carries, which is what add label does.
+			wanted := []string{}
+			for _, label := range strings.Split(text, ",") {
+				if label = strings.TrimSpace(label); label != "" {
+					wanted = append(wanted, label)
+				}
+			}
+			current := append([]string{}, issue.Labels...)
+			held := append([]string{}, wanted...)
+			slices.Sort(current)
+			slices.Sort(held)
+			if slices.Equal(current, held) {
+				return false, nil
+			}
+			input.Labels = &wanted
 		case "description":
 			// The work item already reads as the rule would leave it.
 			if strings.TrimSpace(adf.PlainText(issue.Description)) == text {
