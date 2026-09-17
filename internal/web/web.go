@@ -606,16 +606,11 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 			return nil, err
 		}
 	}
-	// The work item's parent comes from one level above its own work type.
-	parentOptions := []models.CreateFieldOption{}
-	meta, err := h.Store.IssueCreateMetadata(r.Context(), wsID, user.ID)
+	// The work item's parent comes from one level above its own work type, in
+	// its own project.
+	parentOptions, err := h.Store.ParentOptions(r.Context(), wsID, issue.ProjectID, issue.IssueType.HierarchyLevel)
 	if err != nil {
 		return nil, err
-	}
-	for _, projectMeta := range meta.Projects {
-		if projectMeta.Project.ID == issue.ProjectID {
-			parentOptions = projectMeta.ParentOptionsForIssueType(issue.IssueType.ID)
-		}
 	}
 	linkViews := make([]models.IssueLinkView, 0, len(links))
 	for _, link := range links {

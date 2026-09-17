@@ -913,6 +913,15 @@ func (s *Store) RemoveIssueFromPlanning(ctx context.Context, actorID, workspaceI
 	return tx.Commit(ctx)
 }
 
+// markIssueRendered advances a work item's sequence when something the work
+// item view shows changes without the work item row changing: a watcher or a
+// vote. A browser replica compares that sequence before replacing what the
+// server has already rendered, so without it a stale render wins.
+func markIssueRendered(ctx context.Context, tx pgx.Tx, workspaceID, issueID string, seq int64) error {
+	_, err := tx.Exec(ctx, `UPDATE issues SET updated_seq=$3 WHERE id=$1 AND workspace_id=$2`, issueID, workspaceID, seq)
+	return err
+}
+
 // ---- watchers ----
 
 func (s *Store) AddWatcher(ctx context.Context, actorID, workspaceID, issueID, userID string) (*models.Action, error) {
@@ -943,6 +952,9 @@ func (s *Store) AddWatcher(ctx context.Context, actorID, workspaceID, issueID, u
 		Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
 	}
 	if err := appendAction(ctx, tx, action); err != nil {
+		return nil, err
+	}
+	if err := markIssueRendered(ctx, tx, workspaceID, issueID, seq); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -977,6 +989,9 @@ func (s *Store) RemoveWatcher(ctx context.Context, actorID, workspaceID, issueID
 		Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
 	}
 	if err := appendAction(ctx, tx, action); err != nil {
+		return nil, err
+	}
+	if err := markIssueRendered(ctx, tx, workspaceID, issueID, seq); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -1030,6 +1045,9 @@ func (s *Store) AddVote(ctx context.Context, actorID, workspaceID, issueID, user
 	if err := appendAction(ctx, tx, action); err != nil {
 		return nil, err
 	}
+	if err := markIssueRendered(ctx, tx, workspaceID, issueID, seq); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
@@ -1060,6 +1078,9 @@ func (s *Store) RemoveVote(ctx context.Context, actorID, workspaceID, issueID, u
 	action := &models.Action{WorkspaceID: workspaceID, Seq: seq, EntityType: models.EntityVote, EntityID: issueID,
 		Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID}
 	if err := appendAction(ctx, tx, action); err != nil {
+		return nil, err
+	}
+	if err := markIssueRendered(ctx, tx, workspaceID, issueID, seq); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {

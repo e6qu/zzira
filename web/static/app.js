@@ -686,12 +686,18 @@
           if (!offlineMode && navigator.onLine) {
             const key = currentIssueKey();
             if (!key) break;
+            // A render that started before a newer one landed is out of date
+            // by the time it arrives, and must not replace it.
+            const startedAt = rootRenderCount;
             fetch('/browse/' + encodeURIComponent(key), { headers: { 'HX-Request': 'true' } })
               .then((response) => {
                 if (!response.ok) throw new Error('HTTP ' + response.status);
                 return response.text();
               })
-              .then(applyRootHtml)
+              .then((html) => {
+                if (rootRenderCount !== startedAt) return;
+                applyRootHtml(html);
+              })
               .catch(() => { /* a later sync or reconnect will retry */ });
           } else {
             applyRootHtml(msg.html);
@@ -744,17 +750,25 @@
       if (details) details.open = true;
     });
   }
+  // rootRenderCount counts how many times the work item view has been
+  // replaced, so a slower render can tell that a newer one has already landed.
+  let rootRenderCount = 0;
   function replaceIssueRoot(root, html) {
     const open = openIssueSections();
     root.outerHTML = html;
     reopenIssueSections(open);
+    rootRenderCount++;
   }
   let sectionsBeforeSwap = null;
   document.body.addEventListener('htmx:beforeSwap', (event) => {
     const target = event.detail.target;
     sectionsBeforeSwap = target && target.id === 'issue-root' ? openIssueSections() : null;
   });
-  document.body.addEventListener('htmx:afterSwap', () => {
+  document.body.addEventListener('htmx:afterSwap', (event) => {
+    const swapped = event.detail && event.detail.target;
+    if (swapped && (swapped.id === 'issue-root' || swapped.querySelector && swapped.querySelector('#issue-root'))) {
+      rootRenderCount++;
+    }
     if (!sectionsBeforeSwap) return;
     reopenIssueSections(sectionsBeforeSwap);
     sectionsBeforeSwap = null;
