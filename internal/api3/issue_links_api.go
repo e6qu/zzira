@@ -256,6 +256,8 @@ func issueCommandError(w http.ResponseWriter, err error) {
 		jiraError(w, http.StatusBadRequest, "The work item is not editable in its current status.")
 	case errors.Is(err, commands.ErrCommentPermission):
 		jiraError(w, http.StatusBadRequest, "You do not have the permission to change this comment.")
+	case errors.Is(err, commands.ErrIssueDeletePermission):
+		jiraError(w, http.StatusForbidden, "You do not have permission to delete this work item.")
 	case errors.Is(err, store.ErrCommentNotFound):
 		jiraError(w, http.StatusNotFound, "The comment does not exist.")
 	case strings.Contains(err.Error(), "not found"):

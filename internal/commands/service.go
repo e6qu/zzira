@@ -102,26 +102,26 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 		channel = "portal"
 	}
 	if err := s.Store.CreateServiceRequest(ctx, in.WorkspaceID, issue.ID, in.ServiceDeskID, in.RequestTypeID, in.CustomerID, channel); err != nil {
-		_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service request creation failed")
+		_, cleanupErr := s.deleteIssueUnchecked(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service request creation failed")
 		return nil, errors.Join(err, cleanupErr)
 	}
 	if operationKind != "" {
 		if err := s.Store.CreateServiceOperationsProfile(ctx, in.WorkspaceID, in.ActorID, issue.ID, in.ServiceDeskID, operationKind); err != nil {
-			_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service operations profile creation failed")
+			_, cleanupErr := s.deleteIssueUnchecked(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service operations profile creation failed")
 			return nil, errors.Join(err, cleanupErr)
 		}
 	}
 	if err := s.Store.ApplyServiceSLAGoals(ctx, in.WorkspaceID, in.ActorID, in.ServiceDeskID, issue.ID); err != nil {
-		_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service SLA goal selection failed")
+		_, cleanupErr := s.deleteIssueUnchecked(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service SLA goal selection failed")
 		return nil, errors.Join(err, cleanupErr)
 	}
 	if err := s.Store.ReconcileServiceSLAPauses(ctx, in.WorkspaceID, in.ActorID, issue.ID, time.Now().UTC()); err != nil {
-		_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service SLA pause selection failed")
+		_, cleanupErr := s.deleteIssueUnchecked(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service SLA pause selection failed")
 		return nil, errors.Join(err, cleanupErr)
 	}
 	if len(in.ParticipantIDs) > 0 {
 		if err := s.Store.UpdateServiceRequestParticipants(ctx, in.WorkspaceID, issue.ID, in.ParticipantIDs, false); err != nil {
-			_, cleanupErr := s.DeleteIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service request participant creation failed")
+			_, cleanupErr := s.deleteIssueUnchecked(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service request participant creation failed")
 			return nil, errors.Join(err, cleanupErr)
 		}
 	}
