@@ -43,9 +43,15 @@ twelve Jira recipient types: current assignee, reporter, current user, project
 lead, component lead, a named user, group, project role, email address, all
 watchers, user custom field, and group custom field.
 
-Issue creation, ordinary updates, assignment changes, comments, resolutions,
-reopens, and other workflow transitions now fire their corresponding scheme
-event from the shared command layer. A delivery transaction resolves the final
+Every mutation Jira raises an issue event for fires it here: creation (1),
+ordinary updates (2), assignment changes (3), resolutions (4), closes (5),
+comments (6), reopens (7), deletion (8), moves (9), logged work (10), comment
+edits (14), worklog updates (15), worklog deletions (16) and comment deletions
+(17). A workflow transition fires its status change's event, or the event its
+`customIssueEventId` names, which is how Jira fires the generic event (13) and
+work started (11) and stopped (12). Deletion resolves its recipients inside the
+deleting transaction, while the work item, its watchers and its security level
+still exist. A delivery transaction resolves the final
 issue state, collapses duplicate recipients, and verifies each user against
 `BROWSE_PROJECTS` and the issue security level before writing anything. It then
 creates a private synchronized inbox item, its immutable action, and a durable
