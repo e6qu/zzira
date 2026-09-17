@@ -1,82 +1,84 @@
-# The Confluence space lifecycle
+# Confluence space lifecycle (v1)
 
-Updated: 2026-09-12
+The v1 space API creates, updates and deletes spaces, and also serves each
+space's settings and theme. Part of [Confluence](CONFLUENCE_SITE_SURFACES.md).
+v2 listing and creation are in [CONFLUENCE_SPACES.md](CONFLUENCE_SPACES.md).
+Code: `internal/confluence/space_lifecycle.go`,
+`internal/store/wiki_space_lifecycle.go`, migration 151.
 
-A space is created, renamed, given a homepage, archived and deleted. It carries
-per-space settings, may select a theme, and is either global or personal.
-
-## Jira Cloud REST surface
-
-All eleven pinned operations are implemented. An audit against a running server
-found none of them working.
+## API
 
 | Method and path | Behavior |
-|---|---|
+| --- | --- |
 | `POST /wiki/rest/api/space` | Creates a space. |
-| `POST /wiki/rest/api/space/_private` | Creates one visible to its creator alone. |
-| `PUT /wiki/rest/api/space/{spaceKey}` | Renames it, or changes its description, homepage, type or status. |
-| `DELETE /wiki/rest/api/space/{spaceKey}` | Deletes it permanently, reporting through a long task. |
-| `GET/PUT /wiki/rest/api/space/{spaceKey}/settings` | The space's settings. |
-| `GET/PUT/DELETE /wiki/rest/api/space/{spaceKey}/theme` | The theme it selected. |
-| `GET /wiki/api/v2/data-policies/spaces` | Whether a data policy blocks content in each space. |
+| `POST /wiki/rest/api/space/_private` | Creates a space visible only to its creator. |
+| `PUT /wiki/rest/api/space/{spaceKey}` | Updates name, description, homepage, type or status. |
+| `DELETE /wiki/rest/api/space/{spaceKey}` | Permanently deletes the space as a long task; returns `202`. |
+| `GET\|PUT /wiki/rest/api/space/{spaceKey}/settings` | `routeOverrideEnabled` and `contentMode` (`standard` or `compact`). |
+| `GET\|PUT\|DELETE /wiki/rest/api/space/{spaceKey}/theme` | The space's selected theme. |
+| `GET /wiki/rest/api/settings/theme…` | The available themes and the selected theme. |
+| `GET /wiki/api/v2/data-policies/spaces` | Whether a data policy blocks content in each space. Always `false`; apps only. |
 
-## Personal spaces
+## Behavior
 
-A personal space belongs to one person and is keyed `~accountId`, which is how
-Confluence keys them. Creating a space with such a key makes a personal one; the
-space bean reports its real type rather than always saying `global`.
+- **Personal spaces.** A key of the form `~accountId` creates a `personal`
+  space owned by that account. The key must name a real account.
+- **Private create.** `_private` creates a `global` space. Every permission
+  goes to the creator as a [direct grant](SPACE_PERMISSIONS.md) and nobody
+  else gets any. It does not create a personal space.
+- **Update.**
+  - **Allowed fields.** Only name, description, homepage, type and status can
+    change. Permissions cannot be changed here.
+  - **Homepage.** Must be a current page in the same space.
+  - **Type and status.** Unknown values are 400.
+- **Delete.** Queues a task, which `/wiki/rest/api/longtask/{id}` reports.
+  - **What the task removes.** Everything in the space: content, page
+    versions and pages first, then the space itself, which cascades to the
+    rest.
+  - **Trash.** Nothing goes to the trash.
+- **Settings and theme.** Reading needs only view permission. Changing them
+  needs space administration. A space with no theme set reports none (it
+  inherits the [site look and feel](SITE_SETTINGS.md)); it does not report a
+  default theme.
 
-This also completes the permission transition delivered previously: its
-`PERSONAL` and `ALL_EXCEPT_PERSONAL` space selections now select the spaces they
-name. They were refused before, because personal spaces did not exist to select.
+## Space role mode
 
-## A private space is not a personal one
+`GET /wiki/api/v2/space-role-mode` reports how the site governs spaces, based
+on what exists:
 
-Confluence describes the private create as the ordinary create with permissions
-set to the current user only. So it produces a **global** space whose every
-permission is granted to its creator and to nobody else — not a personal space.
-The test checks that another member cannot see it.
+| Mode | The site has |
+| --- | --- |
+| `PRE_ROLES` | Direct grants and no role assignments. |
+| `ROLES_TRANSITION` | Both direct grants and role assignments. |
+| `ROLES` | Role assignments only. |
 
-## The space role mode is read from the site
+A site whose only change is a private space created with `_private` reports
+`PRE_ROLES`. See [roles](CONFLUENCE_SPACE_ROLES.md) and
+[transition](SPACE_PERMISSION_TRANSITION.md).
 
-`GET /space-role-mode` reports what the site actually holds: direct grants and
-no role assignments is a site that has not started (`PRE_ROLES`); both is a site
-part-way through (`ROLES_TRANSITION`); only roles is a site that has finished
-(`ROLES`). Creating a private space writes direct grants, so a site that has
-done nothing else reports `PRE_ROLES`.
+## Permissions
 
-## Deleting takes everything in the space
+Update, delete, settings changes and theme changes need space
+administration. Workspace administrators administer every space.
 
-Confluence deletes a space in a long running task, so this answers `202` with
-the task and the client follows `/longtask/{id}`. The first probe found that
-read returning 404: the long task listing knew only about the page operations,
-so the delete pointed at a task nothing would report.
+## Gaps
 
-The delete itself then failed on a foreign key. Most of a space's belongings
-cascade, but its pages do not, and content and page versions hold the pages in
-place — so the task removes those in order before the space. "Permanently
-deletes a space" means the content goes with it.
+Tracked in [PLAN.md](../PLAN.md).
 
-## What the update accepts
+- **Space trash.** A deleted space is not moved to a space trash, so it
+  cannot be restored.
+- **Space icons.** Only the default icon is available; custom icons cannot be
+  uploaded.
+- **Stored-only settings.** `routeOverrideEnabled` (alias URLs),
+  `contentMode` and the selected theme are stored and reported, but the
+  browser UI does not use them.
+- **Space management UI.** Spaces cannot be renamed, deleted or given a new
+  description in the browser.
 
-Name, description, homepage, type and status. A homepage must be a current page
-**in that space**, or the space would point somewhere its readers cannot follow.
-Permissions are not updatable here, which is Confluence's own rule.
+## Tests
 
-## Evidence and current boundary
+`internal/confluence/space_lifecycle_test.go`
 
-- `internal/confluence/space_lifecycle_test.go` covers all eleven operations,
-  the duplicate and malformed key, the private space another member cannot see,
-  the personal space's key and type, the refused homepage outside the space and
-  the refused status and type, that reading settings needs only view while
-  changing them needs administration, that a space with no theme reports none
-  rather than a default, the role mode read from the site, and the delete task
-  being reported as finished by the long task read.
-- `internal/confluence/permission_transition_test.go` now covers the personal
-  space selection reaching only personal spaces.
-- `migrations/151_space_lifecycle.sql` is exercised from a clean PostgreSQL
-  schema.
+## See also
 
-Space icons beyond the default, the `alias` route override, restoring a deleted
-space from the trash, and the global look-and-feel settings the theme reads
-inherit from remain.
+[CLOUD_PARITY.md](CLOUD_PARITY.md)

@@ -1,104 +1,67 @@
-# Jira select custom fields and their options
+# Custom field options
 
-Updated: 2026-09-11
+Select, multi-select and cascading select custom fields take their options from the [context](CUSTOM_FIELD_CONTEXTS.md) that governs the field, so one field can offer different options in different projects or work types. App-provided select lists use a separate resource ([APP_FIELD_OPTIONS.md](APP_FIELD_OPTIONS.md)). Part of the [Jira platform](JIRA_PLATFORM.md). For status, see [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
-ZZIRA custom fields were text, number, or datetime. A **select** field holds one
-of a fixed set of choices, and those choices belong to the **context** that
-governs the field, so the same field can offer different options in different
-projects or work types.
-
-Administrators manage options alongside contexts at `/settings/custom-fields`.
-Contexts themselves are described in
-[CUSTOM_FIELD_CONTEXTS.md](CUSTOM_FIELD_CONTEXTS.md).
-
-## Jira Cloud REST surface
-
-This checkpoint implements all seven pinned custom field option operations:
+## API
 
 | Method and path | Behavior |
 |---|---|
-| `GET /rest/api/3/customFieldOption/{id}` | Reads one option's `self` and `value` by its own ID: administrators always, others when they can browse a project the option's context applies to and a field configuration that project uses shows the field. |
-| `GET/POST/PUT /rest/api/3/field/{fieldId}/context/{contextId}/option` | Pages a context's options in display order, appends options, or renames and enables or disables them. |
-| `PUT /rest/api/3/field/{fieldId}/context/{contextId}/option/move` | Reorders options with `after`, or `position` First or Last. |
-| `DELETE /rest/api/3/field/{fieldId}/context/{contextId}/option/{optionId}` | Removes an option that no work item holds. |
-| `DELETE /rest/api/3/field/{fieldId}/context/{contextId}/option/{optionId}/issue` | Moves the work items holding the option to `replaceWith`, then removes it. |
+| `GET /rest/api/3/customFieldOption/{id}` | One option's `self` and `value`. Allowed for administrators, and for anyone who can browse a project the option's context applies to, where a field configuration that project uses shows the field. |
+| `GET/POST/PUT /rest/api/3/field/{fieldId}/context/{contextId}/option` | `GET` pages options in display order (filters `optionId`, which returns an option and its cascading children, and `onlyOptions`, which omits children). `POST` appends options. `PUT` renames, enables or disables them. |
+| `PUT /rest/api/3/field/{fieldId}/context/{contextId}/option/move` | Reorders with `after`, or `position` `First` or `Last`. |
+| `DELETE /rest/api/3/field/{fieldId}/context/{contextId}/option/{optionId}` | Removes an option no work item holds. |
+| `DELETE /rest/api/3/field/{fieldId}/context/{contextId}/option/{optionId}/issue` | Moves work items holding the option to `replaceWith`, then removes it, in one transaction. |
 
-Option values are unique per context without regard to case, IDs come from a
-dedicated sequence, and every mutation writes an immutable action in the same
-transaction. Only a select field has options; asking for them on a text field is
-a validation error rather than an empty list.
+- The context routes need *Administer Jira*.
+- Option values are unique per context, ignoring case. Every change is written to the action log.
+- Options exist only on select, multi-select and cascading select fields. Asking for them on another field type is 400.
+- An app-provided field is 400 here, and the error names `/rest/api/3/field/{fieldKey}/option`.
 
-## What the choices govern
+## Behavior
 
-The options of the **governing context** become the field's allowed values in
-`createmeta` and the choices in the create dialog, in the order an administrator
-arranged them. The command path accepts only an option that context offers, so
-create, edit, and transition reject a value borrowed from another project's
-context or invented by a client.
+- The governing context's options, in their display order, are the field's `allowedValues` in `createmeta` and the create dialog choices.
+- Commands accept only an option from the governing context on create, edit and transition.
+- A **disabled** option leaves forms and `allowedValues`, but work items that already hold it keep it.
+- Deleting an option still in use is refused unless the `/issue` form supplies a replacement.
 
-**A disabled option keeps existing work items valid but can no longer be
-chosen.** It leaves the form and the allowed values while the work items holding
-it keep their value, which is what makes retiring a choice safe.
+### Multi-select
 
-Deleting an option that work items still hold is refused. Jira's
-`.../option/{id}/issue` form supplies a replacement: the work items move to it
-first, in the same transaction, so no work item is left holding a value its
-field no longer offers.
+Type `multiselect`, or Jira's `multiselect` and `multicheckboxes` keys. It holds several options from its context. `createmeta` describes it as an `array` of `option`, and the create form shows it as a multiple choice.
 
-## Evidence and current boundary
+### Cascading select
 
-- `internal/api3/custom_field_contexts_test.go` covers all seven operations,
-  the select-only guard, duplicate values, every move form, the unknown-option
-  rejections, the disabled-option rule, and the replacement migration, alongside
-  the context operations the options hang from.
-- `e2e/custom_field_options.spec.ts` covers the browser journey: add options,
-  reorder them, watch the create dialog offer exactly those choices in that
-  order, create a work item with one, disable it and watch it leave the form
-  while the work item keeps it, and reflow at 320 px.
-- `migrations/137_custom_field_options.sql` is exercised from a clean PostgreSQL
-  schema.
-
-## Multi-select fields
-
-A field created with type `multiselect`, or Jira's
-`com.atlassian.jira.plugin.system.customfieldtypes:multiselect` and
-`multicheckboxes` keys, holds several options of its context. Its options are
-managed exactly like a select field's, and createmeta describes it as an
-`array` of `option` with the context's options as `allowedValues`; the create
-form offers them as a multiple choice.
-
-## Cascading select fields
-
-A `cascadingselect` field has two levels of options. An option created with
-`optionId` is a child of that first-level option of the same context; a child
-cannot have children, and only a cascading select's options can have a parent.
-Its value is an option and optionally one of that option's children.
+Type `cascadingselect`. It has two levels: an option created with `optionId` is a child of that first-level option in the same context. Children cannot have children, and only cascading select options can have a parent. The value is an option plus, optionally, one of its children.
 
 ## Values on work items
 
-Option fields accept Jira's value forms on create, edit and transition: an
-option id, `{"id": ...}` or `{"value": ...}` naming an option of the governing
-context; for a multi-select a list of them (a single one is taken as a list of
-one, each chosen once); and for a cascading select
-`{"value": ..., "child": {"value": ...}}` or the same with ids. Issue responses
-describe an option as Jira does — `{"self", "value", "id"}`, a list of those
-for a multi-select, and a cascading option carrying its `child` — and user and
-group picker values as user beans and `{"groupId", "name", "self"}`. A project
-picker takes a project by `{"id"}` or `{"key"}` and answers the project bean; a
-version or multi-version picker takes versions of the work item's project by
-`{"id"}` or `{"name"}` and answers version beans. JQL matches projects by id or
-key and versions by id or name.
+Accepted on create, edit and transition:
 
-JQL matches an option field by option id or option value: `=`, `!=`, `in`,
-`not in`, `is empty` and `is not empty`, and for a cascading select
-`in cascadeOption(parent)`, `cascadeOption(parent, child)` and
-`cascadeOption(parent, none)`. Changes appear in the changelog as `custom` items
-naming the options, people or groups.
+- An option: an option id, `{"id": ...}` or `{"value": ...}` from the governing context.
+- Multi-select: a list of those. A single value counts as a list of one, and each option may appear once.
+- Cascading select: `{"value": ..., "child": {"value": ...}}`, or the same with ids.
+- Project picker: `{"id"}` or `{"key"}`.
+- Version and multi-version pickers: versions of the work item's project, by `{"id"}` or `{"name"}`.
 
-The create form offers a cascading select's first-level options. On the work
-item page and in the edit dialog every picker field offers its choices — a
-cascading select lists each option and each option with a child, people, groups,
-projects and the project's versions — and names the chosen values; a field whose
-choices are not loaded, as in the offline replica, keeps a plain input so an
-edit never clears it. The option list filters by `optionId`, an option and its cascading children,
-and `onlyOptions` leaves the children out. Exact Jira error wording remains.
+Responses use Jira's beans:
+
+- Options: `{"self", "value", "id"}`, or a list of them. A cascading option also has `child`.
+- Users: user beans. Groups: `{"groupId", "name", "self"}`.
+- Projects and versions: project and version beans.
+
+[JQL](JQL.md) matches option fields by option id or value with `=`, `!=`, `in`, `not in`, `is empty` and `is not empty`. Cascading selects also support `in cascadeOption(parent)`, `cascadeOption(parent, child)` and `cascadeOption(parent, none)`. Projects are matched by id or key, and versions by id or name. The changelog records option, user and group changes as `custom` items.
+
+## UI
+
+- `/settings/custom-fields`: add, reorder (move first), disable or enable options for each context.
+- Create form: shows a cascading select's first-level options.
+- Work item page and edit dialog: every picker lists its choices (cascading pairs, people, groups, projects, the project's versions) and names the chosen values. When the choices are not loaded, as in the offline replica, the field is a plain input, so an edit never clears it.
+
+## Code
+
+`internal/api3/custom_field_options.go`, `internal/api3/custom_field_values.go`, `migrations/137_custom_field_options.sql`; tests in `internal/api3/custom_field_contexts_test.go`, `custom_field_pickers_test.go` and `e2e/custom_field_options.spec.ts`.
+
+## Gaps
+
+Tracked in [PLAN.md](../PLAN.md).
+
+- The settings page cannot delete an option, replace it on work items, or move it anywhere but first; those actions are API-only.

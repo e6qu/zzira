@@ -106,7 +106,8 @@ func (s *Store) resolveSubject(ctx context.Context, ws, actor, subjectType, iden
 	case "group":
 		// Confluence allows a group to be named by id or by name.
 		var groupID string
-		err := s.Pool.QueryRow(ctx, `SELECT id::text FROM groups WHERE id::text=$1 OR name=$1`, identifier).Scan(&groupID)
+		err := s.Pool.QueryRow(ctx, `SELECT g.id::text FROM groups g `+siteGroupJoin+`
+			WHERE g.id::text=$1 OR g.name=$1 ORDER BY g.id::text=$1 DESC LIMIT 1`, identifier, ws).Scan(&groupID)
 		if err != nil {
 			return "", "", err
 		}

@@ -1,13 +1,19 @@
 # CQL search
 
-Confluence searches with its own query language. Two endpoints run it:
+Confluence Query Language (CQL) is Confluence's search language. It is
+compiled to SQL over one searchable view, and that view applies the same
+visibility rules as a direct read. Part of
+[Confluence](CONFLUENCE_SITE_SURFACES.md). Code: `internal/cql`,
+`internal/confluence/search.go`, `internal/store/wiki_search.go`.
+
+Two endpoints run CQL:
 
 | Method | Path | Returns |
 | --- | --- | --- |
 | `GET` | `/wiki/rest/api/search` | search results — what matched, and where it sits |
 | `GET` | `/wiki/rest/api/content/search` | the content itself |
 
-`cql` is required on both. An empty query is refused rather than read as "everything".
+`cql` is required on both. An empty query is rejected, not treated as "match everything".
 
 ```
 GET /wiki/rest/api/search?cql=type%3Dpage%20and%20text~%22runbook%22&limit=25
@@ -36,7 +42,7 @@ it. Values may be bare words or quoted with `"` or `'`.
 | `type` | `= != IN NOT IN` | `page`, `blogpost`, `comment`, `attachment`, `space` |
 | `id` | `= != IN NOT IN` | the content id |
 | `space` | `= != IN NOT IN` | the space key |
-| `space.type` | `= !=` | `global` or `personal` |
+| `space.type` | `= !=` | the space type (`global`, `personal`, `collaboration`, …) |
 | `status` | `= != IN NOT IN` | the content status |
 | `title` | `= != ~ !~` | the title |
 | `text` | `~ !~` | the title and the body together |
@@ -53,8 +59,8 @@ it. Values may be bare words or quoted with `"` or `'`.
 | `created` | `= != < <= > >=` | when it was made |
 | `lastmodified` | `= != < <= > >=` | when it last changed |
 
-A field this list does not name is refused. A query whose condition was quietly
-dropped would return more than it asked for, which is worse than an error.
+Any field not in this table is rejected, so a condition is never silently
+dropped.
 
 ### Functions
 
@@ -70,8 +76,8 @@ dropped would return more than it asked for, which is worse than an error.
   Units are `m` minutes, `h` hours, `d` days, `w` weeks, `M` months, `y` years.
   A week starts on Monday.
 
-A function is answered when the query is compiled, against who is asking and
-when. Nothing a reader writes decides who `currentUser()` is.
+Functions are evaluated when the query is compiled, using the caller and the
+current time. Nothing in the query text can change who `currentUser()` is.
 
 ### Dates
 
@@ -82,10 +88,9 @@ that day rather than only at midnight.
 ### Ordering
 
 `ORDER BY` accepts `created`, `lastmodified`, `title`, `id`, `type` and `space`.
-Confluence orders by relevance when nothing is asked for; this product has no
-relevance score, so the default is the most recently changed first. Every order
-settles ties on type and id, because two rows that tie would otherwise let
-paging show one twice and miss another.
+Without `ORDER BY`, results are sorted by most recently changed first. Ties are
+always broken by type and then id, so paging is stable. `ORDER BY relevance`
+is rejected.
 
 ## Scope
 
@@ -134,32 +139,45 @@ written.
 returns none, which is how a client asks only how many there are. `start` is an
 offset; `cursor` is the opaque pointer the previous response handed back.
 
-`_links` carries `next` and `prev` where there is a page in that direction, both
-relative to `base`, which is how Confluence hands them back. A cursor this
-search did not issue is refused rather than read as whatever position it happens
-to decode to. Walking past the end returns nothing and still reports the total.
+`_links` carries `next` and `prev` when those pages exist, relative to `base`.
+A cursor this search did not issue is 400. Paging past the end returns no
+results and still reports the total.
 
 ## What a search can reach
 
-A search never widens what a reader may see. Every part of the searched view
-carries the same visibility rules as a direct read — space permissions, page
-restrictions, unpublished drafts, private blog posts — so content a reader
-cannot open is absent from their results and is not counted in the total either.
+Search applies the same visibility rules as a direct read: space
+permissions, page restrictions, unpublished drafts and private blog posts.
+Content the caller cannot open is left out of the results and out of the
+total.
 
-## Boundary
+## Behavior notes
 
-- Ordering is by the named field, and by last modified when none is named.
-  There is no relevance score, so `ORDER BY relevance` is refused rather than
-  silently answered with another order.
-- A space records when it was made but not when it last changed, so both stamps
-  on a space result are the same one.
-- `text ~` matches the words as they were written, in the title or the body. It
-  is a substring match, not a stemmed index, so `deploying` does not find
-  `deploy`.
-- `excerpt` marks the words the query quoted after `~`. It does not mark words
-  matched through a field that was compared with `=`.
-- `sitePermissionTypeFilter` is accepted and does not change the results,
-  because this product has no external collaborators to filter by.
-- The user-specific CQL fields Confluence removed from `/search` — `user`,
-  `user.fullname`, `user.accountid`, `user.userkey` — are not accepted here
-  either. Searching for people is `/wiki/rest/api/search/user`.
+- **Space timestamps.** A space stores only its creation time, so both
+  timestamps on a space result are the creation time.
+- **`excerpt` highlighting.** Only words matched with `~` are highlighted.
+  Words matched with `=` are not.
+- **`sitePermissionTypeFilter`.** Accepted but has no effect, because there
+  are no external collaborators.
+- **Removed user fields.** `user`, `user.fullname`, `user.accountid` and
+  `user.userkey` are rejected, as Confluence removed them from `/search`. Use
+  `/wiki/rest/api/search/user` to search for people.
+
+## Gaps
+
+Tracked in [PLAN.md](../PLAN.md).
+
+- **Relevance.** No relevance score and no relevance ordering.
+- **Text matching.** `text ~` is a case-insensitive substring match, with no
+  stemming, fuzzy matching or stop words. `deploying` does not find `deploy`.
+- **Content types.** Whiteboards, databases, folders, Smart Links and custom
+  content cannot be searched; `type` covers only `page`, `blogpost`,
+  `comment`, `attachment` and `space`.
+- **Fields.** No `content`, `space.title`, `space.category` or content
+  property fields.
+- **Browser.** No Confluence search page. The space page only filters its
+  pages and blog posts by title.
+
+## See also
+
+[JQL.md](JQL.md) · [CONTENT_RELATIONS.md](CONTENT_RELATIONS.md) ·
+[CLOUD_PARITY.md](CLOUD_PARITY.md)

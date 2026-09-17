@@ -1,91 +1,59 @@
 # Confluence users
 
-Updated: 2026-09-11
+Confluence's user API: look people up by account id, read email addresses (administrators only), list a person's groups, search people, and store per-user properties. Part of [Confluence](CONFLUENCE_SITE_SURFACES.md); status in [CLOUD_PARITY.md](CLOUD_PARITY.md). For Jira's user API on the same people, see [people](PEOPLE.md).
 
-Confluence looks people up by account id or email, reports the groups they are
-in, searches for them, and keeps arbitrary app data against them.
-
-## An email address is administration
-
-A workspace member may see who someone is. Only an administrator may see their
-email address — which is why Confluence has separate `/user/email` endpoints
-rather than an `email` field on the user read. That distinction is kept here:
-the user reads never carry an email, and the email reads refuse a member.
-
-The test asserts both halves: that the ordinary read has no `email` field at
-all, and that a member asking the email endpoints gets 403.
-
-## Jira Cloud REST surface
-
-All 14 pinned operations are implemented. An audit against a running server
-found none of them working.
+## API
 
 | Method and path | Behavior |
-|---|---|
-| `GET /wiki/rest/api/user` | One person by `accountId`. |
+| --- | --- |
+| `GET /wiki/rest/api/user?accountId=` | One person. |
 | `GET /wiki/rest/api/user/current` | The caller. |
-| `GET /wiki/rest/api/user/anonymous` | The reader who is not signed in. |
-| `GET /wiki/rest/api/user/bulk` | Several people at once. |
-| `GET /wiki/rest/api/user/email` and `/email/bulk` | Email addresses, for an administrator. |
-| `GET /wiki/rest/api/user/memberof` | The groups a person is in. |
-| `GET /wiki/rest/api/search/user` | People matching a CQL query. |
-| `GET /wiki/rest/api/user/{userId}/property` | A person's properties. |
-| `GET/POST/PUT/DELETE /wiki/rest/api/user/{userId}/property/{key}` | One property; a new key answers 201 and a second create is a 409. |
-| `POST /wiki/api/v2/users-bulk` | The v2 bulk read, taking its ids in the body. |
+| `GET /wiki/rest/api/user/anonymous` | The signed-out reader. |
+| `GET /wiki/rest/api/user/bulk?accountId=` | Several people. |
+| `GET /wiki/rest/api/user/email?accountId=`, `/user/email/bulk` | Email addresses. Workspace administrators only (403 otherwise). |
+| `GET /wiki/rest/api/user/memberof?accountId=` | The person's groups (`start`, `limit`). |
+| `GET /wiki/rest/api/search/user?cql=` | People search. |
+| `GET /wiki/rest/api/user/{userId}/property` | The person's properties, by key. |
+| `GET` / `POST` / `PUT` / `DELETE /wiki/rest/api/user/{userId}/property/{key}` | One property. `POST` of a new key is 201; `POST` of an existing key is 409. |
+| `POST /wiki/api/v2/users-bulk` | Up to 250 people (`accountIds` in the body; 1 to 250, otherwise 400). |
 
-## Anonymous has no account
+Access by email (`/wiki/rest/api/user/access/check-access-by-email`, `/invite-by-email`) is documented in [Confluence site surfaces](CONFLUENCE_SITE_SURFACES.md).
 
-So the anonymous bean carries no `accountId`, and no link to one. Returning an
-empty id, or a link to `?accountId=`, would describe an account that does not
-exist.
+All operations require workspace membership; a non-member cannot enumerate people.
 
-## A bulk read skips what it cannot answer
+## Behavior
 
-An id that is not one of this workspace's people is left out rather than
-failing the whole request, which is what makes a bulk read useful: a client
-resolving a list of ids from stored data will always have a few that no longer
-resolve.
+- **Emails**: user beans never carry `email`. Only the `/user/email` endpoints return it.
+- **Anonymous**: the anonymous bean has no `accountId` and no link to one.
+- **Bulk reads**: account ids that are not people in this workspace are skipped, not errors.
+- **Properties**: anyone in the workspace can read them. A person writes their own; writing someone else's needs workspace administration (403).
+- **External collaborators**: a person whose Confluence access on the site is the guest role, directly or through a group, reports `isExternalCollaborator: true` on every user bean.
 
-## The user search
+## User search
 
-Confluence takes a CQL string. What this answers is the text a person is matched
-on — `user.fullname ~ "…"` and `user ~ "…"` — against display name, nickname and
-email. **A query naming a field this does not filter on is refused**, because
-silently ignoring the filter would match everyone and look like a working
-search.
+`cql` supports only `user.fullname ~ "…"` and `user ~ "…"`, matched against display name, nickname and email. Any other CQL is 400, so an unsupported filter is never silently ignored.
 
-## Whose properties are whose
+- `sitePermissionTypeFilter`: `none` (default, licensed users), `externalCollaborator` (guests) or `all`.
+- `start`, `limit` (0 to 1000, default 25); `totalSize` is the count before paging.
+- `expand` accepts `operations`, `personalSpace` and `isExternalCollaborator`, as on [group members](WIKI_GROUPS.md#member-expansions).
 
-A person's own data is theirs to write. Writing someone else's needs
-administration, because a property is read back as if that person had set it.
-Reading is open to any member, as Confluence has it.
+## Storage
 
-## Evidence and current boundary
+People and memberships come from the workspace directory. Properties are in `wiki_user_properties`.
 
-- `internal/confluence/users_test.go` covers all 14 operations, that the user
-  reads carry no email and the email reads refuse a member, that anonymous has
-  no account id, that a bulk read skips ids outside the workspace, the groups a
-  person is in and the empty answer for someone in none, the refused unsupported
-  CQL, the 201/409/200 property lifecycle, that a member cannot write another
-  person's property while an administrator can, and that someone outside the
-  workspace cannot enumerate its people.
-- `migrations/148_wiki_user_properties.sql` is exercised from a clean PostgreSQL
-  schema.
+## Tests
 
-Confluence's `expand` on the user reads, cursor paging on the bulk reads, the
-`sitePermissionTypeFilter` on the search, external collaborator accounts, and
-the invite-by-email and check-access-by-email operations remain.
+- `internal/confluence/users_test.go`
+- `internal/confluence/users_groups_test.go`
 
-## Guests
+## Gaps
 
-A guest — an external collaborator — is someone whose Confluence access on the
-site is the guest role, directly or through a group. Every user bean reports
-`isExternalCollaborator` accordingly.
+See [PLAN.md](../PLAN.md).
 
-`GET /wiki/rest/api/search/user` finds licensed users by default
-(`sitePermissionTypeFilter=none`), guests only with `externalCollaborator`, and
-everyone with `all`. It pages with `start` and `limit` (25 by default), reports
-the total before paging, and takes the same `expand` values as group members.
+- `expand` is accepted and ignored on `user`, `user/current`, `user/anonymous` and `user/bulk`.
+- `user/bulk` ignores `start`, `limit` and `cursor` and returns every requested person.
+- CQL user search beyond the two `~` forms.
 
-`POST /wiki/api/v2/users-bulk` reads between 1 and 250 account ids, the range
-the pinned API allows.
+## See also
+
+[Confluence groups](WIKI_GROUPS.md), [people](PEOPLE.md), [anonymous access](ANONYMOUS_ACCESS.md), [CQL search](CQL_SEARCH.md).

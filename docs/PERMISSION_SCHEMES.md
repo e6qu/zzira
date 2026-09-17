@@ -1,122 +1,79 @@
-# Jira permission schemes
+# Permission schemes
 
-Updated: 2026-09-10
+Jira permission schemes, their grants, the scheme assigned to each project, global permissions, and the permission checks built on them. Site administrators manage schemes at `/settings/permission-schemes` and global permissions under `/admin` › Global permissions. Project administrators view a project's effective scheme at `/projects/{key}/settings/permissions`. Part of the [Jira platform](JIRA_PLATFORM.md); related: [project roles](PROJECT_ROLES.md), [issue security schemes](ISSUE_SECURITY_SCHEMES.md), [anonymous access](ANONYMOUS_ACCESS.md). For status, see [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
-ZZIRA stores Jira project permission schemes, their grants, and the scheme
-assigned to each project. Site administrators manage the shared catalog at
-`/settings/permission-schemes`. Project administrators can inspect the effective
-scheme and its grants at `/projects/{key}/settings/permissions`.
+## API
 
-## Jira Cloud REST surface
-
-This checkpoint implements the 11 pinned permission-scheme and project
-assignment operations:
+Schemes and project assignment (11 operations):
 
 | Method and path | Behavior |
-|---|---|
-| `GET/POST /rest/api/3/permissionscheme` | Lists schemes or creates a scheme, with optional expanded grants. |
-| `GET/PUT/DELETE /rest/api/3/permissionscheme/{schemeId}` | Reads, replaces, or deletes an unused non-default scheme. |
+| --- | --- |
+| `GET/POST /rest/api/3/permissionscheme` | Lists or creates schemes; grants can be expanded. |
+| `GET/PUT/DELETE /rest/api/3/permissionscheme/{schemeId}` | Reads, replaces, or deletes a scheme that is neither the default nor assigned. |
 | `GET/POST /rest/api/3/permissionscheme/{schemeId}/permission` | Lists or adds grants. |
-| `GET/DELETE /rest/api/3/permissionscheme/{schemeId}/permission/{permissionId}` | Reads or removes one grant. |
-| `GET/PUT /rest/api/3/project/{projectKeyOrId}/permissionscheme` | Reads or assigns the project's scheme. |
+| `GET/DELETE /rest/api/3/permissionscheme/{schemeId}/permission/{permissionId}` | Reads or removes a grant. |
+| `GET/PUT /rest/api/3/project/{projectKeyOrId}/permissionscheme` | Reads or assigns a project's scheme. Assigning needs Administer Jira. |
 
-It also implements the five pinned permission discovery and evaluation
-operations:
+Discovery and checks (5 operations):
 
 | Method and path | Behavior |
-|---|---|
-| `GET /rest/api/3/permissions` | Returns the built-in global and project permissions and those installed apps declare. |
-| `GET /rest/api/3/mypermissions` | Evaluates the requested permissions in global, project, issue, or comment context. `permissions` is required and each key must exist (400 otherwise). `projectId` wins over `projectKey` and `issueId` over `issueKey`; a project or issue the caller cannot see answers 404, and `commentId` allows only `BROWSE_PROJECTS`. |
-| `POST /rest/api/3/permissions/check` | Evaluates bounded global and project permission batches, including another user for administrators. |
-| `POST /rest/api/3/permissions/project` | Returns active projects where the caller has every requested permission. |
-| `GET /rest/api/3/user/permission/search` | Pages active users who satisfy the requested permissions and context. |
+| --- | --- |
+| `GET /rest/api/3/permissions` | Built-in global and project permissions plus those active apps declare. |
+| `GET /rest/api/3/mypermissions` | Evaluates `permissions` (required; unknown keys 400) globally or for a project, work item or comment. `projectId` beats `projectKey`, `issueId` beats `issueKey`. An invisible project or work item is 404. With `commentId`, only `BROWSE_PROJECTS` is allowed. |
+| `POST /rest/api/3/permissions/check` | Bounded global and project checks; administrators may check another user. |
+| `POST /rest/api/3/permissions/project` | Active projects where the caller holds every requested permission. |
+| `GET /rest/api/3/user/permission/search` | Pages active users holding the requested permissions in a context. |
 
-Malformed IDs, unknown expansion names, invalid principals, duplicate grants,
-duplicate scheme names, deletion of the default or an assigned scheme, and
-unauthorized writes return explicit Jira-shaped errors. Every scheme, grant,
-and assignment mutation writes an immutable action in the same transaction.
+Malformed ids, unknown expansions, invalid holders, duplicate grants or scheme names, deleting the default or an assigned scheme, and unauthorized writes return Jira-shaped errors. Every scheme, grant and assignment change writes an action in the same transaction.
 
-## Catalog, holders, and defaults
+## Catalog and holders
 
-The catalog contains Jira's 36 built-in project permissions and nine global
-permission keys, followed by the permissions active apps declare through
-Connect's `jiraProjectPermissions` and `jiraGlobalPermissions` modules. An app
-permission's key joins the app key and module key with two underscores. Schemes
-grant built-in and app project permissions only. An app global permission whose
-`defaultGrants` include `ALL` is granted to everyone with Jira access on first
-installation, and administrators hold every app global permission. Project grants accept `anyone`, application-role, assignee,
-group, group-custom-field, project-lead, project-role, reporter, service-portal
-customer, user, and user-custom-field holders. User, group, and role holders are
-validated against the current workspace. Group names remain synchronized after
-a rename, deleted principals are removed, and role deletion swaps update grants
-atomically.
+- **Permissions:** Jira's 36 project permissions and 9 global permissions (`internal/store/permission_schemes.go`), then permissions active apps declare through Connect's `jiraProjectPermissions` and `jiraGlobalPermissions`. An app permission key is `{appKey}__{moduleKey}`. Schemes grant project permissions only.
+- **Holders:** `anyone`, application role, assignee, group, group custom field, project lead, project role, reporter, service portal customer (`sd.customer.portal.only`), user, user custom field. Users, groups and roles must exist in the workspace. Group renames propagate, deleted principals are removed, and role-deletion swaps update grants atomically.
+- **Default scheme:** every workspace has scheme `10000`. The Members role holds 33 work permissions; the Administrators role holds `ADMINISTER_PROJECTS`, `EDIT_WORKFLOW` and `EDIT_ISSUE_LAYOUT`. New projects get this scheme (`migrations/130_permission_schemes.sql`).
 
-Every workspace receives numeric scheme `10000`. Its Members role receives the
-33 ordinary work permissions, while its Administrators role receives
-`ADMINISTER_PROJECTS`, `EDIT_WORKFLOW`, and `EDIT_ISSUE_LAYOUT`. Existing and
-new projects receive that default assignment, preserving the access behavior
-that preceded configurable schemes.
+## Global permissions
 
-Global Jira administration follows organization and site administrator role
-bindings. Every other global permission, including those apps declare, is
-granted to groups or to everyone with Jira or Jira Service Management access,
-in the Global permissions section of site administration (migration 193).
-Sites start with the shared-object, user-picker, browse-user, bulk-change and
-team-managed project permissions granted to everyone with Jira access. An app
-global permission whose `defaultGrants` include `ALL` is granted that way when
-the app is first installed. Administrators hold every global permission.
+- **Administer Jira** follows the organization and site administrator roles ([ADMIN.md](ADMIN.md)).
+- **Other global permissions,** including app ones, are granted to groups or to everyone with Jira or Jira Service Management access (`migrations/193_global_permission_grants.sql`).
+- **New sites** grant create shared objects, user picker, browse users, bulk change and team-managed project creation to everyone with Jira access.
+- **App permissions:** an app global permission whose `defaultGrants` include `ALL` is granted to everyone with Jira access when the app is first installed.
+- **Administrators** hold every global permission.
 
-## Runtime authorization
+## Enforcement
 
-The PostgreSQL evaluator is the common permission decision for REST, browser,
-search, enhanced-search snapshots, synchronization, board/release issue lists,
-and project navigation. `BROWSE_PROJECTS` now hides denied projects and work
-items before serialization. `ADMINISTER_PROJECTS` controls project role and
-effective-permission administration, including direct users and group-backed
-project-role grants. Site and organization administrators retain access.
+- **One evaluator.** The PostgreSQL function `jira_has_project_permission` decides project permissions for REST, pages, search, enhanced-search snapshots, sync, board and release lists, and project navigation.
+- **Browse projects** hides denied projects and work items before serialization.
+- **Issue-dependent holders.** Assignee, reporter and custom field holders are checked against the specific work item on direct reads. In a project-only query, they match when any active work item in the project supplies the relationship, as in Jira.
+- **Project configuration.** Administer projects (implied by Administer Jira) covers components, versions and release approvers, properties, features, sender email, details, project-scoped statuses, roles and effective-permission views. Administer Jira is still required for global statuses, project creation, categories, archive, trash, restore, delete, and scheme assignment (`internal/api3/project_administration_test.go`).
+- **Permissions checked on work item actions:**
 
-Issue-sensitive holders evaluate the selected issue for direct reads. For a
-project-only permission query, assignee, reporter, and custom-field holders
-match when at least one active issue in that project supplies the relationship,
-which matches Jira's context-dependent permission-query behavior.
+  | Action | Permission |
+  | --- | --- |
+  | Comments | Add comments; edit or delete all / own comments |
+  | Attachments | Create attachments; delete all / own attachments |
+  | Worklogs | Work on issues to log; edit or delete all / own worklogs |
+  | Assignee pickers, assignable-user search, automation assignment | Assignable user |
+  | Links | Link issues and Edit issues |
+  | Work item properties | Edit issues |
+  | Deleting | Delete issues |
+  | Others' watches | Manage watchers |
 
-Administrators check a decision with the permission helper
-(`/admin/permission-helper`, linked from the Global permissions section of
-administration). Given a person, a work item and a project permission, it says
-whether the person holds it under the project's scheme and why: through the
-site or organization administrator role or Administer Jira, or through the
-named grants. Each grant is tried alone inside a rolled-back savepoint, so the
-explanation comes from the same `jira_has_project_permission` check that
-decides access. For Browse projects it also notes a security level that hides
-the work item.
+  Edit metadata needs Edit issues; the transitions list needs Transition issues, as does bulk transition.
 
-## Evidence and current boundary
+**Permission helper** (`/admin/permission-helper`). Given a person, a work item and a project permission, it says whether the person holds it and why: the administrator role, Administer Jira, or the named grants. Each grant is tested alone in a rolled-back savepoint using `jira_has_project_permission`. For Browse projects it also reports a security level that hides the work item.
 
-- `internal/api3/permission_schemes_test.go` covers the 16 operations,
-  validation, assignment conflicts, direct/group grants, delegated project
-  administration, issue/project/search visibility, permission discovery,
-  pagination inputs, and action evidence.
-- `e2e/permission_schemes.spec.ts` covers site scheme creation, grant editing,
-  project assignment, delegated project inspection, effective API permissions,
-  320 px reflow, reassignment, and cleanup.
-- `migrations/130_permission_schemes.sql` is exercised from a clean PostgreSQL
-  schema as part of the migration and integration gates.
+## Gaps
 
-Grants to `anyone` open reads to anonymous callers on the operations Jira
-marks as anonymous; see `docs/ANONYMOUS_ACCESS.md`. Action-specific enforcement
-for every remaining issue mutation are later PR 1 work. Holder expansion beans
-and every Jira pagination and error edge also remain under contract review.
+Tracked in [PLAN.md](../PLAN.md).
 
-## Project configuration and work item permissions
+- Create issues, Edit issues, Transition issues, Assign issues, Resolve issues, Close issues, Schedule issues, Modify reporter, Move issues, Set issue security, Manage sprints and Service desk agent are not checked when a work item is created, updated, transitioned, assigned or moved. Those commands check only Browse projects and issue security (`internal/commands/commands.go` `CreateIssue`, `internal/commands/commands_v1.go` `UpdateIssue`, `transitionIssueWithUpdate`).
+- Assignable user limits the assignee pickers, assignable-user search and automation, but a direct assignment only requires an active member.
+- The workflow validator `system:check-permission-validator` checks a fixed permission set derived from site roles (`internal/authz/jira_permissions.go`), not the project's permission scheme.
+- No copy action for permission schemes in the UI.
 
-Project configuration follows the permissions Jira documents for each
-operation. Administer Projects for the project, which Administer Jira implies,
-manages its components, versions and release approvers, properties, features,
-sender email, details and project-scoped statuses, in the API and on the
-project settings and release pages. Administer Jira remains required for global
-statuses, project creation, categories, archiving, trashing, restoring and
-deleting projects, and permission scheme assignment. Issue property writes need
-Edit issues, and deleting an attachment needs Delete all attachments, or Delete
-own attachments for the caller's own. `internal/api3/project_administration_test.go`
-covers each operation for a project administrator who is not a site
-administrator and for a member without the permission.
+## Tests
+
+- `internal/api3/permission_schemes_test.go`: all 16 operations, validation, assignment conflicts, direct and group grants, delegated administration, visibility in work items, projects and search, discovery, paging, actions.
+- `internal/api3/project_administration_test.go`: each project configuration operation for a project administrator who is not a site administrator, and for a member without the permission.
+- `e2e/permission_schemes.spec.ts`: scheme creation, grant editing, assignment, delegated inspection, effective API permissions, 320px reflow.

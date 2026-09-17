@@ -1,83 +1,61 @@
 # Confluence groups
 
-Updated: 2026-09-11
+Confluence's group API. The groups are the organization's directory groups (`groups`, `group_members`), the same groups the Jira API and organization administration manage. Part of [Confluence](CONFLUENCE_SITE_SURFACES.md); status in [CLOUD_PARITY.md](CLOUD_PARITY.md). For Jira's group API on the same data, see [people](PEOPLE.md).
 
-A group gathers people so permissions and mentions can name many at once.
-Confluence reads and writes them through the wiki surface; the groups
-themselves are the directory groups the organization already has, so a group
-made here is the same group the organization administration sees.
+## API
 
-## Jira Cloud REST surface
+| Method and path | Behavior | Access |
+| --- | --- | --- |
+| `GET /wiki/rest/api/group` | Lists groups; `accessType`, `start`, `limit`. | member |
+| `POST /wiki/rest/api/group` | Creates a group (`name`); 201. | site admin |
+| `GET /wiki/rest/api/group/by-id?id=` | Reads one group. | member |
+| `DELETE /wiki/rest/api/group/by-id?id=` | Deletes a group and its memberships. | site admin |
+| `GET /wiki/rest/api/group/picker?query=` | Searches by partial name. | member |
+| `GET /wiki/rest/api/group/{groupId}/membersByGroupId` | Lists members; `expand`, `start`, `limit`. | member |
+| `POST /wiki/rest/api/group/userByGroupId?groupId=` | Adds a person (`accountId` in the body); 201. | site admin |
+| `DELETE /wiki/rest/api/group/userByGroupId?groupId=&accountId=` | Removes a person; 204. | site admin |
 
-All eight pinned operations are implemented. An audit against a running server
-found none of them working.
+A caller who is not a member of the workspace is refused (403).
 
-| Method and path | Behavior |
-|---|---|
-| `GET /wiki/rest/api/group` | Lists the groups. |
-| `POST /wiki/rest/api/group` | Creates one, for an administrator. |
-| `GET /wiki/rest/api/group/by-id` | Reads one by id. |
-| `DELETE /wiki/rest/api/group/by-id` | Removes one, for an administrator. |
-| `GET /wiki/rest/api/group/picker` | Searches by partial name. |
-| `GET /wiki/rest/api/group/{groupId}/membersByGroupId` | The people in a group. |
-| `POST /wiki/rest/api/group/userByGroupId` | Adds a person, for an administrator. |
-| `DELETE /wiki/rest/api/group/userByGroupId` | Removes a person, for an administrator. |
+## Behavior
 
-## Reading is open, changing is not
-
-Any workspace member may see what groups exist and who is in them, because that
-is how a person decides who to mention or grant access to. Creating a group,
-deleting one, and moving people in or out are administration.
-
-## The two surfaces describe one membership
-
-`GET /user/memberof` and `GET /group/{id}/membersByGroupId` are the same fact
-read from either end. The test checks both after a single write, because two
-reads of one membership that can disagree is worse than either one missing.
-
-## Counting is opt-in
-
-Confluence's list does not report a total; the picker reports one only when
-`shouldReturnTotalSize=true`. Counting is work a caller should ask for, so it
-is not done otherwise, and the test asserts the absence as well as the presence.
-
-## Adding someone twice is not an error
-
-The request asks for the person to be in the group, and afterwards they are.
-Failing would make a client track what it had already done to avoid an error
-that describes no problem. Removing someone who is not a member **is** a 404,
-because there is nothing to remove.
-
-## Evidence and current boundary
-
-- `internal/confluence/groups_test.go` covers all eight operations, that reading
-  is open to a member while every change needs administration, that someone
-  outside the workspace is refused, the duplicate and empty name, the unknown
-  group and unknown person, that adding twice succeeds while removing twice does
-  not, that `memberof` and the member list agree after one write, that counting
-  happens only when asked, and that memberships do not outlive the group.
-- No migration: the `groups` and `group_members` tables already existed.
-
-Confluence's `accessType` filter on the list, `expand` on the member read,
-cursor paging, and groups in the browser journeys remain.
+- **Scope**: the list and the picker return only groups of the organization that owns the site. Reads, deletes and membership changes by group id do not check the organization. New groups go into that organization's first active directory, which is created if none exists.
+- **Names**: 1 to 255 characters. A duplicate name is 400.
+- **Paging**: `start` and `limit` (1 to 200, default 200). The list never reports a total; the picker and member list report `totalSize` only with `shouldReturnTotalSize=true`.
+- **Membership**: adding an existing member succeeds. Removing someone who is not a member is 404, and so are an unknown group or person.
+- **Consistency**: `GET /wiki/rest/api/user/memberof` and `membersByGroupId` read the same membership (see [Confluence users](WIKI_USERS.md)).
 
 ## Groups by access
 
-`GET /wiki/rest/api/group?accessType=` lists this site's groups by the access
-they give, read from the site's role bindings:
+`accessType` filters by the access the site's role bindings give a group:
 
-- `user` — groups granted use of Confluence (the user, product-user, basic,
-  contributor or viewer role on the site's Confluence);
-- `admin` — groups that administer Confluence (the admin or product-admin
-  role on it);
-- `site-admin` — groups that administer the site or its organization.
+| `accessType` | Groups holding |
+| --- | --- |
+| `user` | user, product-user, basic, contributor or viewer role on the site's Confluence |
+| `admin` | admin or product-admin role on the site's Confluence |
+| `site-admin` | administration of the site or its organization |
 
-Without `accessType` every group of the site's organization is listed; groups
-of other organizations never appear.
+## Member expansions
 
-`GET /wiki/rest/api/group/{groupId}/membersByGroupId` expands `operations`
-(the site permissions a member holds: `use` the application, and for
-administrators `create` spaces and `administer` the application),
-`personalSpace` (the space keyed for the member, when the caller can see it)
-and `isExternalCollaborator`; unexpanded properties are listed under
-`_expandable`.
+`membersByGroupId` accepts `expand`:
+
+- `operations`: site permissions the member holds (`use` the application; for administrators also `create` spaces and `administer` the application);
+- `personalSpace`: the member's personal space, when the caller can see it;
+- `isExternalCollaborator`.
+
+Unexpanded properties are listed under `_expandable`. Any other value is 400.
+
+## Tests
+
+- `internal/confluence/groups_test.go`
+- `internal/confluence/users_groups_test.go`
+
+## Gaps
+
+See [PLAN.md](../PLAN.md).
+
+- Lookups by group id (`by-id`, `membersByGroupId`, `userByGroupId`) are not limited to the site's organization.
+
+## See also
+
+[Confluence users](WIKI_USERS.md), [people](PEOPLE.md), [space permissions](SPACE_PERMISSIONS.md), [audit log](WIKI_AUDIT.md).

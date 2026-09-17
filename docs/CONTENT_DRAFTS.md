@@ -1,72 +1,62 @@
-# Drafts and deletion for pages and blog posts
+# Drafts and deletion
 
-Updated: 2026-09-14
-
-Confluence moves a page or blog post through drafts and three kinds of
-deletion, and a blog post reads the way a page does.
+Drafts of pages and blog posts, the three kinds of deletion, blog post reads, and v1 labels on any content. Part of [Confluence](CONFLUENCE_SITE_SURFACES.md); status in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Drafts of published content
 
-A published page or blog post may have one unpublished draft beside it,
-shared by everyone who may edit the content. `PUT` with `status: "draft"` at
-version 1 saves it, replacing any draft already there, and leaves the
-published version exactly as readers see it. `get-draft=true` reads the draft;
-it comes back in draft status at version 1. Publishing — a `PUT` in current
-status, or Save page in the editor — replaces the draft.
+A published page or blog post may have one unpublished draft, shared by everyone who may edit it.
 
-The page editor offers Save as draft on a published page. The page shows that
-an unpublished draft is waiting, with Edit draft, which opens the editor on the
-draft, and Discard draft.
+- `PUT /wiki/api/v2/pages/{id}` (or `/blogposts/{id}`) with `status: "draft"` saves the draft. It must be at version 1 (otherwise 400), replaces any existing draft, and leaves the published version unchanged.
+- `get-draft=true` reads the draft, reported as `draft` at version 1.
+- Publishing (a `PUT` with `status: "current"`, or Save page in the editor) replaces the draft.
 
-## Three deletions
+UI: the page editor offers **Save as draft** on a published page. The page view then shows an "unpublished draft" notice with **Edit draft** and **Discard draft** (`POST /wiki/spaces/{space}/pages/{page}/draft/discard`). The space's **Your drafts** tab lists the reader's never-published drafts.
 
-- **Delete** sends current or archived content to the trash.
-- **`draft=true`** discards a draft for good. On published content it throws
-  away the waiting draft; on a page or blog post that was never published it
-  removes the content, which never reaches the trash. A never-published draft
-  that other content hangs off is refused rather than leaving that content
-  without a parent.
-- **`purge=true`** takes trashed content out of the trash. It needs space
-  administration, as Confluence documents, and moves the content to the
-  deleted state.
+## Deletion
 
-A plain delete on a draft is refused with a pointer to `draft=true`, a plain
-delete on trashed content with a pointer to `purge=true`, and asking for both
-at once is refused.
+`DELETE /wiki/api/v2/pages/{id}` and `/blogposts/{id}`:
 
-Deleted content is for the space's administrators: they see it in
-`status=deleted` reads and lists, and `PUT` in current status restores it with
-its content intact, as Confluence's update documents. Everyone else gets a
-404.
+| Request | Content status | Effect |
+| --- | --- | --- |
+| plain | `current` or `archived` | moves to `trashed` |
+| `draft=true` | published | discards its waiting draft (404 if none) |
+| `draft=true` | never published | removes the content permanently; it never reaches the trash. Author only. |
+| `purge=true` | `trashed` | moves to `deleted`. Needs space administration. |
 
-## Blog posts read like pages
+Refusals (400):
 
-A blog post reads in every primary body format, at an earlier `version`
-(reported as `historical`), and with every `include-*` flag a page has:
-labels, properties, operations, likes, versions, collaborators, the reader's
-star and web resources, and the version can be left out. Blog posts are
-written flat or nested, as storage, the document format or wiki markup, like
-pages. Lists take the statuses Confluence lists blog posts in — current,
-trashed and deleted — and sorting compares ids as numbers, which the earlier
-sort did not.
+- plain delete of a draft: use `draft=true`;
+- plain delete of trashed content: use `purge=true`;
+- `purge=true` on content that is not trashed;
+- `purge=true` and `draft=true` together;
+- `draft=true` on a never-published page that still has child pages or content beneath it.
 
-## Labels on any content
+A plain delete of `deleted` content is 404.
 
-The v1 label add and remove act on pages, blog posts and attachments alike,
-following what the content id names; a prefixed name such as `my:plan`
-removes that prefix's label. The label lookup lists pages, blog posts and
-attachments, or one kind with `type`; page templates carry no labels here, so
-`type=page_template` finds nothing.
+Deleted content is visible only to space administrators: they see it in `status=deleted` reads and lists, and a `PUT` with `status: "current"` restores it with its body intact. Everyone else gets 404.
 
-## Evidence
+UI: the space's **Trash** tab lists trashed pages; a trashed page offers **Purge page** to space administrators.
 
-- `internal/confluence/content_drafts_test.go` covers drafts of published pages
-  and blog posts and their version rule, publishing replacing a draft,
-  discarding drafts and never-published content, the delete refusals, purge
-  and its space-administration rule, deleted visibility in reads and lists,
-  restoring deleted pages and blog posts, blog post formats, versions and
-  every include flag, the blog status list, and v1 labels on blog posts with
-  the typed label lookup.
-- `e2e/wiki_drafts_purge.spec.ts` saves a draft of a published page in the
-  browser, sees the published page unchanged, edits and discards the draft,
-  and trashes and purges the page.
+## Blog post reads
+
+A blog post reads like a page:
+
+- every primary body format (see [page writing](PAGE_WRITING.md#body-formats));
+- an earlier `version`, reported as `historical`;
+- every `include-*` flag a page has: labels, properties, operations, likes, versions, collaborators, favourited-by-current-user status, web resources; `include-version=false` omits the version.
+
+Blog posts are written flat or nested, as storage, `atlas_doc_format` or `wiki`, like pages. `GET /wiki/api/v2/blogposts` lists `current` by default and accepts `current`, `trashed` and `deleted`; `sort=id` compares ids numerically.
+
+## v1 labels on any content
+
+- `POST /wiki/rest/api/content/{id}/label` and `DELETE .../label` (or `.../label/{label}`) act on pages, blog posts and attachments, whichever the id names. A prefixed name such as `my:plan` removes that prefix's label.
+- `GET /wiki/rest/api/label?name=` lists pages, blog posts and attachments carrying the label, or one kind with `type` (`page`, `blogpost`, `attachment`, `page_template`). Page templates carry no labels here, so `type=page_template` returns nothing.
+
+## Tests
+
+- `internal/confluence/content_drafts_test.go`
+- `e2e/wiki_drafts_purge.spec.ts`
+
+## See also
+
+[Moving, copying and archiving pages](PAGE_MOVES.md), [content history](CONTENT_HISTORY.md), [space permissions](SPACE_PERMISSIONS.md).

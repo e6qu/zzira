@@ -76,10 +76,8 @@ func combinationID(permissions []string) string {
 	return "cmb_" + hex.EncodeToString(sum[:8])
 }
 
-// validateSpaceSelection reports whether a selection is one this product can
-// honor. Confluence's personal spaces do not exist here — a space belongs to
-// the workspace, not to a person — so a selection naming them is refused rather
-// than quietly matching something else.
+// validateSpaceSelection reports whether a selection names its spaces when its
+// type needs them, and whether the type is one Confluence defines.
 func validateSpaceSelection(selection WikiSpaceSelection) error {
 	switch selection.SpaceType {
 	case "", "ALL":

@@ -64,6 +64,7 @@ var jqlFunctions = []jqlFunctionReference{
 	{Value: "approved()", DisplayName: "approved()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
 	{Value: "approver()", DisplayName: "approver(users...)", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
 	{Value: "breached()", DisplayName: "breached()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"SLA"}},
+	{Value: "cascadeOption()", DisplayName: "cascadeOption(parentOption, childOption)", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"OPTION"}},
 	{Value: "closedSprints()", DisplayName: "closedSprints()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"SPRINT"}},
 	{Value: "completed()", DisplayName: "completed()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"SLA"}},
 	{Value: "componentsLeadByUser()", DisplayName: "componentsLeadByUser([user])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"COMPONENT"}},

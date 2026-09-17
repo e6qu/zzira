@@ -1,107 +1,100 @@
-# Jira project governance
+# Project governance
 
-Updated: 2026-09-10
+Project creation, categories, properties, software features, sender
+addresses, project types and key/name validation. Browser administration and
+the Jira REST resources use the same permission-checked store mutations; every
+write is workspace-scoped, transactional and recorded in the action log. Part
+of the [Jira platform](JIRA_PLATFORM.md); see
+[CLOUD_PARITY.md](CLOUD_PARITY.md) for status. Archive, trash and delete are in
+[PROJECT_LIFECYCLE.md](PROJECT_LIFECYCLE.md).
 
-This checkpoint adds one workspace-scoped source of truth for Jira project
-categories, project properties, software feature states, notification sender
-addresses, project types, and project key/name validation. Site and project
-administration pages use the same permission-enforcing store mutations as the
-Jira Cloud-compatible REST resources.
+## API
 
-## Delivered behavior
-
-- Site administrators create, rename, describe, and delete numeric project
-  categories in Administration. Category names are unique without regard to
-  case. Deleting a category preserves its projects, clears their category, and
-  emits project synchronization actions in the same transaction.
-- Project creation and detail updates accept Jira's numeric `categoryId`.
-  Updating with `-1` removes the category. Project reads, lists, and searches
-  return category beans and `categoryId` filtering uses the stored assignment.
-- Project properties support ordered key discovery and arbitrary JSON
-  get/create/update/delete with Jira's 255-character key and 32,768-byte value
-  limits. Create returns `201`, update returns `200`, and delete returns `204`.
-- Software projects expose a stable feature catalog and persist `ENABLED` or
-  `DISABLED` state. Disabling Backlog or Reports removes the corresponding
-  project navigation entry, Sprints removes sprint creation from the backlog,
-  Code hides an issue's development information, and Deployments hides builds
-  and deployments on issues and releases. Each feature bean carries a served
-  `imageUri`. Non-software projects reject the feature resource.
-- Numeric project sender-email resources return the effective site default or
-  a project override. An empty update restores the default; writes return
-  `204`.
-- Project-type discovery exposes the installed business, software, and service
-  management products. Licensed-access variants require site access.
-- Validation resources report invalid or occupied keys and generate available
-  keys and names without leaking another workspace's projects.
-- Every category, property, feature, sender, and category-assignment mutation
-  is workspace scoped, administrator authorized, transactional, and paired
-  with immutable action-log evidence.
+| Route | Behavior |
+|---|---|
+| `POST /rest/api/3/project` | Create a project (see below) |
+| `GET /rest/api/3/project`, `GET /project/search`, `GET/PUT /project/{idOrKey}` | List, search, read and update; `categoryId` filters and assigns (`-1` removes) |
+| `GET/POST /rest/api/3/projectCategory`, `GET/PUT/DELETE /projectCategory/{id}` | Categories |
+| `GET /rest/api/3/project/{idOrKey}/properties`, `GET/PUT/DELETE …/properties/{key}` | Project properties |
+| `GET /rest/api/3/project/{idOrKey}/features`, `PUT …/features/{featureKey}` | Software features |
+| `GET/PUT /rest/api/3/project/{projectId}/email` | Sender address |
+| `GET /rest/api/3/project/type`, `/type/accessible`, `/type/{key}`, `/type/{key}/accessible` | Project types |
+| `GET /rest/api/3/projectvalidate/key`, `/validProjectKey`, `/validProjectName` | Key and name validation and generation |
 
 ## Creating projects
 
-`POST /rest/api/3/project` accepts every template Jira documents for a project
-type: the Scrum, Kanban and basic software templates (team-managed ones
-included; zzira creates every project company-managed, with a Scrum or Kanban
-board as the template implies), every service management template, and every
-business template. Customer service projects are refused, as zzira has no
-customer service product. The request can name the project's
-`permissionScheme`, `notificationScheme`, `issueSecurityScheme`,
-`workflowScheme`, `issueTypeScheme`, `issueTypeScreenScheme` and `fieldScheme`
-(or the deprecated `fieldConfigurationScheme`), and a system `avatarId`. They
-are assigned in the same transaction that creates the project. A scheme or
-avatar that does not exist refuses the request with its field named, and no
-project is created. The deprecated `lead` is accepted in place of
-`leadAccountId`, but not together with a different one.
+- Accepts every template Jira documents for a project type: Scrum, Kanban and
+  basic software templates (team-managed ones included), every service
+  management template and every business template. Every project is created
+  company-managed; Scrum and Kanban templates get a matching board. Customer
+  service templates are refused (no customer service product).
+- The request can name `permissionScheme`, `notificationScheme`,
+  `issueSecurityScheme`, `workflowScheme`, `issueTypeScheme`,
+  `issueTypeScreenScheme` and `fieldScheme` (or the deprecated
+  `fieldConfigurationScheme`), and a system `avatarId`, all assigned in the
+  creating transaction. An unknown scheme or avatar refuses the request, names
+  the field and creates nothing.
+- The deprecated `lead` is accepted in place of `leadAccountId`, but not
+  alongside a different one.
 
-## Jira v3 resources
+## Behavior
 
-| Resource family | Operations |
-|---|---:|
-| `/rest/api/3/projectCategory[/{id}]` | 5 |
-| `/rest/api/3/project/{idOrKey}/properties[/{key}]` | 4 |
-| `/rest/api/3/project/{idOrKey}/features[/{featureKey}]` | 2 |
-| `/rest/api/3/project/{projectId}/email` | 2 |
-| `/rest/api/3/project/type...` | 4 |
-| `/rest/api/3/projectvalidate/...` | 3 |
-| Project create/list/search/get/update integration | 5 |
-| **Reviewed in this checkpoint** | **25** |
+- **Categories.** Numeric IDs; names unique case-insensitively. Deleting a
+  category keeps its projects, clears their category and emits project sync
+  actions in the same transaction. Project reads return category beans.
+- **Properties.** Keys up to 255 characters, JSON values up to 32,768 bytes.
+  Create 201, update 200, delete 204.
+- **Features.** Software projects have a fixed catalog with persisted
+  `ENABLED`/`DISABLED` state and a served `imageUri`. Disabling Backlog or
+  Reports removes that navigation entry; Sprints removes sprint creation from
+  the backlog; Code hides development information on work items; Deployments
+  hides builds and deployments on work items and releases; Roadmap removes the
+  Timeline from navigation and answers its page with 404. Other project types
+  reject the resource.
+- **Sender address.** Returns the site default or the project override. An
+  empty update restores the default; writes answer 204. Addresses are syntax
+  checked.
+- **Project types.** Types follow the site's products: `software` with Jira
+  Software, `service_desk` with Jira Service Management, `business` with any
+  Jira product. `…/accessible` answers 404 to a person whose application roles
+  do not reach that product.
+- **Validation** reports invalid or taken keys and generates available keys
+  and names without revealing other workspaces' projects. Generated keys are
+  deterministic, where Atlassian's are random.
 
-## Known limits
+## Permissions
 
-- Project-role administration now follows the assigned scheme's
-  `ADMINISTER_PROJECTS` permission. Category, property, feature, and sender
-  writes remain site-admin scoped until each family adopts the shared
-  permission evaluator.
-- Anonymous Browse Projects is not available, so project-property reads require
-  an authenticated workspace member.
-- The built-in software feature catalog is fixed: Connect apps cannot
-  contribute project features. Disabling Roadmap removes the project's
-  Timeline from navigation and answers its page with 404.
-- Sender addresses are syntax validated. Custom-domain ownership, verification
-  warnings, bounce handling, and outbound notification delivery remain.
-- Project types follow the site's products. `GET /project/type/accessible`
-  lists the types an enabled product licenses: software with Jira Software,
-  service_desk with Jira Service Management, and business with any Jira
-  product. `GET /project/type/{key}/accessible` answers 404 to a person whose
-  application roles do not reach that product. Atlassian billing is outside the
-  self-hosted boundary.
-- Valid key generation is deterministic. Jira does not promise the exact
-  replacement string, but clients that assume Atlassian's random choice may
-  observe a different available key.
-- Core project APIs remain partial while expansions, recent projects, scheme
-  assignment, import/export, and the full template
-  catalog are unfinished.
+| Action | Needs |
+|---|---|
+| Category writes | Site or organization administrator |
+| Property, feature and sender writes | Administer projects on the project |
+| Property reads | Browse projects (anonymous when allowed; see [ANONYMOUS_ACCESS.md](ANONYMOUS_ACCESS.md)) |
+| Licensed-access type reads | Site access |
 
-## Evidence
+## UI
 
-- `internal/api3/project_governance_test.go` covers allowed and denied users,
-  wire bodies, status codes, workspace isolation primitives, numeric IDs,
-  feature state, properties, sender email, validation, and category removal.
-- `internal/api3/projects_test.go` covers shared project commands, paging,
-  filtering, validation, default assignment, action logging, and project API
-  integration.
-- `e2e/projects.spec.ts` covers the site-admin and project-admin browser journey,
-  REST coherence, navigation enforcement, validation recovery, and 320 px
-  reflow.
-- `migrations/127_project_governance.sql` defines durable category, property,
-  feature, and sender state.
+- **Administration** (`/admin`): create, rename, describe and delete
+  categories.
+- **Project settings** (`/projects/{key}/settings`): details, category,
+  features, sender address and properties.
+- **Projects** (`/projects`, `/projects/new`): directory and creation.
+
+## Gaps
+
+See [PLAN.md](../PLAN.md).
+
+- The project sender address is stored but not used as the From address of
+  notification email; no custom-domain verification or bounce handling.
+- Connect apps cannot contribute project features.
+
+## Tests
+
+`internal/api3/project_governance_test.go`, `internal/api3/projects_test.go`,
+`e2e/projects.spec.ts`.
+
+## See also
+
+[PROJECT_LIFECYCLE.md](PROJECT_LIFECYCLE.md) · [PROJECT_ROLES.md](PROJECT_ROLES.md) ·
+[COMPONENTS.md](COMPONENTS.md) · [PROJECT_VERSIONS.md](PROJECT_VERSIONS.md) ·
+[CLASSIFICATION_LEVELS.md](CLASSIFICATION_LEVELS.md) ·
+[PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)

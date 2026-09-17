@@ -1,10 +1,6 @@
-# Jira workflow rules
+# Workflow rules
 
-Workflow transitions carry Jira Cloud's rule shape: `ruleKey` and string
-`parameters`, grouped as conditions, validators, post functions (`actions`),
-triggers and one transition screen. `GET /rest/api/3/workflows/capabilities`
-lists every rule zzira runs. Workflow create, update, preview and both
-validation resources accept the same catalog and refuse rules they cannot run.
+Workflow transitions use Jira Cloud's rule shape: a `ruleKey` and string `parameters`, grouped as conditions, validators, post functions (`actions`), triggers and one transition screen. `GET /rest/api/3/workflows/capabilities` lists every rule zzira runs. Workflow create, update, preview and both validation resources accept the same catalog and refuse rules they cannot run. Part of the [Jira platform](JIRA_PLATFORM.md); app-owned rules and workflow history are covered there ([transition rules owned by apps](JIRA_PLATFORM.md#transition-rules-owned-by-apps), [workflow history](JIRA_PLATFORM.md#workflow-history)). Workflows are routed to work types by [workflow schemes](WORKFLOW_SCHEMES.md). For status, see [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## System rules
 
@@ -35,16 +31,15 @@ own, so running the transition records an agent run request with the
 transition's action. The request names the agent account and prompt, and the
 agent must be an active app account of the site.
 
+The `system:transition-screen` rule takes a comma-separated `fields` parameter listing the fields the transition collects (`internal/workflow/workflow.go:889`). It does not reference a [screen](SCREENS.md). `GET /issue/{key}/transitions?expand=transitions.fields` reports those fields.
+
+`development-triggers` offers one trigger type: branch created.
+
 App rules (`connect:` and `forge:`) keep their app key and module key.
 
 ## Transition ids
 
-Transitions are identified by Jira's numeric ids. A transition added without
-an id, through the REST resources or the browser editor, takes the next
-multiple of ten plus one above the workflow's highest id. The default workflow
-uses 11, 21 and 31. Migration 196 renumbered transitions that earlier editors
-had given generated ids, keeping each workflow's published and draft
-definitions in step.
+Transitions use Jira's numeric ids. A transition added without an id, through REST or the browser editor, gets the next multiple of ten, plus one, above the workflow's highest id (`internal/workflow/workflow.go:831`). The default workflow uses 11, 21 and 31.
 
 ## Transition types
 
@@ -90,3 +85,19 @@ Workflow resources follow Jira's permissions:
 - Anyone else is refused with 401, as Jira documents for these resources.
   Deleting a workflow and the classic `GET /workflow/search` stay with site
   administrators.
+
+## UI
+
+`/settings/workflows` lists workflows. `/settings/workflows/{id}` is the editor: statuses and transitions on a map, per-status approval and editable settings, drafts, and project assignment. Statuses are managed at `/settings/statuses`.
+
+## Code
+
+`internal/workflow/workflow.go`, `internal/api3/api3_workflow_capabilities.go`, `internal/web/directories.go`, `migrations/196_workflow_agent_runs_and_transition_ids.sql`.
+
+## Gaps
+
+Tracked in [PLAN.md](../PLAN.md).
+
+- A transition screen does not reference a Screen entity; Jira's rule takes a screen id, and the screen's tabs and layout apply.
+- `development-triggers` has only the branch-created trigger. Jira also triggers on commits, pull requests, reviews and deployments.
+- A transition cannot collect or set a resolution; see [ISSUE_METADATA.md](ISSUE_METADATA.md#gaps).

@@ -1,44 +1,59 @@
-# Confluence spaces: kinds, states, access and templates
+# Confluence spaces
 
-## Kinds and states
-- **Space types:** `global`, `collaboration`, `knowledge_base`, `personal`,
-  `system`, `onboarding` and `xflow_sample_space`.
-- **Statuses:** `current`, `archived` and `trashed`.
-- Both are stored, can be set through the v1 space update, and are reported
-  on every space bean.
+This doc covers space types and statuses, the v2 space list and create
+endpoints, space templates, the space permission report, and the space tools
+in the browser: templates, analytics, archiving and HTML export. Part of
+[Confluence](CONFLUENCE_SITE_SURFACES.md). The v1 create, update and delete
+endpoints are in [SPACE_LIFECYCLE.md](SPACE_LIFECYCLE.md).
+
+## Types and statuses
+
+- **Types.** `global`, `collaboration`, `knowledge_base`, `personal`,
+  `system`, `onboarding`, `xflow_sample_space`.
+- **Statuses.** `current`, `archived`, `trashed`.
+- **Where they appear.** Both are stored, both can be set through the v1 space
+  update, and both appear on every space bean.
 
 ## Listing spaces
+
 `GET /wiki/api/v2/spaces` filters by:
+
 - `ids`, `keys` and `labels`;
-- `type` and `status` (unknown values are refused with 400);
+- `type` and `status` (an unknown value is 400);
 - `favorited-by` and `not-favorited-by`.
 
-Starring a space is a `favourite` relation from the person to the space, the
-same relation the relations API reads and writes.
+It also takes `sort`, `description-format`, `include-icon`, `cursor` and
+`limit`.
+
+- **Single space.** `GET /wiki/api/v2/spaces/{id}` also takes
+  `include-operations`, `include-properties`, `include-permissions`,
+  `include-role-assignments` and `include-labels`.
+- **Stars.** Starring a space creates a `favourite`
+  [relation](CONTENT_RELATIONS.md).
 
 ## Creating a space
-`POST /wiki/api/v2/spaces` takes a `key`, an `alias`, or both.
-- A space named only by an alias takes its key from it, upper-cased.
-- `currentActiveAlias` reports the alias.
 
-Access comes from exactly one of these:
-- **Default roles.** With nothing given, members get the member role and
-  product admins the admin role. `createPrivateSpace` instead limits the
-  space to its creator.
-- **`roleAssignments`.** The space gets exactly the given roles.
+`POST /wiki/api/v2/spaces` needs a `key`, an `alias`, or both. A space created
+with only an alias takes the upper-cased alias as its key.
+`currentActiveAlias` reports the alias.
+
+Access is set up by exactly one of the following. Giving more than one is 400.
+
+- **Nothing given.** Default [roles](CONFLUENCE_SPACE_ROLES.md) apply:
+  authenticated users get the member role and product admins get the admin
+  role.
+  - `createPrivateSpace` instead limits the space to its creator.
+- **`roleAssignments`.** The space gets exactly these assignments.
   - At least one assigned role must include `administer/space`.
-  - A space whose only assignment is its creator as an administrator is
+  - If the only assignment is the creator as administrator, the space is
     private.
-  - Roles must exist, and users, groups and access classes must belong to
-    the site.
-- **`copySpaceAccessConfiguration`.** The space takes the role assignments,
-  direct permission grants and privacy of the named space. The caller must
-  administer that space.
+  - Roles must exist. Users, groups and access classes must belong to the site.
+- **`copySpaceAccessConfiguration`.** The space copies another space's role
+  assignments, direct grants and privacy. The caller must administer that
+  space.
 
-Giving more than one of these is refused with 400.
-
-`templateKey` starts the space from a space template, which sets its type and
-writes its homepage:
+`templateKey` creates the space from a space template. The template sets the
+space type and writes the homepage:
 
 | Template key | Type | Homepage |
 | --- | --- | --- |
@@ -47,44 +62,79 @@ writes its homepage:
 | `com.atlassian.confluence.plugins.confluence-knowledge-base:knowledge-base-space-blueprint` | knowledge_base | Knowledge base |
 | `com.atlassian.confluence.plugins.confluence-software-blueprints:software-project-space-blueprint` | collaboration | Project overview |
 
-## Permissions
-`GET /spaces/{id}/permissions` and `include-permissions` report what the space
-actually holds:
+## Permission report
+
+`GET /wiki/api/v2/spaces/{id}/permissions` and `include-permissions` list
+what the space actually grants:
+
 - every permission of every role assigned in the space, for the principal it
   is assigned to (`user`, `group`, or `role` for an access class);
-- every direct grant.
+- every [direct grant](SPACE_PERMISSIONS.md).
 
-Each permission appears once, with an id that stays the same for that
-principal and permission in that space.
+Each permission appears once. Its id stays the same for a given principal,
+permission and space.
 
 ## Space tools in the browser
-A space's page links to its **Templates** and **Analytics**, and its
-administrators can archive the space or restore it to current from there.
 
-The templates page lists the space's own content templates, the site's
-templates the space inherits, and the blueprints with any site or space changes
-applied. Space administrators create, edit and delete the space's own templates:
-a name, a description, whether it is for pages or blog posts, a storage-format
-body and labels. Every page template offers **Create page from**, which opens the
-page editor with the template's body; a template from another space cannot be
-used.
+The space page (`/wiki/spaces/{space}`) links to the following tools:
 
-The analytics page counts views, and distinct viewers, of the space's current
-pages and blog posts over the last 7, 30 or 90 days, most viewed first and at
-most 50. It counts only content the reader can see, so the numbers never reveal
-restricted pages.
+- **Templates** (`/wiki/spaces/{space}/templates`).
+  - **What it lists.** The space's own content templates, the site templates
+    the space inherits, and the blueprints, with any site or space changes
+    applied.
+  - **Managing templates.** Space administrators create, edit and delete the
+    space's own templates. A template has a name, a description, a type (page
+    or blog post), a storage-format body and labels.
+  - **Using a template.** Every page template offers **Create page from**,
+    which opens the editor with the template's body. Templates from another
+    space cannot be used. See [templates](CONTENT_TEMPLATES.md).
+- **Analytics** (`/wiki/spaces/{space}/analytics`).
+  - **What it shows.** Views and distinct viewers of the space's current
+    pages and blog posts over the last 7, 30 or 90 days. It lists up to 50
+    items, most viewed first.
+  - **Visibility.** Only content the reader can see is counted. See
+    [analytics](CONTENT_ANALYTICS.md).
+- **Archive and restore** (`POST /wiki/spaces/{space}/status`, space
+  administrators only). Archiving sets the space status to `archived`.
+  Restoring sets it back to `current`.
+- **Export to HTML** (`POST /wiki/spaces/{space}/exports`, space
+  administrators only). This queues a background task (`wiki-space-export`)
+  that builds a zip containing:
+  - `index.html`, which links to every exported page and blog post;
+  - `pages/{id}.html` and `blogposts/{id}.html` for each current page and blog
+    post the exporter can see. Each body is rendered as the space shows it,
+    followed by a list of attachments;
+  - `attachments/{id}/{filename}`: the current attachments the exporter can
+    see, up to 100 MiB in total. Attachments over the limit are listed but not
+    included.
 
-Archiving sets the space's status to `archived` and shows it as an archived
-space; restoring returns it to `current`.
+  The space page lists the exporter's five latest exports and their status.
+  The download (`GET /wiki/spaces/{space}/exports/{task}.zip`) is available
+  only to the person who requested the export. When the export is ready,
+  that person is emailed a link. Code: `internal/store/wiki_space_export.go`.
 
-Space administrators can also export a space from its page. **Export to HTML**
-queues a task that writes the space's current pages and blog posts that the
-administrator can see into a zip: an `index.html` linking every page and blog
-post, and one HTML file for each with its body rendered as the space shows it.
-Attachments are not included. The space page lists the administrator's latest
-five exports with their state, and a finished export downloads only for the
-person who asked for it; an email with the download link is sent when it is
-ready. The export carries each page's and blog post's current attachments that the
-person exporting can see, linked from the page, up to 100 MiB of files;
-attachments past that are listed without their files. Importing a space is
-not supported.
+The space page also handles watching, classification, space properties, role
+assignments and content state settings.
+
+## Gaps
+
+Tracked in [PLAN.md](../PLAN.md).
+
+- **Import.** No space import of any kind: no Confluence XML, no HTML or
+  Markdown, and no Word or other document import.
+- **Export formats.** No XML export (full or custom) for backup or migration,
+  no site export, and no PDF, Word or CSV export of a space.
+- **Export contents.** The HTML export has no page hierarchy, comments,
+  whiteboards, databases, folders or custom content.
+- **Space management UI.** Spaces cannot be deleted, renamed or given a new
+  description in the browser. Those changes are API-only (see
+  [lifecycle](SPACE_LIFECYCLE.md)).
+
+## Tests
+
+`internal/confluence/spaces_test.go`, `internal/store/wiki_space_export_test.go`
+
+## See also
+
+[CONTENT_TREE.md](CONTENT_TREE.md) · [CQL_SEARCH.md](CQL_SEARCH.md) ·
+[CLOUD_PARITY.md](CLOUD_PARITY.md)

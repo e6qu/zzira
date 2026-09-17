@@ -1,80 +1,45 @@
 # Confluence site settings
 
-Updated: 2026-09-12
+Confluence's look and feel for the site and for each space, the themes a site offers, and the system information it reports. Part of the [Confluence site surfaces](CONFLUENCE_SITE_SURFACES.md); Jira's site look and feel is in [JIRA_SITE_CONFIGURATION.md](JIRA_SITE_CONFIGURATION.md). For status, see [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
-The site's look and feel, the themes it offers, and what it reports about
-itself.
+## API
 
-## Jira Cloud REST surface
-
-All eight pinned operations are implemented. An audit against a running server
-found none of them working.
+All eight operations of the pinned Confluence v1 settings group are served (`internal/confluence/site_settings.go`).
 
 | Method and path | Behavior |
-|---|---|
-| `GET /wiki/rest/api/settings/lookandfeel` | The settings for the site, or for one space with `spaceKey`. |
-| `PUT /wiki/rest/api/settings/lookandfeel` | Chooses which settings a space shows. |
+| --- | --- |
+| `GET /wiki/rest/api/settings/lookandfeel` | The site's settings, or a space's with `spaceKey`. |
+| `PUT /wiki/rest/api/settings/lookandfeel` | Chooses which settings a space shows: `global`, `custom` or `theme`. `spaceKey` is required. |
 | `POST /wiki/rest/api/settings/lookandfeel/custom` | Writes the custom settings for the site or a space. |
-| `DELETE /wiki/rest/api/settings/lookandfeel/custom` | Returns the custom settings to the defaults. |
-| `GET /wiki/rest/api/settings/systemInfo` | What the site reports about itself. |
-| `GET /wiki/rest/api/settings/theme` | The themes a site or space may select. |
-| `GET /wiki/rest/api/settings/theme/selected` | The theme assigned to the whole site. |
-| `GET /wiki/rest/api/settings/theme/{themeKey}` | One theme. |
+| `DELETE /wiki/rest/api/settings/lookandfeel/custom` | Resets the custom settings to the defaults. |
+| `GET /wiki/rest/api/settings/systemInfo` | What the site reports about itself. `commitHash` is empty. |
+| `GET /wiki/rest/api/settings/theme` | Themes a site or space may select. The default theme is not listed. |
+| `GET /wiki/rest/api/settings/theme/selected` | The theme assigned to the whole site, or none. |
+| `GET /wiki/rest/api/settings/theme/{themeKey}` | One theme, including the default. |
 
-## Writing the custom settings does not select them
+Changing the site's settings needs site administration; changing a space's needs administration of that space. Space themes are set through `/wiki/rest/api/space/{spaceKey}/theme` ([SPACE_LIFECYCLE.md](SPACE_LIFECYCLE.md)).
 
-They are two acts, and Confluence keeps them apart. Writing stores what a space
-would show if it chose `custom`; choosing is `PUT /settings/lookandfeel`. Keeping
-them separate is what lets an administrator prepare a look before switching to
-it, and what lets a space switch back to a custom look it set up earlier.
+## Behavior
 
-Resetting likewise returns the custom values to the defaults **without** changing
-which settings are selected, which is Confluence's own wording for it.
+- **Writing custom settings does not select them.** `POST .../custom` stores what a space would show if it chose `custom`; `PUT .../lookandfeel` makes the choice. Resetting likewise leaves the selection unchanged.
+- **The site's look is the global one,** so there is nothing to choose for the site and `PUT` requires `spaceKey`.
+- **Choosing `theme` is refused** when the space has no theme.
+- **The default theme is not a choice.** It is left out of the theme list but readable by key. A site with no theme assigned reports none rather than the default.
+- **Values are stored as given,** not validated field by field.
+- **Wiki pages apply the look.** A page uses the space's custom settings when the space selects them, otherwise the site's, otherwise ZZIRA's own look. The header takes the background and primary navigation colour; headings, links, borders and dividers take theirs in the light theme only, so the dark theme stays readable. Only plain colours (hex, `rgb()`/`rgba()`, colour names) are written into the page, so stored values cannot inject other CSS (`internal/web/wiki_look_and_feel.go`).
 
-## The site's own look is the global one
+Storage: `migrations/152_site_look_and_feel.sql` (`wiki_look_and_feel`, `wiki_site_settings`).
 
-So `PUT /settings/lookandfeel` requires a `spaceKey`: there is nothing to choose
-for the site itself. A space may show the global settings, its own custom ones,
-or its theme's — and choosing `theme` is refused when the space has no theme,
-because there would be nothing to show.
+## Gaps
 
-## Wiki pages show the custom look
+Tracked in [PLAN.md](../PLAN.md).
 
-Wiki pages apply the custom look and feel: a space's own custom settings when
-the space selects them, otherwise the site's, and ZZIRA's own look while the
-site keeps the defaults. The header takes its background and primary
-navigation colour; headings, links, and borders and dividers take theirs in the
-light theme, which the chosen colours are meant for, so the dark theme stays
-readable. Only plain colours (hex, `rgb()`/`rgba()` or colour names) are
-written into the page, so a stored value cannot inject other styles.
+- No way to assign a theme to the whole site: `wiki_site_settings.global_theme_key` is read but nothing writes it.
+- No administration UI for the site or space look and feel; it is API-only.
+- Themes come from ZZIRA's built-in set; apps cannot provide themes.
 
-## The default theme is not a choice
+## Tests
 
-`GET /settings/theme` leaves it out: it is what a site shows when no theme is
-chosen, rather than a theme to choose. It can still be read by key, because a
-space may be showing it and a client needs its name.
-
-A site with no theme assigned reports none rather than reporting the default,
-which is the same distinction the space theme read makes.
-
-## Evidence and current boundary
-
-- `internal/confluence/site_settings_test.go` covers all eight operations, that
-  the whole look and feel structure is answered, that writing the custom
-  settings does not select them and resetting does not unselect, that the site
-  cannot choose a look because its look is the global one, that a space with no
-  theme cannot show a theme and can once it has one, that the default theme is
-  absent from the list but readable by key, and that changing any of it is
-  administration.
-- `internal/web/wiki_look_and_feel_test.go` covers the CSS written from the
-  settings, and `e2e/wiki_space_tools.spec.ts` sees a custom heading colour on a
-  wiki page and its removal after a reset; `TestSiteSettings` checks which
-  settings a page shows.
-- `migrations/152_site_look_and_feel.sql` is exercised from a clean PostgreSQL
-  schema.
-
-The look and feel values are stored and returned as given rather than validated
-field by field, so a colour this product does not render is kept and reported
-faithfully. The `commitHash` the system information carries is empty, themes
-come from the set this site installs rather than from apps, and assigning a
-theme to the whole site has no pinned operation to set it.
+- `internal/confluence/site_settings_test.go` (`TestSiteSettings`): all eight operations and the rules above.
+- `internal/web/wiki_look_and_feel_test.go`: CSS generated from the settings.
+- `e2e/wiki_space_tools.spec.ts`: a custom heading colour on a wiki page and its removal after reset.

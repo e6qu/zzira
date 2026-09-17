@@ -1,8 +1,9 @@
 # Confluence notifications: mentions, watches and email
 
-People hear about Confluence content in two ways: someone mentions them, or
-they watch the content, its space or one of its labels. Both put an item in
-the inbox at `/notifications` and send the same message by email.
+People are notified about Confluence content when someone mentions them, or
+when they watch the content, its space or one of its labels. Each
+notification creates an item in the inbox at `/notifications` and sends the
+same message by email. Part of [Confluence](CONFLUENCE_SITE_SURFACES.md).
 
 ## Mentions
 
@@ -12,64 +13,83 @@ A mention is Confluence's user link in storage format:
 <ac:link><ri:user ri:account-id="…" /><ac:plain-text-link-body>Ana</ac:plain-text-link-body></ac:link>
 ```
 
-- Pages, blog posts, footer comments and inline comments can mention people.
-  The renderer shows a mention as `@Name` linking to the person's profile.
-  A mention with no link body is labelled with the person's display name
-  when the page is shown.
-- A person is notified the first time a mention of them reaches readers:
-  - when content is published with it, or
-  - when a published version or a comment edit adds it.
-  Keeping a mention in later versions notifies nobody again, and nor do
-  drafts until they are published.
-- Nobody is notified for mentioning themselves. Nor is anyone who cannot
-  see the content: outside the site, excluded by page restrictions or space
-  permissions, or unable to see a private post.
-- In the editor, typing `@` (or pressing **Mention**) offers the site's
-  people; choosing one writes the mention. Comment and blog post boxes,
-  which take storage format, offer the same list and insert the markup.
+- **Where.** Pages, blog posts, footer comments and inline comments. It
+  renders as `@Name` linking to the profile. A mention with no link body
+  shows the person's display name.
+- **When.** A person is notified the first time a mention of them reaches
+  readers: when content is published with it, or when a published version or
+  comment edit adds it.
+  - A mention that stays in later versions does not notify again.
+  - Drafts notify nobody until they are published.
+- **Who is not notified.**
+  - The person who wrote the mention.
+  - Anyone who cannot see the content: people outside the site, or excluded
+    by page restrictions, space permissions or a private blog post.
+- **Editor.** Typing `@` or pressing **Mention** lists the site's people. The
+  comment and blog post boxes insert the storage markup.
 
 ## Watches
 
-`/wiki/rest/api/user/watch/{content,space,label}/…` read and change watches.
+`/wiki/rest/api/user/watch/{content,space,label}/…` reads and changes watches.
+`GET /wiki/rest/api/space/{spaceKey}/watch` lists a space's watchers.
 
-- **Content** watches cover pages, blog posts, whiteboards, databases,
-  folders, Smart Links and custom content.
+- **Watchable content.** Pages, blog posts, whiteboards, databases, folders,
+  Smart Links and custom content.
   - Comments and attachments are watched through the page or blog post they
-    are on; watching one directly is refused with 400.
-- **Who may act for someone else** (`accountId`, `key` or `username`) follows
-  Confluence's rule:
-  - a site administrator, for any watch;
-  - an administrator of the space that the watched space or content belongs
-    to, for that space and its content;
-  - for label watches, which span spaces, only site administrators.
-- `/content/{id}/notification/child-created` lists a piece of content's own
-  watchers, and `/content/{id}/notification/created` lists its space's.
-  Each watch's `type` is the kind of content (`page`, `blogpost`,
-  `whiteboard`, …) or `space`.
-- **What watchers hear about:**
-  - a page created under a watched page, and non-minor updates to pages;
-  - publishing a blog post, and non-minor updates to one;
-  - new footer and inline comments on a page, blog post or custom content.
-- **One item per change:** a watcher who matches through several watches
-  still gets one item. A watcher whom the same change mentions gets only the
-  mention.
-- **Visibility:** watchers who cannot see the changed content or comment
-  are not told about it.
-- Blog posts and pages have **Watch** buttons; spaces and labels keep theirs.
+    belong to. Watching one directly is 400.
+- **Acting for someone else** (`accountId`, `key` or `username`):
+  - **Any watch.** Site administrators.
+  - **Spaces and their content.** Administrators of that space.
+  - **Label watches.** Site administrators only, because labels span spaces.
+- **Watcher lists.**
+  - `GET /wiki/rest/api/content/{id}/notification/child-created` lists the
+    content's own watchers.
+  - `…/notification/created` lists its space's watchers.
+  - Each watch's `type` is the content type (`page`, `blogpost`,
+    `whiteboard`, …) or `space`.
+- **What notifies watchers.**
+  - **Pages.** A page created under a watched page, and non-minor page
+    updates.
+  - **Blog posts.** Publishing, and non-minor updates.
+  - **Comments.** New footer and inline comments on a page, blog post or
+    custom content.
+- **One item per change.** Someone who matches several watches gets one item.
+  Someone who is also mentioned in the change gets only the mention.
+- **Visibility.** Watchers who cannot see the changed content or comment are
+  not notified.
+- **UI.** Pages, blog posts, spaces and labels have **Watch** buttons.
 
 ## Email
 
-Every Confluence inbox item is also emailed to the person it is for.
-
-1. The item is written with `email_state = 'pending'`.
-2. `WikiNotificationEmailRunner` moves pending items into the email outbox:
-   - one message per item, de-duplicated by notification id;
-   - the subject reads, for example, `Ana updated blog post "Weekly"`;
-   - the body links to the page or blog post.
+1. Each Confluence inbox item is written with `email_state = 'pending'`
+   (migration 178).
+2. `WikiNotificationEmailRunner` (`internal/store/wiki_notification_email.go`,
+   started in `cmd/server/main.go`) moves pending items to the email outbox.
+   It writes one message per item, deduplicated by notification id. Subjects
+   look like `Ana updated blog post "Weekly"`, and the body links to the
+   content.
 3. The mail runner delivers the outbox when SMTP is configured.
-4. People without an email address, or deactivated since, are skipped.
+4. People with no email address, or who have been deactivated, are skipped
+   (`email_state = 'skipped'`).
 
-Notifications written before this change stay inbox-only.
+Links to blog posts use `/wiki/blogposts/{id}`, which redirects to the post in
+its space.
 
-Notifications leading to a blog post use `/wiki/blogposts/{id}`, which
-redirects to the post in its space.
+## Gaps
+
+Tracked in [PLAN.md](../PLAN.md).
+
+- **Autowatch.** Content you create or edit is not watched automatically.
+- **Email preferences.** No per-user Confluence email settings, no daily or
+  weekly digest, and no "notify me about my own actions" option.
+- **Likes and shares.** Likes do not notify the author. There is no
+  **Share** action that notifies people.
+- **Other events.** Watchers are not notified when content is moved, deleted,
+  archived or has a new attachment.
+
+## See also
+
+[CONFLUENCE_COMMENTS.md](CONFLUENCE_COMMENTS.md) ·
+[CONFLUENCE_TASKS.md](CONFLUENCE_TASKS.md) ·
+[NOTIFICATION_SCHEMES.md](NOTIFICATION_SCHEMES.md) ·
+[CLOUD_PARITY.md](CLOUD_PARITY.md)

@@ -1,93 +1,72 @@
-# Space permissions
+# Confluence space permissions (direct grants)
 
-Updated: 2026-09-12
+A direct grant gives one user or group one permission in a space. Grants
+exist alongside [space role](CONFLUENCE_SPACE_ROLES.md) assignments, and the
+permission check accepts either. Part of
+[Confluence](CONFLUENCE_SITE_SURFACES.md). Code:
+`internal/confluence/space_permission_grants.go`,
+`internal/store/wiki_space_permissions.go`, table
+`wiki_space_permission_grants` (migration 149).
 
-A space says who may do what in it. Confluence has two ways to say it, and this
-product had only one.
-
-## Two ways to say it
-
-A **role** gathers permissions and is assigned to people; a **direct grant**
-gives one subject one permission. This product started with roles only —
-[space roles](../api/conformance/MATRIX.md) were delivered earlier — so the
-older permission API had nothing to write to.
-
-Grants exist now, alongside role assignments, and the permission check accepts
-either. That is what lets the two APIs describe one space rather than two
-models that could disagree about who may open a page.
-
-## Jira Cloud REST surface
-
-All six pinned operations in this family are implemented. An audit against a
-running server found none of them working.
+## API
 
 | Method and path | Behavior |
-|---|---|
-| `GET /wiki/api/v2/space-permissions` | The permissions a caller may grant. |
-| `GET /wiki/api/v2/space-role-mode` | How this site governs spaces. |
-| `POST /wiki/rest/api/space/{spaceKey}/permission` | Grants one permission to one subject. |
-| `POST /wiki/rest/api/space/{spaceKey}/permission/custom-content` | Grants several custom content operations at once. |
+| --- | --- |
+| `GET /wiki/api/v2/space-permissions` | The permissions that can be granted. Every entry except `read/space` lists `read/space` in `requiredPermissionIds`. |
+| `GET /wiki/api/v2/space-role-mode` | See [lifecycle](SPACE_LIFECYCLE.md#space-role-mode). |
+| `POST /wiki/rest/api/space/{spaceKey}/permission` | Grants one `operation` (`key` + `target`) to one `subject`. |
+| `POST /wiki/rest/api/space/{spaceKey}/permission/custom-content` | Grants several custom content operations at once. An operation with `access: false` is skipped. |
 | `DELETE /wiki/rest/api/space/{spaceKey}/permission/{id}` | Removes a grant. |
-| `POST /wiki/rest/api/content/{id}/permission/check` | Whether a subject may act on a piece of content. |
+| `POST /wiki/rest/api/content/{id}/permission/check` | Reports whether a subject may perform an operation on a page. |
 
-## Confluence has one View permission, not one per content type
+## Behavior
 
-Confluence's space permission set has a single **View**, and being able to see
-the space is what lets you read what is in it. This product names each read
-separately — `read/page`, `read/blogpost`, and so on — because its roles were
-built that way.
+- **Subjects.**
+  - A `user` is named by account id.
+  - A `group` is named by id or by name.
+  - Any other subject type is 400.
+- **Operations.** A `key/target` pair that is not in the catalogue is 400.
+  Granting the same permission twice changes nothing.
+- **View covers all reads.** A granted `read/space` satisfies every `read/*`
+  permission, which matches Confluence's single **View** permission.
+- **Open spaces.** A space with no role assignments and no grants is open to
+  its readers. The first grant or assignment closes the space to everyone it
+  does not name.
+- **Removing View.** Removing a subject's `read/space` also removes all of
+  that subject's other grants in the space.
+- **Administrators.** Workspace administrators administer every space. The
+  grant endpoints look the space up without the usual visibility check for
+  them, so a grant can never lock an administrator out.
+- **Permission check.**
+  - **How it decides.** It uses the same rules as reads. A group is allowed if
+    any of its members is allowed.
+  - **Missing page.** A page that does not exist is 404, not `false`.
 
-So a granted `read/space` satisfies every `read/*` permission. Without that, a
-client granting Confluence's View would find the person still could not open a
-page, and the API would be faithful in shape and wrong in effect.
+## Permissions
 
-The first probe caught exactly this: the check said no to someone who had just
-been granted View.
+Granting and removing need space administration or workspace administration.
+The permission check needs site membership.
 
-## A space that says nothing is open
+## Gaps
 
-That was already true of roles: a space with no role assignments is open to its
-readers. Grants join the same rule — **no assignments and no grants** means
-open. Had grants been left out of it, a space governed only by grants would
-have read as open to everyone, which is the opposite of what granting means.
+Tracked in [PLAN.md](../PLAN.md).
 
-The consequence is worth stating plainly: the first grant closes the space to
-everyone it does not name.
+- **Missing permissions.** `export/space`, `restrict_content/space`,
+  `archive/page` and Confluence's other non-CRUD permissions cannot be granted
+  or enforced.
+- **Subject types.** No anonymous or guest grants. Grant subjects are only
+  `user` or `group`.
+- **Permission check.** It covers pages only, not blog posts, attachments,
+  comments or tree content.
+- **Browser.** Direct grants cannot be viewed or edited in the browser; only
+  role assignments can.
 
-## An administrator cannot be locked out
+## Tests
 
-A workspace administrator administers every space, which is the product's
-existing rule. The grant operations therefore resolve the space without the
-ordinary visibility gate for an administrator — otherwise the first grant would
-hide the space from the person configuring it, and nothing could undo it.
+`internal/confluence/space_permission_grants_test.go`
 
-## Removing View removes the rest
+## See also
 
-Confluence documents that removing a subject's View removes all their space
-permissions. It does here too: a permission that cannot be reached is not a
-permission, and leaving the others behind would show grants that do nothing.
-
-## `access: false` is not a grant
-
-The custom content endpoint takes operations each carrying `access`. An
-operation marked `false` describes a permission the app does **not** want, so
-granting it would be the opposite of what was asked. The test counts the rows to
-prove only the wanted one was written.
-
-## Evidence and current boundary
-
-- `internal/confluence/space_permission_grants_test.go` covers all six
-  operations, that the catalogue names the view permission as a prerequisite,
-  that an open space allows anyone while a granted one does not, that View
-  allows reading but not updating, that a group grant reaches its people, every
-  refusal, that `access: false` grants nothing, and that removing View takes the
-  subject's other grants with it.
-- `migrations/149_space_permission_grants.sql` is exercised from a clean
-  PostgreSQL schema.
-
-The five `space-permissions/transition/*` operations remain. They migrate a site
-from grants to roles, and now that both models exist they have something real to
-move between, which is why they are a checkpoint of their own rather than part
-of this one. Confluence's `read/space` on a space the caller cannot see, export
-and restriction permissions, and space permissions in the browser journeys also
-remain.
+[SPACE_PERMISSION_TRANSITION.md](SPACE_PERMISSION_TRANSITION.md) ·
+[CONFLUENCE_OPERATIONS.md](CONFLUENCE_OPERATIONS.md) ·
+[CLOUD_PARITY.md](CLOUD_PARITY.md)

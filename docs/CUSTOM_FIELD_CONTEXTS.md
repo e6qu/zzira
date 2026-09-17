@@ -1,87 +1,50 @@
-# Jira custom field contexts
+# Custom field contexts
 
-Updated: 2026-09-11
+A custom field context decides whether a custom field reaches a project and work type at all, which default value it starts with there, and which options it offers ([CUSTOM_FIELD_OPTIONS.md](CUSTOM_FIELD_OPTIONS.md)). [Screens](SCREENS.md) then decide where the field appears on a form, and [field configurations](FIELD_CONFIGURATIONS.md) whether it is required or hidden. Part of the [Jira platform](JIRA_PLATFORM.md). For status, see [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
-A screen decides which fields a form shows and a field configuration decides how
-each behaves. A **custom field context** decides something earlier: whether a
-custom field reaches a project and work type at all, and what value it starts
-with there.
+## API
 
-Site administrators manage contexts at `/settings/custom-fields`.
-
-## Jira Cloud REST surface
-
-This checkpoint implements all 14 pinned custom field context operations:
+All operations need *Administer Jira*.
 
 | Method and path | Behavior |
 |---|---|
-| `GET/POST /rest/api/3/field/{fieldId}/context` | Pages a field's contexts, or creates one scoped to projects and work types. |
-| `PUT/DELETE /rest/api/3/field/{fieldId}/context/{contextId}` | Updates a context's name and description, or deletes it. |
-| `PUT /rest/api/3/field/{fieldId}/context/{contextId}/project` | Adds projects to a context. |
-| `POST /rest/api/3/field/{fieldId}/context/{contextId}/project/remove` | Removes projects from a context. |
-| `PUT /rest/api/3/field/{fieldId}/context/{contextId}/issuetype` | Adds work types to a context. |
-| `POST /rest/api/3/field/{fieldId}/context/{contextId}/issuetype/remove` | Removes work types from a context. |
-| `GET/PUT /rest/api/3/field/{fieldId}/context/defaultValue` | Reads or sets the default value each context supplies. |
-| `GET /rest/api/3/field/{fieldId}/context/defaultValues` | Reads the same defaults under Jira's second path. |
+| `GET/POST /rest/api/3/field/{fieldId}/context` | Pages a field's contexts (filters `contextId`, `isAnyIssueType`, `isGlobalContext`), or creates one scoped to projects and work types. |
+| `PUT/DELETE /rest/api/3/field/{fieldId}/context/{contextId}` | Changes name and description, or deletes. |
+| `PUT /rest/api/3/field/{fieldId}/context/{contextId}/project` | Adds projects. |
+| `POST /rest/api/3/field/{fieldId}/context/{contextId}/project/remove` | Removes projects. |
+| `PUT /rest/api/3/field/{fieldId}/context/{contextId}/issuetype` | Adds work types. |
+| `POST /rest/api/3/field/{fieldId}/context/{contextId}/issuetype/remove` | Removes work types. |
+| `GET/PUT /rest/api/3/field/{fieldId}/context/defaultValue` | Reads or sets each context's default value. |
+| `GET /rest/api/3/field/{fieldId}/context/defaultValues` | Same read under Jira's second path. |
 | `GET /rest/api/3/field/{fieldId}/context/issuetypemapping` | Pages the work types each context covers. |
 | `GET /rest/api/3/field/{fieldId}/context/projectmapping` | Pages the projects each context covers. |
-| `POST /rest/api/3/field/{fieldId}/context/mapping` | Resolves the governing context for given project and work type pairs. |
+| `POST /rest/api/3/field/{fieldId}/context/mapping` | Returns the governing context for project and work type pairs. |
+| `GET /rest/api/3/field/{fieldId}/contexts` | Pages the field's contexts with scope ([ISSUE_FIELDS.md](ISSUE_FIELDS.md)). |
 
-Context names are unique per field without regard to case, IDs come from a
-dedicated sequence, and every mutation writes an immutable action in the same
-transaction.
+Context names are unique per field, ignoring case. Every change is written to the action log in the same transaction.
 
-## Resolution, and the rule that keeps it unambiguous
+## Behavior
 
-`jira_custom_field_context` answers one question — which context governs this
-field for this project and work type — and prefers a context that names the
-project or work type over one that covers everything. A context that lists no
-projects applies to every project, and the same for work types; removing the
-last entry returns it to that state, which is what Jira means by removing them.
+- A context with no projects applies to every project; one with no work types applies to every work type. Removing the last project or work type returns the context to "all".
+- No two contexts of a field may cover the same project and work type. A create or widen that would overlap is 409 (`assertNoContextOverlapTx`, `internal/store/custom_field_contexts.go:192`). A global context therefore blocks any other context on that field.
+- A custom field always keeps at least one context. A new custom field gets a global context from a database trigger.
+- The SQL function `jira_custom_field_context(field, project, work type)` returns the governing context, preferring one that names the project, then one that names the work type. Everything below uses it:
+  - `createmeta` and the create dialog leave out a field whose context does not reach the project and work type.
+  - The context's default value is added to the field metadata and fills the create dialog, unless the request already has a value.
+  - Service request type forms and `CustomFieldsForProject`.
+  - Commands refuse a create, edit or transition that sets a field outside its context, so REST clients cannot bypass the scope.
+  - Bulk edit offers only fields in context for every selected work item.
 
-**At most one context may cover a given project and work type.** Creating or
-widening a context that would overlap another is rejected, so resolution never
-has to break a tie. A custom field also always keeps at least one context.
+## UI
 
-That resolution binds three surfaces:
+`/settings/custom-fields`: per field, create and delete contexts; add or remove projects and work types; set the default value; manage options; for Assets fields, choose whether a context holds one object or several.
 
-- `IssueCreateMetadata` drops a custom field whose context does not reach the
-  project and work type, so the create dialog and `createmeta` agree.
-- The governing context's default value is stamped onto the field metadata and
-  pre-fills the create dialog, unless the request already carries a value.
-- Service request type forms and `CustomFieldsForProject` resolve through the
-  same function.
-- The command path rejects a create, edit, or transition that sets a custom
-  field the context does not reach, so the scope holds for REST clients that
-  never read the metadata, and bulk edit offers only fields in context for every
-  selected work item.
+## Code
 
-## What replaced the old model
+`internal/api3/custom_field_contexts.go`, `internal/store/custom_field_contexts.go`, `internal/web/custom_field_contexts.go`, `migrations/136_custom_field_contexts.sql`; tests in `internal/api3/custom_field_contexts_test.go` and `e2e/custom_field_contexts.spec.ts`.
 
-Custom fields were previously scoped by a `field_contexts(field_id, project_id)`
-table with no work types, no name, and no defaults, consulted by two queries
-that each re-implemented "no rows means global". The migration carries those
-rows into the richer model — a field with project rows becomes a project-scoped
-context, everything else global — drops the old table, and points both queries
-at the shared function. A newly created custom field is provisioned with a
-global context by trigger.
+## Gaps
 
-## Evidence and current boundary
+Tracked in [PLAN.md](../PLAN.md).
 
-- `internal/api3/custom_field_contexts_test.go` covers all 14 operations,
-  permission rejection, unknown fields, projects and work types, the overlap
-  refusal, the last-context guard, and the binding: narrowing a context removes
-  the field from another project's `createmeta`, a work-type-scoped context does
-  not reach other work types, and a default reaches the field metadata.
-- `e2e/custom_field_contexts.spec.ts` covers the browser journey: a new field
-  reaches both projects, narrowing its context removes it from one, a default
-  pre-fills the create dialog, REST agrees, and the page reflows at 320 px.
-- `migrations/136_custom_field_contexts.sql` is exercised from a clean
-  PostgreSQL schema. The page is in the light and dark axe sweep.
-
-A select custom field's options also belong to its context; see
-[CUSTOM_FIELD_OPTIONS.md](CUSTOM_FIELD_OPTIONS.md).
-
-The context list filters by `isAnyIssueType` and `isGlobalContext`. Jira's
-context-scoped field values on issues and exact Jira error wording also
-remain.
+- The overlap rule differs from Jira. Jira allows one global context alongside project-scoped contexts, which take precedence, and forbids only one project being in two contexts.

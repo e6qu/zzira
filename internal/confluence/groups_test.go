@@ -163,6 +163,31 @@ func TestWikiGroups(t *testing.T) {
 		t.Fatalf("the person is still reported in the group: %v", gone)
 	}
 
+	// Another organization's group is invisible here: it cannot be read,
+	// joined or deleted by id.
+	var foreignOrg, foreignDirectory, foreignGroup string
+	if err := st.Pool.QueryRow(ctx, `INSERT INTO organizations(name) VALUES($1) RETURNING id::text`, groupName+" other org").Scan(&foreignOrg); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { exec(`DELETE FROM organizations WHERE id=$1::uuid`, foreignOrg) })
+	if err := st.Pool.QueryRow(ctx, `INSERT INTO directories(organization_id,name) VALUES($1::uuid,$2) RETURNING id::text`, foreignOrg, groupName+" other directory").Scan(&foreignDirectory); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { exec(`DELETE FROM directories WHERE id=$1::uuid`, foreignDirectory) })
+	if err := st.Pool.QueryRow(ctx, `INSERT INTO groups(directory_id,name) VALUES($1::uuid,$2) RETURNING id::text`, foreignDirectory, groupName+"-foreign").Scan(&foreignGroup); err != nil {
+		t.Fatal(err)
+	}
+	call(admin, "GET", "/group/by-id?id="+foreignGroup, nil, 404)
+	call(admin, "POST", "/group/userByGroupId?groupId="+foreignGroup, map[string]any{"accountId": member}, 404)
+	call(admin, "DELETE", "/group/by-id?id="+foreignGroup, nil, 404)
+	var foreignLeft int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM groups WHERE id::text=$1`, foreignGroup).Scan(&foreignLeft); err != nil {
+		t.Fatal(err)
+	}
+	if foreignLeft != 1 {
+		t.Fatalf("another organization's group was deleted")
+	}
+
 	// Deleting is administration, and takes the group with its memberships.
 	call(admin, "POST", "/group/userByGroupId?groupId="+groupID, map[string]any{"accountId": admin}, 201)
 	call(member, "DELETE", "/group/by-id?id="+groupID, nil, 403)

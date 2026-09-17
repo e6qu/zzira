@@ -211,7 +211,7 @@ func validateDescriptorWire(wire descriptorWire) (models.AppDescriptor, error) {
 			return models.AppDescriptor{}, err
 		}
 		name := strings.ToLower(function.Name)
-		if functionNames[name] || builtInJQLFunction(name) {
+		if functionNames[name] || jql.IsBuiltInFunction(name) {
 			return models.AppDescriptor{}, fmt.Errorf("JQL function name %q is duplicate or reserved", function.Name)
 		}
 		functionNames[name] = true
@@ -362,19 +362,6 @@ func validateJQLFunction(input jqlFunctionWire, format string, moduleKeys map[st
 		operators = append(operators, value)
 	}
 	return models.AppJQLFunction{Key: input.Key, Name: input.Name, Path: input.URL, Arguments: input.Arguments, Types: types, Operators: operators}, nil
-}
-
-func builtInJQLFunction(name string) bool {
-	switch name {
-	case "closedsprints", "currentuser", "earliestunreleasedversion", "endofday", "endofmonth", "endofweek", "endofyear",
-		"futuresprints", "latestreleasedversion", "linkedissues", "linkedworkitems", "membersof", "now", "opensprints",
-		"projectsleadbyuser", "projectswhereuserhaspermission", "projectswhereuserhasrole", "releasedversions", "spacesleadbyuser", "spaceswhereuserhaspermission", "spaceswhereuserhasrole",
-		"standardissuetypes", "standardworktypes", "startofday", "startofmonth", "startofweek", "startofyear",
-		"subtaskissuetypes", "subtaskworktypes", "unreleasedversions", "updatedby", "votedissues", "votedworkitems",
-		"watchedissues", "watchedworkitems":
-		return true
-	}
-	return false
 }
 
 func validAppCallbackPath(value string) bool {

@@ -8,6 +8,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// siteGroupJoin narrows a groups query aliased g to the groups the site's
+// organization owns; the site's workspace id is the query's second argument.
+const siteGroupJoin = `JOIN directories sgd ON sgd.id=g.directory_id
+	JOIN sites sgs ON sgs.organization_id=sgd.organization_id AND sgs.workspace_id=$2`
+
 // DeleteSiteGroup removes a group. With a swap group, everything granted to the
 // deleted group — permissions, security levels, roles, shares, restrictions —
 // moves to the swap group, as Jira does; without one those grants go with it.
@@ -20,9 +25,16 @@ func (s *Store) DeleteSiteGroup(ctx context.Context, ws, actor, groupID, swapID 
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	var exists bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM groups g `+siteGroupJoin+` WHERE g.id::text=$1)`, groupID, ws).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return pgx.ErrNoRows
+	}
 	var swapName string
 	if swapID != "" {
-		if err = tx.QueryRow(ctx, `SELECT name FROM groups WHERE id::text=$1`, swapID).Scan(&swapName); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT g.name FROM groups g `+siteGroupJoin+` WHERE g.id::text=$1`, swapID, ws).Scan(&swapName); err != nil {
 			return fmt.Errorf("%w: the swap group does not exist", ErrPeopleNotFound)
 		}
 	}

@@ -1,140 +1,65 @@
 # Moving, copying and archiving pages
 
-Updated: 2026-09-14
+Reordering and moving pages, copying a page or a hierarchy, archiving, trashing a tree, and the long tasks that report background work. Part of [Confluence](CONFLUENCE_SITE_SURFACES.md); status in [CLOUD_PARITY.md](CLOUD_PARITY.md). Moving non-page nodes is in [content tree](CONTENT_TREE.md).
 
-Confluence relocates and duplicates whole page trees: a page moves among its
-siblings or under a new parent, one page or a whole hierarchy is copied,
-pages are archived, and a tree goes to the trash.
-
-## Pages had no order to move within
-
-Children were returned in id order, so "move this page before that one" had
-nothing to act on. A move would have answered 200 and changed nothing — the
-failure that is hardest to notice, because the status code looks right.
-
-Pages now carry a position, seeded from the id order readers were already
-seeing, and every page listing follows it. The test asserts the order a reader
-gets after each move rather than the status code.
-
-## Jira Cloud REST surface
-
-All seven pinned operations are implemented. An audit against a running server
-found none of them working.
+## API
 
 | Method and path | Behavior |
-|---|---|
-| `PUT /wiki/rest/api/content/{pageId}/move/{position}/{targetId}` | Moves a page `before`, `after`, `append` (under the target) or `above` (under it, first). |
-| `POST /wiki/rest/api/content/{id}/copy` | Copies one page, answering with the copy. |
-| `POST /wiki/rest/api/content/{id}/pagehierarchy/copy` | Queues a copy of a page and its descendants. |
-| `POST /wiki/rest/api/content/archive` | Queues archiving a list of pages. |
-| `DELETE /wiki/rest/api/content/{id}/pageTree` | Queues trashing a page and everything beneath it. |
-| `GET /wiki/rest/api/longtask` and `/longtask/{id}` | Reports the background operations. |
+| --- | --- |
+| `PUT /wiki/rest/api/content/{pageId}/move/{position}/{targetId}` | Moves a page `before` or `after` the target, or beneath it (`append`: last, `above`: first). The target may be any tree node. |
+| `POST /wiki/rest/api/content/{id}/copy` | Copies one page; answers the copy as v1 content with `expand` (at most 8). |
+| `POST /wiki/rest/api/content/{id}/pagehierarchy/copy` | Queues a copy of a page and its descendants (202). |
+| `POST /wiki/rest/api/content/archive` | Queues archiving a list of pages (202). |
+| `DELETE /wiki/rest/api/content/{id}/pageTree` | Queues trashing a page and its descendants (202). |
+| `GET /wiki/rest/api/longtask`, `/longtask/{id}` | Background task status. |
 
-## What runs in the background, and why
+Queued operations answer `202` with a task `id` and a `links.status` URL. They run on the durable task queue shared with Jira bulk operations, so they survive a restart. A failed task reports why (for example, a hierarchy copied into itself).
 
-Copying one page answers immediately: it is one row and its belongings. Copying
-a hierarchy, archiving a list and trashing a tree can each touch a great many
-pages, so Confluence accepts them with `202` and a task, and so does this. They
-run on the same durable task queue Jira's bulk operations use rather than a
-mechanism of their own, which is why they survive a restart and why the long
-task reads have something real to report.
+Pages carry a stored `position`; every page listing follows it.
 
-The long task reads are part of this checkpoint rather than a later one: an
-operation that answers `202` and a task id is not usable until the task can be
-read back.
+## Move rules
 
-## What a move refuses
+Refused (400):
 
-**An unknown position.** Confluence's four are the whole vocabulary.
+- an unknown position;
+- moving a page relative to itself, or beneath its own descendant;
+- moving a space homepage to another space;
+- a title the destination space already has as a current page.
 
-**Moving a page relative to itself**, and **moving a page beneath its own
-descendant** — that would leave the subtree with no root and the page would
-vanish from the space.
+A move to another space takes the whole subtree, including folders, whiteboards, databases, Smart Links and custom content under those pages. It needs permission to delete pages in the source space and add pages in the destination (403 otherwise). Every moved page and node is recorded with its new space, so space-filtered replicas receive it.
 
-**Moving a space's homepage to another space**, and **a title the destination
-already shows** — a space holds one current page per title, so the move is
-refused rather than leaving two.
+## Copying
 
-## Moving to another space
-
-A target in another space is allowed, as it is in Confluence. The page takes its
-whole subtree along, and with it the folders, whiteboards, databases and Smart
-Links that hang off those pages; leaving them behind would strand content in a
-space whose page tree no longer holds its parent. It needs permission to delete
-pages in the space the tree leaves and to add pages in the space it joins.
-
-Every moved page, and every moved piece of content, is recorded with the space
-it is now in. Replicas receive wiki content filtered by space, so an action
-that did not say which space it belonged to reached nobody. Page moves, copies,
-archiving and trashing all used to record such actions; they now record the
-page itself.
-
-## What travels with a copy
-
-The caller chooses: attachments, properties, labels, restrictions
-(`copyPermissions`) and the custom content filed directly under the page
-(`copyCustomContents`). Restrictions travel as they are, so a page only some
-people could see is not copied into one everybody can; copied custom content
-starts its own history at version 1, as a copied page does. A copy made to start a
-new document wants the text and not last quarter's attachments, so none of them
-are implied. An attachment's bytes are content-addressed, so a copied
-attachment points at the same stored blob rather than duplicating it.
-
-A space shows one current page per title, so a copy landing beside its source is
-renamed — "Alpha (2)" — rather than failing on the collision. `titleOptions` on
-a hierarchy copy applies a prefix or a search and replace to every page in the
-tree, which is what makes a copied hierarchy distinguishable from the original.
+- **Destination**: `destination` of type `space_key`, `parent_page` or `existing_page`.
+- **Options**, all off by default: `copyAttachments`, `copyProperties`, `copyLabels`, `copyPermissions` (restrictions, copied as they are), `copyCustomContents` (custom content directly under the page, restarted at version 1).
+- **Body**: `body.storage` replaces the copied body; `pageTitle` sets the title.
+- **Title clash**: a copy landing where its title is taken is renamed "Title (2)", "Title (3)", and so on.
+- **Hierarchy copy**: `titleOptions` applies a `prefix`, or a `search` and `replace`, to every copied title.
+- **Attachments**: copied attachments reference the same stored blob (content-addressed).
 
 ## Archiving and restoring
 
-Archiving is a status of its own: an archived page keeps its history, leaves
-the page tree and is read-only until it is restored, though it can still go to
-the trash. Trashing a tree takes the descendants with it; archiving takes them
-only when asked. A page archived on its own lifts its children a level, which
-is what Confluence does, so they stay in the tree rather than hanging off a
-page nobody can see there.
-
-Restoring puts a page back under its parent when that parent is still current,
-and at the top of the space when it is not. Archived children come back with it
-when asked. A restore is refused while the space shows another current page
-with the same title.
-
-The page view offers Archive, Restore and Move, and the space lists its archived
-pages under their own tab. The REST archive is queued and the page's own
-action is immediate; they share the same store operation.
+- An archived page keeps its history, leaves the page tree, and is read-only until restored. It can still be trashed.
+- Archiving a page alone lifts its children one level; archiving with descendants archives the subtree. Trashing a tree always takes the descendants.
+- Restoring puts a page under its parent if the parent is current, otherwise at the top of the space. Archived children come back when asked. A restore is refused while another current page has the same title.
+- The REST archive is queued; the page view's action is immediate. Both use the same store operation.
 
 ## Status filters
 
-Confluence's v2 page and attachment collections list `current` and `archived`
-unless asked for others, and so do these. `deleted` is accepted and matches
-nothing, since a purged page is gone. A single page read accepts the whole
-status vocabulary; an earlier version reads back as `historical`. An attachment
-reports `archived` while the page it belongs to is archived.
+- `GET /wiki/api/v2/pages` lists `current` and `archived` by default and accepts `current`, `archived`, `trashed`, `deleted`, and `draft` (only without a space). `deleted` pages are returned only to that space's administrators (see [drafts and deletion](CONTENT_DRAFTS.md)).
+- Attachment lists default to `current` and `archived` and accept `trashed`. An attachment reports `archived` while its page is archived.
+- A single page read accepts every status. An earlier version reads back as `historical`.
 
-## Evidence and current boundary
+## UI
 
-- `internal/confluence/page_moves_test.go` covers all seven operations, all four
-  move positions **by the order a reader then sees**, every refusal above, the
-  renamed copy, the hierarchy copy landing under its destination with its title
-  prefix, a hierarchy copy into itself failing with the task saying so,
-  archiving taking a page out of the space, trashing a tree taking its
-  descendants, and the long task list and its 404.
-- `migrations/147_page_moves.sql` is exercised from a clean PostgreSQL schema.
+The page view offers **Archive**, **Restore** and **Move** (`POST /wiki/spaces/{space}/pages/{page}/archive|restore|move`). The space page has an **Archived** tab.
 
-- The same test copies a restricted page carrying custom content twice: a plain
-  copy takes neither, and a copy asking for `copyPermissions` and
-  `copyCustomContents` takes both.
-- `internal/confluence/page_lifecycle_test.go` covers the default and filtered
-  listings, the `deleted` and `historical` statuses, attachment statuses, an
-  archived page refusing edits, restore refusing a current title, children
-  lifting a level, archiving and restoring a subtree, a restore under an
-  archived parent landing at the top, a cross-space move carrying its subtree
-  and folder, the replica action carrying the new space, and the homepage and
-  title refusals.
-- `e2e/wiki_page_lifecycle.spec.ts` archives a page in the browser, finds it in
-  the Archived tab, restores it and moves a page to another space.
+## Tests
 
-The copy answers v1 content with the expansions asked for, described in
-PAGE_WRITING.md. Pages beneath folders and other content,
-moving any node of the tree and moving to a space's top level are described in
-CONTENT_TREE.md.
+- `internal/confluence/page_moves_test.go`
+- `internal/confluence/page_lifecycle_test.go`
+- `e2e/wiki_page_lifecycle.spec.ts`
+
+## See also
+
+[Content tree](CONTENT_TREE.md), [page writing](PAGE_WRITING.md), [space lifecycle](SPACE_LIFECYCLE.md), [Confluence operations](CONFLUENCE_OPERATIONS.md).

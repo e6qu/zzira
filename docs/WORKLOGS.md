@@ -1,86 +1,85 @@
 # Worklogs
 
-Updated: 2026-09-11
+A worklog records time spent on a work item. zzira serves Jira Cloud's worklog
+operations: per-item reads and writes, moving worklogs between work items, the
+workspace-wide updated and deleted feeds, bulk fetch by ID, and worklog
+properties. Estimates are covered in [TIME_TRACKING.md](TIME_TRACKING.md).
+Part of the [Jira platform](JIRA_PLATFORM.md); see
+[CLOUD_PARITY.md](CLOUD_PARITY.md) for status.
 
-ZZIRA records work logged against a work item, and serves the full Jira Cloud
-worklog surface around it: the per-item reads and writes, the move between work
-items, the workspace-wide updated and deleted feeds, the bulk fetch by id, and
-entity properties on a worklog.
+## API
 
-## Jira Cloud REST surface
-
-All 14 pinned worklog operations are implemented. An audit against a running
-server found four already working — the list, the create, the single read and
-the single delete — and the other ten returning 404.
-
-| Method and path | Behavior |
+| Route | Behavior |
 |---|---|
-| `GET /rest/api/3/issue/{issueIdOrKey}/worklog` | Lists the work item's worklogs. |
-| `POST /rest/api/3/issue/{issueIdOrKey}/worklog` | Logs work; `timeSpentSeconds` must be positive. |
-| `GET /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` | Reads one worklog; one on another work item is a 404. |
-| `PUT /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` | Changes the time and comment. An omitted comment keeps the stored one. |
-| `DELETE /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` | Removes one worklog. |
-| `DELETE /rest/api/3/issue/{issueIdOrKey}/worklog` | Removes every worklog on the work item. |
-| `POST /rest/api/3/issue/{issueIdOrKey}/worklog/move` | Moves worklogs to another work item, 1 to 1000 at a time. |
-| `GET /rest/api/3/worklog/updated` | Reports worklogs changed after `since`. |
-| `GET /rest/api/3/worklog/deleted` | Reports worklogs removed after `since`. |
-| `POST /rest/api/3/worklog/list` | Fetches up to 1000 worklogs by id, across work items. |
-| `GET /rest/api/3/issue/{k}/worklog/{id}/properties` | Lists a worklog's property keys. |
-| `GET/PUT/DELETE /rest/api/3/issue/{k}/worklog/{id}/properties/{propertyKey}` | Reads, stores, or removes one property; a new key answers 201 and a replacement 200. |
+| `GET /rest/api/3/issue/{issueIdOrKey}/worklog` | All of the work item's worklogs |
+| `POST /rest/api/3/issue/{issueIdOrKey}/worklog` | Log work (`timeSpent` or positive `timeSpentSeconds`, optional ADF `comment`) |
+| `GET /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` | One worklog; one on another work item is 404 |
+| `PUT /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` | Change time and comment; an omitted comment is kept |
+| `DELETE /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` | Delete one |
+| `DELETE /rest/api/3/issue/{issueIdOrKey}/worklog` | Delete every worklog on the work item |
+| `POST /rest/api/3/issue/{issueIdOrKey}/worklog/move` | Move 1 to 1,000 worklogs to another work item |
+| `GET /rest/api/3/worklog/updated` | Worklogs changed after `since` (ms), up to 1,000 per page |
+| `GET /rest/api/3/worklog/deleted` | Worklogs deleted after `since` (ms), up to 1,000 per page |
+| `POST /rest/api/3/worklog/list` | Up to 1,000 worklogs by ID, across work items |
+| `GET /rest/api/3/issue/{k}/worklog/{id}/properties` | Property keys |
+| `GET/PUT/DELETE /rest/api/3/issue/{k}/worklog/{id}/properties/{propertyKey}` | One property; `PUT` answers 201 for a new key, 200 for a replacement |
+| `POST /rest/internal/api/latest/worklog/bulk` | Which of 1 to 1,000 `{issueId, worklogId}` pairs exist (see [JIRA_PLATFORM.md](JIRA_PLATFORM.md)) |
 
-## How the feeds work
+Log, change and delete accept `adjustEstimate`, `newEstimate`, `reduceBy`,
+`increaseBy` and `notifyUsers`, as described in
+[TIME_TRACKING.md](TIME_TRACKING.md).
 
-Jira's updated and deleted feeds let a client resynchronize without re-reading
-every work item, so they need two things this schema did not have.
+## Behavior
 
-**Worklogs now carry an `updated_at`.** It is stamped on the update and on the
-move, so a client that follows the feed sees a worklog that changed work items.
+- **Feeds.** Worklogs carry `updated_at`, stamped on change and on move, so
+  the updated feed reports moved worklogs. A delete leaves a tombstone
+  (`deleted_worklogs`: ID, work item, author) that the deleted feed reports.
+  Both feeds report and compare times in milliseconds, so passing the previous
+  `until` as the next `since` always makes progress.
+- **Visibility.** `worklog/list` and `worklog/updated` return only worklogs on
+  active projects the caller can browse and work items issue security allows;
+  others are silently omitted, as in Jira. `worklog/deleted` is unfiltered: it
+  returns only IDs and timestamps, and clients need every ID to invalidate
+  their caches.
+- **Properties** are deleted with their worklog.
+- **Non-editable work items.** A status whose properties set
+  `jira.issue.editable` (or the deprecated `issueEditable`) to `false` locks
+  its work items: logging, changing, deleting and moving work are 400. A
+  Connect or Forge app with Administer Jira can pass
+  `overrideEditableFlag=true`; anyone else passing it gets 403.
 
-**A delete records a tombstone.** The row is gone, so `deleted_worklogs` keeps
-the id, the work item and the author it had, which is what the deleted feed
-reports. The tombstone is what makes the feed answer at all; without it a
-deleted worklog would simply vanish and a client's cache would keep it forever.
+## Permissions
 
-Both feeds report times in milliseconds, and **compare in milliseconds too**.
-PostgreSQL stores microseconds, so a client that passes the previous `until`
-back as its next `since` would otherwise be handed the same entries again on
-the sub-millisecond remainder and never make progress.
+| Action | Needs |
+|---|---|
+| Log work | Work on issues |
+| Change | Edit all worklogs, or Edit own worklogs for the caller's own |
+| Delete | Delete all worklogs, or Delete own worklogs for the caller's own |
+| Move | Delete all worklogs and Work on issues on both work items, both editable |
 
-## Visibility
+## UI
 
-`POST /worklog/list` and `GET /worklog/updated` are workspace-wide, so they
-resolve through the same predicate the search uses: the project must be active,
-the caller must have `BROWSE_PROJECTS`, and issue security must permit the work
-item. A caller who cannot browse a project gets an empty list rather than an
-error, which is what Jira does.
+The work item page logs work (`POST /issues/{key}/worklogs`) and deletes it
+(`POST /issues/{key}/worklogs/{id}/delete`).
 
-`GET /worklog/deleted` is deliberately not filtered. It returns an id and a
-timestamp for something that no longer exists, and a client invalidating its
-cache needs every id it may be holding — filtering would leave stale entries
-behind for exactly the worklogs the caller can no longer check.
+## Gaps
 
-## Evidence and current boundary
+See [PLAN.md](../PLAN.md).
 
-- `internal/api3/worklogs_test.go` covers all 14 operations, including the
-  404s for a worklog on another work item, the non-positive time, the empty id
-  list, the unknown move destination, a worklog that is not on the source work
-  item, an unparseable `since`, the caught-up feed, the cascade that takes a
-  worklog's properties with it, and a caller who cannot browse the project.
-- `migrations/141_worklog_updates.sql` and `migrations/142_worklog_properties.sql`
-  are exercised from a clean PostgreSQL schema.
+- No `started` time: create and update ignore it and the bean reports a
+  non-Jira `startsAt` equal to `created`.
+- The bean's `updated` and `updateAuthor` repeat `created` and `author`; it
+  lacks `issueId`, and `self` omits the work item.
+- The per-item list ignores `startAt`, `maxResults`, `startedAfter`,
+  `startedBefore` and `expand=properties`.
+- No worklog `visibility` restriction to a group or role.
 
-Jira's `startedAfter`/`startedBefore` filters and `expand` on the worklog reads,
-the `notifyUsers` and `adjustEstimate` parameters, worklog visibility
-restriction to a group or role, and `POST /rest/internal/api/latest/worklog/bulk`
-remain.
+## Tests
 
-## Work items that are not editable
+`internal/api3/worklogs_test.go`, `internal/api3/time_tracking_test.go`.
 
-A workflow status whose properties set `jira.issue.editable` (or the
-deprecated `issueEditable`) to `false`, such as a closed status, locks its work
-items: logging, changing, deleting and moving work is refused with 400, as are
-field edits and comment edits. New comments and transitions still work, and
-edit metadata lists no fields. A Connect or Forge app with Administer Jira can
-pass `overrideEditableFlag=true` to change logged work anyway; anyone else who
-passes it gets 403. Moving work needs Delete all worklogs and Work on issues on
-both work items, and both must be editable.
+## See also
+
+[TIME_TRACKING.md](TIME_TRACKING.md) · [WORKFLOW_RULES.md](WORKFLOW_RULES.md) ·
+[PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md) ·
+[NOTIFICATION_SCHEMES.md](NOTIFICATION_SCHEMES.md)

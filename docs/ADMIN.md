@@ -1,201 +1,145 @@
 # Organization and site administration
 
-ZZIRA provisions an organization, site, Jira Software product, Jira Service
-Management product, Confluence product, and internal user directory for every
-workspace. Existing `admin` and `member` memberships migrate into explicit site
-and product role bindings. A database trigger keeps legacy membership writers
-consistent while the remaining application commands move to the shared role
-model.
+Every workspace is provisioned as an Atlassian organization with one site, three products (Jira Software, Jira Service Management, Confluence) and an internal user directory. Administrators manage people, groups, product access, domains, access policies, identity providers, apps and Jira site settings from `/admin`, and through the Atlassian Organizations REST API mounted at `/admin/v1` and `/admin/v2`. For status, see [CLOUD_PARITY.md](CLOUD_PARITY.md).
+
+## Where things are administered
+
+| Surface | Page | Doc |
+| --- | --- | --- |
+| People, groups, product access, domains, policies, audit log | `/admin` | this page |
+| Identity providers (OpenID Connect) | `/admin` › Identity providers | [shauth-sso.md](shauth-sso.md) |
+| Apps and Connect data migration | `/admin` › Apps | [APPS.md](APPS.md), [JIRA_PLATFORM.md](JIRA_PLATFORM.md#connect-app-migration) |
+| Jira configuration: announcement banner, features, time tracking, navigator columns, application properties | `/admin` › Jira configuration | [JIRA_SITE_CONFIGURATION.md](JIRA_SITE_CONFIGURATION.md) |
+| Global permissions and the permission helper | `/admin` › Global permissions, `/admin/permission-helper` | [PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md) |
+| Issue events and the notification helper | `/admin` › Events, `/admin/notification-helper` | [NOTIFICATION_SCHEMES.md](NOTIFICATION_SCHEMES.md) |
+| Filter emails (all filter subscriptions) | `/admin` › Filter emails | [FILTERS.md](FILTERS.md) |
+| Project categories | `/admin` › Project categories | [PROJECT_GOVERNANCE.md](PROJECT_GOVERNANCE.md) |
+| Data classification levels | `/admin` › Data classification levels | [CLASSIFICATION_LEVELS.md](CLASSIFICATION_LEVELS.md) |
+| Jira schemes, roles, screens, fields, workflows, statuses, automation | `/settings/...` | [JIRA_PLATFORM.md](JIRA_PLATFORM.md), [PROJECT_ROLES.md](PROJECT_ROLES.md), [AUTOMATION.md](AUTOMATION.md) |
+| Teams and services | People › Teams, Service management › Services | [JIRA_PLATFORM.md](JIRA_PLATFORM.md#plans-and-teams) |
+| Confluence site administration | wiki admin pages | [CONFLUENCE_SITE_SURFACES.md](CONFLUENCE_SITE_SURFACES.md), [SITE_SETTINGS.md](SITE_SETTINGS.md) |
 
 ## Authorization model
 
-Role bindings have an organization, site, product, project, or space scope and
-target either a user or a group. The first supported roles are:
+Role bindings have an organization, site, product, project or space scope and target a user or a group. Direct and group bindings use one evaluator (`internal/authz/authz.go`).
 
-| Role | Current effect |
-|---|---|
-| `atlassian/org-admin` | Administers every site in its organization |
-| `atlassian/site-admin` | Administers the bound site and its directory/product access |
+| Role | Effect |
+| --- | --- |
+| `atlassian/org-admin` | Administers every site in the organization |
+| `atlassian/site-admin` | Administers the site, its directory and product access |
 | `atlassian/site-user` | Enters the site |
-| `atlassian/product-admin` | Enters and administers the bound product where a product permission uses it |
-| `atlassian/product-user` | Enters the bound enabled product |
-| `atlassian/user` and product roles | Atlassian-compatible direct or group access to the bound product |
-| `atlassian/user-access-admin` | Administers access for the bound product without receiving product use |
+| `atlassian/product-admin`, `atlassian/admin` | Enter the product and manage its access |
+| `atlassian/user-access-admin` | Manages product access without product use |
+| `atlassian/product-user`, `atlassian/user`, `atlassian/basic`, `atlassian/guest`, `atlassian/contributor`, `atlassian/viewer` | Enter the bound product |
+| `atlassian/customer`, `atlassian/stakeholder` | Enter Jira Service Management; bindable only to that product |
+| `atlassian/ai-access` | Bindable to a product through the API; grants no site entry |
 
-Direct and group role bindings use the same evaluator. Disabled users cannot
-enter a site even if a role remains. Existing authorization calls now resolve
-workspace membership and administration through this model.
+- Disabled users cannot enter a site even with a role.
+- Workspace `admin` and `member` memberships are mirrored into site and product role bindings by the `sync_membership_role_bindings` trigger (`migrations/033_organization_authorization.sql`).
+- Jira project access comes from [permission schemes](PERMISSION_SCHEMES.md); Confluence space access from [space permissions](SPACE_PERMISSIONS.md).
 
-## Browser journey
+## UI
 
-Site administrators use `/admin` to inspect organization and Cloud IDs, enabled
-products, the internal directory, users, groups, and recent audit events. They
-can invite, edit the managed profile of, suspend, restore, or remove managed
-accounts; assign product access and groups during invitation; create or delete
-a group; add or remove directory users; and grant or revoke each group's Jira
-Software, Jira Service Management, and Confluence access. Suspension and
-removal revoke active sessions and API tokens when the account has no other
-active directory. On reconnect, an affected browser verifies access before
-outbox replay, purges its private replica and authenticated page cache, and
-returns to the signed-out page. Every successful user, group,
-membership, or role mutation writes an organization audit event in the same
-transaction. Administrators cannot suspend or remove their own account.
-Ordinary users do not see the administration navigation item and receive 403 on
-direct access.
+Site administrators use `/admin`. Other users do not see the navigation item and get 403.
 
-The Jira configuration section publishes dismissible public or signed-in
-announcement banners, toggles work-item features, configures time tracking,
-chooses ordered issue-navigator columns (including custom fields), and edits the
-documented application-property catalog. The same state is exposed through the
-Jira Cloud v3 contracts, and core issue commands enforce disabled features. See
-[JIRA_SITE_CONFIGURATION.md](JIRA_SITE_CONFIGURATION.md).
+- **Overview:** organization and Cloud ids, enabled products, the internal directory.
+- **People:** invite (with product access and groups), edit a managed profile, suspend, restore, remove. Administrators cannot suspend or remove themselves.
+- **Groups:** create, delete, add or remove members, grant or revoke each product's access.
+- **Products:** set each product's plan (free, standard, premium, enterprise).
+- **Domains:** add a domain claim, copy its DNS TXT challenge, verify, remove.
+- **Policies:** create an IP allowlist or data residency policy, review rules and product scope, enable, disable, delete.
+- **Audit log:** search event text and filter by action.
 
-With `ZZIRA_IDENTITY_ENCRYPTION_KEY` configured, the same page registers custom
-OpenID Connect providers through validated discovery, rotates their client
-secrets, enables or disables sign-in, and deletes registrations. Secrets use an
-authenticated AES-256-GCM envelope bound to the workspace and provider key and
-are never returned to the browser. Environment-configured providers remain
-deployment-managed. Deleting a stored provider and disabling any provider
-revoke its issuer sessions and write organization audit evidence.
+Every user, group, membership, role, domain, policy and product-plan change writes an organization audit event in the same transaction.
 
-## Organization API subset
+**Suspension and removal** revoke the account's sessions and API tokens when it has no other active directory. On reconnect, the affected browser checks access before replaying its outbox, purges its private replica and page cache, and goes to the signed-out page.
 
-The Organizations REST API is mounted locally at `/admin`. These operations are
-implemented:
+## Organizations REST API
+
+All operations of the pinned Organizations API (`api/specs/organization-admin.json`) are served:
 
 | Method | Path |
-|---|---|
-| GET | `/admin/v1/orgs` |
-| GET | `/admin/v1/orgs/{orgId}` |
-| GET | `/admin/v1/orgs/{orgId}/events` |
-| GET | `/admin/v1/orgs/{orgId}/events-stream` |
-| GET | `/admin/v1/orgs/{orgId}/events/{eventId}` |
-| GET | `/admin/v1/orgs/{orgId}/event-actions` |
-| GET | `/admin/v1/orgs/{orgId}/domains` |
-| GET | `/admin/v1/orgs/{orgId}/domains/{domainId}` |
+| --- | --- |
+| GET | `/admin/v1/orgs`, `/admin/v1/orgs/{orgId}` |
+| GET | `/admin/v1/orgs/{orgId}/events`, `/events-stream`, `/events/{eventId}`, `/event-actions` |
+| GET | `/admin/v1/orgs/{orgId}/domains`, `/domains/{domainId}` |
 | GET/POST | `/admin/v1/orgs/{orgId}/policies` |
 | GET/PUT/DELETE | `/admin/v1/orgs/{orgId}/policies/{policyId}` |
 | POST | `/admin/v1/orgs/{orgId}/policies/{policyId}/resources` |
 | PUT/DELETE | `/admin/v1/orgs/{orgId}/policies/{policyId}/resources/{resourceId}` |
 | GET | `/admin/v1/orgs/{orgId}/policies/{policyId}/validate` |
-| GET | `/admin/v2/orgs/{orgId}/directories` |
-| GET/POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups` |
-| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/count` |
-| POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/search` |
-| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/stats` |
-| GET/DELETE | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}` |
-| POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships` |
-| DELETE | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/memberships/{accountId}` |
-| POST | `/admin/v2/orgs/{orgId}/workspaces` |
-| POST | `/admin/v1/orgs/{orgId}/users/{userId}/role-assignments/{assign\|revoke}` |
-| POST | `/admin/v1/orgs/{orgId}/users/{userId}/roles/{assign\|revoke}` |
-| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments` |
-| POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups/{groupId}/role-assignments/{assign\|revoke}` |
-| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/role-assignments` |
 | GET | `/admin/v1/orgs/{orgId}/users` |
 | GET | `/admin/v1/orgs/{orgId}/directory/users/{accountId}/last-active-dates` |
-| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users` |
-| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/count` |
-| POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/search` |
-| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/stats` |
-| GET | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{userId}` |
-| DELETE | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}` |
-| POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/users/{accountId}/{suspend\|restore}` |
+| POST | `/admin/v1/orgs/{orgId}/users/{userId}/role-assignments/{assign\|revoke}`, `/roles/{assign\|revoke}` |
+| GET | `/admin/v2/orgs/{orgId}/directories` |
+| GET/POST | `/admin/v2/orgs/{orgId}/directories/{directoryId}/groups` |
+| GET | `.../groups/count`, `.../groups/stats` |
+| POST | `.../groups/search` |
+| GET/DELETE | `.../groups/{groupId}` |
+| POST | `.../groups/{groupId}/memberships` |
+| DELETE | `.../groups/{groupId}/memberships/{accountId}` |
+| GET | `.../groups/{groupId}/role-assignments` |
+| POST | `.../groups/{groupId}/role-assignments/{assign\|revoke}` |
+| GET | `.../users`, `.../users/count`, `.../users/stats`, `.../users/{userId}` |
+| POST | `.../users/search` |
+| DELETE | `.../users/{accountId}` |
+| POST | `.../users/{accountId}/{suspend\|restore}` |
+| GET | `.../users/{accountId}/role-assignments` |
 | POST | `/admin/v2/orgs/{orgId}/users/invite` |
+| POST | `/admin/v2/orgs/{orgId}/workspaces` |
 
-The API requires `Authorization: Bearer <api-token>` and an organization or site
-administrator role. Site Jira APIs continue to accept their existing Jira-style
-Basic authentication. Collection cursors are opaque encoded offsets; malformed
-cursors are rejected. Group and user searches implement the documented opaque
-pagination, sorting, exact-list, text, directory, membership, lifecycle,
-resource, role, domain, and expansion filters. `-` scopes search and statistics
-to every directory the caller can administer. Group count accepts its full
-documented filter set. Workspace discovery returns product ARIs. Role lookups support directory,
-resource-owner, resource-ID, and role-ID filters and report whether effective
-user access is direct or inherited from a group.
+`...` is `/admin/v2/orgs/{orgId}/directories/{directoryId}`.
 
-Product activity is recorded only after an authenticated product page remains
-visible for two seconds. The last-active endpoint returns the accessed product
-instance IDs, Jira-compatible product keys, UTC dates and timestamps, the first
-organization membership time, and opaque paging. A user who has never viewed a
-product has an empty `product_access` array.
+### Behavior
 
-Organization events expose the same immutable evidence as the browser audit
-log. Query supports text, action, actor, IP, product, location, millisecond time
-bounds, limits up to 500, and opaque paging. The polling endpoint defaults to
-ascending processing order and returns a reusable cursor even at the current
-end of the stream. Event detail and the localized action catalog use the
-published resource shapes. The administration page searches event text and
-filters by action through this shared query path. Each event records the client
-address and user agent of the request that caused it, set on the store's
-database connection for the request and merged in by a trigger, so every audit
-writer captures them. Filtered event queries are limited to ten a minute per
-user and answer 429 with `Retry-After`; the polling endpoint is not limited.
-
-Administrators can add email-domain claims, copy the generated DNS TXT
-challenge, verify it, and remove the claim from `/admin`. Verification queries
-`_zzira-challenge.<domain>` and changes state only when the exact
-`zzira-domain-verification=<token>` value exists. Domain names are normalized
-to lowercase fully qualified DNS names. The domain list and detail APIs expose
-the published `domains` resource and claim status shapes with opaque paging.
-
-IP allowlist and data-residency policies have durable rules, enabled/disabled
-state, product-resource attachments, resource metadata and ticket links. The
-API implements list/type filtering, create, detail, whole-policy update,
-deletion, resource add/update/remove, and validation with the published 200,
-202, and 204 response shapes. IP values must be valid addresses or CIDR ranges;
-resources must be product ARIs owned by the organization. `/admin` lets an
-administrator create a scoped policy, review its rules and application state,
-enable or disable it, and delete it. Mutations and resource changes are audited.
-Enabled IP allowlists are enforced: a request to Jira Software, Jira Service
-Management or Confluence from an address outside every enabled allowlist that
-covers the product receives 403. Administration and sign-in stay reachable so
-an administrator can correct a policy. Data residency policies record the
-requested placement; ZZIRA keeps all data in its single PostgreSQL database.
-
-Each product runs on a plan (free, standard, premium or enterprise), set from
-the Products table on `/admin` and audited. Inviting users needs at least one
-enabled paid product (402 otherwise), and an invitation that would take a
-free-plan product past its user limit, ten users or three Jira Service
-Management agents, receives 409.
-
-Invitation access, group membership, optional email enqueueing, and audit
-evidence commit atomically for each account. A multi-account request returns
-`206 Partial Content` with per-assignment `ERROR` results if an account cannot
-be invited while preserving successful invitations. Email requests return 503
-when SMTP is not configured. Configured delivery uses a durable PostgreSQL
-outbox with leases, bounded exponential retries, and a terminal state after
-eight failed attempts.
+- **Auth:** `Authorization: Bearer <api-token>` from an organization or site administrator; otherwise 401 or 403. An `orgId` other than the site's organization is 404. Site Jira APIs keep Basic authentication.
+- **Paging:** cursors are opaque encoded offsets; a malformed cursor is 400.
+- **Search:** group and user search support Atlassian's sorting, exact-list, text, directory, membership, lifecycle, resource, role, domain and expansion filters. Directory id `-` covers every directory the caller administers. Unknown query parameters are 400.
+- **Workspaces:** discovery returns product ARIs.
+- **Role assignments:** filter by directory, resource owner, resource id and role id, and report whether access is direct or inherited from a group.
+- **Last active dates:** product activity is recorded after an authenticated product page stays visible for two seconds (`POST /rest/zzira/1/product-activity`). The response lists product instance ids, Jira product keys, UTC dates and times, and the first organization membership time; a user who never viewed a product has an empty `product_access`.
+- **Events:** the same immutable records as the audit log. Query by text, action, actor, IP, product, location, millisecond time bounds, limit (max 500). Each event records the request's client address and user agent (set on the database connection and merged in by a trigger). Filtered queries are limited to 10 per user per minute (429 with `Retry-After`); `events-stream` is not limited, defaults to ascending order and always returns a reusable cursor.
+- **Domains:** names are normalized to lowercase FQDNs. Verification looks up `_zzira-challenge.<domain>` for the exact `zzira-domain-verification=<token>` TXT value. A verified domain is required for a project's custom sender email ([PROJECT_GOVERNANCE.md](PROJECT_GOVERNANCE.md)).
+- **Policies:** types `ip-allowlist` and `data-residency` can be created; `type=data-security` is accepted as a list filter only. IP values must be addresses or CIDR ranges; resources must be product ARIs of the organization. Enabled IP allowlists are enforced: a Jira Software, Jira Service Management or Confluence request from outside every enabled allowlist covering that product gets 403 (`internal/store/ip_allowlist.go`). Administration and sign-in stay reachable. Data residency policies are recorded only; all data lives in one PostgreSQL database.
+- **Plans and invitations:** inviting needs at least one enabled paid product (402). An invitation that takes a free product past its limit (10 users; 3 agents for Jira Service Management) is 409. Each account's access, groups, optional email and audit event commit atomically. A multi-account request with failures returns `206 Partial Content` with per-assignment `ERROR` results and keeps the successes.
+- **Email:** invitation email needs SMTP (503 otherwise). Delivery uses a leased PostgreSQL outbox with exponential backoff (capped at one hour); a message is dead after eight failed attempts.
 
 | Environment variable | Purpose |
-|---|---|
-| `ZZIRA_SMTP_ADDR` | SMTP endpoint in `host:port` form |
-| `ZZIRA_SMTP_FROM` | Envelope and message sender |
-| `ZZIRA_SMTP_USERNAME` | Optional SMTP username; configure with the password |
-| `ZZIRA_SMTP_PASSWORD` | Optional SMTP password; configure with the username |
+| --- | --- |
+| `ZZIRA_SMTP_ADDR` | SMTP endpoint, `host:port` |
+| `ZZIRA_SMTP_FROM` | Sender address |
+| `ZZIRA_SMTP_USERNAME`, `ZZIRA_SMTP_PASSWORD` | Optional SMTP credentials; set both or neither |
 
-The current server configuration serves one workspace/site. Organization
-discovery therefore returns the organization containing that site. Cross-site
-organization discovery, directory filters, SCIM provisioning and global
-deactivation, policy enforcement, cross-organization domain ownership checks,
-license limits, and full
-central-host rate limiting remain in
-the active plan and are reported as unassessed or missing in operation coverage.
+## Enterprise identity
 
-## Verification
+| Capability | State |
+| --- | --- |
+| Domain verification | Built (DNS TXT). |
+| Managed accounts | Every directory account is reported `claimStatus: managed`; administrators edit profiles, suspend, restore and remove. Claim status is not derived from verified domains. |
+| OpenID Connect SSO (Google, Microsoft Entra ID, Atlassian, any discovered OIDC provider) | Built; see [shauth-sso.md](shauth-sso.md). |
+| IP allowlists | Built and enforced. |
+| SAML SSO | Missing. |
+| SCIM user provisioning | Missing. The service management organization bean always reports `scimManaged: false`. |
+| Authentication policies (enforced SSO, two-step verification, password rules, session duration) | Missing. `mfaEnabled` is stored and reported but nothing enrolls or enforces it. |
+| Data security policies | Missing. |
 
-- Store integration tests cover workspace provisioning, membership migration,
-  direct roles, group-derived administration and product access, managed
-  profiles, directory-scoped suspension across organizations, credential
-  revocation after the final active directory, and audit events.
-- API integration tests cover bearer authentication, permission denial,
-  organization/directory/product discovery, group creation/detail/search/count/
-  statistics/deletion, directory-user search/statistics, atomic invitation
-  assignments and delivery enqueueing, product activity and last-active dates,
-  organization event query/poll/detail/action operations, membership and role
-  mutations, domain claims, all policy/resource operations, effective
-  assignments, partial results, conflicts, expansions, and audit persistence.
-- Playwright covers the complete group and product-access journey,
-  invitation-time product/group access, two-second visible product activity,
-  domain claim add/remove, policy create/enable/delete, managed-profile editing,
-  ordinary-user denial, WCAG scans, light/dark themes, and 320px reflow.
+## Gaps
+
+Tracked in [PLAN.md](../PLAN.md).
+
+- One server serves one site; an organization cannot hold several sites, and organization discovery returns only that site's organization.
+- SAML single sign-on.
+- SCIM user and group provisioning, including identity-provider-driven deactivation.
+- Authentication policies: enforced SSO, two-step verification, password requirements, session duration, and policy assignment to users.
+- Account claiming from verified domains (managed vs unmanaged accounts), and domain ownership checks across organizations.
+- The Atlassian user management API (`/users/{account_id}/manage/...`: profile, email, lifecycle, API tokens).
+- Self-service API token creation and revocation; tokens are created only by the server's seed mode.
+- Organization API keys distinct from user API tokens.
+- Data security policies (app access rules, public links, export controls).
+- Data residency placement; policies are recorded but not applied.
+
+## Tests
+
+- `internal/store/admin_test.go`: provisioning, membership mirroring, direct and group roles, managed profiles, directory-scoped suspension, credential revocation, audit events.
+- `internal/admin/http_test.go`: every Organizations API operation, auth, errors, partial results, conflicts, expansions, audit persistence.
+- `e2e/admin.spec.ts`: group and product access, invitations, product activity, domains, policies, managed profiles, ordinary-user denial, accessibility, themes and 320px reflow.
