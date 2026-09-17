@@ -304,7 +304,14 @@ func (h *Handler) versionRoute(w http.ResponseWriter, r *http.Request, parts []s
 		result := map[string]any{"self": h.BaseURL + "/rest/api/3/version/" + v.ID + "/" + parts[1]}
 		if parts[1] == "unresolvedIssueCount" {
 			result["issuesCount"] = len(fixed)
-			result["issuesUnresolvedCount"] = len(fixed) - store.VersionProgress(fixed).Done
+			// Jira counts work whose resolution is empty, whatever its status.
+			unresolved := 0
+			for _, issue := range fixed {
+				if issue.Resolution == nil {
+					unresolved++
+				}
+			}
+			result["issuesUnresolvedCount"] = unresolved
 		} else {
 			affected, err := h.Store.VersionIssues(r.Context(), ws, user, v.ProjectID, v.ID, "versions")
 			if err != nil {

@@ -316,6 +316,9 @@ func TestVersionLifecycleMembershipAndVisibility(t *testing.T) {
 		return created["key"].(string)
 	}
 	finished, unfinished := shippedWork("Finished work"), shippedWork("Unfinished work")
+	// Done but with its resolution cleared: Jira goes by resolution, so this is
+	// unresolved work and moves with the unfinished.
+	doneUnresolved := shippedWork("Done without a resolution")
 	fixVersionIDs := func(key string) string {
 		t.Helper()
 		entry := call(actor, "GET", "/rest/api/3/issue/"+key+"?fields=fixVersions", nil, 200)
@@ -342,6 +345,15 @@ func TestVersionLifecycleMembershipAndVisibility(t *testing.T) {
 		t.Fatal("no transition reaches a done status")
 	}
 	call(actor, "POST", "/rest/api/3/issue/"+finished+"/transitions", map[string]any{"transition": map[string]string{"id": done}}, 204)
+	call(actor, "POST", "/rest/api/3/issue/"+doneUnresolved+"/transitions", map[string]any{"transition": map[string]string{"id": done}}, 204)
+	exec(`UPDATE issues SET resolution_id=NULL, resolved_at=NULL WHERE workspace_id=$1 AND key=$2`, ws, doneUnresolved)
+
+	// Unresolved work is counted by resolution: the finished work is resolved,
+	// the other two are not, even though one of them is done.
+	pending := call(actor, "GET", "/rest/api/3/version/"+shipping+"/unresolvedIssueCount", nil, 200)
+	if pending["issuesCount"] != float64(3) || pending["issuesUnresolvedCount"] != float64(2) {
+		t.Fatalf("unresolved count = %v, want 3 issues and 2 unresolved", pending)
+	}
 
 	// The field is a version self link, is not applicable when creating, and
 	// names a different version in the same project.
@@ -360,6 +372,9 @@ func TestVersionLifecycleMembershipAndVisibility(t *testing.T) {
 	call(actor, "PUT", "/rest/api/3/version/"+shipping, map[string]any{"released": true}, 200)
 	if fixVersionIDs(unfinished) != nextUp {
 		t.Fatalf("unfinished work did not move: %v", fixVersionIDs(unfinished))
+	}
+	if fixVersionIDs(doneUnresolved) != nextUp {
+		t.Fatalf("done but unresolved work did not move: %v", fixVersionIDs(doneUnresolved))
 	}
 	if fixVersionIDs(finished) != shipping {
 		t.Fatalf("finished work should stay with the release that shipped it: %v", fixVersionIDs(finished))

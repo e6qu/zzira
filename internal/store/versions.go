@@ -318,9 +318,10 @@ func refreshVersionIssues(ctx context.Context, tx pgx.Tx, ws, actor string, v *m
 	return nil
 }
 
-// moveUnfixedVersionIssues moves work that is not done off a version being
-// released and onto the version it names. Work already done stays with the
-// version that shipped it, which is what makes this different from replacing a
+// moveUnfixedVersionIssues moves unresolved work off a version being released
+// and onto the version it names. Unresolved means the resolution is empty, as
+// Jira's release dialog has it, whatever status the work sits in. Resolved work
+// stays with the version that shipped it, which is what makes this different from replacing a
 // deleted version everywhere it appears.
 func moveUnfixedVersionIssues(ctx context.Context, tx pgx.Tx, ws, actor string, v *models.Version, target *models.Version) error {
 	match, _ := json.Marshal([]map[string]string{{"id": v.ID}})
@@ -347,7 +348,7 @@ func moveUnfixedVersionIssues(ctx context.Context, tx pgx.Tx, ws, actor string, 
 		if err != nil {
 			return err
 		}
-		if issue.Status.Category == "done" {
+		if issue.Resolution != nil {
 			continue
 		}
 		var refs []*models.Version
