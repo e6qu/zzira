@@ -797,3 +797,19 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 .service-hero:has(.service-portal-logo) { display: flex; align-items: center; gap: 16px; }
 .service-announcement, .service-help-center-settings { margin-block: 16px; }
 .service-help-center-settings > summary { cursor: pointer; font-weight: 700; }
+.metadata-list,.hierarchy-level-list{display:grid;gap:14px;margin-bottom:20px}
+.metadata-card>header,.metadata-scheme-card>header,.hierarchy-level-card>header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.metadata-card>header>div:first-child,.hierarchy-level-card>header>div:first-child{display:flex;align-items:center;gap:12px}
+.metadata-card h2,.metadata-card p,.metadata-scheme-card h3,.metadata-scheme-card p,.hierarchy-level-card h2,.hierarchy-level-card p{margin:3px 0}
+.metadata-card p,.metadata-scheme-card p,.hierarchy-level-card p{color:var(--ds-text-subtle)}
+.metadata-card-actions,.hierarchy-level-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin-top:12px}
+.metadata-delete{margin-top:12px}
+.metadata-delete>summary,.quiet-action{cursor:pointer;color:var(--ds-text-subtle);font-weight:650}
+.metadata-scheme-list{display:grid;gap:12px;margin-top:16px}
+.metadata-scheme-summary{display:grid;gap:8px;margin:12px 0 0;padding:0;list-style:none}
+.metadata-scheme-summary li{display:grid;gap:2px;padding:10px;border:1px solid var(--ds-border);border-radius:8px;background:var(--ds-surface-sunken)}
+.metadata-scheme-summary small,.hierarchy-work-types small{color:var(--ds-text-subtle)}
+.priority-swatch{display:block;width:16px;height:16px;border:1px solid var(--ds-border);border-radius:50%}
+.hierarchy-work-types{display:grid;gap:8px;margin:12px 0 0;padding:0;list-style:none}
+.hierarchy-work-types li{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--ds-border);border-radius:8px;background:var(--ds-surface-sunken)}
+.hierarchy-work-types li>span:last-child{display:grid}

@@ -110,6 +110,17 @@ Rules:
 - Updates accept full lists or Jira's `add`/`remove` lists.
 - The default scheme covers every project without another scheme and cannot be deleted. A scheme with projects cannot be deleted.
 
+## Settings pages
+
+| Page | What an administrator does |
+| --- | --- |
+| `/settings/work-types` | Create a standard or sub-task work type, rename and describe it, delete it (moving its work items to another type), create a work type scheme with its types and default, assign a scheme to a project, add or remove a type, delete a scheme |
+| `/settings/priorities` | Create a priority with its status colour, rename and describe it, make it the default, move it to the top, delete it (its work items take the default). Priority schemes are listed with their priorities and projects |
+| `/settings/resolutions` | Create a resolution, rename and describe it, make it the default, move it to the top, delete it (its work items take the replacement chosen) |
+| `/settings/hierarchy` | The levels, as described above |
+
+All four need site administration; deleting a priority or resolution runs as a task, as the REST API does.
+
 ## Code
 
 `internal/api3/issue_metadata.go`, `internal/store/issue_metadata.go`, `internal/store/issue_metadata_tasks.go`, `internal/store/issue_schemes.go`, `migrations/162_issue_metadata.sql`; tests in `internal/api3/issue_metadata_test.go`.
@@ -119,7 +130,7 @@ Rules:
 Tracked in [PLAN.md](../PLAN.md).
 
 - A resolution cannot be chosen on a transition or set by edit; reaching done always applies the site default.
-- No browser admin pages for work types, priorities, resolutions, work type schemes or priority schemes.
+- The priority schemes section of `/settings/priorities` is read-only; schemes are edited over REST.
 - `alternatives` does not narrow to types that share the same workflow, field configuration and screen schemes.
 - Team-managed scoping (`scope`, `entityId`) is not modelled; every type is company-managed.
 - A priority scheme update applies its mappings before answering, so the 202 has no `task`.
