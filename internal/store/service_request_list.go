@@ -90,10 +90,12 @@ func (s *Store) ServiceRequestList(ctx context.Context, workspaceID string, filt
 		conditions = append(conditions, "sr.request_type_id="+arg(filter.RequestTypeID))
 	}
 	switch filter.RequestStatus {
+	// A request is open while it has no resolution and closed once it has one,
+	// as the desk's queues decide it.
 	case "OPEN_REQUESTS":
-		conditions = append(conditions, "st.category<>'done'")
+		conditions = append(conditions, "i.resolution_id IS NULL")
 	case "CLOSED_REQUESTS":
-		conditions = append(conditions, "st.category='done'")
+		conditions = append(conditions, "i.resolution_id IS NOT NULL")
 	}
 	if term := strings.TrimSpace(filter.SearchTerm); term != "" {
 		pattern := strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`, "*", "%", "?", "_").Replace(term)

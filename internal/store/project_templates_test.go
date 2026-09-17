@@ -17,7 +17,7 @@ func TestProjectTemplatesListSaveAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	t.Cleanup(st.Close)
 
 	workspaceID := NewID("ws_template_test")
 	actorID := NewID("usr_template_test")

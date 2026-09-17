@@ -1,0 +1,90 @@
+{
+  "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+  "fields": {
+    "assignee": {
+      "accountId": "usr_1",
+      "accountType": "atlassian",
+      "active": false,
+      "avatarUrls": {
+        "24x24": "http://localhost:8080/static/img/avatar-default.svg",
+        "48x48": "http://localhost:8080/static/img/avatar-default.svg"
+      },
+      "displayName": "Demo User",
+      "emailAddress": "",
+      "timeZone": ""
+    },
+    "created": "2026-08-28T09:00:00Z",
+    "description": {
+      "type": "doc",
+      "version": 1,
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "body"
+            }
+          ]
+        }
+      ]
+    },
+    "duedate": null,
+    "fixVersions": [],
+    "issuetype": {
+      "description": "",
+      "hierarchyLevel": 0,
+      "iconUrl": "http://localhost:8080/static/img/issuetype-task.svg",
+      "id": "0",
+      "name": "Task",
+      "self": "http://localhost:8080/rest/api/3/issuetype/0",
+      "subtask": false
+    },
+    "labels": null,
+    "priority": {
+      "description": "",
+      "iconUrl": "",
+      "id": "0",
+      "isDefault": false,
+      "name": "Medium",
+      "self": "http://localhost:8080/rest/api/3/priority/0",
+      "statusColor": ""
+    },
+    "project": {
+      "id": "prj_default",
+      "key": "ZZ",
+      "name": "ZZ"
+    },
+    "reporter": {
+      "accountId": "usr_1",
+      "accountType": "atlassian",
+      "active": false,
+      "avatarUrls": {
+        "24x24": "http://localhost:8080/static/img/avatar-default.svg",
+        "48x48": "http://localhost:8080/static/img/avatar-default.svg"
+      },
+      "displayName": "Demo User",
+      "emailAddress": "",
+      "timeZone": ""
+    },
+    "resolution": null,
+    "resolutiondate": null,
+    "status": {
+      "id": "st_todo",
+      "name": "To Do",
+      "self": "http://localhost:8080/rest/api/3/status/st_todo",
+      "statusCategory": {
+        "colorName": "blue-gray",
+        "id": 2,
+        "key": "new",
+        "name": "To Do"
+      }
+    },
+    "summary": "Walking skeleton comes online",
+    "updated": "2026-08-28T09:00:00Z",
+    "versions": []
+  },
+  "id": "10001",
+  "key": "ZZ-1",
+  "self": "http://localhost:8080/rest/api/3/issue/10001"
+}

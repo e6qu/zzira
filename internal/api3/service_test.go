@@ -576,7 +576,9 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if _, err := st.ServiceChangeConflicts(ctx, workspaceID, customerID, changeIssue.ID); !errors.Is(err, store.ErrProjectPermission) {
 		t.Fatalf("customer conflict access error = %v, want project permission", err)
 	}
-	exec(`UPDATE issues SET status_id='st_done' WHERE id=$1`, overlapIssue.ID)
+	// Completing a change resolves it, as finishing work does everywhere: the
+	// calendar lists unresolved changes.
+	exec(`UPDATE issues SET status_id='st_done', resolution_id=(SELECT default_resolution_id FROM workspace_issue_defaults WHERE workspace_id=$2) WHERE id=$1`, overlapIssue.ID, workspaceID)
 	changeCalendar, err = st.ServiceChangeCalendar(ctx, workspaceID, actorID, serviceDeskID, windowStart.Add(-time.Hour), overlapEnd.Add(time.Hour))
 	if err != nil || len(changeCalendar) != 1 || changeCalendar[0].IssueID != changeIssue.ID || changeCalendar[0].ConflictCount != 0 {
 		t.Fatalf("calendar after completed change = %+v, %v", changeCalendar, err)

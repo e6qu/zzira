@@ -23,7 +23,7 @@ func TestWikiWhiteboardObjectsConnectorsAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	t.Cleanup(st.Close)
 	if err := store.Migrate(ctx, st.Pool); err != nil {
 		t.Fatal(err)
 	}
@@ -35,10 +35,18 @@ func TestWikiWhiteboardObjectsConnectorsAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var memberID string
-	if err := st.Pool.QueryRow(ctx, `SELECT id FROM users WHERE email='ana@zzira.dev'`).Scan(&memberID); err != nil {
-		t.Skip("no member fixture")
+	// A plain member of the workspace, holding no space permission of their own.
+	memberID := store.NewID("usr")
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$2,'test','Wiki member')`, memberID, memberID+"@example.invalid"); err != nil {
+		t.Fatal(err)
 	}
+	if _, err := st.Pool.Exec(ctx, `INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'member')`, workspaceID, memberID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE user_id=$1`, memberID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, memberID)
+	})
 	service := &commands.Service{Store: st}
 	space, err := service.CreateWikiSpace(ctx, workspaceID, adminID, "WB"+time.Now().UTC().Format("150405000000"), "Canvas test", "Visual map", false)
 	if err != nil {

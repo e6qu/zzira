@@ -80,7 +80,7 @@ func (s *Store) DueServiceIncidentEscalations(ctx context.Context, workspaceID s
 		JOIN users u ON u.id=p.target_user_id AND u.active
 		JOIN memberships m ON m.workspace_id=r.workspace_id AND m.user_id=u.id
 		WHERE r.workspace_id=$1 AND o.kind='incident' AND o.major_incident AND o.major_incident_declared_at IS NOT NULL
-		  AND st.category<>'done' AND o.major_incident_declared_at + make_interval(mins => p.delay_minutes) <= $2
+		  AND i.resolution_id IS NULL AND o.major_incident_declared_at + make_interval(mins => p.delay_minutes) <= $2
 		  AND EXISTS(SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id AND d.active JOIN directory_users du ON du.directory_id=d.id AND du.user_id=u.id AND du.active WHERE si.workspace_id=r.workspace_id)
 		  AND NOT EXISTS(SELECT 1 FROM service_incident_escalations e WHERE e.request_issue_id=r.issue_id AND e.incident_generation=o.major_incident_generation AND e.step_id=p.id)
 		ORDER BY o.major_incident_declared_at,p.position,p.id::bigint`, workspaceID, now)

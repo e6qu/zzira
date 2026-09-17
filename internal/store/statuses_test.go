@@ -20,7 +20,7 @@ func TestStatusLifecycleProtectsReferencesAndBuiltIns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	t.Cleanup(st.Close)
 	workspaceID, _, err := st.DefaultWorkspace(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestStatusBatchesCommitAsOneMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	t.Cleanup(st.Close)
 	workspaceID, _, err := st.DefaultWorkspace(ctx)
 	if err != nil {
 		t.Fatal(err)

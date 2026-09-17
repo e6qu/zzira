@@ -288,7 +288,7 @@ func (s *Store) ServiceChangeCalendar(ctx context.Context, workspaceID, actorID,
 		   JOIN issues other_issue ON other_issue.id=other.request_issue_id
 		   JOIN statuses other_status ON other_status.id=other_issue.status_id
 		   WHERE other_request.service_desk_id=r.service_desk_id AND other.kind='change'
-		     AND other.request_issue_id<>o.request_issue_id AND other_status.category<>'done'
+		     AND other.request_issue_id<>o.request_issue_id AND other_issue.resolution_id IS NULL
 		     AND other.planned_start IS NOT NULL AND other.planned_end IS NOT NULL
 		     AND other.planned_start<o.planned_end AND other.planned_end>o.planned_start)
 		FROM service_request_operations o
@@ -296,7 +296,7 @@ func (s *Store) ServiceChangeCalendar(ctx context.Context, workspaceID, actorID,
 		JOIN issues i ON i.id=o.request_issue_id
 		JOIN statuses st ON st.id=i.status_id
 		WHERE r.workspace_id=$1 AND r.service_desk_id=$2 AND o.kind='change'
-		  AND st.category<>'done' AND o.planned_start IS NOT NULL AND o.planned_end IS NOT NULL
+		  AND i.resolution_id IS NULL AND o.planned_start IS NOT NULL AND o.planned_end IS NOT NULL
 		  AND o.planned_start<$4 AND o.planned_end>$3
 		ORDER BY o.planned_start,i.key`, workspaceID, deskID, from, until)
 	if err != nil {

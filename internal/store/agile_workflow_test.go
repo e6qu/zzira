@@ -18,7 +18,7 @@ func TestWorkflowPersistenceValidatesDefinitionsAndAssignments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	t.Cleanup(st.Close)
 
 	workflowID := NewID("workflow_test")
 	transitionID := NewID("transition_test")

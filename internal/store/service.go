@@ -767,7 +767,9 @@ func (s *Store) ServiceQueueRequests(ctx context.Context, workspaceID, viewerID,
 		return queue, filtered, nil
 	}
 	for _, request := range requests {
-		if request.Issue.Status.Category == "done" {
+		// The default queues list unresolved requests, as their
+		// resolution = Unresolved query says.
+		if request.Issue.Resolution != nil {
 			continue
 		}
 		switch queue.Kind {

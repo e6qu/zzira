@@ -18,6 +18,18 @@ async function login(page: Page) {
   await expect(page).toHaveURL('/');
 }
 
+// The board journeys need work on the board: a freshly reset site has none, so
+// the spec raises its own rather than relying on another spec having run.
+test.beforeAll(async ({ request }) => {
+  for (const summary of ['Board card one', 'Board card two', 'Board card three']) {
+    const created = await request.post('/rest/api/3/issue', {
+      headers: { Authorization: apiAuthHeader() },
+      data: { fields: { project: { key: 'ZZ' }, summary: `${summary} ${Date.now()}`, issuetype: { name: 'Task' } } },
+    });
+    expect(created.status()).toBe(201);
+  }
+});
+
 test('V4: board renders columns and rank-ordered cards', async ({ page, request }) => {
   await login(page);
   await page.goto('/board/brd_default');

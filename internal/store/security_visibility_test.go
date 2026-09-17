@@ -2,16 +2,19 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/e6qu/zzira/internal/jql"
-	"github.com/e6qu/zzira/internal/models"
 )
 
 // TestSecurityVisibilityAcrossReadPaths walks every read path with a
-// restricted issue: JQL search, project list, board, bootstrap snapshot.
-// Demo is a level member; ana is not.
+// restricted issue: the project list, JQL search, a board, the bootstrap
+// snapshot and the dashboard. One plain member is granted the issue's security
+// level and one is not; workspace administrators would see everything, so
+// neither is one.
 func TestSecurityVisibilityAcrossReadPaths(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -22,151 +25,177 @@ func TestSecurityVisibilityAcrossReadPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	t.Cleanup(st.Close)
 	if err := Migrate(ctx, st.Pool); err != nil {
 		t.Fatal(err)
 	}
 
-	var demoID, anaID string
-	if err := st.Pool.QueryRow(ctx, `SELECT id FROM users WHERE email='demo@zzira.dev'`).Scan(&demoID); err != nil {
-		t.Skip("demo user not seeded")
+	workspaceID, adminID, grantedID, deniedID, projectID := NewID("ws"), NewID("usr"), NewID("usr"), NewID("usr"), NewID("prj")
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := st.Pool.Exec(ctx, query, args...); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := st.Pool.QueryRow(ctx, `SELECT id FROM users WHERE email='ana@zzira.dev'`).Scan(&anaID); err != nil {
-		t.Skip("ana user not seeded")
+	exec(`INSERT INTO workspaces(id,slug,name) VALUES($1,$1,'Security visibility')`, workspaceID)
+	for _, user := range []struct{ id, role string }{{adminID, "admin"}, {grantedID, "member"}, {deniedID, "member"}} {
+		exec(`INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$2,'test',$1)`, user.id, user.id+"@example.invalid")
+		exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,$3)`, workspaceID, user.id, user.role)
 	}
+	key := "SV" + strings.ToUpper(projectID[len(projectID)-5:])
+	exec(`INSERT INTO projects(id,workspace_id,key,name,workflow_id,lead_account_id) VALUES($1,$2,$3,'Security visibility','wf_default',$4)`, projectID, workspaceID, key, adminID)
+	t.Cleanup(func() {
+		drop := func(query string, args ...any) { _, _ = st.Pool.Exec(ctx, query, args...) }
+		drop(`DELETE FROM boards WHERE project_id=$1`, projectID)
+		drop(`DELETE FROM issues WHERE workspace_id=$1`, workspaceID)
+		drop(`DELETE FROM actions WHERE workspace_id=$1`, workspaceID)
+		drop(`UPDATE projects SET security_scheme_id=NULL WHERE id=$1`, projectID)
+		drop(`DELETE FROM projects WHERE workspace_id=$1`, workspaceID)
+		drop(`DELETE FROM issue_security_level_members WHERE workspace_id=$1`, workspaceID)
+		drop(`DELETE FROM security_schemes WHERE workspace_id=$1`, workspaceID)
+		drop(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
+		drop(`DELETE FROM custom_fields WHERE workspace_id=$1`, workspaceID)
+		drop(`DELETE FROM workspaces WHERE id=$1`, workspaceID)
+		drop(`DELETE FROM users WHERE id IN ($1,$2,$3)`, adminID, grantedID, deniedID)
+	})
 
-	// Find a security-restricted issue within the navigator's 200-row window
-	// (V5 applies lvl_private and the e2e suite creates more). A long-lived local
-	// database can push every such fixture outside that window, so skip then.
-	var restrictedID, restrictedKey, restrictedLevel, projectID string
-	err = st.Pool.QueryRow(ctx, `
-		SELECT i.id, i.key, i.security_level_id, i.project_id
-		FROM issues i
-		JOIN projects p ON p.id = i.project_id
-		JOIN security_schemes ss ON ss.id = p.security_scheme_id
-		, jsonb_array_elements(ss.levels) lvl
-		WHERE i.workspace_id='ws_default'
-		  AND i.security_level_id IS NOT NULL AND lvl->>'id' = i.security_level_id
-		  AND (SELECT count(*) FROM issues newer
-		       WHERE newer.workspace_id=i.workspace_id AND newer.project_id=i.project_id
-		         AND newer.updated_seq>i.updated_seq) < 200
-		ORDER BY i.updated_seq DESC LIMIT 1`).Scan(&restrictedID, &restrictedKey, &restrictedLevel, &projectID)
+	scheme, err := st.CreateIssueSecurityScheme(ctx, workspaceID, adminID, "Confidential "+key, "Restricted work", []SecurityLevelInput{{
+		Name: "Private", Members: []SecurityLevelMemberInput{{Type: "user", Parameter: grantedID}},
+	}})
 	if err != nil {
-		t.Skip("no security-restricted issue present; run the V5 e2e spec first")
+		t.Fatal(err)
+	}
+	if len(scheme.Levels) != 1 {
+		t.Fatalf("scheme levels = %+v", scheme.Levels)
+	}
+	levelID := scheme.Levels[0].ID
+	exec(`UPDATE projects SET security_scheme_id=$2 WHERE id=$1`, projectID, scheme.ID)
+
+	restricted, _, err := st.CreateIssue(ctx, adminID, projectID, "Confidential work", json.RawMessage(`{"type":"doc","version":1,"content":[]}`), "st_todo", "it_task", "pr_medium", "", nil, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	open, _, err := st.CreateIssue(ctx, adminID, projectID, "Public work", json.RawMessage(`{"type":"doc","version":1,"content":[]}`), "st_todo", "it_task", "pr_medium", "", nil, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(`UPDATE issues SET security_level_id=$2 WHERE id=$1`, restricted.ID, levelID)
+	board, err := st.CreateBoard(ctx, adminID, workspaceID, BoardCreate{Name: "Security board", Type: "kanban", ProjectID: projectID})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	visibleTo := func(userID string) map[string]bool {
+		t.Helper()
 		out := map[string]bool{}
-		issues, _ := st.IssuesByProject(ctx, "ws_default", projectID, userID)
+		issues, err := st.IssuesByProject(ctx, workspaceID, projectID, userID)
+		if err != nil {
+			t.Fatal(err)
+		}
 		for _, i := range issues {
 			out[i.ID] = true
 		}
 		return out
 	}
-
-	// project navigator: ana must not see it, demo must
-	if visibleTo(anaID)[restrictedID] {
-		t.Fatal("ana sees the restricted issue in IssuesByProject")
+	// The project list: the unrestricted work is visible to both, which
+	// proves the denied member reads the project at all.
+	if !visibleTo(deniedID)[open.ID] {
+		t.Fatal("the denied member cannot read the project, so the test proves nothing")
 	}
-	if !visibleTo(demoID)[restrictedID] {
-		t.Fatal("demo lost the restricted issue in IssuesByProject")
+	if visibleTo(deniedID)[restricted.ID] {
+		t.Fatal("the denied member sees the restricted issue in IssuesByProject")
+	}
+	if !visibleTo(grantedID)[restricted.ID] {
+		t.Fatal("the granted member lost the restricted issue in IssuesByProject")
 	}
 
-	// JQL search: match the restricted key, per user
-	q, err := jql.Parse(`key = "` + restrictedKey + `"`)
+	// JQL search, per user.
+	q, err := jql.Parse(`key = "` + restricted.Key + `"`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiled := jql.CompileAt(q, demoID, jql.DefaultResolver(), 2)
-	demoIssues, demoTotal, err := st.Search(ctx, "ws_default", demoID, compiled, 10, 0)
-	if err != nil || demoTotal != 1 || len(demoIssues) != 1 {
-		t.Fatalf("demo search total=%d n=%d err=%v", demoTotal, len(demoIssues), err)
+	grantedIssues, grantedTotal, err := st.Search(ctx, workspaceID, grantedID, jql.CompileAt(q, grantedID, jql.DefaultResolver(), 2), 10, 0)
+	if err != nil || grantedTotal != 1 || len(grantedIssues) != 1 {
+		t.Fatalf("granted search total=%d n=%d err=%v", grantedTotal, len(grantedIssues), err)
 	}
-	compiledAna := jql.CompileAt(q, anaID, jql.DefaultResolver(), 2)
-	_, anaTotal, err := st.Search(ctx, "ws_default", anaID, compiledAna, 10, 0)
-	if err != nil || anaTotal != 0 {
-		t.Fatalf("ana search total=%d err=%v (must be 0)", anaTotal, err)
+	_, deniedTotal, err := st.Search(ctx, workspaceID, deniedID, jql.CompileAt(q, deniedID, jql.DefaultResolver(), 2), 10, 0)
+	if err != nil || deniedTotal != 0 {
+		t.Fatalf("denied search total=%d err=%v (must be 0)", deniedTotal, err)
 	}
 
-	// board: restricted issue absent from ana's board rows
-	boards, err := st.BoardsByWorkspace(ctx, "ws_default")
-	if err != nil || len(boards) == 0 {
-		t.Skip("no board present")
-	}
-	boardCols, err := st.BoardIssues(ctx, boards[0].ID, anaID)
+	// The board.
+	columns, err := st.BoardIssues(ctx, board.ID, deniedID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, col := range boardCols {
-		for _, i := range col {
-			if i.ID == restrictedID {
-				t.Fatal("ana's board contains the restricted issue")
+	for _, column := range columns {
+		for _, i := range column {
+			if i.ID == restricted.ID {
+				t.Fatal("the denied member's board contains the restricted issue")
 			}
 		}
 	}
 
-	// bootstrap snapshots are user-shaped
-	anaSnap, err := st.BootstrapSnapshot(ctx, "ws_default", anaID)
+	// Bootstrap snapshots are user-shaped.
+	deniedSnap, err := st.BootstrapSnapshot(ctx, workspaceID, deniedID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, i := range anaSnap.Issues {
-		if i.ID == restrictedID {
-			t.Fatal("ana's bootstrap snapshot contains the restricted issue")
+	for _, i := range deniedSnap.Issues {
+		if i.ID == restricted.ID {
+			t.Fatal("the denied member's snapshot contains the restricted issue")
 		}
 	}
-	for _, c := range anaSnap.Comments {
-		if c.IssueID == restrictedID {
-			t.Fatal("ana's bootstrap snapshot contains comments on the restricted issue")
+	for _, c := range deniedSnap.Comments {
+		if c.IssueID == restricted.ID {
+			t.Fatal("the denied member's snapshot contains comments on the restricted issue")
 		}
 	}
-	for _, a := range anaSnap.Attachments {
-		if a.IssueID == restrictedID {
-			t.Fatal("ana's bootstrap snapshot contains attachments on the restricted issue")
+	for _, a := range deniedSnap.Attachments {
+		if a.IssueID == restricted.ID {
+			t.Fatal("the denied member's snapshot contains attachments on the restricted issue")
 		}
 	}
-	for _, w := range anaSnap.Worklogs {
-		if w.IssueID == restrictedID {
-			t.Fatal("ana's bootstrap snapshot contains worklogs on the restricted issue")
+	for _, w := range deniedSnap.Worklogs {
+		if w.IssueID == restricted.ID {
+			t.Fatal("the denied member's snapshot contains worklogs on the restricted issue")
 		}
 	}
-	demoSnap, err := st.BootstrapSnapshot(ctx, "ws_default", demoID)
+	grantedSnap, err := st.BootstrapSnapshot(ctx, workspaceID, grantedID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	found := false
-	for _, i := range demoSnap.Issues {
-		if i.ID == restrictedID {
-			found = true
-		}
+	for _, i := range grantedSnap.Issues {
+		found = found || i.ID == restricted.ID
 	}
 	if !found {
-		t.Fatal("demo's bootstrap snapshot lost the restricted issue")
+		t.Fatal("the granted member's snapshot lost the restricted issue")
 	}
 
-	// Dashboard aggregates must have the same visibility boundary as navigator
-	// and search; otherwise counts and activity leak confidential issue data.
-	stats, err := st.DashboardData(ctx, "ws_default", anaID)
+	// Dashboard aggregates have the same boundary as the navigator and search;
+	// otherwise counts and activity leak confidential work.
+	stats, err := st.DashboardData(ctx, workspaceID, deniedID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var visibleCount int
-	err = st.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM issues i WHERE i.workspace_id=$1 AND `+VisibleIssuePredicate("i", "$2"), "ws_default", anaID).Scan(&visibleCount)
-	if err != nil {
+	if err := st.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM issues i WHERE i.workspace_id=$1 AND `+VisibleIssuePredicate("i", "$2"), workspaceID, deniedID).Scan(&visibleCount); err != nil {
 		t.Fatal(err)
 	}
-	var dashboardCount int
+	if visibleCount != 1 {
+		t.Fatalf("the denied member sees %d issues, want only the public one", visibleCount)
+	}
+	dashboardCount := 0
 	for _, count := range stats.StatusCounts {
 		dashboardCount += int(count.Count)
 	}
 	if dashboardCount != visibleCount {
-		t.Fatalf("ana dashboard count=%d, want visible count %d", dashboardCount, visibleCount)
+		t.Fatalf("denied dashboard count=%d, want visible count %d", dashboardCount, visibleCount)
 	}
 	for _, activity := range stats.Recent {
-		if activity.IssueKey == restrictedKey {
-			t.Fatal("ana's dashboard activity contains the restricted issue")
+		if activity.IssueKey == restricted.Key {
+			t.Fatal("the denied member's dashboard activity contains the restricted issue")
 		}
 	}
-
-	_ = models.SchemaVersion
 }
