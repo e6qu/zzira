@@ -1,72 +1,75 @@
-# Jira project lifecycle
+# Project lifecycle
 
-Updated: 2026-09-10
+Projects are active, archived or in trash. Archiving hides a project while
+keeping its data; trash holds a project for 60 days before permanent deletion;
+restore brings either back. Recent-project tracking is covered here too. Part
+of the [Jira platform](JIRA_PLATFORM.md); see
+[CLOUD_PARITY.md](CLOUD_PARITY.md) for status.
 
-This checkpoint gives project administrators one durable lifecycle across the
-Jira v3 API, browser administration, search, boards, service management, local
-replicas, asynchronous tasks, and attachment storage.
+## API
 
-## Delivered behavior
-
-- Opening a project through the browser or `GET /rest/api/3/project/{idOrKey}`
-  records a workspace- and user-scoped view. `GET /rest/api/3/project/recent`
-  returns up to 20 browsable active projects in recency order with selected
-  properties and every documented expansion. Project reads share one bean
-  builder: `GET /rest/api/3/project/{idOrKey}` returns components, versions,
-  role URLs and the `issueTypeHierarchy` expansion, and project search filters
-  by `action`, `status` (live, archived, deleted), `propertyQuery` and every
-  documented ordering, reporting archive and trash dates, actors and the
-  60-day retention date.
-- Administrators can archive an active project. Its database state remains
-  intact while project reads, search, work-item access, boards, reports, and
-  service-desk discovery stop exposing it. Archive actions remove its project,
-  work, board, sprint, and sprint-membership records from local replicas.
-- Administrators can restore archived or trashed projects. Restore republishes
-  the project and dependent work-planning state to local replicas and makes the
-  normal Jira and product surfaces available again.
-- `DELETE /rest/api/3/project/{idOrKey}` moves an active project to trash by
-  default. `enableUndo=false` permanently deletes an active or trashed project.
-  Archived projects must be restored before deletion.
-- `POST /rest/api/3/project/{idOrKey}/delete` creates a durable Jira task,
-  returns `303 See Other` with its task URL in `Location`, and completes the
-  delete transaction through the shared recoverable task runner.
-- The project directory has Active, Archived, and Trash views. It shows
-  retained work counts, the lifecycle actor, and the automatic deletion date.
-  Settings provide archive and trash actions; the Trash view provides restore
-  and explicit permanent-delete confirmation.
-- Trashed projects are automatically deleted after 60 days. The persisted
-  `trashed_at` timestamp is the schedule source, and the hourly runner resumes
-  after process restarts. Multiple replicas tolerate a competing deletion.
-- Permanent deletion cascades through issues, boards, sprints, service desks,
-  releases, components, properties, workflow data, and other project children.
-  Attachment metadata is deleted in the same transaction while blob references
-  enter the existing leased, retryable cleanup queue.
-
-## Authorization and transactional guarantees
-
-Lifecycle writes currently require the shared site-administrator role. Reads
-remain workspace scoped and issue-security filtering continues to apply before
-serialization. State changes, replica actions, audit evidence, attachment
-cleanup registration, dependent deletion, and asynchronous task completion are
-transactional.
-
-## Jira v3 resources
-
-| Resource | Behavior |
+| Route | Behavior |
 |---|---|
-| `GET /rest/api/3/project/recent` | Recent active projects, expansions, selected properties |
+| `GET /rest/api/3/project/recent` | Up to 20 browsable active projects the caller viewed, most recent first, with `properties` and every documented expansion |
 | `POST /rest/api/3/project/{idOrKey}/archive` | Archive an active project |
-| `POST /rest/api/3/project/{idOrKey}/restore` | Restore archived or trashed project |
-| `DELETE /rest/api/3/project/{idOrKey}` | Trash by default or permanently delete with `enableUndo=false` |
-| `POST /rest/api/3/project/{idOrKey}/delete` | Durable asynchronous permanent deletion |
+| `POST /rest/api/3/project/{idOrKey}/restore` | Restore an archived or trashed project |
+| `DELETE /rest/api/3/project/{idOrKey}` | Move an active project to trash; `enableUndo=false` deletes an active or trashed project permanently |
+| `POST /rest/api/3/project/{idOrKey}/delete` | Permanent deletion as a durable task: 303 with the task URL in `Location` |
 
-## Compatibility limits
+Project reads share one bean builder. `GET /project/{idOrKey}` includes
+components, versions, role URLs and the `issueTypeHierarchy` expansion.
+`GET /project/search` filters by `action`, `status` (`live`, `archived`,
+`deleted`) and `propertyQuery`, supports every documented ordering, and
+reports archive and trash dates, the actor and the 60-day retention date.
 
-- Recent projects are remembered per account, so anonymous callers receive an
-  empty list; Jira's session-scoped anonymous history has no account to attach
-  to.
-- Lifecycle administration remains site-admin scoped; the shared permission
-  evaluator is available, but lifecycle mutations have not yet adopted a
-  project-level permission key.
-- Automatic trash deletion uses ZZIRA's hourly worker cadence rather than
-  Atlassian's internal scheduling interval.
+## Behavior
+
+- **Views.** Opening a project in the browser or through
+  `GET /project/{idOrKey}` records a per-user view for the recent list.
+- **Archive.** Data stays intact, but project reads, search, work item access,
+  boards, reports and service desk discovery stop exposing the project.
+  Archive actions remove its project, work item, board, sprint and sprint
+  membership records from local replicas.
+- **Restore** republishes the project and its planning state to replicas.
+- **Trash.** Trashed projects are deleted automatically 60 days after
+  `trashed_at`, by an hourly runner that resumes after restarts; competing
+  replicas are tolerated.
+- **Archived projects** must be restored before they can be deleted.
+- **Permanent deletion** cascades through work items, boards, sprints,
+  service desks, versions, components, properties, workflow data and other
+  project children. Attachment metadata is deleted in the same transaction and
+  blobs enter the leased cleanup queue (see [ATTACHMENTS.md](ATTACHMENTS.md)).
+- State changes, replica actions, audit records, cleanup registration and task
+  completion are transactional. Reads stay workspace-scoped with issue
+  security applied.
+
+## Permissions
+
+Archive, restore, trash and delete need a site or organization administrator.
+Reads need Browse projects.
+
+## UI
+
+- `/projects` has Active, Archived (`?status=archived`) and Trash
+  (`?status=trash`) views showing retained work counts, the lifecycle actor
+  and the automatic deletion date.
+- Project settings offer archive and trash (`POST /projects/{key}/lifecycle`);
+  the Trash view offers restore and a confirmed permanent delete.
+
+## Gaps
+
+See [PLAN.md](../PLAN.md).
+
+- Search refuses `includeArchivedProjects=true`, so work items in archived
+  projects cannot be searched.
+- Anonymous callers get an empty recent list; Jira keeps a session-scoped
+  history for them.
+
+## Tests
+
+`internal/api3/project_lifecycle_test.go`, `e2e/projects.spec.ts`.
+
+## See also
+
+[PROJECT_GOVERNANCE.md](PROJECT_GOVERNANCE.md) · [JQL.md](JQL.md) ·
+[ISSUE_SURFACE.md](ISSUE_SURFACE.md) (work item archiving)

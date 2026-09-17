@@ -1,75 +1,58 @@
-# Jira screens
+# Screens
 
-Updated: 2026-09-10
+A screen is the reusable field layout behind a work item form: named tabs, each with an ordered list of fields. [Screen schemes](SCREEN_SCHEMES.md) decide which screen each form uses. Part of the [Jira platform](JIRA_PLATFORM.md). For status, see [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
-A screen is the reusable field layout behind a Jira work item form. ZZIRA stores
-screens, their tabs, and the ordered fields on each tab. Site administrators
-manage the catalog at `/settings/screens`.
+## API
 
-Every workspace is provisioned with a `Default Screen` carrying one `Field Tab`
-of summary, description, assignee, priority, and labels, and the same screen is
-created for each new workspace by a trigger.
-
-## Jira Cloud REST surface
-
-This checkpoint implements all 17 pinned Jira Cloud screen, tab, and tab-field
-operations:
+All operations need *Administer Jira*, except the tab read noted below.
 
 | Method and path | Behavior |
 |---|---|
-| `GET/POST /rest/api/3/screens` | Pages screens with `id` and `queryString` filters, or creates a screen with its first tab. |
-| `PUT/DELETE /rest/api/3/screens/{screenId}` | Updates a screen's name and description, or deletes a screen with its tabs and fields. |
-| `GET /rest/api/3/screens/{screenId}/availableFields` | Lists catalog fields the screen does not already show. |
-| `POST /rest/api/3/screens/addToDefault/{fieldId}` | Adds one field to the default screen's first tab. |
-| `GET /rest/api/3/field/{fieldId}/screens` | Pages the screens that currently show one field. |
-| `GET /rest/api/3/screens/tabs` | Reads tabs for selected screens, or for every screen when no `screenId` is given, narrowed by `tabId` and paged with `startAt` and `maxResult` (at most 100). |
-| `GET/POST /rest/api/3/screens/{screenId}/tabs` | Reads a screen's tabs in display order, or appends a tab. With `projectKey`, a project's administrators may read the tabs of a screen that project's issue type screen scheme uses. |
+| `GET/POST /rest/api/3/screens` | Pages screens, or creates a screen with its first tab. Filters: `id`, `queryString`, `scope` (every screen is `GLOBAL`). `orderBy`: name or id. |
+| `PUT/DELETE /rest/api/3/screens/{screenId}` | Changes name and description, or deletes a screen with its tabs and fields. |
+| `GET /rest/api/3/screens/{screenId}/availableFields` | Fields from the catalog that are not yet on the screen. |
+| `POST /rest/api/3/screens/addToDefault/{fieldId}` | Adds a field to the first tab of the default screen. |
+| `GET /rest/api/3/field/{fieldId}/screens` | Pages the screens that show a field; `expand=tab` adds the tab. |
+| `GET /rest/api/3/screens/tabs` | Tabs for the given `screenId`s (all screens if none), narrowed by `tabId`, paged with `startAt` and `maxResult` (100 at most). |
+| `GET/POST /rest/api/3/screens/{screenId}/tabs` | Tabs in display order, or appends one. With `projectKey`, a project administrator may read a screen that the project's work type screen scheme uses. |
 | `PUT/DELETE /rest/api/3/screens/{screenId}/tabs/{tabId}` | Renames a tab, or removes it with its fields. |
-| `POST /rest/api/3/screens/{screenId}/tabs/{tabId}/move/{pos}` | Moves a tab to an explicit zero-based position. |
-| `GET/POST /rest/api/3/screens/{screenId}/tabs/{tabId}/fields` | Reads a tab's fields in display order, or adds one catalog field. |
-| `DELETE /rest/api/3/screens/{screenId}/tabs/{tabId}/fields/{id}` | Removes one field from a tab. |
-| `POST /rest/api/3/screens/{screenId}/tabs/{tabId}/fields/{id}/move` | Moves a field with `after`, or `position` First, Earlier, Later, or Last. |
+| `POST /rest/api/3/screens/{screenId}/tabs/{tabId}/move/{pos}` | Moves a tab to a zero-based position. |
+| `GET/POST /rest/api/3/screens/{screenId}/tabs/{tabId}/fields` | A tab's fields in order, or adds one catalog field. |
+| `DELETE /rest/api/3/screens/{screenId}/tabs/{tabId}/fields/{id}` | Removes a field. |
+| `POST /rest/api/3/screens/{screenId}/tabs/{tabId}/fields/{id}/move` | Moves a field with `after`, or `position` `First`, `Earlier`, `Later` or `Last`. |
 
-Screen names are unique per workspace and tab names are unique per screen, both
-without regard to case. IDs are Jira-style numeric values drawn from dedicated
-sequences. Every mutation writes an immutable action in the same transaction.
+Screen names are unique per site, and tab names are unique per screen, both ignoring case. Ids are Jira-style numbers. Every change is written to the action log.
 
-Two structural rules are enforced by the store rather than left to the caller:
-a screen always keeps at least one tab, so fields always have somewhere to
-live, and a field appears at most once per screen, so moving it between tabs is
-an update rather than a duplicate. The workspace default screen cannot be
-deleted. Removing a tab or a field renumbers what remains, so positions stay
-dense and reads are stable.
+## Rules
 
-## The field catalog
+- A screen always has at least one tab.
+- A field appears at most once per screen, so moving it between tabs is an update.
+- Removing a tab or field renumbers the rest, so positions stay dense.
+- The default screen cannot be deleted, and neither can a screen that a screen scheme uses.
+- Deleting a custom field removes it from every screen (trigger).
 
-A screen may only reference a field the issue forms can already render: the
-built-in summary, description, assignee, priority, labels, parent, components,
-fix versions, affects versions, restrict-to, issue type, and project fields,
-followed by the workspace's custom fields. Adding an unknown field is rejected
-rather than stored, and deleting a custom field removes it from every screen
-through the same trigger pattern that maintains role bindings, permission
-grants, and issue security holders.
+## Field catalog
 
-## Evidence and current boundary
+A screen can only hold fields the forms can render. The system fields, in order: `summary`, `description`, `assignee`, `priority`, `labels`, `duedate`, `parent`, `components`, `fixVersions`, `versions`, `security` (Restrict to), `timetracking`, `issuetype` and `project` (`systemScreenFields`, `internal/store/screens.go:24`). After them come the site's custom fields. Adding any other field is refused.
 
-- `internal/api3/screens_test.go` covers all 17 operations, permission
-  rejection, name and tab uniqueness, the unknown-field rejection, every move
-  form, the last-tab and default-screen guards, and the immutable action record.
-- `e2e/screens.spec.ts` covers screen creation, adding and reordering fields,
-  adding and reordering tabs, REST agreement with what the browser shows,
-  320 px reflow, field and tab removal, the last-tab guard, and deletion. It
-  creates and deletes its own screen.
-- `migrations/133_screens.sql` is exercised from a clean PostgreSQL schema and
-  provisions the default screen for existing and future workspaces. The page is
-  in the light and dark axe sweep.
+## Default screen
 
-Screens now drive the create and edit forms through screen schemes and work
-type screen schemes; see [SCREEN_SCHEMES.md](SCREEN_SCHEMES.md) for the
-resolution chain and its boundary. A screen a screen scheme uses cannot be
-deleted, and the default screen carries every system field the forms render.
-Workflow transition screens still carry their own field list rather than
-referencing a screen. The screen list filters by `scope` — every screen on the site is global — and
-orders by name or id, and a field's screens expand the `tab` it is on.
-Field configurations, per-project field scoping, the `projectKey` query
-parameter on tab reads, and exact Jira error wording also remain.
+Every site has a `Default Screen` with one `Field Tab`. It holds every system field the forms render. A new custom field is added to it by trigger.
+
+## UI
+
+`/settings/screens`: create, rename and delete screens; add, reorder and remove tabs and fields.
+
+## Code
+
+`internal/api3/screens.go`, `internal/store/screens.go`, `internal/web/screens.go`, `migrations/133_screens.sql`; tests in `internal/api3/screens_test.go` and `e2e/screens.spec.ts`.
+
+## Gaps
+
+Tracked in [PLAN.md](../PLAN.md).
+
+- A workflow transition screen does not point to a Screen. The `system:transition-screen` rule stores a comma-separated `fields` parameter (`internal/workflow/workflow.go:889`) instead of a screen id; see [WORKFLOW_RULES.md](WORKFLOW_RULES.md).
+- Forms show a screen's fields as one flat list; tabs are not rendered.
+- `GET .../tabs/{tabId}/fields` ignores `projectKey`, so project administrators cannot read tab fields.
+- Reporter, Environment, Attachment, Linked issues and Resolution are not in the field catalog.
+- No screen copy action.

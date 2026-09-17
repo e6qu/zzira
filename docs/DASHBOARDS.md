@@ -1,180 +1,173 @@
-# Custom dashboards
+# Dashboards
 
-The dashboard directory at `/dashboards` provides private and shared dashboards.
-Owners can change dashboard details and sharing, while people named in edit
-permissions can arrange gadgets and configure their queries. Every viewer's
-gadget results are evaluated with that viewer's issue-security permissions.
+Dashboards collect gadgets that show work, charts and reports. Each viewer sees every gadget according to their own permissions. Dashboards can be private or shared. People who have edit permission arrange the gadgets and set their queries. A dashboard can also be shown as a wallboard or sent by email. The REST API is described in [DASHBOARDS_API.md](DASHBOARDS_API.md). This page belongs to [Jira Software](JIRA_SOFTWARE.md); see [CLOUD_PARITY.md](CLOUD_PARITY.md) for status.
 
-## Delivered Jira Cloud operations
+## UI
 
-ZZIRA implements 16 of the 17 dashboard operations in the pinned Jira Cloud
-platform REST v3 contract:
-
-| Operation | Delivered behavior |
+| Page | Purpose |
 |---|---|
-| GET/POST `/rest/api/3/dashboard` | Paginated visible dashboards with `my` and `favourite` filters; create a private or shared dashboard |
-| GET `/rest/api/3/dashboard/search` | Name and owner filtering, active status, pagination, supported expansions and Jira orderings |
-| GET/PUT/DELETE `/rest/api/3/dashboard/{id}` | Permission-scoped details, owner-only metadata/sharing updates and deletion |
-| POST `/rest/api/3/dashboard/{id}/copy` | Copy every gadget and property into a private dashboard owned by the caller |
-| GET `/rest/api/3/dashboard/gadgets` | Native ZZIRA gadget catalog |
-| GET/POST `/rest/api/3/dashboard/{id}/gadget` | Filtered gadget listing and native gadget creation |
-| PUT/DELETE `/rest/api/3/dashboard/{id}/gadget/{gadgetId}` | Title, color and position updates with stable row compaction; gadget removal |
-| GET `/rest/api/3/dashboard/{id}/items/{itemId}/properties` | Sorted property key listing |
-| GET/PUT/DELETE `/rest/api/3/dashboard/{id}/items/{itemId}/properties/{propertyKey}` | JSON property lifecycle with Jira key and value bounds |
+| `/dashboard` | The workspace home dashboard: status counts and recent activity |
+| `/dashboards` | Directory of private and shared dashboards; create a dashboard |
+| `/dashboards/{id}` | One dashboard. `?edit=1` edits details, sharing and layout; `?add=1` opens the gadget catalog |
+| `/dashboards/{id}/wallboard` | The dashboard as a wallboard |
+| `/dashboards/slideshow` | The site's wallboard slide show |
 
-`PUT /rest/api/3/dashboard/bulk/edit` changes permissions, changes owners and
-deletes, with a per-dashboard error map. Dashboards share with everyone signed
-in, people, groups, projects and project roles, and `extendAdminPermissions`
-lets a site administrator update a dashboard they neither own nor were shared.
-Searching archived or deleted dashboards answers 400, because dashboards here
-are only ever active. Jira Cloud no longer shares dashboards publicly, so there
-are no anonymous dashboards; REST extensions for this site's layout and
-favourite settings remain compatibility gaps.
+**Owners** can change a dashboard's details and sharing, copy it and delete it.
 
-## Native gadgets and presentation
+**Editors** can:
+- choose a layout: `A`, `AA`, `AB`, `BA` or `AAA`;
+- reorder gadgets;
+- give gadgets one of eight accent colors;
+- configure gadget queries.
 
-The built-in catalog contains:
+**Every viewer** can:
+- add the dashboard to favourites;
+- refresh it by hand;
+- set it to refresh automatically every 1, 5 or 15 minutes.
 
-- `com.zzira:filter-results`
-- `com.zzira:issue-statistics`
-- `com.zzira:pie-chart`
-- `com.zzira:assigned-to-me`
-- `com.zzira:created-vs-resolved`
-- `com.zzira:resolution-time`
-- `com.zzira:velocity`
-- `com.zzira:sprint-burndown`
-- `com.zzira:two-dimensional-statistics`
-- `com.zzira:heat-map`
-- `com.zzira:watched-issues`
-- `com.zzira:voted-issues`
-- `com.zzira:in-progress`
-- `com.zzira:recently-created`
-- `com.zzira:average-age`
-- `com.zzira:time-since`
-- `com.zzira:days-remaining`
-- `com.zzira:sprint-health`
-- `com.zzira:activity-stream`
-- `com.zzira:calendar`
-- `com.zzira:road-map`
-- `com.zzira:bubble-chart`
+When a share is revoked, the person's rendered gadgets are cleared on their next refresh. The service worker never caches the content refresh endpoint (`/dashboards/{id}/content`).
 
-Gadgets accept direct JQL or a saved filter through the reserved
-`zzira.config` item property. Lists return up to 50 results. Statistics, pie
-charts and heat maps calculate their full permission-filtered total and group
-by status, priority, work type, assignee, reporter, resolution, project or
-label. Work with several labels counts once under each label, while the total
-counts each work item once. Pie charts include an equivalent data table, and
-heat maps size each value by its share. Two dimensional filter statistics count
-the same work by one grouping across its columns and another down its rows,
-with row and column totals, showing the largest rows up to the result limit.
-Assigned-to-me adds `assignee = currentUser()` when each viewer loads it.
-Watched work items, Voted work items and Work in progress likewise add
-`issue in watchedIssues()`, `issue in votedIssues()` and
-`assignee = currentUser() AND statusCategory = indeterminate`.
-The activity stream lists, newest first and up to the result limit, the
-creation, field changes and comments of the work its JQL or filter matches that
-the viewer can see; a comment restricted to a group or project role appears
-only to its members. The calendar shows the current month, in weeks starting on
-Monday, with the matching work due each day (up to 200, with a count of the
-rest) and the release dates of unarchived versions in those work items'
-projects. The bubble chart plots the most recently updated matching work, up to
-the result limit, by days since its last update across and, per its
-`bubbleAxis`, participants or votes up, sizing each bubble by the other and
-shading it darker the more recently it changed. Participants are the reporter,
-the assignee and everyone who commented, as in Jira. A table lists the same
-values.
-Report gadgets draw the matching report instead of a query. Created vs.
-resolved and Resolution time keep a `projectKey`, a `days` window of 7, 30 or
-90 and, for created vs. resolved, `cumulative` running totals; Velocity and
-Sprint burndown keep a scrum board's `boardId`, and the burndown follows the
-board's active sprint. Recently created, Average age and Time since also keep a
-`projectKey` and `days` window. Recently created splits each day's new work by
-whether it is resolved now. Average age averages the age of work unresolved at
-the end of each day, or now for today. Time since counts work whose `dateField`
-(`created`, `updated` or `resolved`) fell on each day. Like created vs.
-resolved, these use each item's current resolution. Days remaining in sprint and
-Sprint health keep a scrum board's `boardId` and follow its active sprint:
-days remaining counts whole days to the planned end, or days overdue. Sprint
-health shows the share of planned time elapsed, the share of the board's
-estimation statistic complete (by work items when nothing is estimated), and
-work added or removed after the start as a share of the work committed at the
-start. Road map keeps a `projectKey` and `days` window and lists up to 20 of the
-project's unreleased, unarchived versions due within the window or already
-overdue, soonest first, with how much of the fix-version work the viewer can
-see is done. Each viewer sees the report counted from their own
-access to the work, with its values as a table. A gadget not yet configured,
-a project that turned Reports off, or a board that is not a scrum board says
-so instead. The configuration form offers only projects and scrum boards the
-editor can browse. See [REPORTS.md](REPORTS.md) for how each report counts.
-Active `jira:dashboardGadget` modules from installed apps also join the browser
-catalog. Their escaped host-rendered body can be placed, titled, colored,
-positioned, copied and removed like a built-in gadget. Stable module IDs keep
-placements intact through upgrades; suspension shows an unavailable state,
-while module removal or uninstall removes the corresponding placements.
-Standard Connect `jiraDashboardItems` use the same lifecycle and retain their
-descriptor description in the catalog. A remote item opens in a sandboxed,
-signed iframe with `dashboard.id`, `dashboardItem.id`, `dashboardItem.key` and
-`dashboardItem.viewType` context. The catalog renders its descriptor thumbnail
-through an authenticated endpoint that signs the validated app-relative image
-request. A `configurable` item shows Configure to people who can edit the
-dashboard, which sends it Connect's `jira_dashboard_item_edit` event, and a
-`refreshable` item shows Refresh, which reloads it with a newly signed frame.
-Items may be offered and shown only under Connect conditions, inverted or
-grouped with `AND` or `OR`; see [APPS.md](APPS.md#connect-conditions) for the
-evaluated conditions. Items use Connect's JavaScript API to resize, rename
-themselves and call product APIs within their app's scopes; see
-[APPS.md](APPS.md).
+## Built-in gadgets
+
+| Gadget | Module key | Shows |
+|---|---|---|
+| Filter results | `com.zzira:filter-results` | Work items matching JQL or a saved filter |
+| Issue statistics | `com.zzira:issue-statistics` | Counts by one grouping |
+| Pie chart | `com.zzira:pie-chart` | Counts by one grouping, with a data table |
+| Heat map | `com.zzira:heat-map` | Counts by one grouping, each value sized by its share |
+| Two dimensional filter statistics | `com.zzira:two-dimensional-statistics` | Counts by one grouping across and another down, with totals |
+| Assigned to me | `com.zzira:assigned-to-me` | Adds `assignee = currentUser()` |
+| Watched work items | `com.zzira:watched-issues` | Adds `issue in watchedIssues()` |
+| Voted work items | `com.zzira:voted-issues` | Adds `issue in votedIssues()` |
+| Work in progress | `com.zzira:in-progress` | Adds `assignee = currentUser() AND statusCategory = indeterminate` |
+| Activity stream | `com.zzira:activity-stream` | Creation, field changes and comments on matching work, newest first |
+| Calendar | `com.zzira:calendar` | This month's matching work by due date, plus release dates |
+| Bubble chart | `com.zzira:bubble-chart` | Matching work by age and participants or votes |
+| Created vs. resolved | `com.zzira:created-vs-resolved` | The report, for a project |
+| Resolution time | `com.zzira:resolution-time` | The report, for a project |
+| Recently created | `com.zzira:recently-created` | New work per day, split by whether it is resolved now |
+| Average age | `com.zzira:average-age` | Average age of unresolved work at the end of each day |
+| Time since | `com.zzira:time-since` | Work whose `dateField` (`created`, `updated`, `resolved`) fell on each day |
+| Road map | `com.zzira:road-map` | Upcoming and overdue versions with progress |
+| Velocity | `com.zzira:velocity` | The velocity chart, for a scrum board |
+| Sprint burndown | `com.zzira:sprint-burndown` | The active sprint's burndown, for a scrum board |
+| Days remaining in sprint | `com.zzira:days-remaining` | Whole days to the active sprint's planned end, or days overdue |
+| Sprint health | `com.zzira:sprint-health` | Time elapsed, work complete, and scope change for the active sprint |
+
+**Query gadgets**
+- Configuration is stored in the reserved `zzira.config` item property. It holds either direct JQL or a saved filter.
+- Lists show at most 50 results.
+- Groupings can be status, priority, work type, assignee, reporter, resolution, project or label.
+- Chart totals include all permitted matching work, not just the listed results.
+- A work item with several labels is counted under each label, but only once in the total.
+- Two dimensional statistics show the largest rows, up to the result limit.
+
+**Activity stream**
+- Lists only work the viewer can see.
+- A comment restricted to a group or project role appears only to its members.
+
+**Calendar**
+- Shows the current month in weeks starting on Monday.
+- Lists at most 200 matching work items, plus a count of the rest.
+- Also shows the release dates of unarchived versions in those work items' projects.
+
+**Bubble chart**
+- Plots the most recently updated matching work, up to the result limit.
+- The horizontal axis is days since last update.
+- `bubbleAxis` chooses what goes on the vertical axis, participants or votes. The other value sets the bubble size.
+- Participants are the reporter, the assignee and everyone who commented.
+- Bubbles are darker the more recently the work changed.
+- A table lists the same values.
+
+**Report gadgets**
+- **Project-based.** Created vs. resolved, Resolution time, Recently created, Average age and Time since store a `projectKey` and a `days` window of 7, 30 or 90. Created vs. resolved can also show running totals (`cumulative`).
+- **Board-based.** Velocity, Sprint burndown, Days remaining and Sprint health store a scrum board's `boardId` and follow its active sprint.
+- **Road map** stores a `projectKey` and a `days` window. It lists up to 20 of the project's unreleased, unarchived versions that are due in the window or already overdue, soonest first.
+- **Sprint health** shows:
+  - the share of planned time elapsed;
+  - the share of the estimate complete (counted by work items when nothing is estimated);
+  - work added or removed after the start, as a share of the work committed at the start.
+- Each viewer sees the counts for the work they can access, with the values also shown as a table.
+- A gadget shows a message instead when:
+  - it is not configured yet;
+  - its project has turned Reports off;
+  - its board is not a scrum board.
+- The configuration form offers only projects and scrum boards the editor can browse.
+- See [REPORTS.md](REPORTS.md) for how each report counts.
+
+## App gadgets
+
+**Native app gadgets**
+- Active `jira:dashboardGadget` modules from installed apps appear in the catalog.
+- Their host-rendered body is escaped. You can place, title, color, move, copy and remove them like built-in gadgets.
+- Module ids are stable, so placements survive app upgrades.
+- A suspended app shows an unavailable state.
+- Removing the module or uninstalling the app removes its placements.
+
+**Connect dashboard items (`jiraDashboardItems`)**
+- They follow the same lifecycle and keep their descriptor description in the catalog.
+- A remote item opens in a sandboxed, signed iframe with this context: `dashboard.id`, `dashboardItem.id`, `dashboardItem.key` and `dashboardItem.viewType`.
+- Its URL must be relative to the descriptor's `baseUrl`.
+- The descriptor thumbnail is served through an authenticated endpoint that signs the image request.
+- A `configurable` item shows **Configure** to editors. Configure sends Connect's `jira_dashboard_item_edit` event.
+- A `refreshable` item shows **Refresh**. Refresh reloads the item with a newly signed frame.
+- Items are offered and shown only when their [Connect conditions](APPS.md#connect-conditions) pass.
+- Items can use the [Connect JavaScript API](APPS.md#connect-javascript-api) to resize, rename themselves, and call product APIs within their app's scopes.
+
+**Not supported:** gadget URLs not declared by an installed app, Forge modules, and Jira system gadget module keys.
 
 ## Wallboards
 
-View as wallboard, at `/dashboards/{id}/wallboard`, shows a dashboard full
-screen without navigation for a team display, in the viewer's theme. As in
-Jira, consecutive gadgets of one colour in a column form a group that shows one
-gadget at a time and moves to the next every 30 seconds, while gadgets of
-different colours show together. Gadgets are read-only there, and the page
-reloads when the dashboard's automatic refresh interval passes.
+**View as wallboard**
+- Shows a dashboard full screen with no navigation, in the viewer's theme.
+- Consecutive gadgets of the same color in a column form a group. The group shows one gadget at a time and switches every 30 seconds.
+- Gadgets of different colors are shown together.
+- Gadgets are read-only.
+- The page reloads when the dashboard's automatic refresh interval passes.
 
-The site has one wallboard slide show at `/dashboards/slideshow`. Anyone who can
-edit a dashboard configures it from that dashboard: between 1 and 50
-dashboards they can view, 5 to 3600 seconds per dashboard (30 by default) and
-an optional random order. Each viewer sees only the chosen dashboards they can
-view, and the slide show reloads after each full pass so it draws the latest
-work. Both pages offer a Pause rotation control and an exit link.
+**Slide show**
+- The site has one slide show.
+- Anyone who can edit a dashboard can configure it from that dashboard:
+  - 1 to 50 dashboards they can view;
+  - 5 to 3,600 seconds per dashboard (default 30);
+  - optional random order.
+- Each viewer sees only the chosen dashboards they can view.
+- The slide show reloads after each full pass.
+
+Both pages have a **Pause rotation** control and an exit link.
 
 ## Dashboard emails
 
-Anyone who can view a dashboard can have it emailed every day or every Monday
-at 08:00 UTC from **Email this dashboard**, to themselves or to members who can
-view it too; a recipient who cannot is refused when the email is scheduled.
-Each recipient receives the dashboard as they see it: its name and link, then
-a line per gadget — a list gadget's count and first five work items, a chart
-gadget's count by its grouping, a report gadget's created and resolved counts,
-average resolution time, average velocity or the active sprint's remaining
-work, and a pointer to the dashboard for app gadgets or gadgets still to be
-configured. Deliveries are durable runs claimed one at a time and retried with
-backoff; a recipient who can no longer view the dashboard fails the run with
-that reason, which the panel shows, and people already sent to are not sent
-again. The panel lists the viewer's own dashboard emails with their next
-delivery and removes them.
+**Scheduling.** Use **Email this dashboard**.
+- Anyone who can view the dashboard can schedule an email.
+- Timing: every day or every Monday at 08:00, or any cron expression, in a chosen time zone.
+- Recipients: yourself, and members who can view the dashboard. A recipient who cannot view it is refused when you schedule.
 
-The browser supports Jira-style one, two and three-column layouts (`A`, `AA`,
-`AB`, `BA`, `AAA`), gadget reordering, eight accent colors, favourites, manual
-refresh, and automatic refresh at one, five or fifteen minutes. The content
-refresh endpoint is never placed in the service-worker page cache. Revoking a
-share clears a viewer's rendered gadgets on their next refresh.
+**Content.** Each recipient gets the dashboard as they see it:
+- the dashboard name and link;
+- then one line per gadget:
+  - list gadgets: the count and the first five work items;
+  - chart gadgets: counts by grouping;
+  - report gadgets: a summary figure;
+  - app gadgets and gadgets not yet configured: a pointer to the dashboard.
 
-## Compatibility boundary
+**Delivery**
+- Deliveries are durable runs, handled one at a time and retried with backoff.
+- A recipient who can no longer view the dashboard fails the run. The reason appears in the panel.
+- People who were already sent that email are not sent it again.
 
-ZZIRA validates REST-created module keys against its built-in catalog and
-browser-created app gadgets against active installed modules. Installed native
-gadgets may use escaped host-rendered content or a declared HTTPS remote module
-with signed Connect context. Standard Connect dashboard items must use a
-relative URL beneath their descriptor `baseUrl`. ZZIRA does not execute unmanaged gadget URLs,
-Forge modules, or unknown Jira system gadget module keys. Clients sending a
-URI, an unknown module key, or `ignoreUriAndModuleKeyValidation=true` receive an
-explicit validation error.
+**Managing emails.** The panel lists your own dashboard emails with their next delivery, and lets you remove them.
 
-Dashboard writes add ID-only invalidation records to the workspace action log.
-They never serialize dashboard configuration or gadget results. Dashboard
-materialization in the offline SQLite replica is not delivered yet, so custom
-dashboard pages intentionally require an online session.
+## Gaps
+
+- Dashboards are not stored in the offline replica, so dashboard pages need a connection.
+- Forge dashboard gadgets and Jira's system gadget modules are not supported.
+
+Remaining work is tracked in [PLAN.md](../PLAN.md).
+
+## See also
+
+- [FILTERS.md](FILTERS.md): saved filters.
+- [APPS.md](APPS.md): app modules.
+- Code: `internal/web/custom_dashboards.go`, `internal/web/dashboard_report_gadgets.go`, `internal/web/dashboard_stream_gadgets.go`, `internal/web/dashboard_wallboard.go`, `internal/store/dashboard_*.go`.
+- Browser tests: `e2e/dashboards.spec.ts`, `e2e/dashboard_reports.spec.ts`, `e2e/dashboard_subscriptions.spec.ts`, `e2e/v6.spec.ts`.

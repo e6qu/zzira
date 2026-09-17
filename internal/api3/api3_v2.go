@@ -928,7 +928,7 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.IncludeArchivedProjects {
-		jiraError(w, http.StatusBadRequest, "Archived project search is not available until project archiving is configured.")
+		jiraError(w, http.StatusBadRequest, "Searching work items in archived projects is not supported.")
 		return
 	}
 	options := searchOptions{Fields: req.Fields, Expand: []string{req.Expand}, Properties: req.Properties, FieldsByKeys: req.FieldsByKeys, FailFast: req.FailFast}

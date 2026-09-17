@@ -47,7 +47,9 @@ func TestSpacePermissionGrants(t *testing.T) {
 		exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES ($1,$2,$3)`, ws, value.id, value.role)
 		exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES ($1,$1,$2)`, value.id, store.HashToken(value.id))
 	}
-	if err := st.Pool.QueryRow(ctx, `INSERT INTO organizations(name) VALUES($1) RETURNING id::text`, "Perm org "+ws).Scan(&organizationID); err != nil {
+	// The group belongs to the organization that owns the site, as a grantable
+	// group must.
+	if err := st.Pool.QueryRow(ctx, `SELECT organization_id::text FROM sites WHERE workspace_id=$1`, ws).Scan(&organizationID); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Pool.QueryRow(ctx, `INSERT INTO directories(organization_id,name) VALUES($1::uuid,$2) RETURNING id::text`,

@@ -2,6 +2,7 @@ package api3
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/e6qu/zzira/internal/jql"
@@ -32,6 +33,25 @@ func TestOwnedJQLFunctionsAreAdvertised(t *testing.T) {
 	for _, expected := range []string{"currentLogin()", "lastLogin()", "approved()", "approver()", "myApproval()", "myPendingApproval()", "myPending()", "pending()", "pendingApprovalBy()", "pendingBy()", "breached()", "completed()", "everBreached()", "paused()", "remaining()", "running()", "withinCalendarHours()"} {
 		if !slices.Contains(values, expected) {
 			t.Fatalf("JQL function catalog omits %s", expected)
+		}
+	}
+}
+
+// TestJQLFunctionCatalogMatchesCompiler keeps the advertised catalog and the
+// names apps may not reuse in step with the functions the compiler resolves.
+func TestJQLFunctionCatalogMatchesCompiler(t *testing.T) {
+	for _, function := range jqlFunctions {
+		if name := strings.TrimSuffix(function.Value, "()"); !jql.IsBuiltInFunction(name) {
+			t.Errorf("%s is advertised but not reserved as built in", function.Value)
+		}
+	}
+	advertised := map[string]bool{}
+	for _, function := range jqlFunctions {
+		advertised[strings.ToLower(strings.TrimSuffix(function.Value, "()"))] = true
+	}
+	for _, name := range jql.BuiltInFunctionNames() {
+		if !advertised[name] {
+			t.Errorf("%s() is built in but missing from the catalog", name)
 		}
 	}
 }

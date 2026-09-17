@@ -1,97 +1,93 @@
-# Releases and project versions
+# Releases
 
-The release hub at `/projects/{key}/releases` connects version planning to issue
-scope and release notes. Project navigation exposes it to every workspace member.
-Administrators create versions, change their dates/details, release/unrelease,
-archive/unarchive and delete them. Members can assign visible work items to a
-release. Deletion asks for confirmation and clears version references while
-preserving the work items.
+The release hub plans a project's versions, tracks their scope and delivery evidence, and produces release notes. This page covers the browser journey and how releases behave. The version REST API is in [PROJECT_VERSIONS.md](PROJECT_VERSIONS.md). This page is part of [Jira Software](JIRA_SOFTWARE.md); see [CLOUD_PARITY.md](CLOUD_PARITY.md) for status.
 
-Build and deployment events submitted through the Jira Software APIs are
-rolled up from the release's visible work items. The release view shows the
-pipeline, environment and current outcome beside scope and notes, so teams can
-verify delivery evidence without leaving the version journey.
+## UI
 
-## Delivered Jira Cloud operations
-
-| Operation | Delivered behavior |
+| Page | Purpose |
 |---|---|
-| POST /rest/api/3/version | Create using numeric projectId or deprecated project key; name, description, start/release dates, archived flag |
-| GET/PUT/DELETE /rest/api/3/version/{id} | Read, partial update, release/archive lifecycle, delete with optional fix/affected replacements |
-| GET /rest/api/3/project/{projectIdOrKey}/versions | Full project version list |
-| GET /rest/api/3/project/{projectIdOrKey}/version | Pagination, nextPage, name/description query, status filtering and sequence/name/description/date ordering |
-| GET /rest/api/3/version/{id}/relatedIssueCounts | Permission-filtered fix/affected membership counts |
-| GET /rest/api/3/version/{id}/unresolvedIssueCount | Visible fixed-issue total and unresolved count |
-| PUT /rest/api/3/version/{id}/mergeto/{moveIssuesTo} | Atomic merge of fix and affected references into another version in the same project, without duplicates |
-| POST /rest/api/3/version/{id}/removeAndSwap | Atomic delete and optional fix/affected replacements; rejects unsupported custom-field replacements |
+| `/projects/{key}/releases` | Lists the project's versions with status filters. On the unfiltered list, project administrators can create versions and move them up or down. |
+| `/projects/{key}/releases/{version}` | One version: its details, scope, progress, delivery evidence, driver, approvals and release notes. |
 
-GET version and project lists support `expand=issuesstatus`. Version metadata is
-also available through field/create/edit metadata. Issue create and update accept
-`fields.fixVersions` and `fields.versions` arrays by ID or name; issue update
-supports atomic `update` set/add/remove operations for these fields. The create
-dialog includes both pickers and issue pages link to assigned versions.
+**On the list**
+- Every workspace member sees the release hub in project navigation.
+- Moving a version up or down uses buttons, not dragging; the buttons work from the keyboard and without scripts. They appear only on the unfiltered list, because a version moves within the project's whole order.
 
-JQL supports `fixVersion` and `affectedVersion` by ID or name with `=`, `!=`, `IN`,
-`IS EMPTY` and `IS NOT EMPTY`. Existing logical AND/OR/NOT composition applies.
+**On a version's page**
+- **Project administrators** can:
+  - edit the name, description and dates;
+  - release, unrelease, archive, unarchive and delete the version (delete asks for confirmation);
+  - set the driver and add or remove approvers.
+- **Members** can add or remove work items they can see.
+- **Approvers** approve or decline, optionally giving a reason.
 
-## Consistency and permissions
+## Behavior
 
-The project row serializes issue-version writes with version lifecycle changes.
-All reference replacement/clearing, version state, issue snapshots and action-log
-entries commit together. Version rename/release/archive refreshes issue snapshots,
-including readable field history. Existing replicas receive those issue updates.
-Concurrent additions to separate version memberships do not overwrite each other.
+**Permissions**
+- Managing versions needs the project's **Administer projects** permission from its permission scheme, so project roles and groups that hold it can manage versions.
+- Counts, scope lists and release notes include only work items the viewer can see.
+- A version change can update restricted work items, but those updates are hidden from members who cannot read them.
 
-Counts, release work-item lists and notes use issue visibility checks. A version
-mutation can update restricted issues administratively, but their actions stay
-filtered from members who cannot read them. Replacements must be different
-versions in the same project, and invalid requests roll back the entire operation.
+**Scope and progress**
+- The page shows to do, in progress and done counts by status category, as Jira does.
+- *Unresolved* means the resolution is empty. This is what `unresolvedIssueCount` counts and what releasing a version moves.
+- Reaching a done status sets the site's default resolution, and leaving one clears it.
 
-## Remaining compatibility boundaries
+**Releasing**
+- A release can move the version's unresolved work items to another version in the same project. On the page this is a choice in the release form; through the API it is `moveUnfixedIssuesTo` on a version update.
+- Resolved work items stay with the released version.
+- The move happens only at the moment of release.
+- `moveUnfixedIssuesTo` is refused when creating a version.
 
-This is a partial version/release implementation, not full Jira Cloud fidelity:
+**Deleting and merging**
+- Deleting clears version references and keeps the work items.
+- `removeAndSwap` and `mergeto` can move fix and affects references to another version in the same project.
+- If a request is invalid, the whole operation is rolled back.
 
-- Managing versions asks the project's permission scheme for Administer
-  projects, as Jira does, so project roles and groups granted it manage
-  versions. Reading follows the work items a person can see.
-- Versions carry an explicit order. The move endpoint takes `after`, or a
-  position of First, Earlier, Later or Last, and the release list offers a
-  project administrator buttons to move a version up or down. Those buttons
-  appear on the unfiltered list, because a version moves within the project's
-  whole order rather than within the rows a filter leaves on screen. Dragging
-  is not implemented; the buttons reach the keyboard and need no script.
-- Releasing a version can move the work it did not finish to another version in
-  the same project: `moveUnfixedIssuesTo` on a version update, and a choice in
-  the release form. Work already done stays with the version that shipped it,
-  and the move happens when a version is released rather than every time a
-  released version is saved. The field is a version self link, as Jira sends
-  it, and is not applicable when creating a version.
-- Release notes group a version's work by work type, as Jira's do. A person
-  chooses which work types to include and a format: styled on the page, or plain
-  text or Markdown to copy. Plain text follows Jira's release notes layout, a
-  `** Type` heading over `* [KEY] - Summary` lines. Notes list only the work the
-  person can see. Cross-project releases remain a gap.
-  Unsupported request options are explicit errors.
-- Unresolved work is work whose resolution is empty, as Jira has it: that is
-  what `unresolvedIssueCount` counts and what releasing a version moves. Reaching
-  a done status sets the site's default resolution and leaving one clears it, so
-  the two agree on the default path; where they differ, resolution decides. The
-  release page's to do, in progress and done breakdown follows status
-  categories, which is how Jira draws it.
-- Dates use ISO dates and UTC for overdue calculation, with fixed English display
-  dates. User-locale/site-timezone formatting is not yet configurable. A date can
-  be cleared with an empty string; null is treated as omitted.
-- Legacy nonnumeric project IDs stay valid. Version responses omit `projectId`
-  for those projects instead of sending a string in an integer schema field;
-  clients can create their versions using `project` with the project key. New
-  numeric project IDs are emitted as integers.
-- Issue version references are synchronized, but the release hub and its
-  administration require an online connection. The version catalog itself has
-  no local materialization yet. Pagination uses offsets under concurrent writes.
-- Delivery evidence follows issue associations. Releases name a driver and
-  collect approvals from the people asked to approve them; cross-project
-  deployment grouping, configurable gates and environment promotion policies
-  remain unfinished.
+**Release notes**
+- Notes group the version's work items by work type.
+- The viewer chooses which work types to include and a format:
+  - styled, shown on the page;
+  - plain text: `** Type` headings over `* [KEY] - Summary` lines, as in Jira;
+  - Markdown.
 
-The lifecycle and schema reference is the vendored Jira platform specification
-and [Atlassian's project versions API](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-project-versions/).
+**Delivery evidence**
+- Builds and deployments linked to the version's visible work items are rolled up on the page: pipeline, environment and latest outcome.
+- The data comes from the [Jira Software DevOps APIs](JIRA_SOFTWARE.md#development-and-devops-data).
+
+**Work item fields**
+- `fields.fixVersions` and `fields.versions` accept ids or names on create and update.
+- Updates also accept `update` set, add and remove operations.
+- The create dialog has both pickers, and work item pages link to the assigned versions.
+- JQL `fixVersion` and `affectedVersion` accept an id or a name with `=`, `!=`, `IN`, `IS EMPTY` and `IS NOT EMPTY`. See [JQL.md](JQL.md).
+
+**Consistency**
+- Version changes and work item version writes lock the project row, so they happen one at a time.
+- Replacing or clearing references, the version state, work item snapshots and action log entries are committed together.
+- Renaming, releasing or archiving a version refreshes the snapshots of the affected work items, and replicas receive those updates.
+- Concurrent additions to different versions do not overwrite each other.
+
+**Dates**
+- Dates are ISO dates.
+- "Overdue" is calculated in UTC.
+- An empty string clears a date; `null` means the date was not sent.
+
+**Project ids**
+- Projects with legacy non-numeric ids leave out `projectId` in version responses. To create a version in one of these projects, send the project key in `project`.
+
+## Gaps
+
+- No cross-project releases: a version belongs to exactly one project (`project_versions.project_id`). Plans store `crossProjectReleases` but do nothing with them (see [Jira Software](JIRA_SOFTWARE.md#gaps)).
+- No grouping of deployments across projects, no configurable release gates, and no environment promotion policies.
+- Dates are shown in fixed English format; the user's locale and the site time zone are not applied.
+- The release hub needs a connection. Versions are not stored in the offline replica.
+- Versions are paged by offset, so pages can shift when versions change between requests.
+- No drag-and-drop reordering.
+
+Remaining work is tracked in [PLAN.md](../PLAN.md).
+
+## See also
+
+- [REPORTS.md](REPORTS.md): the version report and the DORA report.
+- Code: `internal/web/releases.go`, `internal/web/release_notes.go`, `internal/store/versions.go`, `internal/store/version_approvers.go`, `internal/api3/versions.go`.
+- Browser test: `e2e/releases.spec.ts`.

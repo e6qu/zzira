@@ -314,13 +314,16 @@ func (s *Store) WikiGroups(ctx context.Context, ws, actor, query string) ([]Wiki
 	return groups, rows.Err()
 }
 
+// WikiGroupByID reads one of the groups this site's organization owns.
 func (s *Store) WikiGroupByID(ctx context.Context, ws, actor, groupID string) (WikiGroup, error) {
 	if err := s.requireMember(ctx, ws, actor); err != nil {
 		return WikiGroup{}, err
 	}
 	var group WikiGroup
-	err := s.Pool.QueryRow(ctx, `SELECT id::text,name FROM groups WHERE id::text=$1`, groupID).
-		Scan(&group.ID, &group.Name)
+	err := s.Pool.QueryRow(ctx, `SELECT g.id::text,g.name FROM groups g
+		JOIN directories d ON d.id=g.directory_id
+		JOIN sites si ON si.organization_id=d.organization_id AND si.workspace_id=$2
+		WHERE g.id::text=$1`, groupID, ws).Scan(&group.ID, &group.Name)
 	return group, err
 }
 
@@ -371,12 +374,15 @@ func (s *Store) workspaceDirectory(ctx context.Context, ws string) (string, erro
 	return directoryID, err
 }
 
-// DeleteWikiGroup removes a group and, with it, its memberships.
+// DeleteWikiGroup removes one of this site's organization's groups and, with
+// it, its memberships.
 func (s *Store) DeleteWikiGroup(ctx context.Context, ws, actor, groupID string) error {
 	if err := s.requireSiteAdmin(ctx, ws, actor); err != nil {
 		return err
 	}
-	tag, err := s.Pool.Exec(ctx, `DELETE FROM groups WHERE id::text=$1`, groupID)
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM groups g USING directories d, sites si
+		WHERE g.id::text=$1 AND d.id=g.directory_id
+		AND si.organization_id=d.organization_id AND si.workspace_id=$2`, groupID, ws)
 	if err != nil {
 		return err
 	}

@@ -1,165 +1,156 @@
-# ZZIRA × Atlassian Jira Cloud REST API — Compat Matrix
+# ZZIRA × Atlassian Cloud REST API — compatibility matrix
 
-This is a grouped delivered-slice ledger, not a certification of full Jira
-conformance. Legend: ✅ a tested delivered slice · 🟡 a known subset · ⛔ missing.
-A ✅ does not establish that every request option, wire type, permission rule or
-client behavior matches Jira. The broader review and [1,207-operation pinned
-inventory](cloud-operations.json) are described in [CLOUD_PARITY.md](../../docs/CLOUD_PARITY.md).
-The pinned contracts cover `/rest/api/3`, `/rest/agile/1.0`,
-`/rest/servicedeskapi`, `/wiki/rest/api`, `/wiki/api/v2`, the Automation site
-gateway, and organization administration. ZZIRA-owned control-plane endpoints
-use `/rest/zzira/1`.
+A grouped, hand-maintained ledger of the delivered API surface. It is not a
+certification.
+- **Legend:** ✅ tested slice with no known gaps in the listed scope · 🟡 known
+  subset.
+- **Per-operation truth:** [cloud-coverage.json](cloud-coverage.json), generated
+  by `coverage.py` from [coverage-assessments.json](coverage-assessments.json).
+  All 1,207 pinned operations in [cloud-operations.json](cloud-operations.json)
+  are assessed as partial:
 
-## Tier A — Core issue tracking
+  | Family | Operations |
+  |---|---|
+  | Jira platform | 617 |
+  | Jira Software | 105 |
+  | Jira Service Management | 75 |
+  | Confluence | 348 |
+  | Automation | 15 |
+  | Organization administration | 47 |
 
-| Endpoint | Status | Notes |
+- **Pins and checks:** see [PINNED.md](../PINNED.md).
+- **Overall status:** see [CLOUD_PARITY.md](../../docs/CLOUD_PARITY.md).
+- **Control-plane endpoints:** ZZIRA's own use `/rest/zzira/1`.
+
+## Jira platform — work items and search
+
+| Surface | Status | Notes |
 |---|---|---|
-| GET /rest/api/3/serverInfo | ✅ | |
-| GET /rest/api/3/myself · /mypreferences · /mypreferences/locale | 🟡 | self, locale and groups/applicationRoles expansions; per-site preferences and a supported-locale list |
-| Jira users, user search, structured user query, groups, pickers, user properties and columns, application roles, universal and project avatars | 🟡 | All 52 pinned operations: site-scoped people with email visibility rules, permission-filtered assignable/browse search, Jira's `is <relation> of` and `[property]` query language, organization-scoped groups with swap-group deletion across every grant table, and one avatar store for projects, issue types and priorities; user email lookups require an approved app ([PEOPLE.md](../../docs/PEOPLE.md)) |
-| GET/POST /rest/api/3/project · GET /project/search · GET/PUT /project/{keyOrId} | 🟡 | Shared create/details commands and browser journey; business, service-management and software Scrum/Kanban creation; category assignment/filtering and category beans; pagination/filtering/order; project roles and lifecycle are covered below; complete expansions, schemes and templates remain |
-| POST /rest/api/3/issue | ✅ | Project key/id, ADF description, assignee, priority, labels, fix/affected versions, security and typed context-aware custom fields; unsupported fields are explicit errors |
-| GET/PUT/DELETE /rest/api/3/issue/{idOrKey} | ✅ | expand=renderedFields |
-| GET/PUT/DELETE /rest/api/3/issue/{idOrKey}/properties[/{key}] | 🟡 | Permission-shaped key listing and arbitrary JSON property lifecycle with Jira limits/status codes; anonymous project access and exact Edit issues permission remain |
-| GET/PUT /rest/api/3/issue/{idOrKey}/assignee | ✅ | PUT fields.assignee + dedicated assignee endpoint |
-| GET /rest/api/3/issue/{idOrKey}/editmeta | 🟡 | system + custom fields |
-| GET /rest/api/3/issue/createmeta (+ paginated project/type routes) | ✅ | legacy filters/expanded fields plus current per-project issue-type and field metadata shapes |
-| GET/POST /rest/api/3/issue/{idOrKey}/transitions | ✅ | Project workflow, nested actor conditions, required-field validators, development triggers, and atomic assignee, field-update, field-copy and registered-webhook post-functions enforced |
-| /jira/forms/cloud/{cloudId}/issue/{idOrKey}/form lifecycle | 🟡 | Issue form index/attach/get/save/delete, visibility, submit/reopen, and executable attached/submitted workflow validators; project templates, exports, attachments, external data and copy remain |
-| Jira issue-level surface: comments and comment properties, issue links and link types, remote links, watchers, assignment, issue projection, bulk fetch/create, changelogs, picker, notify, events, limit reports, archive, redaction, bulk properties, issue panels | 🟡 | All 61 pinned operations: numeric ids for comments, links, link types, remote links, attachments and worklogs; Jira's inward/outward link semantics; comment visibility and all/own permissions; watchers for others behind Manage watchers; archived issues read-only and out of search; digest-verified redaction with history scrubbing; bulk property tasks. Property values from Jira expressions are refused until expressions exist ([ISSUE_SURFACE.md](../../docs/ISSUE_SURFACE.md)) |
-| POST /rest/api/3/bulk/issues/watch · /unwatch · GET /bulk/queue/{taskId} | 🟡 | Durable administrator-gated self watch/unwatch for up to 1,000 visible items, a five-active-operation cap, execution-time visibility checks, atomic synchronization actions and Jira-shaped task progress; configurable global Bulk change permission, 14-day retention and remaining bulk operations remain |
-| GET /rest/api/3/bulk/issues/fields | 🟡 | Common editable fields derive from canonical project metadata with Jira-shaped options, field search and bidirectional opaque 50-field cursor pages; configurable field permissions and the complete Jira bulk field type catalog remain |
-| POST /rest/api/3/bulk/issues/fields | 🟡 | Durable edits validate at most 200 selected actions against common metadata, recheck access, use ordinary issue commands and expose Jira per-item successes/failures; ten persisted field families are supported, while the remaining field families and bulk email delivery remain |
-| POST /rest/api/3/bulk/issues/delete | 🟡 | Durable deletion accepts up to 1,000 visible items, rechecks access during execution, records per-item outcomes, reconstructs replayed successes from atomic actions and retries attachment blob cleanup through a leased outbox; configurable Bulk change/delete permissions and bulk email delivery remain |
-| /rest/api/3/attachment metadata, content, thumbnail, archive expansion, settings and delete | 🟡 | Permission-filtered metadata/bytes, HTTP ranges, original-image thumbnails, bounded ZIP human/raw listings and transactional deletion with leased blob-cleanup retries; derived renditions, signed redirects, additional archive formats, scanning and configurable permission/size policy remain |
-| POST /rest/api/3/bulk/issues/move | 🟡 | Durable project/type/explicit-parent moves validate Jira target mappings, infer or map destination workflow statuses, preserve former keys as aliases, clear incompatible project fields/security, recheck visibility and record replay-safe per-item results; classifications, mandatory-field mappings, implicit subtask moves and exact permission granularity remain |
-| GET · POST /rest/api/3/bulk/issues/transition | 🟡 | Discovery groups selected items by workflow, intersects condition-filtered screenless transitions and cursor-pages groups; durable submission validates issue/transition pairs, delegates to the complete transition engine, rechecks execution-time visibility and records replay-safe per-item results; screen-field bulk input, exact permission granularity and bulk email delivery remain |
-| GET/POST/DELETE /rest/api/3/issue/{idOrKey}/votes | 🟡 | Durable idempotent self-service voting, voter reads, browser journey and JQL selectors; site voting policy and exact permission edge cases remain |
-| /comment CRUD | ✅ | ADF bodies, author-only delete |
-| GET /rest/api/3/issue/{idOrKey}/changelog | ✅ | derived from the action log |
-| /worklog CRUD | 🟡 | author-only delete; the full worklog family is assessed in its own row below |
-| POST /issue/{idOrKey}/attachments · /attachment/{id} · /attachment/content/{id} | ✅ | X-Atlassian-Token semantics |
-| GET /rest/api/3/search · POST /search · GET/POST /search/jql · POST /search/approximate-count | 🟡 | Permission-filtered JQL with history/date operators, relation-backed group/link/sprint/type/version/watch/vote/update/project list functions and safely expanded installed-app functions; legacy/enhanced search support immutable numeric Jira issue IDs, multi-value labels/versions/sprints, field selection/exclusion, app-key aliases, documented expansion names, requested properties, executable transitions, immutable changelogs, current versioned representations, strict bodies, bounded count queries, strongly consistent reconciliation, IDs-only enhanced defaults, deterministic ordering and durable query/reconciliation/user/workspace-bound seven-day result snapshots; richer rendering/history remains |
-| Seven JQL reference, suggestion, parse, match, sanitize and migration operations | 🟡 | Supported fields/functions are discoverable, issue-derived suggestions apply visibility, parse returns structured per-query results, and match is bounded to requested numeric Jira IDs; exact personal-data migration and remaining functions/validation warnings remain |
-| GET/POST `/rest/api/3/jql/function/computation` · POST `/jql/function/computation/search` | 🟡 | Signed apps can page/filter and retrieve only their installation-owned durable records, then atomically replace a value or error with optional missing-ID skips; Connect/native declarations, autocomplete, signed cache-miss evaluation, seven-day expiry, safe fragment compilation and bounded nesting are integrated; complete Forge identity semantics remain |
-| GET /permissions · GET /mypermissions · POST /permissions/check · POST /permissions/project · GET /user/permission/search | 🟡 | Durable global/project evaluation, bounded bulk checks, project discovery and user search use assigned schemes and Jira holder types; anonymous discovery, global permission administration, app-defined permissions and remaining expansion/error edges remain; see [PERMISSION_SCHEMES.md](../../docs/PERMISSION_SCHEMES.md) |
-| /issueLinkType · POST /issueLink · DELETE /issueLink/{id} | ✅ | links sync to replicas |
-| GET /rest/api/3/label | ✅ | distinct labels + query |
-| GET /rest/api/3/issuetype · /priority · /status · /statuscategory · /resolution | ✅ | registry lists |
+| `GET /rest/api/3/serverInfo` | ✅ | |
+| `/myself`, `/mypreferences`, `/mypreferences/locale` | 🟡 | Groups/applicationRoles expansions, per-site preferences, supported locales |
+| Users, user search and query, groups, pickers, user properties, application roles, avatars (52 ops) | 🟡 | Email visibility rules; `is <relation> of` and `[property]` query language; swap-group deletion; email lookups need an approved app. [PEOPLE.md](../../docs/PEOPLE.md) |
+| `/project`, `/project/search`, `/project/{keyOrId}` | 🟡 | Business, service and software (Scrum/Kanban) creation, categories, paging. Complete expansions remain |
+| `POST /issue` | ✅ | Key/id project, ADF, versions, security, typed context-aware custom fields; unsupported fields are explicit errors |
+| `GET/PUT/DELETE /issue/{idOrKey}` | ✅ | `expand=renderedFields` |
+| `/issue/{idOrKey}/properties` | 🟡 | Jira limits and status codes. Anonymous access remains |
+| `/issue/{idOrKey}/assignee` | ✅ | |
+| `/issue/{idOrKey}/editmeta`, `/issue/createmeta` (+ paged) | ✅ | Resolved from screens, field configurations and contexts |
+| `/issue/{idOrKey}/transitions` | ✅ | Conditions, validators and post-functions enforced ([WORKFLOW_RULES.md](../../docs/WORKFLOW_RULES.md)) |
+| `/jira/forms/cloud/{cloudId}/issue/{idOrKey}/form` | 🟡 | Attach, save, submit, reopen, workflow validators. Templates, exports, attachments and external data remain |
+| Comments, links, link types, remote links, watchers, changelogs, picker, notify, events, archive, redaction, bulk properties, issue panels (61 ops) | 🟡 | Numeric ids, Jira link direction, comment visibility, redaction with history scrubbing. Expression-sourced property values are refused. [ISSUE_SURFACE.md](../../docs/ISSUE_SURFACE.md) |
+| Bulk watch/unwatch, fields, edit, delete, move, transition, `/bulk/queue/{taskId}` | 🟡 | Durable tasks with per-item results and access rechecks. Configurable Bulk change permission, 14-day retention, screen-field input and bulk email remain ([BULK_ISSUES.md](../../docs/BULK_ISSUES.md)) |
+| `/attachment` metadata, content, thumbnail, archive, settings, delete | 🟡 | Ranges, ZIP listings, leased blob cleanup. Renditions, signed redirects, scanning and more archive formats remain ([ATTACHMENTS.md](../../docs/ATTACHMENTS.md)) |
+| `/issue/{idOrKey}/votes` | 🟡 | Site voting policy remains |
+| Comment CRUD | ✅ | ADF bodies |
+| `/issue/{idOrKey}/changelog` | ✅ | From the action log |
+| Worklogs (14 ops) | 🟡 | Updated/deleted feeds, bulk fetch, properties. Started-date filters, `adjustEstimate` and visibility restriction remain ([WORKLOGS.md](../../docs/WORKLOGS.md)) |
+| `/search`, `/search/jql`, `/search/approximate-count` | 🟡 | Permission-filtered JQL, history operators, app functions, snapshots, reconciliation ([JQL.md](../../docs/JQL.md)) |
+| JQL autocomplete, suggestions, parse, match, sanitize, migration (7 ops) | 🟡 | Personal-data migration and some validation warnings remain |
+| `/jql/function/computation` | 🟡 | App-owned precomputations. Forge identity remains ([APPS.md](../../docs/APPS.md#jql-functions)) |
+| `/permissions`, `/mypermissions`, `/permissions/check`, `/permissions/project`, `/user/permission/search` | 🟡 | Scheme-based evaluation, app permissions. Anonymous discovery remains ([PERMISSION_SCHEMES.md](../../docs/PERMISSION_SCHEMES.md)) |
+| `/issueLinkType`, `/issueLink` | ✅ | |
+| `/label`, `/issuetype`, `/priority`, `/status`, `/statuscategory`, `/resolution` | ✅ | |
+| Issue types, schemes, properties, priorities, priority schemes, resolutions (46 ops) | 🟡 | Per-site numeric ids; async deletion tasks. Team-managed scoping remains ([ISSUE_METADATA.md](../../docs/ISSUE_METADATA.md)) |
+| Jira expressions: `/expression/analyse`, `/eval`, `/evaluate` | 🟡 | Jira's limits and context variables ([JIRA_SOFTWARE.md](../../docs/JIRA_SOFTWARE.md#jira-expressions)) |
 
-## Tier B — Agile
+## Jira platform — configuration and administration
 
-| Endpoint | Status | Notes |
+| Surface | Status | Notes |
 |---|---|---|
-| GET /rest/agile/1.0/board · /board/{id} | ✅ | seeded board |
-| GET /board/{id}/configuration | ✅ | ordered status mapping, constraints, location, estimation/subquery and ranking metadata |
-| GET /board/{id}/quickfilter · /quickfilter/{id} | ✅ | position-ordered and paginated board quick filters |
-| GET /board/{id}/issue · /board/{id}/backlog | ✅ | board columns and true unsprinted backlog are separately rank-ordered |
-| GET /board/{id}/sprint | ✅ | |
-| POST /rest/agile/1.0/sprint · GET/PUT /sprint/{id} · GET /sprint/{id}/issue | ✅ | metadata plus validated future → active → closed lifecycle |
-| POST /sprint/{id}/issue | ✅ | moves issues into one open sprint (ranked), preserving closed-sprint history |
-| POST /backlog/issue | ✅ | moves issues out of open sprints and retains closed-sprint history |
-| PUT /rest/agile/1.0/issue/rank · POST /backlog/{boardId}/issue · POST /board/{boardId}/issue | 🟡 | Site-wide LexoRank order for up to 50 issues with Jira's numeric Rank field and 207 per-issue entries; board and backlog moves rank and use the scrum board's active sprint; see [JIRA_SOFTWARE.md](../../docs/JIRA_SOFTWARE.md) |
-| Epics: GET/POST /epic/{id} · /epic/{id}/issue · /epic/none/issue · PUT /epic/{id}/rank · board epics · /rest/software/1.0 epic reads | 🟡 | Epics are hierarchy-level-1 issues with name, fourteen colors and done state; standard issues take epic parents across projects; JQL-filtered rank-ordered reads with startAt and nextPageToken paging; deleting an epic keeps its issues |
-| POST /board · DELETE /board/{id} · GET /board/filter/{filterId} · GET/PUT /issue/{id}/estimation · GET /issue/{id} | 🟡 | Boards from visible saved or board filters in project or user locations, administrator deletion with sprints, per-site Story point estimate field on scrum boards, and Agile issue fields sprint, closedSprints, flagged and epic |
-| /rest/operations/1.0 · /rest/security/1.0 · /rest/devopscomponents/1.0 · /rest/featureflags/0.1 · /rest/remotelinks/1.0 | 🟡 | All 29 pinned operations: per-entity schema validation with accepted/failed/unknown reporting, update-sequence ordering, issue associations, reads, deletes by id and property, and linked workspaces; Connect JWT module scopes, asynchronous processing, issue development panels and rate limits remain |
-| /rest/devinfo/0.10 repositories, entities and property operations | 🟡 | All six pinned operations: ordered repository/commit/branch/pull-request ingestion, current reads, idempotent sequence-aware deletes, property existence/bulk delete, issue panel, branch-created workflow trigger, and cloudId alias; Connect JWT scopes, asynchronous deletes, complete validation and rate limits remain |
-| /rest/builds/0.1 build operations | 🟡 | All four pinned operations: ordered bulk submission with per-item acceptance/rejection, issue-key/ID associations, keyed reads, sequence-aware keyed/property deletes, issue/release evidence, and cloudId alias; Connect JWT scopes, asynchronous deletes, complete optional validation and rate limits remain |
-| /rest/deployments/0.1 deployment operations | 🟡 | All five pinned operations: ordered bulk submission, keyed reads/deletes, property cleanup, default allowed gating status, environment evidence on issues/releases, and cloudId alias; configurable gates, Connect JWT scopes, asynchronous deletes, complete optional validation and rate limits remain |
+| `/field`, custom fields in beans and JQL | ✅ | |
+| Issue fields (11 ops) | 🟡 | Trash/restore, usage counts. Translations, `lastUsed` and `stableId` remain ([ISSUE_FIELDS.md](../../docs/ISSUE_FIELDS.md)) |
+| Custom field contexts (14 ops) | 🟡 | [CUSTOM_FIELD_CONTEXTS.md](../../docs/CUSTOM_FIELD_CONTEXTS.md) |
+| Custom field options (7 ops) | 🟡 | [CUSTOM_FIELD_OPTIONS.md](../../docs/CUSTOM_FIELD_OPTIONS.md) |
+| App-provided select field options (8 ops) | 🟡 | `projects2` scope, `defaultValue` and screen-security overrides remain ([APP_FIELD_OPTIONS.md](../../docs/APP_FIELD_OPTIONS.md)) |
+| Field configurations and schemes (15 ops) | 🟡 | Enforced on create, edit and transition ([FIELD_CONFIGURATIONS.md](../../docs/FIELD_CONFIGURATIONS.md)) |
+| Field association schemes (17 ops) | 🟡 | `rendererType`, `matchedFilters` and non-project contexts remain ([FIELD_ASSOCIATION_SCHEMES.md](../../docs/FIELD_ASSOCIATION_SCHEMES.md)) |
+| Screens, tabs, tab fields (17 ops) | 🟡 | [SCREENS.md](../../docs/SCREENS.md) |
+| Screen schemes, issue type screen schemes (15 ops) | 🟡 | [SCREEN_SCHEMES.md](../../docs/SCREEN_SCHEMES.md) |
+| Workflows: search, modern create/update/preview/capabilities, project workflows | ✅ | Enforced at runtime ([WORKFLOW_SCHEMES.md](../../docs/WORKFLOW_SCHEMES.md)) |
+| `/workflow/history`, `/workflows`, `/workflow/rule/config` | 🟡 | 60-day history. App transition rules are stored but no remote module runs ([JIRA_PLATFORM.md](../../docs/JIRA_PLATFORM.md)) |
+| Permission schemes (11 ops) | 🟡 | [PERMISSION_SCHEMES.md](../../docs/PERMISSION_SCHEMES.md) |
+| Issue security schemes (20 ops) | 🟡 | [ISSUE_SECURITY_SCHEMES.md](../../docs/ISSUE_SECURITY_SCHEMES.md) |
+| Notification schemes (9 ops) | 🟡 | [NOTIFICATION_SCHEMES.md](../../docs/NOTIFICATION_SCHEMES.md) |
+| Project roles and actors (15 ops) | 🟡 | App and service actor types remain ([PROJECT_ROLES.md](../../docs/PROJECT_ROLES.md)) |
+| Project categories, properties, features, email, types, validation (20 + 5 ops) | 🟡 | Custom-domain verification and app features remain ([PROJECT_GOVERNANCE.md](../../docs/PROJECT_GOVERNANCE.md)) |
+| Recent, archive, restore, trash, delete projects (5 ops) | 🟡 | 60-day purge ([PROJECT_LIFECYCLE.md](../../docs/PROJECT_LIFECYCLE.md)) |
+| Project components (8 ops) | 🟡 | Compass components remain ([COMPONENTS.md](../../docs/COMPONENTS.md)) |
+| Project versions (15 ops) | 🟡 | Expansion beyond issue counts and related-work ordering remain ([PROJECT_VERSIONS.md](../../docs/PROJECT_VERSIONS.md), [RELEASES.md](../../docs/RELEASES.md)) |
+| Custom project templates | 🟡 | Team-managed projects and new configuration within the request are 400 ([JIRA_PLATFORM.md](../../docs/JIRA_PLATFORM.md)) |
+| Announcement banner, configuration, application properties, time tracking, navigator defaults (13 ops) | 🟡 | [JIRA_SITE_CONFIGURATION.md](../../docs/JIRA_SITE_CONFIGURATION.md) |
+| Filters, sharing, columns, default scope (19 ops) | 🟡 | Daily/weekly email subscriptions ([FILTERS.md](../../docs/FILTERS.md)) |
+| Dashboards and gadgets (17 ops) | 🟡 | Per-dashboard bulk edit. `extendAdminPermissions` and item property expansion remain ([DASHBOARDS_API.md](../../docs/DASHBOARDS_API.md), [DASHBOARDS.md](../../docs/DASHBOARDS.md)) |
+| Webhooks: `/webhook`, `/webhook/refresh`, `/webhook/failed`, `/rest/webhooks/1.0/webhook` | 🟡 | App and admin webhooks with JQL/field filters, 30-day expiry, five attempts ([JIRA_PLATFORM.md](../../docs/JIRA_PLATFORM.md)) |
+| App properties (8 ops), Forge UI modifications (4 ops) | 🟡 | [JIRA_PLATFORM.md](../../docs/JIRA_PLATFORM.md) |
+| Connect app migration, service registry, app custom field configuration and values | 🟡 | [JIRA_PLATFORM.md](../../docs/JIRA_PLATFORM.md) |
+| Plans, plan teams (16 ops), Atlassian teams | 🟡 | No scheduling runs from plans ([JIRA_PLATFORM.md](../../docs/JIRA_PLATFORM.md)) |
+| Classification levels, data policy, licensing, audit records, project statuses and hierarchy (17 ops) | 🟡 | [JIRA_PLATFORM.md](../../docs/JIRA_PLATFORM.md), [CLASSIFICATION_LEVELS.md](../../docs/CLASSIFICATION_LEVELS.md) |
+| `/task/{taskId}`, `/task/{taskId}/cancel` | ✅ | Durable progress, cancellation, stale-claim recovery |
+| `/rest/zzira/1/notifications`, `/notifications/read-all` | ✅ | ZZIRA-owned, private, synchronized |
 
-## Tier C — Platform & admin
+## Jira Software
 
-| Endpoint | Status | Notes |
+| Surface | Status | Notes |
 |---|---|---|
-| POST/GET /rest/api/3/field · GET /field/{id} | ✅ | text/number/datetime |
-| Announcement banner · Jira configuration · application properties · time tracking · issue navigator defaults | 🟡 | Thirteen Jira v3 operations share durable audited state with `/admin`, feature enforcement and browser/API journeys; Marketplace time providers, complete look-and-feel application and exact advanced validation remain; see [JIRA_SITE_CONFIGURATION.md](../../docs/JIRA_SITE_CONFIGURATION.md) |
-| Project categories, properties, features, email, types and validation | 🟡 | Twenty Jira v3 operations plus five integrated core project operations share workspace-scoped transactional state with site administration, immutable actions, exact numeric category semantics, JSON limits/status codes, feature-aware navigation, sender overrides, installed product types and collision-safe validation; these setting mutations remain site-admin scoped while anonymous browse, custom-domain verification and app features remain; see [PROJECT_GOVERNANCE.md](../../docs/PROJECT_GOVERNANCE.md) |
-| Recent, archive, restore, trash and project deletion | 🟡 | Five Jira v3 operations share durable lifecycle state with browser administration, active-surface filtering, replica actions, asynchronous task status, cascade deletion, leased attachment cleanup and automatic 60-day purge; permission-scheme-derived lifecycle delegation, anonymous recent reads and complete project expansions remain; see [PROJECT_LIFECYCLE.md](../../docs/PROJECT_LIFECYCLE.md) |
-| Project roles and project role actors | 🟡 | All 15 Jira v3 operations share a durable role catalog, default and per-project user/group actors, permission-scheme-derived project administration, safe deletion swaps, filter-share authorization, immutable actions and site/project browser journeys; anonymous access and app/service actor types remain; see [PROJECT_ROLES.md](../../docs/PROJECT_ROLES.md) |
-| /issue/createmeta + /editmeta include custom fields | ✅ | context-aware |
-| Custom fields in issue beans + JQL | ✅ | numeric and date-time comparisons, including login boundaries |
-| POST/GET/DELETE /rest/api/3/webhook · PUT /webhook/refresh · GET /webhook/failed · /rest/webhooks/1.0/webhook | 🟡 | App dynamic webhooks with Jira's event set, JQL and field filters, one URL, 100-webhook limit, 30-day expiry and failed deliveries, plus administrator webhooks; log-driven dispatcher, watermark, exactly-once claims, delivery identifiers and abandonment after five attempts; see [JIRA_PLATFORM.md](../../docs/JIRA_PLATFORM.md) |
-| App properties (Connect and Forge) · UI modifications | 🟡 | All eight app property operations with the reserved client key, and all four Forge UI modification operations with Jira's context rules and limits; see [JIRA_PLATFORM.md](../../docs/JIRA_PLATFORM.md) |
-| POST /rest/api/3/workflow/history · /history/list · POST /workflows · /workflow/rule/config | 🟡 | Workflow versions kept 60 days, bulk workflow read and app-owned transition rules with configuration update and removal; app rules do not run remote modules; see [JIRA_PLATFORM.md](../../docs/JIRA_PLATFORM.md) |
-| Plans and teams in plans · Atlassian teams | 🟡 | All 16 plan and plan team operations with validated references, JSON Patch updates, cursor paging, archive/trash conflicts and duplication; Atlassian teams on the People › Teams page; no timeline scheduling runs from plans; see [JIRA_PLATFORM.md](../../docs/JIRA_PLATFORM.md) |
-| Custom project templates | 🟡 | Save LIVE and SNAPSHOT templates, read, edit, remove, and create company-managed projects from referenced existing schemes in a task; creating new configuration inside the request and team-managed projects are 400; see [JIRA_PLATFORM.md](../../docs/JIRA_PLATFORM.md) |
-| Connect app migration · service registry · app custom field configuration and values | 🟡 | Transfer-scoped field values, entity properties and rule search, Connect-to-Forge field migration tasks, the Services page and registry read, per-context app field configuration and app-owned value writes; see [JIRA_PLATFORM.md](../../docs/JIRA_PLATFORM.md) |
-| Classification levels · data policy · licensing · audit records · serverInfo · labels · project statuses and hierarchy | 🟡 | Seventeen platform reads and project classification defaults; see [JIRA_PLATFORM.md](../../docs/JIRA_PLATFORM.md) |
-| 19 Jira filter, sharing, column and default-scope operations | 🟡 | Visibility-filtered create/read/update/delete, owned/favorite collections, paginated search, per-user favorites, view/edit shares for users/groups/projects/roles, owner transfer, navigator columns and durable daily/weekly email subscriptions with FilterBean expansion; full JQL and broader cron/time-zone controls remain; see [FILTERS.md](../../docs/FILTERS.md) |
-| Eight Jira project-component operations | 🟡 | Stable project-scoped components, create/update/delete, full and paged collections, issue counts, canonical multi-value issue fields, component-led assignment, move-on-delete, audit, project-settings journey and `componentsLeadByUser()`; exact project-permission, anonymous and Compass behavior remain; see [COMPONENTS.md](../../docs/COMPONENTS.md) |
-| GET /rest/api/3/workflow/search · modern workflow create/update/search/preview/capabilities · POST /workflow · GET/PUT /workflow/project/{key} | ✅ | **enforced**: project workflows, designer layouts, and executable transition rules round-trip through admin APIs and runtime |
-| GET /rest/api/3/task/{taskId} · POST /task/{taskId}/cancel | ✅ | durable ENQUEUED/RUNNING/terminal progress, creator/admin visibility, safe cancellation, failure results and stale-claim recovery |
-| Organizations orgs · directories · users · groups · memberships · workspaces · roles · events · domains · policies | 🟡 | All 47 operations reviewed: group and directory-user administration, product roles/activity, invitations/email, directory lifecycle, audit query/poll/detail/actions, DNS claims, and policy/resource CRUD/validation are useful tested subsets; runtime policy enforcement, central rate limits, and remaining edge semantics remain |
-| Issue security schemes, levels, holders and project assignment | 🟡 | All 20 Jira v3 operations share durable schemes, the nine Jira holder types, sequence-backed IDs, durable association and level-removal tasks, immutable actions, and one PostgreSQL visibility function behind search/board/navigator/sync/notifications/create-meta plus tombstones and per-user sync filtering; exact boundary in [ISSUE_SECURITY_SCHEMES.md](../../docs/ISSUE_SECURITY_SCHEMES.md) |
-| Permission schemes, grants and project assignment | 🟡 | All 11 Jira v3 operations share durable schemes, validated Jira holder types, a default scheme, safe assignment/deletion, immutable actions, project/issue/search/sync authorization and responsive site/project journeys; exact boundary in [PERMISSION_SCHEMES.md](../../docs/PERMISSION_SCHEMES.md) |
-| Notification schemes, mappings and issue-event delivery | 🟡 | All nine Jira v3 operations share durable schemes, all 12 recipient types, default/project assignment, immutable actions, permission and issue-security-filtered inbox delivery, the leased email outbox and responsive site/project/recipient journeys; exact boundary in [NOTIFICATION_SCHEMES.md](../../docs/NOTIFICATION_SCHEMES.md) |
-| Screens, screen tabs and tab fields | 🟡 | All 17 Jira v3 operations share durable screens, sequence-backed IDs, a validated field catalog, dense tab/field ordering, structural guards on the last tab and the default screen, immutable actions and a responsive admin journey; screens now reach the create and edit forms through screen schemes; exact boundary in [SCREENS.md](../../docs/SCREENS.md) |
-| Screen schemes and issue type screen schemes | 🟡 | All 15 Jira v3 operations share durable schemes, a required default screen and default work type mapping, in-use conflicts across the whole chain, immutable actions and a responsive admin journey; one resolution function now decides which fields createmeta, editmeta and the create dialog show per project, work type and operation; exact boundary in [SCREEN_SCHEMES.md](../../docs/SCREEN_SCHEMES.md) |
-| Field configurations and their schemes | 🟡 | All 15 Jira v3 operations share durable configurations, required/hidden/help-text rules resolved per project and work type, immutable actions and a responsive admin journey; the rules reach createmeta, editmeta and the create dialog and are enforced by the command path on create, edit and transition, not merely advertised; exact boundary in [FIELD_CONFIGURATIONS.md](../../docs/FIELD_CONFIGURATIONS.md) |
-| Bulk edit field discovery | 🟡 | The offered fields are the intersection of the screen, field configuration and custom field context each selected work item resolves, and the same set gates the write; Jira's per-field bulk validation messages remain |
-| Custom field contexts | 🟡 | All 14 Jira v3 operations share durable contexts scoped to projects and work types, a single resolution function that refuses overlap so the governing context is never ambiguous, per-context defaults that reach field metadata and the create dialog, command-path rejection of a write outside the context, immutable actions and a responsive admin journey; exact boundary in [CUSTOM_FIELD_CONTEXTS.md](../../docs/CUSTOM_FIELD_CONTEXTS.md) |
-| Project versions | 🟡 | All 15 Jira v3 operations cover the version lifecycle, release and archive state, visibility-filtered issue counts, merge and remove-and-swap, explicit ordering and release related work; expand beyond issue counts, the operations and driver fields and related work ordering remain; exact boundary in [PROJECT_VERSIONS.md](../../docs/PROJECT_VERSIONS.md) |
-| Jira Software boards | 🟡 | All 33 pinned operations are implemented across both the agile and software base paths from one implementation, covering board reads, project and version scope, sprint issues, features, reports, board properties, board creation from filters, deletion, filter-backed lookup and the board issue entry point; see [AGILE_BOARDS.md](../../docs/AGILE_BOARDS.md) and [JIRA_SOFTWARE.md](../../docs/JIRA_SOFTWARE.md) |
-| POST /rest/api/3/expression/analyse · /expression/eval · /expression/evaluate | 🟡 | Jira expressions with syntax, type and complexity analysis, Jira context variables, JQL-loaded issues in startAt and token paging, custom variables, permission-filtered entities and Jira's step, expensive-operation, bean and primitive limits; see [JIRA_SOFTWARE.md](../../docs/JIRA_SOFTWARE.md) |
-| Jira Software sprints | 🟡 | All 13 pinned operations cover the sprint lifecycle including Jira's partial update, deletion that returns work to the backlog, sprint properties, and a swap that exchanges board order the listing follows; ranking parameters and issue filters remain; exact boundary in [AGILE_BOARDS.md](../../docs/AGILE_BOARDS.md) |
-| Confluence page moves, copies and archiving | 🟡 | All seven pinned operations cover moving a page among its siblings or under a new parent, copying one page or a hierarchy, archiving, trashing a tree, and the long tasks that report the background ones; pages had no order to move within, so a position was added and every listing follows it; copying permissions and custom contents, moving between spaces and restoring an archived page remain; exact boundary in [PAGE_MOVES.md](../../docs/PAGE_MOVES.md) |
-| Confluence content states | 🟡 | All eight pinned operations cover the label a page carries beyond its text: the states a space suggests, the custom ones a writer makes and keeps to themselves, what a page can be set to, and the content in a state; setting or removing one publishes a version without changing the body; configuring a space's suggested states is not reachable through any pinned operation, and blog post and custom content states remain; exact boundary in [CONTENT_STATES.md](../../docs/CONTENT_STATES.md) |
-| Confluence content history, macros and body conversion | 🟡 | All nine pinned operations cover restoring and deleting a version, reading a macro as it was in one, and the body conversions Confluence supports including storage to the document format; storage macros had to be accepted by the validator first, which rejected the whole ac namespace, so a macro renders as the body it holds and its parameters are stored without being shown; conversions complete before the id is answered and macros are stored rather than executed; exact boundary in [CONTENT_HISTORY.md](../../docs/CONTENT_HISTORY.md) |
-| Jira issue types, priorities, resolutions and schemes | 🟡 | All 46 pinned issue type, issue type scheme, issue type property, priority, priority scheme and resolution operations. Issue types and priorities were global tables shared by every site and resolutions were one hard-coded value; they are now per site with Jira's numeric ids and default sets, a site's changes to a shared default kept to that site, resolution and resolutiondate recorded on issues as they enter and leave done statuses, asynchronous priority and resolution deletion through tasks, and Jira's scheme and mapping rules. JQL resolution = Unresolved, which returned no issues, now works, and priority and resolution order by position rather than name. Every other Jira API that names an issue type — screen, field configuration and field association schemes, custom field contexts, workflow schemes and their drafts, usages, service request types, create metadata and changelogs — now sends and accepts the numeric ids too, so no internal id reaches a client. Team-managed scoping and alternative-type narrowing by shared schemes remain; exact boundary in [ISSUE_METADATA.md](../../docs/ISSUE_METADATA.md) |
-| Confluence site surfaces | 🟡 | The last sixteen pinned confluence-v2 operations: versioned content properties on footer and inline comments, gated on editing the comment; Forge app properties reachable only through asApp authentication under the app-data scopes, 201 on create and 200 on replace; the admin key, which is now what lets an administrator past page restrictions rather than the admin role alone; content id conversion to v2 types with null for anything the caller may not view; access checks and invitations by email; and the data policy metadata for apps. Content ids are now unique across pages, blog posts, comments and attachments, and legacy collisions resolve by existence rather than visibility. With these every pinned Confluence operation is assessed; exact boundary in [CONFLUENCE_SITE_SURFACES.md](../../docs/CONFLUENCE_SITE_SURFACES.md) |
-| Confluence content analytics | 🟡 | Both pinned analytics operations report how many times a page or blog post was viewed and by how many distinct people, optionally from fromDate; nothing recorded a view, so views are now stored one per open, recorded when published content is opened in the product or read singly through the v2 API and never for writes, listings, searches, drafts or refused reads; the numbers are a 404 for anyone who may not open the content; with these two every pinned confluence-v1 operation is assessed; exact boundary in [CONTENT_ANALYTICS.md](../../docs/CONTENT_ANALYTICS.md) |
-| Confluence CQL search | 🟡 | Both pinned search operations run a new CQL engine — a recursive-descent parser and a PostgreSQL compiler over a normalised view of pages, blog posts, comments, attachments and spaces — covering 18 fields, AND/OR/NOT with brackets, IN and NOT IN, currentUser, currentSpace, favouriteSpaces and the relative date functions, ORDER BY, cqlcontext scoping, the five excerpt strategies and cursor paging; every branch of the view carries the reader's own visibility rules, so results and totals exclude what they may not open, and /content/search never returns a space; there is no relevance score, so the default order is the most recently changed and ORDER BY relevance is refused, text is a substring match rather than a stemmed index, and the user-specific fields Confluence removed from /search are not accepted; exact boundary in [CQL_SEARCH.md](../../docs/CQL_SEARCH.md) |
-| Confluence content relations | 🟡 | All five pinned operations cover a named one-way link between a user, a space and content: creating and removing it, reading one, and listing either direction; nothing modelled a named relation, so relations are now stored keyed by both ends with the content status and version that qualify them, and a relation to a past revision is separate from one to the content as it stands; favourite runs from a person to a space or content and is read through its own endpoints rather than by listing; likes and the notifications a relation might raise remain; exact boundary in [CONTENT_RELATIONS.md](../../docs/CONTENT_RELATIONS.md) |
-| Confluence audit log | 🟡 | All six pinned operations cover reading the site's audit log with a date range and search, adding a record, the period back from now, the CSV and zip exports which carry identical rows, and the retention that is capped at a year and deletes what falls outside it; it is separate from the organization audit log, which belongs to the organization and carries a different record; records are written through the API rather than raised automatically; exact boundary in [WIKI_AUDIT.md](../../docs/WIKI_AUDIT.md) |
-| Confluence content templates and blueprints | 🟡 | All eight pinned operations cover content templates written through the API for the site or a space, the templates blueprints provide and which the API refuses to write because the blueprint owns them, and publishing a shared or legacy draft made from a blueprint; a space inherits the site's templates and every global blueprint; app-provided blueprints and the editor and view body representations remain; exact boundary in [CONTENT_TEMPLATES.md](../../docs/CONTENT_TEMPLATES.md) |
-| Confluence site settings | 🟡 | All eight pinned operations cover the look and feel for the site and for one space, the themes a site offers and the one it has assigned, and the system information; writing the custom settings does not select them and resetting does not unselect, the site's own look is the global one so it has nothing to choose, and the default theme is readable by key but absent from the list of choices; look and feel values are stored as given rather than validated field by field; exact boundary in [SITE_SETTINGS.md](../../docs/SITE_SETTINGS.md) |
-| Confluence space lifecycle | 🟡 | All eleven pinned operations cover creating a space, the private create Confluence defines as the ordinary one with permissions set to the creator, personal spaces keyed by their account, the update, the permanent delete that reports through a long task and takes the space's content with it, per-space settings, the theme, and the data policy read; space icons, alias routing and restoring a deleted space remain; exact boundary in [SPACE_LIFECYCLE.md](../../docs/SPACE_LIFECYCLE.md) |
-| Confluence space permission transition | 🟡 | All five pinned operations move a site from direct space permission grants to roles: a scan that groups grants into distinct permission combinations, the decision an administrator makes once per combination and principal type, applying it, removing access, and the task that reports each; a combination is named by its contents so a rescan keeps an unfinished decision valid, and personal-space selections are refused because this product has no personal spaces; cursor paging and the remaining principal types remain; exact boundary in [SPACE_PERMISSION_TRANSITION.md](../../docs/SPACE_PERMISSION_TRANSITION.md) |
-| Confluence space permissions | 🟡 | All six pinned operations cover the grantable permission catalogue, the space role mode, granting one permission or several custom content operations, removing a grant, and checking whether a subject may act on content; this product had roles only, so direct grants were added alongside them and the permission check accepts either; Confluence's single View satisfies this product's separate reads; the five transition operations remain; exact boundary in [SPACE_PERMISSIONS.md](../../docs/SPACE_PERMISSIONS.md) |
-| Confluence groups | 🟡 | All eight pinned operations cover listing, creating, reading, searching and deleting groups and moving people in and out; reading is open to a member while every change is administration, and /user/memberof and the member list are shown to agree after one write; the accessType filter, expand and cursor paging remain; exact boundary in [WIKI_GROUPS.md](../../docs/WIKI_GROUPS.md) |
-| Confluence users | 🟡 | All 14 pinned operations cover looking people up by account id or email, the anonymous reader, the groups a person is in, the user search and user properties; an email address is administration, so the user reads never carry one and the email reads refuse a member; expand, cursor paging, external collaborators and the invite operations remain; exact boundary in [WIKI_USERS.md](../../docs/WIKI_USERS.md) |
-| Confluence custom content | 🟡 | All 19 pinned operations cover app-defined content in a space or under a page, blog post or other custom content, with its own versions, properties, labels, children and operations; it was two read-only tables that could not express content in a space and is now stored with everything else that lives in one; attachments and footer comments on custom content, and the atlas_doc_format body, remain; exact boundary in [CUSTOM_CONTENT.md](../../docs/CUSTOM_CONTENT.md) |
-| App-provided select lists and their options | 🟡 | All eight pinned issue field option operations serve a select list a Connect app declares, which the descriptor parser now accepts; the resource refuses a field created here and the context option resource refuses an app's, so the two never overlap; the deselect queues an ordinary bulk edit and answers 303 with the task; projects2 scope, the defaultValue attribute, screen-security overrides and multi_select app fields remain; exact boundary in [APP_FIELD_OPTIONS.md](../../docs/APP_FIELD_OPTIONS.md) |
-| Field association schemes | 🟡 | All 17 pinned operations serve Jira's newer field association API from this product's field configuration scheme, so both APIs describe one model: the scheme lifecycle and clone, the fields it associates with their work type restrictions and per-work-type parameters, its projects, and the project-scoped field association endpoints; a write clones a shared configuration first so one scheme's change cannot reach another; rendererType, matchedFilters and association contexts beyond PROJECT_ID remain; exact boundary in [FIELD_ASSOCIATION_SCHEMES.md](../../docs/FIELD_ASSOCIATION_SCHEMES.md) |
-| Issue fields | 🟡 | All 11 pinned operations cover field discovery, creation with Jira's canonical type keys, the paginated live and trashed searches with usage counts, rename, the project associations and contexts reads, the project field read, and a trash that a delete requires and a restore reverses with recorded values intact; field translations, lastUsed, stableId and the searcher key's effect on search remain; exact boundary in [ISSUE_FIELDS.md](../../docs/ISSUE_FIELDS.md) |
-| Worklogs | 🟡 | All 14 pinned operations cover logging work, the update, the move between work items, the bulk delete, the workspace-wide updated and deleted feeds, the bulk fetch by id and worklog properties; a delete records a tombstone so the deleted feed can report it, and both feeds compare in milliseconds because they report in milliseconds; started-date filters, expand, adjustEstimate/notifyUsers and worklog visibility restriction remain; exact boundary in [WORKLOGS.md](../../docs/WORKLOGS.md) |
-| Dashboards and gadgets | 🟡 | All 17 pinned operations cover the dashboard lifecycle, search, sharing, copy, gadget lifecycle and gadget properties, plus a bulk edit that answers per dashboard rather than failing the whole request and restricts ownership transfer to the owner; extendAdminPermissions and item property expansion remain; exact boundary in [DASHBOARDS_API.md](../../docs/DASHBOARDS_API.md) |
-| Select custom fields and their options | 🟡 | All seven Jira v3 option operations back a new select field type whose choices belong to the governing context, reach createmeta and the create dialog in administrator order, and gate every write; a disabled option leaves the form while existing work items keep it, and deleting one in use requires a replacement that migrates them; multi-select and cascading fields remain; exact boundary in [CUSTOM_FIELD_OPTIONS.md](../../docs/CUSTOM_FIELD_OPTIONS.md) |
-| Notifications (custom) GET/PUT /rest/zzira/1/notifications · POST /notifications/read-all | ✅ | Private per-user entities with synchronized read state, unread count, and idempotent mutations |
+| Boards (33 ops, `/rest/agile/1.0` and `/rest/software/1.0`) | 🟡 | Configuration, quick filters, backlog, features, reports, properties, filter-backed boards ([AGILE_BOARDS.md](../../docs/AGILE_BOARDS.md)) |
+| Sprints (13 ops) | 🟡 | Partial update, swap, properties. Ranking parameters and issue filters remain |
+| Rank: `/issue/rank`, `/backlog/{boardId}/issue`, `/board/{boardId}/issue` | 🟡 | Site-wide LexoRank, 50 issues, 207 per-issue results |
+| Epics, `/issue/{id}/estimation`, Agile `/issue/{id}` | 🟡 | Fourteen epic colors; cross-project epic parents ([JIRA_SOFTWARE.md](../../docs/JIRA_SOFTWARE.md)) |
+| `/rest/devinfo/0.10` (6), `/rest/builds/0.1` (4), `/rest/deployments/0.1` (5) | 🟡 | Sequence-ordered ingestion, issue and release evidence, `cloudId` aliases, deployment gating, rate limits. Processing is synchronous |
+| `/rest/operations/1.0`, `/rest/security/1.0`, `/rest/devopscomponents/1.0`, `/rest/featureflags/0.1`, `/rest/remotelinks/1.0` (29 ops) | 🟡 | Schema validation, accepted/failed/unknown reporting, deletes by property. Processing is synchronous; no issue view panels for these entities |
 
-## Tier D — expanded product surfaces
+## Jira Service Management and Automation
 
-| Endpoint | Status | Notes |
+| Surface | Status | Notes |
 |---|---|---|
-| Dashboards | 🟡 16/17 pinned operations + custom UI | Fixed `/dashboard` plus `/dashboards`: CRUD, ownership/sharing, copy, gadget catalog/lifecycle/properties, favourites, layouts, refresh, JQL/filter lists and permission-filtered charts. Bulk edit and external gadget runtimes remain; see `docs/DASHBOARDS.md` |
-| Development information | 🟡 | All six devinfo, four build and five deployment operations plus issue/release UI and branch-created workflow trigger; feature flags, security, operations, components, configurable deployment gates and legacy dev-status summaries remain |
-| Service management surfaces | 🟡 | All 75 pinned operations are reviewed: service projects, seeded help/incident/problem/change request types and groups, related-work links, permissions/properties, requests, durable request-type field metadata and typed custom answers, built-in and manager-defined JQL queues, default and ordered conditional SLA goals with stable cycle snapshots, holiday calendars, approvals, attachments, subscriptions, feedback, customer-only account lifecycle, desk customer admission, customer organizations, linked knowledge search, Assets workspace discovery, and filterable service volume/SLA/CSAT reports with request-type and channel breakdowns. Help-center, customer, agent, and manager journeys use the same command paths; conditional/advanced portal fields, complete JQL beyond label matching, SLA rule reordering and advanced criteria, complete Assets APIs, advanced incident/problem/change risk, approval, on-call and review configuration, comparisons, SLA goal distributions, exports and scheduled report delivery remain |
-| Automation and schedules | 🟡 | all 15 Automation operations: rule management, manually triggered rule search and invocation, and the template catalog, fixed-rate editor, durable execution/retries, actor-scoped JQL, label/assign/transition actions and audit UI delivered; see `docs/AUTOMATION.md` for Cron, trigger, component and runtime gaps |
-| Project versions and releases | 🟡 | Ten version operations, release hub/lifecycle, fix/affected membership, visible progress and notes; exact limits in [RELEASES.md](../../docs/RELEASES.md) |
-| Metrics and reports | 🟡 | Permission-filtered 7/30/90 day DORA metrics, immutable delivery facts, accessible daily SVG/table and recent production evidence; Jira/Agile report catalog, comparisons, exports, subscriptions and scheduled delivery remain; see `docs/REPORTS.md` |
-| Apps/plugins, diagrams and graphs | ⛔ | installation/runtime modules, diagram authoring and graph/report surfaces remain |
-| Confluence Cloud spaces, pages, folders, Smart Links, databases, whiteboards, hierarchy, labels, restrictions, attachments, comments, tasks and watches | 🟡 | Initial v2 space/page CRUD, drafts, versions, trash/restore, v1/v2 permission-filtered page children/ancestors/descendants, all 54 v2 folder, Smart Link, database and whiteboard create/read/delete/hierarchy/operation/property/classification resources on a shared heterogeneous tree, including creator-private database/whiteboard content, every documented whiteboard template/locale and built-in classification state, page/attachment footer comments, page inline-comment threads with exact anchors and resolution, filtered page tasks with assignment/due/completion, labels, all 12 v1 page-restriction operations, 21 v1/v2 versioned page-attachment/property/label/thumbnail operations, and all 12 v1 content/space/label watch operations with deduplicated in-app delivery across 144 reviewed operations, plus permission-filtered action log; exact limits in CLOUD_PARITY.md |
+| `/rest/servicedeskapi` (75 ops) | 🟡 | Desks, request types, fields, requests, comments, participants, queues, SLAs, approvals, attachments, feedback, customers, organizations, knowledge, Assets workspace discovery. Public Assets API, request type restrictions and email channel remain ([SERVICE_MANAGEMENT.md](../../docs/SERVICE_MANAGEMENT.md)) |
+| Automation rule management, manual rules, templates (15 ops) | 🟡 | Scheduled, event, webhook and manual runtime with a component subset. Connections, usage limits and Confluence triggers remain ([AUTOMATION.md](../../docs/AUTOMATION.md)) |
 
-## E2E (browser-proven, Playwright/Chromium)
+## Confluence
 
-| Spec | Status |
-|---|---|
-| API contract smoke (serverInfo + metadata-driven create) | ✅ |
-| UI login → full-field create → validation recovery → create another → issue view | ✅ |
-| Issue triage fields, watchers, votes, links, activity, attachments and management actions | ✅ |
-| WASM worker boots + syncs | ✅ |
-| Offline reload renders from local SQLite | ✅ |
-| Two-browser convergence via the action log | ✅ |
-| Board controls/settings, issue preview, Agile configuration and quick-filter APIs | ✅ |
-| Notifications inbox, private API mutations, unread filtering, and open-to-work flow | ✅ |
-| Notification scheme creation, event recipient, project assignment, modal work-item creation, recipient inbox delivery and cleanup | ✅ |
-| WCAG 2.2 A/AA axe sweep, target sizes, keyboard movement and 320px reflow | ✅ |
-| Service help center, request, queue, SLA, approval, file, notification, feedback, customer and organization management journey | ✅ |
-| Wiki author/member page access, authoring, stale edits, history, threaded footer/inline comments, assigned page tasks, child pages and trash/restore | ✅ |
+| Surface | Status | Notes |
+|---|---|---|
+| Spaces, pages, folders, Smart Links, databases, whiteboards, hierarchy, labels, restrictions, attachments, comments, tasks, watches | 🟡 | v1/v2 CRUD, drafts, versions, trash, permission-filtered trees, 54 folder/Smart Link/database/whiteboard ops, inline and footer comments, 12 restriction ops, 12 watch ops ([CONFLUENCE_SITE_SURFACES.md](../../docs/CONFLUENCE_SITE_SURFACES.md)) |
+| Page moves, copies, archiving (7 ops) | 🟡 | Cross-space moves, copying permissions and restoring archived pages remain ([PAGE_MOVES.md](../../docs/PAGE_MOVES.md)) |
+| Content states (8 ops) | 🟡 | Blog post and custom content states remain ([CONTENT_STATES.md](../../docs/CONTENT_STATES.md)) |
+| Content history, macros, body conversion (9 ops) | 🟡 | Macros are stored, not executed ([CONTENT_HISTORY.md](../../docs/CONTENT_HISTORY.md)) |
+| Site surfaces: comment properties, Forge app properties, admin key, id conversion, access checks, data policy (16 ops) | 🟡 | [CONFLUENCE_SITE_SURFACES.md](../../docs/CONFLUENCE_SITE_SURFACES.md) |
+| Content analytics (2 ops) | 🟡 | View counts ([CONTENT_ANALYTICS.md](../../docs/CONTENT_ANALYTICS.md)) |
+| CQL search (2 ops) | 🟡 | 18 fields. No relevance ranking or stemming ([CQL_SEARCH.md](../../docs/CQL_SEARCH.md)) |
+| Content relations (5 ops) | 🟡 | Relation notifications remain ([CONTENT_RELATIONS.md](../../docs/CONTENT_RELATIONS.md)) |
+| Audit log (6 ops) | 🟡 | Records are added through the API, not raised automatically ([WIKI_AUDIT.md](../../docs/WIKI_AUDIT.md)) |
+| Templates and blueprints (8 ops) | 🟡 | App-provided blueprints remain ([CONTENT_TEMPLATES.md](../../docs/CONTENT_TEMPLATES.md)) |
+| Site settings, look and feel, themes (8 ops) | 🟡 | Values stored without field validation ([SITE_SETTINGS.md](../../docs/SITE_SETTINGS.md)) |
+| Space lifecycle (11 ops) | 🟡 | Space icons, alias routing and restore remain ([SPACE_LIFECYCLE.md](../../docs/SPACE_LIFECYCLE.md)) |
+| Space permissions (6 ops) | 🟡 | [SPACE_PERMISSIONS.md](../../docs/SPACE_PERMISSIONS.md) |
+| Space permission transition (5 ops) | 🟡 | Cursor paging and other principal types remain ([SPACE_PERMISSION_TRANSITION.md](../../docs/SPACE_PERMISSION_TRANSITION.md)) |
+| Groups (8 ops) | 🟡 | `accessType`, `expand` and cursors remain ([WIKI_GROUPS.md](../../docs/WIKI_GROUPS.md)) |
+| Users (14 ops) | 🟡 | `expand`, cursors, external collaborators and invites remain ([WIKI_USERS.md](../../docs/WIKI_USERS.md)) |
+| Custom content (19 ops) | 🟡 | Attachments, footer comments and `atlas_doc_format` remain ([CUSTOM_CONTENT.md](../../docs/CUSTOM_CONTENT.md)) |
 
-## Load measurement
+## Organization administration and apps
 
-See `docs/loadtest.md` — sync p95 ≈ 6.8ms at 10k issues (flat across 100×
-history growth); v2 index trigger (>300ms) is ~44× away.
+| Surface | Status | Notes |
+|---|---|---|
+| Organizations, directories, users, groups, memberships, workspaces, roles, events, domains, policies (47 ops) | 🟡 | Runtime policy enforcement and central rate limits remain ([ADMIN.md](../../docs/ADMIN.md)) |
+| App runtime: Connect and native descriptors, modules, JWT, lifecycle, storage, webhooks, schedules, dynamic modules | 🟡 | Forge compute, workflow modules and Confluence macros remain ([APPS.md](../../docs/APPS.md)) |
 
-| E2E: dashboard renders counts + activity | ✅ |
+## Browser tests
+
+Playwright (Chromium) specs are in [`e2e/`](../../e2e). They cover:
+- API smoke and the WASM worker.
+- Offline reload and two-browser convergence.
+- Create, triage, backlog, boards and timeline.
+- Dashboards, reports and filters.
+- Notifications and every scheme and admin page.
+- Releases, plans, people and identity providers.
+- Automation, apps, service management and Assets.
+- Wiki pages, content tree and databases.
+- WCAG 2.2 A/AA axe sweeps, target sizes, keyboard use and 320 px reflow.
+
+## Load
+
+See [loadtest.md](../../docs/loadtest.md).
+- **Sync p95:** 6.8 ms at 10,000 work items and 89.6 ms at 100,000.
+- **Index threshold:** a posting-list index is added above 300 ms. Current p95
+  is about 3.3× under it.

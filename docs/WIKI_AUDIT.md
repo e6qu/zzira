@@ -1,79 +1,46 @@
-# The Confluence audit log
+# Confluence audit log
 
-Updated: 2026-09-12
+The Confluence site's own audit log, with Confluence's record shape. Every operation needs site administration. Part of [Confluence](CONFLUENCE_SITE_SURFACES.md); status in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
-The site's record of what administrators did: space exports, group membership
-changes, app installations, permission changes.
+This log is separate from the organization audit log (`organization_audit_events`, see [admin](ADMIN.md)), which spans products and uses an action/target/detail shape.
 
-## Not the organization audit log
-
-This product already has `organization_audit_events`, which the organization
-administration surface writes. That is a different log: it belongs to the
-organization across its products, and carries a different record — an action, a
-target and a detail object.
-
-Confluence's audit record is the site's own and has its own shape: an author, a
-remote address, a summary and description, a category, whether the actor was a
-system or super administrator, the object affected, the values that changed, and
-the objects associated with the change. The two are kept apart because they
-answer different questions, and folding one into the other would lose the shape
-each surface reports.
-
-## Jira Cloud REST surface
-
-All six pinned operations are implemented. An audit against a running server
-found none of them working.
+## API
 
 | Method and path | Behavior |
-|---|---|
-| `GET /wiki/rest/api/audit` | The log, with an optional date range and search. |
+| --- | --- |
+| `GET /wiki/rest/api/audit` | Records, newest first. `startDate`, `endDate`, `searchString`, `start`, `limit`. |
 | `POST /wiki/rest/api/audit` | Adds a record. |
-| `GET /wiki/rest/api/audit/since` | A period back from now. |
-| `GET /wiki/rest/api/audit/export` | The log as CSV, or the same CSV zipped. |
-| `GET /wiki/rest/api/audit/retention` | How long records are kept. |
-| `PUT /wiki/rest/api/audit/retention` | Sets it, to at most a year. |
+| `GET /wiki/rest/api/audit/since` | Records from `number` `units` ago, with `searchString`. |
+| `GET /wiki/rest/api/audit/export` | The same filters as a CSV file, or the same CSV zipped with `format=zip`. |
+| `GET /wiki/rest/api/audit/retention` | The retention period (default 3 `MONTHS`). |
+| `PUT /wiki/rest/api/audit/retention` | Sets the retention period. |
 
-## Retention deletes
+## Record
 
-The retention period is how long a record is kept **from its creation date until
-it is deleted**, which is Confluence's own wording. So two things follow, and
-both are tested.
+`author` (account id and name), `remoteAddress`, `creationDate`, `summary` (1 to 255 characters), `description`, `category`, `sysAdmin`, `superAdmin`, `affectedObject`, `changedValues`, `associatedObjects`. Without an author, the caller is the author; a client may name another author. `searchString` matches summary, description and category.
 
-A record past the retention is not in the log. And **setting the retention
-deletes what now falls outside it** rather than hiding it — a record that
-reappeared when the period was lengthened would not have been deleted, and the
-site said it was.
+## Retention
 
-## A record's author
+The retention period is how long a record is kept after creation. Records older than the period are excluded from reads. Setting the period deletes the records that now fall outside it, so lengthening it again does not bring them back.
 
-A record with no author named is the caller's, because the caller is who made
-it. A client integrating its own administration can name a different author,
-which is what lets the site's log stay complete.
+Units are `java.time` units, `NANOS` to `FOREVER`. Reads accept any unit. Retention must be positive and at most one year in any unit (`2 YEARS` and `400 DAYS` are both 400).
 
-## The export
+## Storage
 
-CSV, or the same CSV zipped — the rows a caller gets are the same either way,
-which the test checks by comparing the two bodies rather than trusting the
-header.
+`wiki_audit_records`; the retention setting is in `wiki_site_settings`.
 
-## Periods
+## Tests
 
-The units are `java.time`'s, which is what Confluence names: `NANOS` through
-`FOREVER`. All are accepted for a read; anything over a year is refused for the
-retention, whichever unit expresses it — `2 YEARS` and `400 DAYS` are both too
-long.
+`internal/confluence/audit_test.go`
 
-## Evidence and current boundary
+## Gaps
 
-- `internal/confluence/audit_test.go` covers all six operations, that the whole
-  log is administration, that a record carries its affected object and changed
-  values and takes the caller as its author, the search across summary,
-  description and category, a date range that matches nothing, both export
-  formats carrying identical rows, every refused period, and that shortening the
-  retention deletes the records that fall outside it.
-- `migrations/154_wiki_audit.sql` is exercised from a clean PostgreSQL schema.
+See [PLAN.md](../PLAN.md).
 
-Records are written through the API rather than raised automatically by the
-operations that would produce them in Confluence, so the log holds what a client
-puts there. Paging beyond the shared list helper, and the `superAdmin` flag
-being derived rather than stated, remain.
+- Site operations (space exports, permission and group changes, app installs) do not write audit records; the log holds only records added through `POST`.
+- `sysAdmin` and `superAdmin` are stored as sent, not derived from the author.
+- No audit log view in the product UI.
+
+## See also
+
+[Confluence groups](WIKI_GROUPS.md), [site settings](SITE_SETTINGS.md), [admin](ADMIN.md).

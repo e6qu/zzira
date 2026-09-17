@@ -1,65 +1,64 @@
-# Jira project versions
+# Project versions API
 
-Updated: 2026-09-11
+A project's versions (releases): release state and dates, the work items that
+fix or affect them, display order, driver, approvers and related work links.
+This page covers the REST API; the release hub UI is in
+[RELEASES.md](RELEASES.md). Part of the [Jira platform](JIRA_PLATFORM.md) and
+used by [Jira Software](JIRA_SOFTWARE.md); see
+[CLOUD_PARITY.md](CLOUD_PARITY.md) for status.
 
-ZZIRA stores a project's versions, their release state and dates, the work items
-that fix or affect them, their display order, and the external links Jira calls
-related work. Project administrators manage them at `/projects/{key}/releases`.
+## API
 
-## Jira Cloud REST surface
+All 15 Jira Cloud project-version operations:
 
-All 15 pinned project-version operations are implemented:
-
-| Method and path | Behavior |
+| Route | Behavior |
 |---|---|
-| `GET /rest/api/3/project/{projectIdOrKey}/versions` | Returns every version in display order. |
-| `GET /rest/api/3/project/{projectIdOrKey}/version` | Returns the same versions paginated, with ordering and status filters. |
-| `POST /rest/api/3/version` | Creates a version in a project; a version cannot be created already released. |
-| `GET/PUT/DELETE /rest/api/3/version/{id}` | Reads an optionally expanded version, updates its name, description, dates and release or archive state, or deletes it. |
-| `POST /rest/api/3/version/{id}/move` | Reorders a version with `after`, or `position` First, Earlier, Later, or Last. |
-| `PUT /rest/api/3/version/{id}/mergeto/{moveIssuesTo}` | Moves the work items to another version and removes this one. |
-| `POST /rest/api/3/version/{id}/removeAndSwap` | Removes a version, optionally moving fix and affects references elsewhere. |
-| `GET /rest/api/3/version/{id}/relatedIssueCounts` | Counts the work items that fix and that affect the version. |
-| `GET /rest/api/3/version/{id}/unresolvedIssueCount` | Counts the version's work items and how many remain unresolved. |
-| `GET/POST/PUT /rest/api/3/version/{id}/relatedwork` | Lists, adds, or updates the external links attached to the release. |
-| `DELETE /rest/api/3/version/{versionId}/relatedwork/{relatedWorkId}` | Removes one link. |
+| `GET /rest/api/3/project/{projectIdOrKey}/versions` | Every version in display order |
+| `GET /rest/api/3/project/{projectIdOrKey}/version` | Paged, with ordering, `query` and `status` (`released`, `unreleased`, `archived`) filters |
+| `POST /rest/api/3/version` | Create; `released: true` is refused, as is `moveUnfixedIssuesTo` |
+| `GET/PUT/DELETE /rest/api/3/version/{id}` | Read (with expansions), update name, description, dates, driver, release or archive state and `moveUnfixedIssuesTo`, or delete (`moveFixIssuesTo`, `moveAffectedIssuesTo`) |
+| `POST /rest/api/3/version/{id}/move` | Reorder with `after`, or `position` `First`, `Earlier`, `Later`, `Last` |
+| `PUT /rest/api/3/version/{id}/mergeto/{moveIssuesTo}` | Move work items to another version and delete this one |
+| `POST /rest/api/3/version/{id}/removeAndSwap` | Delete, optionally moving fix and affects references |
+| `GET /rest/api/3/version/{id}/relatedIssueCounts` | Work items that fix and that affect the version |
+| `GET /rest/api/3/version/{id}/unresolvedIssueCount` | Work items and how many are unresolved |
+| `GET/POST/PUT /rest/api/3/version/{id}/relatedwork` | List, add or update related work links |
+| `DELETE /rest/api/3/version/{versionId}/relatedwork/{relatedWorkId}` | Remove one link |
 
-Version names are unique per project. Issue counts are computed from the work
-items the caller may see, so a version never reveals restricted work through its
-totals.
+Expansions: `issuesstatus`, `operations` (release actions a project
+administrator may take), `driver` and `approvers`; unknown expansions are
+refused.
 
-## Ordering and related work
+## Behavior
 
-Versions carry an explicit position, and `move` rewrites the order densely, so
-reads are stable. Moving after a version that is not in the project is rejected
-rather than silently ignored.
+- Names are unique per project.
+- Counts include only work items the caller can see, so totals never reveal
+  restricted work.
+- Versions have an explicit position; `move` rewrites the order densely.
+  Moving after a version from another project is refused.
+- Related work is a required category, an optional title and an optional URL,
+  which must be absolute `http` or `https`. Every change writes an action in
+  the same transaction.
+- A version names a **driver**. Project administrators request **approvals**
+  from site members with a note; each approver approves or declines on the
+  release page, optionally with a reason.
 
-Related work is a category, an optional title, and an optional URL. The category
-is required, and a URL must be an absolute `http` or `https` address, so a
-release page cannot link somewhere the browser will not follow. Every related
-work mutation writes an immutable action in the same transaction.
+## Permissions
 
-## Evidence and current boundary
+Reads need Browse projects on the version's project; writes need Administer
+projects.
 
-- `internal/api3/versions_test.go` covers all 15 operations, permission and
-  visibility filtering, validation of names and dates, the release and archive
-  transitions, merge and remove-and-swap, every move form, and the related work
-  lifecycle including its validation and 404s.
-- `e2e/releases.spec.ts` covers the browser journey from planning a release
-  through assigning scope, publishing notes, archiving and deleting.
-- `migrations/138_version_related_work.sql` is exercised from a clean PostgreSQL
-  schema.
+## UI
 
-## Drivers, approvers and operations
+`/projects/{key}/releases` and `/projects/{key}/releases/{version}`; see
+[RELEASES.md](RELEASES.md).
 
-A release names a driver, the person responsible for it, set through the
-version API's `driver` field or the release page. Project administrators ask
-site members to approve a release with a note on what they approve; each
-approver approves or declines on the release page, optionally saying why.
-`migrations/187_version_drivers_approvers.sql` stores both. Version reads expand
-`driver`, `approvers` and `operations`, the release actions a project
-administrator may take, alongside `issuesstatus`; unknown expansions are
-refused. `internal/api3/expansions_filters_test.go` covers the expansions and
-approval decisions.
+## Tests
 
-Related work ordering and exact Jira error wording remain.
+`internal/api3/versions_test.go`, `internal/api3/expansions_filters_test.go`,
+`e2e/releases.spec.ts`.
+
+## See also
+
+[RELEASES.md](RELEASES.md) · [REPORTS.md](REPORTS.md) · [JQL.md](JQL.md)
+(version functions) · [PROJECT_GOVERNANCE.md](PROJECT_GOVERNANCE.md)

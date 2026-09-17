@@ -1,85 +1,53 @@
 # Content states
 
-Updated: 2026-09-11
+A content state is a status label on a page ("Rough draft", "Ready for review") that says where the page stands without changing its text. Part of [Confluence](CONFLUENCE_SITE_SURFACES.md); status in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
-A content state is the label a page carries beyond its text — "Rough draft",
-"Ready for review", "Needs legal". It is how a writer says where the page is up
-to without changing a word of it.
+## Two kinds
 
-## Two kinds, kept apart
+- **Space content states** are the states a space suggests. Every space suggests the product defaults: Rough draft (`1`), In progress (`2`), Ready for review (`3`), Published (`4`). They are defined in code (`internal/store/wiki_content_states.go`).
+- **Custom content states** are created by a writer as they set them and belong to that writer; other people do not see them. Setting a name the writer has used before (case-insensitive) updates that state instead of adding another.
 
-Confluence has two, and they answer different questions.
-
-**Space content states** are what a space suggests: the shared vocabulary
-everyone working there uses. **Custom content states** are made by a writer as
-they work, and belong to that writer — another person's list is their own.
-
-They are not merged into one set, because a client needs to know which is which:
-the editor offers every state the space suggests, and only the writer's few most
-recent custom ones.
-
-**No pinned operation writes a space content state.** Configuring them is a
-space administration screen Confluence does not expose in this REST surface, so
-the suggested set here is the product's default rather than something an
-administrator has chosen. That is why they are defined in code and not a table.
-Custom states are created by the write that uses them — a pinned operation — so
-they are rows.
-
-## Jira Cloud REST surface
-
-All eight pinned operations are implemented. An audit against a running server
-found none of them working.
+## API
 
 | Method and path | Behavior |
-|---|---|
-| `GET /wiki/rest/api/content-states` | The custom states the caller has made. |
-| `GET /wiki/rest/api/content/{id}/state` | The state on one status of a page. |
-| `PUT /wiki/rest/api/content/{id}/state` | Sets a state by id, or describes a new custom one. |
+| --- | --- |
+| `GET /wiki/rest/api/content-states` | The caller's custom states, most recent first. |
+| `GET /wiki/rest/api/content/{id}/state` | The state on one status of a page (`status`, default `current`). |
+| `PUT /wiki/rest/api/content/{id}/state?status=` | Sets a state: `{"id"}` for an existing one, or `{"name", "color"}` for a custom one. |
 | `DELETE /wiki/rest/api/content/{id}/state` | Removes the state. |
-| `GET /wiki/rest/api/content/{id}/state/available` | What this page could be set to. |
+| `GET /wiki/rest/api/content/{id}/state/available` | Every space state, plus the writer's three most recent custom states. |
 | `GET /wiki/rest/api/space/{spaceKey}/state` | The states the space suggests. |
-| `GET /wiki/rest/api/space/{spaceKey}/state/settings` | Whether states are allowed, and which. |
-| `GET /wiki/rest/api/space/{spaceKey}/state/content` | The content in a state. |
+| `GET /wiki/rest/api/space/{spaceKey}/state/settings` | Whether states, custom states and space states are allowed, and the suggested states when allowed. Space administrators only. |
+| `GET /wiki/rest/api/space/{spaceKey}/state/content?state-id=` | Pages in a state. `start`, `limit` (1 to 100, default 25), `expand`; expanding `body.export_view` or `body.styled_view` caps `limit` at 25. |
 
-## Setting a state publishes a version
+Responses carry `contentState` and `lastUpdated`. `status` is `current`, `draft` or `archived`.
 
-Confluence's wording is that setting a state "publishes the content without
-changing the body", and that is what happens: the page gets a new version
-carrying the new state and the same text. Removing a state publishes a version
-too, so the history shows when the state went as well as when it arrived.
+## Behavior
 
-The state therefore lives on the version, not only on the page. The test checks
-both halves of that — the version count grows and the body does not change.
+- Setting or removing a state publishes a new version with the same body, so history records when the state changed.
+- `PUT` refuses (400):
+  - both an id and a name/colour, or neither;
+  - a name outside 1 to 20 characters, or a colour that is not a hex value;
+  - a missing `status` (reads default to `current`);
+  - a state the space's settings do not allow.
 
-## What the write refuses
+## Space settings
 
-**An id and a description together.** Naming an existing state and describing a
-new one are two different requests; supplying both is a contradiction rather
-than a precedence question.
+Space administrators choose whether pages carry content states at all, and whether writers may use space states and custom states. UI: the space page's content state settings section (`POST /wiki/spaces/{space}/content-state-settings`). Columns: `wiki_spaces.content_states_allowed`, `custom_content_states_allowed`, `space_content_states_allowed`.
 
-**Neither.** A state has to be identified somehow.
+## Tests
 
-**A name over 20 characters, or a colour that is not a hex value.** Both are
-Confluence's own limits, and a state that cannot be displayed is not a state.
+`internal/confluence/content_states_test.go`
 
-**A missing status on the write.** Setting a state on a draft and on the
-published page are different acts, so Confluence requires the status to be
-named. The reads default to the published page.
+## Gaps
 
-Re-using a name the writer has used before updates that state rather than
-accumulating a new one on every edit, which is what keeps a writer's list short
-enough for the editor to offer.
+See [PLAN.md](../PLAN.md).
 
-## Evidence and current boundary
+- Configuring which states a space suggests (the set is fixed to the defaults).
+- Content states on blog posts and custom content.
+- Setting or showing a page's state in the page view and editor.
+- `state/available` does not apply the space's settings.
 
-- `internal/confluence/content_states_test.go` covers all eight operations, the
-  separation between the two kinds, that another writer does not see someone's
-  custom states, that re-using a name keeps one state, every refusal above, that
-  each change publishes a version while leaving the body alone, and that the
-  space's content listing follows a page into and out of a state.
-- `migrations/146_content_states.sql` is exercised from a clean PostgreSQL
-  schema.
+## See also
 
-Configuring a space's suggested states, restricting which states a space allows,
-the `expand` parameter on the space content listing, content states on blog
-posts and on custom content, and states in the browser journeys remain.
+[Content history](CONTENT_HISTORY.md), [drafts](CONTENT_DRAFTS.md), [space lifecycle](SPACE_LIFECYCLE.md).

@@ -1,80 +1,79 @@
-# Saved filters and sharing
+# Saved filters
 
-Updated: 2026-09-09
+Saved filters store a JQL query with an owner, view and edit shares, favorites,
+navigator columns and email subscriptions. The REST API and the browser use the
+same workspace-scoped records. Part of the [Jira platform](JIRA_PLATFORM.md);
+see [CLOUD_PARITY.md](CLOUD_PARITY.md) for status.
 
-ZZIRA exposes the 19 saved-filter and filter-sharing operations in the pinned
-Jira Cloud Platform REST v3 contract. The browser issue navigator and REST API
-use the same workspace-scoped filter records.
+## API
 
-## Delivered API behavior
+All 19 Jira Cloud filter and filter-sharing operations under
+`/rest/api/3/filter`:
 
-- create, read, update, delete, owned-filter, favorite-filter, and paginated
-  filter-search resources;
-- exact `PUT` and `DELETE` favorite methods, while retaining the older
-  ZZIRA `POST` alias for existing callers;
-- private, authenticated/global, direct-user, directory-group, project, and
-  project-role view shares;
-- separate edit shares that grant filter updates without transferring
-  ownership;
-- stable share-permission identifiers with list, detail, create, and delete
-  operations;
-- per-filter issue-navigator columns set as HTML form data naming navigable
-  fields (400 otherwise, 403 for non-owners, 404 while unset), reset
-  semantics, and Jira-shaped `ColumnItem` responses;
-- owner transfer by the owner or a Jira administrator, with active workspace
-  membership and case-insensitive name-conflict checks;
-- per-user default sharing scope, including Jira's normalization of `GLOBAL`
-  to `AUTHENTICATED`; and
-- per-user favorites, favorite counts, visibility-filtered collections,
-  case-insensitive exact or substring name search, owner/share filters, ID
-  filters, ordering, and offset pagination;
-- owner-managed daily or weekly UTC email schedules with active-member
-  recipient validation and live FilterBean subscription expansion; and
-- durable scheduled runs with stale-claim recovery, bounded
-  permission-filtered JQL evaluation, per-recipient outbox deduplication,
-  delivery retries, result counts, errors, and direct work-item links.
+- Create, read, update, delete; `filter/my`, `filter/favourite` and paginated
+  `filter/search` (exact or substring name, owner, group, project, IDs,
+  ordering, `expand`).
+- `PUT`/`DELETE /filter/{id}/favourite` (`POST` is kept as an alias).
+- `GET/PUT/DELETE /filter/{id}/columns`: columns are HTML form data naming
+  navigable fields (400 otherwise, 403 for non-owners, 404 while unset);
+  responses are `ColumnItem` lists.
+- `PUT /filter/{id}/owner`: by the owner or a Jira administrator; the new
+  owner must be an active member without a same-named filter.
+- `GET/POST /filter/{id}/permission`, `GET/DELETE /filter/{id}/permission/{permissionId}`.
+- `GET/PUT /filter/defaultShareScope`: per user; `GLOBAL` is normalized to
+  `AUTHENTICATED`.
+- `expand=subscriptions` and `expand=sharedUsers` fill those lists, with
+  Jira's `[start:end]` ranges; unexpanded they are empty.
 
-Private filters are visible only to their owner. A user must be able to view a
-filter before favoriting it or reading its columns and permissions. Group
-shares follow current directory membership. Project shares follow the
-workspace's project visibility model; project-role shares additionally evaluate
-any registered project role through its exact project assignment.
+## Behavior
 
-Filter creation, updates, deletion, share changes, and owner transfer write
-organization audit events without storing the filter's JQL in the audit detail.
-Filter names are unique per owner within a workspace.
+- Names are unique per owner, case-insensitively.
+- Only queries the [JQL](JQL.md) compiler accepts can be saved.
+- **Sharing.** View shares: authenticated users, a user, a group, a project or
+  a project role. Edit shares grant updates without ownership. Group shares
+  follow current membership; project shares reach people who can browse the
+  project; role shares evaluate the role in that project. Private filters are
+  visible only to their owner. Public (anonymous) sharing does not exist, as in
+  Jira Cloud, so anonymous callers see no filters.
+- Viewing a filter is required to favorite it or read its columns and
+  permissions.
+- **Audit.** Create, update, delete, share changes and owner transfer write
+  organization audit events without the JQL.
+- **Subscriptions.** Owners schedule email results daily, weekly (Monday) or
+  on a cron expression, in an IANA time zone, to up to 50 active workspace
+  members. A runner claims due runs (recovering stale claims), evaluates the
+  JQL with each recipient's permissions, deduplicates per recipient through
+  the outbox, retries delivery, and records result counts and errors. Emails
+  link directly to work items.
 
-## Browser journey
+## UI
 
-The **Saved filters** workspace destination presents visible filters with their
-JQL, owner, favorite count, and separate view/edit access lanes. Owners can
-edit details and JQL, choose issue-navigator columns, add or remove workspace,
-person, directory-group, project, and project-role access, transfer ownership,
-and delete a filter. Site administrators can inspect private filters and
-recover ownership when an owner leaves. Each user can also choose whether new
-filters start private or visible to everyone signed in. Filter owners can
-schedule email results daily, on a Monday, or on a cron expression of their
-own, in a time zone they choose, pick active workspace recipients, inspect the
-next and last run, and remove the schedule.
+- `/filters` lists visible filters with JQL, owner, favorite count and
+  separate view and edit access. Owners edit details, JQL and columns, manage
+  shares (everyone signed in, person, group, project, project role), transfer
+  ownership, delete, and add or remove an email schedule showing next and last
+  run. Each user sets whether new filters start private or shared with
+  everyone signed in.
+- Site administrators see private filters and can reassign ownership when an
+  owner leaves. The administration page lists every filter subscription on
+  the site and can delete any of them.
+- The issue navigator saves the current query as a filter
+  (`POST /issues/{projectKey}/filters`).
 
-`e2e/filters.spec.ts` proves the connected REST-to-browser journey: create a
-private filter through Jira REST, find and favorite it in the browser, update
-its details and columns, create and remove an email schedule, share it,
-transfer it as an administrator, and delete it after transferring it back.
+## Gaps
 
-## Current limits
+See [PLAN.md](../PLAN.md).
 
-The contract operations remain partial until the broader PR 1 JQL and search
-work completes. The schedule editor offers the daily and weekly choices it
-always had, a cron expression for anything else, and an IANA time zone the
-schedule is read in; the five-field schedules saved before custom ones existed
-keep their meaning. An administrator sees every filter email the site sends, whoever scheduled it,
-and can stop one from the administration page. Filter reads list subscriptions
-and the users a filter is shared with only when `expand=subscriptions` or
-`expand=sharedUsers` asks, including Jira's `[start:end]` index ranges; a filter
-shared with a project reaches the people who can browse that project. Jira
-Cloud no longer shares filters publicly, so anonymous callers see none.
+- Only the owner can subscribe; Jira lets anyone who can view a filter
+  subscribe.
+- Subscriptions cannot target a group, and the **Manage group filter
+  subscriptions** global permission is defined but not enforced.
+- Empty results are always emailed; Jira's "email this filter even if there
+  are no work items" option (off by default) is missing.
+- The **Create shared objects** global permission is not checked when
+  sharing.
 
-The JQL parser currently supports the useful subset recorded in
-[CLOUD_PARITY.md](CLOUD_PARITY.md). Saved filters accept only queries that this
-parser can validate; later PR 1 checkpoints expand that grammar and evaluation.
+## See also
+
+[JQL.md](JQL.md) · [DASHBOARDS.md](DASHBOARDS.md) ·
+[AGILE_BOARDS.md](AGILE_BOARDS.md) · [PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)

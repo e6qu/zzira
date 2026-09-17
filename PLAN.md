@@ -1,16 +1,17 @@
-# ZZIRA — Jira Cloud compatibility delivery plan
+# ZZIRA delivery plan
 
-Updated: 2026-09-10
+ZZIRA is a self-hosted Jira Cloud, Jira Software, Jira Service Management and
+Confluence Cloud. The UI and API behave as Atlassian's do; the architecture is
+Linear's: one command layer writing an immutable action log, and permission-shaped
+browser replicas synced from it. This plan lists every piece of Atlassian behavior
+still missing and the order to build it in.
 
-ZZIRA is a self-hosted Jira Cloud, Jira Software, Jira Service Management,
-Confluence, administration, automation, analytics, and app platform. Delivery is
-split into large, dependency-ordered pull requests. Each PR must finish coherent
-user journeys across persistence, commands, public API, browser UI,
-authorization, audit, background work, tests, and documentation.
+Status and evidence: [CLOUD_PARITY.md](docs/CLOUD_PARITY.md) (product status),
+[UI_PARITY.md](docs/UI_PARITY.md) (persona journeys),
+[cloud-coverage.json](api/conformance/cloud-coverage.json) (per-operation
+assessment), [docs index](docs/README.md).
 
-## Compatibility target
-
-The pinned public-contract inventory is the measurable API denominator:
+## Target
 
 | Contract | Operations |
 |---|---:|
@@ -23,316 +24,329 @@ The pinned public-contract inventory is the measurable API denominator:
 | Organizations REST | 47 |
 | **Total** | **1,207** |
 
-Connect descriptors, app modules, Assets, and other public surfaces without one
-authoritative OpenAPI document require separately versioned manual inventories.
+All 1,207 are served and assessed as partial; none is missing. Surfaces without an
+OpenAPI document (Connect and Forge modules, Assets, automation components,
+workflow rules, product UI) follow Atlassian's documented and observed behavior.
+A missing specification is not a reason to skip a surface.
 
-Site-scoped Jira, Jira Software, Jira Service Management, and Confluence clients
-must work by changing their base URL to ZZIRA. Compatibility includes paths,
-methods, authentication, bodies, status codes, headers, pagination, expansions,
-identifiers, permissions, errors, transitions, idempotency, and concurrency.
-Clients that hardcode `auth.atlassian.com` or `api.atlassian.com` must support an
-endpoint override. Atlassian billing, proprietary AI models, and
-Atlassian-hosted Forge compute remain explicit external-service boundaries.
+Out of scope, reported as explicit errors: Atlassian billing, Atlassian's AI
+models, and Atlassian-hosted Forge compute. Clients that hardcode
+`api.atlassian.com` or `auth.atlassian.com` need an endpoint override.
 
-These files are the evidence sources:
+## Done means
 
-- [docs/CLOUD_PARITY.md](docs/CLOUD_PARITY.md) records product status and known
-  compatibility limits.
-- [api/conformance/cloud-operations.json](api/conformance/cloud-operations.json)
-  is the generated operation inventory.
-- [api/conformance/cloud-coverage.json](api/conformance/cloud-coverage.json)
-  records reviewed operation-level evidence.
-- [api/conformance/MATRIX.md](api/conformance/MATRIX.md) groups implemented API
-  slices without implying complete operation fidelity.
-- [docs/UI_PARITY.md](docs/UI_PARITY.md) records persona journeys and browser
-  evidence.
-- [docs/CONTINUITY.md](docs/CONTINUITY.md) is the short-lived active-branch
-  handoff.
+- API behavior matches Atlassian's: paths, bodies, status codes, errors, paging,
+  expansions, ids, permissions, concurrency.
+- The browser journey reaches a persisted outcome and has a Playwright spec.
+- REST, UI, automation, apps, search, reports, exports and replicas go through
+  the same command and permission checks.
+- State and its action/audit record commit in one transaction.
+- Background work is durable, leased, retryable, idempotent and restart-safe.
+- Search, sync, reports, exports and notifications filter by access before
+  anything leaves the server.
+- Migrations run on a clean database and on every prior schema.
+- Go suite, `go vet`, lint, wasm build, e2e, security scans and conformance
+  checks pass; docs and ledgers change in the same PR.
 
-## Completion rules
+## Order
 
-A feature is complete only when all applicable rules below are satisfied:
+1. [Permission enforcement](#1-permission-enforcement) — correctness; blocks everything that trusts the command layer.
+2. [Work item model](#2-work-item-model) — hierarchy above epic unblocks Plans and releases.
+3. In parallel after 2: [Plans](#3-plans), [cross-project releases](#4-cross-project-releases),
+   [boards, reports and DORA](#5-boards-reports-and-dora), [JQL and filters](#6-jql-and-filters).
+4. In parallel, independent of 2: [enterprise identity](#7-enterprise-identity),
+   [automation](#8-automation), [Assets](#9-assets), [Service Management](#10-service-management),
+   [Confluence](#11-confluence), [diagrams](#12-whiteboards-and-diagrams),
+   [live collaboration](#13-live-collaboration), [apps](#14-apps).
+5. [Local-first closure](#15-local-first-closure), then [certification](#16-certification).
 
-- Public API behavior matches the pinned contract and has reviewed evidence.
-- Browser journeys cover the intended personas and reach a persisted outcome.
-- REST, UI, automation, apps, search, reports, exports, and replicas use the
-  same command and permission model.
-- State and its immutable action/audit record commit in one transaction.
-- Background work is durable, leased, bounded, retryable, observable,
-  idempotent, and safe across worker restarts.
-- Search, indexing, sync, reports, exports, and notifications filter access
-  before serialization or delivery.
-- Invalid, unsupported, and unavailable behavior returns an explicit error.
-- Migrations work from a clean database and every supported prior schema.
-- Focused tests, the full Go suite, `go vet`, native and WebAssembly builds,
-  browser journeys, security checks, and conformance freshness pass as relevant.
-- Documentation and the conformance/UI ledgers change in the same checkpoint.
-- Each checkpoint is committed and independently buildable.
+Each numbered item is one or more substantial PRs.
 
-The program is complete when every in-boundary operation and manual contract is
-reviewed with no missing or unassessed entries, every promised persona journey
-has browser evidence, named third-party clients and apps pass compatibility
-fixtures, and the release-certification gate in PR 8 passes.
+## 1. Permission enforcement
 
-## PR 0 — Cloud compatibility baseline
+Jira checks the project's permission scheme on every work item action. ZZIRA
+checks Browse projects, issue security, Delete, attachments, comments and
+worklogs in the command layer; the rest are checked only on some API paths.
 
-PR 0 merges the implementation accumulated so far and freezes the baseline for
-all subsequent completion PRs. The repository already contains shared identity,
-organization, administration, projects, work items, workflows, boards, sprints,
-releases, dashboards, DORA reporting, automation, Service Management,
-Confluence, local-first sync, and Connect-compatible app foundations.
+- Check in `internal/commands`, for every caller: Create issues, Edit issues,
+  Transition issues, Assign issues, Assignable user (direct assignment), Resolve
+  issues, Close issues, Schedule issues (due date), Modify reporter, Move issues,
+  Set issue security, Link issues, Manage watchers, Manage sprints, Service
+  desk agent.
+- `system:check-permission-validator` evaluates the project's scheme, not the
+  fixed role map in `internal/authz/jira_permissions.go`.
+- Navigator bulk actions check Bulk change, not site admin (`internal/web/web.go`).
+- Bulk issue property updates evaluate the Jira `expression` filter.
+- Tests: a member without each permission is refused on REST, UI, bulk,
+  automation (run-as) and offline replay.
 
-The PR 0 branch adds the following reviewed checkpoints to that foundation:
+## 2. Work item model
 
-- saved-filter administration, shares, subscriptions, scheduled delivery, and
-  browser management;
-- expanded JQL grammar, built-ins, history predicates, helper APIs, app-provided
-  functions, durable precomputations, and autocomplete;
-- stable Jira issue IDs, field projections, expansions, changelogs,
-  transitions, properties, strong-consistency reconciliation, and durable
-  enhanced-search paging;
-- Jira votes, watches, project components, default assignment, login-date JQL,
-  JSM approval JQL, and calendar-aware JSM SLA JQL;
-- durable Jira bulk watch/unwatch operations, editable-field discovery, field
-  edits, progress, access rechecks, bounded concurrency, and idempotent replay;
-  and
-- the associated PostgreSQL migrations, permissions, audit/actions, UI,
-  contract tests, conformance evidence, and documentation.
+**Hierarchy above epic.** Jira Premium lets admins add levels above epic
+(Initiative, Theme…) in Settings → Work type hierarchy; the Parent field links any
+level to the one above.
+- Drop the `hierarchy_level BETWEEN -1 AND 1` check; store configurable levels.
+- Hierarchy settings page; `GET /project/{id}/hierarchy` returns real levels.
+- Parent field, `parent` JQL, `hierarchyLevel` JQL, issue view and create form
+  across levels; board and backlog epic handling stays at level 1.
+- Plans, roadmaps and reports roll up through every level.
 
-PR 0 establishes an honest measured baseline. It does not claim full Jira Cloud
-compatibility; every remaining gap is owned by one of the PRs below.
+**Metadata and configuration UI.**
+- Admin pages for work types, work type schemes, priorities, priority schemes,
+  resolutions, and custom fields (create, rename, trash, restore, delete,
+  translations).
+- Resolution chosen on transition screens and editable; not always the default.
+- Transition screens reference a Screen, not a field list; forms render screen
+  tabs; the screen catalog includes Reporter, Environment, Attachment, Linked
+  work items and Resolution; `projectKey` honored on tab-field reads.
+- Copy for permission, notification, issue security, screen, screen and work type
+  screen schemes.
+- Issue security scheme form sends the level mapping for projects with secured
+  work.
+- Custom field contexts: a global context coexists with project contexts that
+  override it.
+- Custom field options: delete, replace on work items, reorder anywhere.
+- App field options: `projects2` scope, `defaultValue`, property indexes for JQL.
+- Store `renderer` / `rendererType` on field configuration items.
+- `alternatives` for work types narrows by shared workflow, field configuration
+  and screen schemes; team-managed `scope` and `entityId`; priority scheme update
+  returns its `task`.
+- Classification level on work items: field, REST value, UI control, JQL,
+  project default, organization default; org admins only.
 
-## Remaining delivery sequence
+**Platform odds and ends.**
+- Bulk edit of `issueType` and `status`; bulk edit, watch and unwatch in the
+  navigator.
+- Worklogs: `started`, real `updated`/`updateAuthor`, `issueId`, `self` with the
+  work item; list paging and `startedAfter`/`startedBefore`/`expand=properties`;
+  worklog visibility.
+- Project sender address used by the mailer, with bounce handling.
+- Anonymous browsing in the UI (`/browse/{key}`), not only REST.
+- `atlassian-addons-project-access` role for installed apps.
+- Project templates: inline `REF` objects and team-managed projects.
+- Development triggers beyond branch created: commits, pull requests, reviews,
+  deployments.
+- Compass components.
 
-| PR | Deliverable | Depends on |
-|---:|---|---|
-| 1 | Jira Platform and project/site administration | PR 0 |
-| 2 | Jira Software, Plans, releases, dashboards, and analytics | PR 1 |
-| 3 | Automation and workflow ecosystem | PR 1; integrates PR 2 |
-| 4 | Jira Service Management and Assets | PRs 1–3 |
-| 5 | Confluence, wiki, diagrams, and live collaboration | PRs 1 and 3 |
-| 6 | App/plugin platform compatibility | PRs 1–5 |
-| 7 | Organization administration, identity, and data governance | PRs 1–6 |
-| 8 | Local-first closure and compatibility certification | PRs 1–7 |
+## 3. Plans
 
-### PR 1 — Jira Platform and project/site administration
+Jira Plans (Advanced Roadmaps): cross-project plans over boards, projects and
+filters, with teams, capacity, scenarios and an auto-scheduler. ZZIRA has plan
+REST CRUD, sources, exclusions, scenarios with review changes, teams, capacity
+and dependency checks.
 
-Complete Jira's shared work-management and configuration layer:
+- Auto-scheduler: schedule by rank, dependencies, team capacity, sprints and
+  releases; preview and apply to a scenario.
+- Plan setup in the browser: create, sources, exclusions, permissions, teams.
+- Restore archived and trashed plans; duplicate copies scenarios.
+- Scenario edits: parent, rank, release, status, create work items.
+- Views: saved views, grouping, filters, rollups across the hierarchy.
+- Capacity from velocity; `inferredDates` and plan `customFields` take effect.
+- Atlassian Teams REST API.
+- Fix sprint length: days in `store/plans.go`, weeks in `store/plan_planning.go`.
 
-- finish bulk delete, move, transition, discovery, notification, and remaining
-  editable field families with durable progress and per-item results;
-- finish JQL grammar, operators, functions, history, permissions, saved filters,
-  subscriptions, search variants, paging, expansions, and sanitization;
-- finish ADF validation, storage, rendering, conversion, mentions, and media at
-  every Jira field boundary;
-- finish hierarchy, work types, fields, contexts, screens, schemes, components,
-  versions, roles, templates, team-managed/company-managed configuration, and
-  import/export; project lifecycle now includes recent views, archive, restore,
-  trash, synchronous and asynchronous permanent deletion, 60-day cleanup,
-  replica removal/restoration, and attachment cleanup, while project categories,
-  JSON properties, software feature state, sender email, installed project
-  types, key/name validation, and their API/admin journeys are also delivered;
-- finish permission, notification, issue-security, workflow, and field-scheme
-  administration with impact previews and audited migrations; the 16 Jira
-  permission-scheme, assignment, discovery, and evaluation operations now use
-  durable grants for project, issue, search, sync, and delegated project-admin
-  access, while all nine notification-scheme operations now configure durable,
-  permission-filtered inbox and email delivery for core issue events, and all
-  20 issue-security-scheme operations now govern work-item visibility from one
-  shared function, and the 17 screen, tab, and tab-field operations plus the 15
-  screen-scheme and work-type-screen-scheme operations now decide which fields
-  every work item form shows, and the 15 field-configuration operations decide
-  how each of those fields behaves, while the 14 custom-field-context
-  operations decide where a custom field applies at all and hold a select
-  field's options;
-- finish user preferences, notifications, votes, watches, properties,
-  attachments, email, retention, and remaining platform REST families; site
-  configuration now covers announcements, feature controls, time tracking,
-  navigator defaults, application properties, audit, and API/UI coherence; and
-- prove contributor, project-admin, site-admin, and support-admin journeys.
+## 4. Cross-project releases
 
-**Exit gate:** all 617 Jira Platform operations are assessed; every in-scope
-operation is exact or has a documented external boundary; Jira configuration is
-available through API and UI; and the Jira client compatibility fixtures pass.
+Jira Plans create a cross-project release that groups same-named versions across
+projects. ZZIRA stores `crossProjectReleases` on a plan and returns it over REST,
+but nothing shows or uses it.
 
-### PR 2 — Jira Software, Plans, releases, dashboards, and analytics
+- Create, rename and delete cross-project releases in a plan; create or link the
+  member versions.
+- Release view across projects: progress, dates, warnings, auto-scheduler input.
+- Release hub: deployments grouped across projects, release gates, environment
+  promotion, drag reordering, dates in the viewer's locale and site time zone.
 
-Complete planning, delivery governance, and management insight:
+## 5. Boards, reports and DORA
 
-- finish Scrum and Kanban boards, ownership, card configuration, ranking,
-  backlogs, epics, estimation, capacity, parallel sprints, and dependencies;
-- add cross-project Plans with hierarchy, teams, scenarios, baselines,
-  forecasts, warnings, sharing, and export;
-- finish releases, readiness, approvals, change evidence, related work,
-  cross-project releases, notes, ordering, governance, and export;
-- implement velocity, burnup, burndown, cumulative-flow, control, cycle-time,
-  throughput, created/resolved, epic, version, forecast, and release reports
-  from immutable historical facts;
-- finish custom dashboards, gadgets, ownership, sharing, archive, bulk actions,
-  refresh, subscriptions, accessible data tables, and export; and
-- finish configurable DORA definitions, targets, comparisons, segmentation,
-  evidence drill-down, scheduled delivery, and export.
+- Boards: column configuration with several statuses per column, swimlanes by
+  query, epic, project and stories; `PUT …/features`; changing a board's filter
+  and estimation field.
+- Reports: release burndown, epic burndown, user and version workload, time
+  tracking, single-level group-by, deployment frequency, cycle time.
+- DORA: configurable mappings (which environments, pipelines and incident types
+  count) and excluded periods.
+- Dashboards: layout and favourites over REST, inline gadget item properties,
+  Jira system gadgets.
+- Load test at 1M actions with mixed reads and writes.
 
-**Exit gate:** all 105 Jira Software operations are assessed and exact within
-the compatibility boundary; every aggregate drills into immutable source facts;
-and product-manager, project-manager, agile-coach, release-manager, and
-engineering-manager journeys are browser-proven.
+## 6. JQL and filters
 
-### PR 3 — Automation and workflow ecosystem
+- Fields: `text`, `comment`, `watcher(s)`, `voter`/`votes`, `attachments`,
+  `level`, `lastViewed`, `issueLinkType`, `category`, `filter`,
+  `statusCategoryChangedDate`, `hierarchyLevel`, `Request participants`,
+  `Organizations`, `request-channel-type`.
+- Aliases: `issuekey`, `type`, `timeoriginalestimate`, `timeestimate`.
+- Functions: `issueHistory()`, `issuesWithRemoteLinksByGlobalId()`.
+- `WAS`/`CHANGED` on `resolution`; `includeArchivedProjects`; historical
+  `versionedRepresentations`.
+- Unknown values (`status = Nope`) return Jira's error instead of matching nothing.
+- Filters: subscriptions by any viewer with permission, group subscriptions,
+  `MANAGE_GROUP_FILTER_SUBSCRIPTIONS`, opt-in for empty results,
+  `CREATE_SHARED_OBJECTS` on sharing.
 
-Complete cross-product rule authoring and durable execution:
+## 7. Enterprise identity
 
-- implement event, webhook, manual, cron, SLA, deployment, release, and
-  scheduled triggers;
-- finish conditions, nested branches, related-object traversal, smart values,
-  templates, secrets, connections, quotas, and the supported action catalog;
-- enforce actor/run-as permissions, loop protection, idempotency, rate limits,
-  retries, cancellation, recovery, and dead-letter administration;
-- add rule import/export, versioning, validation, test execution, trace detail,
-  audit, and actionable failure diagnostics;
-- finish workflow conditions, validators, post-functions, advanced parameters,
-  and team-managed routing; and
-- provide durable mail, scheduled-report, retention, webhook, and product-event
-  dispatch primitives used by later PRs.
+Atlassian Guard and organization administration. ZZIRA has OIDC sign-in (Google,
+Entra, Atlassian, custom), DNS domain verification, IP allowlists, and managed
+profile edit, suspend, restore and remove.
 
-**Exit gate:** all 15 Automation operations and the manual workflow-component
-inventory are assessed; deterministic replay and duplicate/restart behavior are
-proven; and administrator and rule-author journeys reach verified outcomes.
+- SAML single sign-on with multiple identity providers.
+- SCIM 2.0 user and group provisioning (`scimManaged` reflects it).
+- Authentication policies: enforced SSO, two-step verification enrolment and
+  enforcement, password rules, session duration, per-policy membership.
+- Managed accounts claimed through verified domains; domain ownership exclusive
+  across organizations; `claimStatus` derived, not constant.
+- User management API (`/users/{id}/manage/...`).
+- Self-service API tokens on the profile page, with expiry and revocation.
+- Organization API keys for the admin API.
+- Data security policies; data residency placement (or an explicit boundary).
+- Several sites per organization on one server.
+- Organization and site lifecycle, product access per site.
 
-### PR 4 — Jira Service Management and Assets
+## 8. Automation
 
-Complete the bundled Service Desk product:
+ZZIRA runs the event, scheduled, manual and incoming-webhook triggers, the
+condition catalog, and 14 action types including web requests and page creation.
 
-- finish help centers, branding, portals, request types, conditional forms,
-  validation, localization, knowledge deflection, email intake, and customer
-  notification preferences;
-- finish customer accounts, organizations, participants, sharing, approvals,
-  subscriptions, reopen rules, files, comments, feedback, statuses, and SLAs;
-- finish queues, routing, assignment, escalation, collaboration, bulk actions,
-  calendars, reusable SLA policies, pause rules, and retroactive calculation;
-- finish incidents, problems, changes, risks, CABs, conflicts, on-call,
-  escalation, stakeholder communication, post-incident reviews, dependencies,
-  and service ownership;
-- complete Assets schemas, types, attributes, objects, relations, AQL, imports,
-  mapping, reconciliation, attachments, icons, permissions, history, APIs, and
-  management UI; and
-- complete service, SLA, satisfaction, incident, change, asset, and team reports
-  with comparisons, drill-down, scheduling, and export.
+- Connections: execute actions through stored connections (auth, secrets,
+  rotation).
+- Usage limits: per-site monthly execution quota, usage page, global vs
+  single-project rule accounting, over-limit behavior.
+- Confluence triggers: page created, updated, published, commented, labelled;
+  Confluence actions beyond create page.
+- Branches: JQL, for-each on lists, related work items at any level.
+- Variables (create variable action, `{{variable}}`), web request custom bodies
+  and headers, manual trigger in the rule editor.
+- Remaining Jira action catalog, compared action by action with Atlassian's list.
 
-**Exit gate:** all 75 JSM operations and the manual Assets inventory are
-assessed and exact within the boundary; customer-to-resolution,
-incident/change, asset-manager, agent, and service-admin journeys are
-browser-proven.
+## 9. Assets
 
-### PR 5 — Confluence, wiki, diagrams, and live collaboration
+Jira Service Management Assets: schemas, object types with a hierarchy, typed
+attributes, objects, references, AQL, imports and a REST API. ZZIRA has per-desk
+schemas with inline attributes, objects, directed relationships, request impact
+links, the Assets portal field, and the workspace discovery endpoints.
 
-Complete the bundled knowledge and collaboration product:
+- Object schemas, object types with inheritance, typed attributes (including
+  reference, user, group, status, date, URL), object keys and labels.
+- Assets REST API: schemas, object types, attributes, objects, AQL search,
+  history, attachments, comments, icons.
+- AQL parser and evaluator; `aqlFunction()` in JQL; AQL-filtered Assets fields.
+- Imports (CSV, JSON, object schema) with mapping, reconciliation and schedules.
+- Agent browser UI for schemas and objects; per-schema roles.
 
-- finish every v1/v2 content operation and type, hierarchy, ordering, move/copy,
-  archive/restore, retention, and lifecycle behavior;
-- finish ADF and storage-format editing/conversion, macros, media, embeds,
-  mentions, tasks, templates, blueprints, anchors, and CQL;
-- implement live documents, presence, concurrent operations, conflict recovery,
-  ordered history, drafts, publishing, comments, watches, and notifications;
-- finish whiteboards, connectors, grouping, alignment, keyboard editing,
-  diagrams, graph layouts, Smart Links, and accessible text equivalents;
-- finish databases, schemas, relations, supported formulas, records, views,
-  filtering, sorting, grouping, permissions, imports, and exports;
-- finish space roles, restrictions, classification, analytics, audit,
-  administration, backup/restore, and PDF/SVG/PNG/knowledge exports; and
-- prove author, reviewer, knowledge-manager, space-admin, and site-admin
-  journeys, including embedded Jira and JSM objects.
+## 10. Service Management
 
-**Exit gate:** all 348 Confluence operations are assessed and exact within the
-boundary; live collaboration converges under multi-user tests; and creation,
-review, governance, search, diagramming, and export journeys are browser-proven.
+- Request type restrictions (`RESTRICTED` returns the permitted people).
+- Create, edit and delete request types in the agent UI.
+- Email channel: incoming mail creates and comments on requests.
+- Customer notification email templates.
+- Knowledge base ranking and analytics.
+- Post-incident review templates.
 
-### PR 6 — App/plugin platform compatibility
+## 11. Confluence
 
-Complete locally executable app behavior across every bundled product:
+**Content.**
+- Blog posts: version restore and delete, historical macro reads, content states,
+  relations.
+- Macro execution (`info`, `toc`, `code`, …); conversion context parameters.
+- Content states: configurable suggested states, set and shown in the page view
+  and editor; `state/available` honors space settings.
+- Templates: modify and revert blueprints, app blueprints, `editor`/`view`/
+  `export_view` bodies, `expand`, site template management UI.
+- Custom content: app-registered types, attachments, `atlas_doc_format`, UI.
+- Tasks: task lists, dates and macros in the rich editor; task report; personal
+  task list; due-date reminders.
 
-- create a versioned manual inventory for descriptors, modules, conditions,
-  callbacks, context, permissions, lifecycle, and migration contracts;
-- finish global, site, project, space, page, issue, dashboard, report, workflow,
-  field, search, navigation, administration, and dynamic modules;
-- finish signed remote and local rendering, configuration pages, persistence,
-  presence conditions, web-item locations, and module validation;
-- finish custom fields, options, contexts, properties, indexing, JQL hooks,
-  webhooks, schedules, lifecycle retry, upgrades, rollback, secret rotation,
-  uninstall cleanup, delivery inspection, isolation, and resource limits;
-- expose explicit capability boundaries for Atlassian-hosted Forge services;
-  and
-- add developer/admin consoles and representative third-party app fixtures.
+**Spaces and search.**
+- Import (Confluence XML, HTML, Markdown, Word) and export (XML full/custom, site,
+  PDF, Word, CSV, per page) including hierarchy, comments, whiteboards, databases
+  and custom content.
+- Space trash and restore, icons, browser rename, description edit and delete;
+  `routeOverrideEnabled`, `contentMode` and themes take effect.
+- Permissions: `export/space`, `restrict_content/space`, `archive/page`,
+  anonymous and guest grants, content permission checks beyond pages, browser UI
+  for grants and custom roles; GUEST, ANONYMOUS and APP transition principals;
+  transition UI.
+- Look and feel: site-wide theme, admin UI, app themes.
+- CQL: relevance and stemming; whiteboards, databases, folders, Smart Links and
+  custom content; `space.title`, `space.category`, content properties; a search
+  page.
+- Notifications: autowatch, per-user email settings and digests, likes, Share,
+  watcher notifications for move, delete, archive and new attachments.
+- Users and groups: `expand` on user reads, `user/bulk` paging, full CQL user
+  search; `invite-by-email` sends mail.
+- Audit: site operations write records; `sysAdmin`/`superAdmin` derived; audit
+  UI. Organization admin key; data security policies.
 
-**Exit gate:** every supported manual app contract is assessed and versioned;
-install, upgrade, suspend, uninstall, reinstall, and tenant-isolation suites
-pass; and named Jira/JSM/Confluence apps work after endpoint configuration.
+## 12. Whiteboards and diagrams
 
-### PR 7 — Organization administration, identity, and data governance
+ZZIRA has a form-driven canvas with stickies, text and shapes, labelled
+connectors, a fixed 1400×800 SVG render, and whiteboard lifecycle in v2.
 
-Complete enterprise administration across the product suite:
+- Direct manipulation: drag, resize, pan, zoom, multi-select, keyboard editing.
+- Shapes library, freehand, images, frames and sections, grouping, alignment and
+  snapping.
+- Connectors with anchors, routing and arrowheads; automatic graph layout.
+- Templates that add content (53 keys are accepted today and add nothing).
+- Voting, timer, sticky-to-work-item conversion, Smart Links.
+- Comments, reactions, version history, live collaboration (see 13).
+- Image and PDF export; accessible text equivalents.
+- Databases: remaining views, formulas, relations, imports and exports.
 
-- finish organizations, sites, products, directories, accounts, groups,
-  invitations, domains, claims, roles, policies, sessions, tokens, and audit;
-- finish Login with Atlassian, Google, Microsoft, generic OIDC, account linking,
-  provider rotation/revocation, recovery, and administrator diagnostics;
-- finish federation, lifecycle provisioning, managed-account controls,
-  authentication policies, retention, legal hold, classification, residency,
-  organization import/export, backup, restore, and deletion;
-- enforce policy consistently across API, UI, search, sync, automation, apps,
-  exports, notifications, and background workers; and
-- prove organization-admin, identity-admin, security-admin, auditor, and data
-  steward journeys.
+## 13. Live collaboration
 
-**Exit gate:** all 47 Organizations operations and the manual identity/provider
-contracts are assessed and exact within the boundary; policy and revocation
-propagate safely across products; and administration/recovery journeys pass.
+ZZIRA polls presence (15 s) and merges page bodies (1 s), with named carets and
+offline typing.
 
-### PR 8 — Local-first closure and compatibility certification
+- Server push (WebSocket or SSE) replacing polling.
+- Structural ADF step merging; live titles; live never-published drafts.
+- Live whiteboards and databases; live comments and reactions.
+- Multi-user convergence tests under latency and disconnects.
 
-Close cross-product gaps and produce the release evidence:
+## 14. Apps
 
-- extend permission-shaped snapshots, deltas, and safe queued mutations to
-  Jira, Software, Service, Knowledge, dashboards, releases, and administration;
-- prove conflict handling, outbox ordering, cross-tab ownership, reconnect,
-  compaction, quota handling, account/site switching, schema upgrades, full
-  resnapshot, and immediate access-revocation purge;
-- eliminate every remaining missing or unassessed in-boundary contract entry;
-- run golden request/response, header, paging, expansion, identifier,
-  permission, error, transition, idempotency, and concurrency suites;
-- run Go, TypeScript, and Python client fixtures with only the site base URL
-  changed, plus named third-party client and app fixtures;
-- prove fresh install, migrations, backup/restore, worker failure, tenant
-  isolation, security, accessibility, supported browsers, responsive layouts,
-  localization, time zones, scale, and performance budgets; and
-- publish the release evidence, supported-version matrix, known external
-  boundaries, upgrade/rollback runbook, and operator documentation.
+- Jira Connect modules: `configurePage`, `dialogs`, `webSections`,
+  `keyboardShortcuts`, workflow conditions, validators and post functions (stored
+  today, not executed), `jiraSearchRequestViews`, `jiraBackgroundScripts`,
+  `profilePages`, `jiraProjectTabPanels`.
+- Confluence Connect modules: dynamic and static content macros, `customContent`,
+  `blueprints`, `spaceToolsTabs`, `confluenceContentProperties`.
+- Admin pages: custom locations, `cacheable`, `fullPage`, icons.
+- Remaining conditions, content-presence conditions, issue context change events,
+  read-only issue fields, dynamic webhook `conditions`/`propertyKeys`/
+  `excludeBody`, descriptor-driven upgrade migrations.
+- Forge: manifest, UI Kit and Custom UI rendering, Forge modules, with hosted
+  compute as an explicit boundary.
+- DevOps: asynchronous provider processing; issue view panels for operations,
+  security, feature flags and remote links.
 
-**Exit gate:** the pinned inventories contain no missing or unassessed
-in-boundary operations, all required persona and compatibility suites pass, CI
-is green, and release evidence supports the claimed compatibility version.
+## 15. Local-first closure
 
-## Execution protocol
+- Permission-shaped replicas and safe queued writes for service, knowledge,
+  dashboards, releases, reports and administration.
+- Conflict handling, outbox ordering, cross-tab ownership, reconnect, compaction,
+  quota, account and site switching, schema upgrades, full resnapshot,
+  revocation purge — tested for each replica.
 
-Work starts with PR 1 after PR 0 merges. Within each PR, implement and commit
-independently buildable vertical checkpoints in dependency order: schema and
-commands, public API, browser journey, workers/integrations, evidence, and docs.
-Update `docs/CONTINUITY.md` after each checkpoint. Do not advance to the next PR
-while the current PR has failing CI, unresolved review threads, unrecorded
-contract gaps, or uncommitted work.
+## 16. Certification
 
-The completed PR 1 checkpoints cover durable bulk edit/delete/move/transition,
-site configuration, project governance, project lifecycle, the complete
-15-operation project-role surface, the 16-operation permission-scheme and
-permission-evaluation surface, all nine notification-scheme operations with
-core issue-event inbox/email delivery, and the 20-operation issue-security
-surface with one shared visibility function behind search, sync, notifications
-and creation, and the 32-operation screen stack whose one resolution function
-now decides the fields on every create and edit form, and the 15-operation
-field configuration surface whose required and hidden rules the command path
-enforces, and the 14-operation custom field context surface. Continue with multi-select and
-cascading custom fields, then custom events and notification preferences, templates, hierarchy, remaining field and ADF
-families, import/export, action-specific permission enforcement, and the
-unassessed Jira Platform operations. Keep each checkpoint vertical and
-independently reviewable even while it contributes to the same large PR
-delivery unit.
+- Move all 1,207 operations from partial to delivered with golden
+  request/response evidence.
+- An executable conformance harness that runs every operation against a server.
+- Go, TypeScript and Python client fixtures with only the base URL changed;
+  named third-party clients and apps.
+- Fresh install, upgrade and rollback, backup and restore, worker failure,
+  tenant isolation, accessibility, browsers, responsive layouts, localization,
+  time zones, scale and performance budgets.
+- Release evidence, supported-version matrix and operator runbook.
+
+## Working rules
+
+- Verify a gap in the code before building; docs have been wrong in both
+  directions.
+- Substantial PRs; keep the PR title and body current.
+- Push once it builds; run the Go suite and e2e locally while CI runs.
+- Never expose internal ids to clients ([WIRE_IDS.md](docs/WIRE_IDS.md)).
+- Update the owning doc, [CLOUD_PARITY.md](docs/CLOUD_PARITY.md) and this plan in
+  the same PR; delete plan items when they ship.

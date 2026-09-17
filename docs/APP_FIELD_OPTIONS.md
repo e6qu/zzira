@@ -1,92 +1,44 @@
-# App-provided select lists and their options
+# App-provided select list options
 
-Updated: 2026-09-11
+A Connect app can declare a select-list work item field. Its options are managed through Jira's issue field option resource, `/field/{fieldKey}/option`. This resource is separate from the [context-scoped options](CUSTOM_FIELD_OPTIONS.md) that administrators manage. Part of the [Jira platform](JIRA_PLATFORM.md) and [apps](APPS.md). For status, see [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
-A Connect app can declare a select-list work-item field, and Jira's issue field
-option surface manages that list's options. This is deliberately a different
-resource from the [context-scoped options](CUSTOM_FIELD_OPTIONS.md) an
-administrator manages, and Jira says so in every operation's description.
+## Declaring the field
 
-## An app can now declare a select list
+`translateConnectIssueField` (`internal/apps/connect_descriptor.go`) accepts the descriptor types `string`, `text`, `rich_text`, `single_select`, `multi_select`, `number`, `date` and `datetime`. `single_select` maps to the select type and `multi_select` to the multi-select type. This resource serves both.
 
-`translateConnectIssueField` accepted `string`, `text`, `rich_text`, `number`,
-`date` and `datetime`. A descriptor declaring `single_select` was refused, so
-there was no field for this surface to serve. It is accepted now and maps to
-this product's select type.
+## API
 
-`multi_select` is accepted too and maps to the multi-select type, whose value
-is a list of options; this option surface serves both.
-
-## Jira Cloud REST surface
-
-All eight pinned operations are implemented. An audit against a running server
-found none of them working.
-
-As in Jira, the app that provides the field manages its options without any
-Jira permission; anyone else needs to be a site administrator. The two
-suggestion reads only need access to the site.
+The app that provides the field needs no Jira permission. Anyone else must be a site administrator. The two suggestion reads need only site access.
 
 | Method and path | Behavior |
 |---|---|
-| `GET /rest/api/3/field/{fieldKey}/option` | Pages the select list's options. |
-| `POST /rest/api/3/field/{fieldKey}/option` | Adds an option, with app properties and a scope. |
+| `GET /rest/api/3/field/{fieldKey}/option` | Pages the options. |
+| `POST /rest/api/3/field/{fieldKey}/option` | Adds an option with app `properties` and `config`. Duplicate or empty values are 400. |
 | `GET /rest/api/3/field/{fieldKey}/option/{optionId}` | Reads one option. |
-| `PUT /rest/api/3/field/{fieldKey}/option/{optionId}` | Replaces an option's value, properties and config. |
-| `DELETE /rest/api/3/field/{fieldKey}/option/{optionId}` | Removes an option; one still in use is a 409. |
-| `GET /rest/api/3/field/{fieldKey}/option/suggestions/search` | Pages the options a user may see. |
-| `GET /rest/api/3/field/{fieldKey}/option/suggestions/edit` | Pages the options a user may choose. |
-| `DELETE /rest/api/3/field/{fieldKey}/option/{optionId}/issue` | Deselects the option from work items, optionally replacing it and optionally narrowed by JQL. |
+| `PUT /rest/api/3/field/{fieldKey}/option/{optionId}` | Replaces value, properties and config. |
+| `DELETE /rest/api/3/field/{fieldKey}/option/{optionId}` | Removes an option; one still in use is 409. |
+| `GET /rest/api/3/field/{fieldKey}/option/suggestions/search` | Pages options the user may see. |
+| `GET /rest/api/3/field/{fieldKey}/option/suggestions/edit` | Pages options the user may select. |
+| `DELETE /rest/api/3/field/{fieldKey}/option/{optionId}/issue` | Deselects the option on work items, optionally setting `replaceWith` and optionally limited by `jql`. Answers `303` with a task. |
 
-## The two option resources do not overlap
+Unknown fields and options are 404.
 
-This surface answers only for a select list an app provides, and refuses a field
-created here. The context option surface does the opposite: asked about an
-app's field it answers 400 and names this path instead. Either resource
-answering for the other's fields would let a client edit options through a
-route that was never meant to govern them.
+## Behavior
 
-They share one option table, because downstream nothing cares who supplied the
-field: the create form, write validation and search resolve a select value the
-same way either way. What separates the two resources is the field, not the
-storage.
+- **Separation.** This resource refuses fields that were not provided by an app. The context option resource refuses app fields with 400 and points to this path. Both share one option table, so forms, write validation and search handle a select value the same way either way.
+- **Scope.** `config.scope.projects` limits the projects an option is offered in. An option with no scope is offered everywhere.
+- **Attributes.** `config.attributes` can hold `notSelectable`. Such options appear in `suggestions/search` but not in `suggestions/edit`.
+- **Deselect.** The affected work items are collected (filtered by `jql` if given) and queued as an ordinary [bulk edit](BULK_ISSUES.md), which applies permissions and validation. If `replaceWith` is the option itself or cannot be selected, the request is refused before anything is queued.
+- **Overrides.** Deselect accepts `overrideScreenSecurity` and `overrideEditableFlag`. Only a Connect or Forge app with *Administer Jira* may pass them; anyone else gets 403. With them, the queued edit sets the field even where the field configuration hides it, and on work items whose status is not editable.
 
-## Deselecting runs as a real background task
+## Code
 
-Jira's deselect is asynchronous and answers `303` with a link to a task. It is
-asynchronous here too, and it is not a path of its own: the affected work items
-are collected — narrowed by the JQL query when one is given — and queued as an
-ordinary bulk edit, which is the machinery that already applies field writes,
-permissions and validation.
+`internal/api3/app_field_options.go`, `internal/store/app_field_options.go`, `migrations/144_app_field_options.sql`; tests in `internal/api3/app_field_options_test.go`.
 
-A replacement that cannot be selected is refused before the queue. Letting it
-through produced a deselect that reported success while every work item stayed
-on the option it was meant to leave, because the per-item write was refused.
-That is worse than saying no, so the check happens up front.
+## Gaps
 
-## Scope and attributes
+Tracked in [PLAN.md](../PLAN.md).
 
-An option's `config.scope.projects` limits the projects it is offered in; an
-option with no scope is offered everywhere, which is what the absence of one
-means. `config.attributes` carries Jira's deprecated `notSelectable`, which is
-what separates the two suggestion endpoints: `search` reports what a user may
-see, `edit` only what they may choose.
-
-## Evidence and current boundary
-
-- `internal/api3/app_field_options_test.go` installs an app that declares a
-  `single_select` field and covers all eight operations, the duplicate and empty
-  value, the 404 for an unknown option and an unknown field, the administration
-  permission, both directions of the separation from context options, the 409
-  for an option in use, the per-option project scope, the unselectable option
-  leaving `suggestions/edit`, the refused self- and unselectable replacement,
-  and the deselect actually moving a work item onto its replacement.
-- `migrations/144_app_field_options.sql` is exercised from a clean PostgreSQL
-  schema.
-
-The deselect takes `overrideScreenSecurity` and `overrideEditableFlag`. Only a
-Connect or Forge app with Administer Jira may pass them (anyone else gets 403);
-the queued edit then sets the field even where the field configuration hides it
-and on work items whose status is not editable.
-
-Jira's `projects2` scope form with per-project attributes, the `defaultValue`
-attribute and option property indexes for JQL remain.
+- The `projects2` scope form with per-project attributes.
+- The `defaultValue` option attribute.
+- Option property indexes for JQL.

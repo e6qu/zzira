@@ -1,100 +1,55 @@
-# Jira field configurations
+# Field configurations
 
-Updated: 2026-09-11
+A field configuration decides how fields behave on work item forms: required, hidden, or showing an administrator's help text. A project uses a field configuration scheme, which maps each work type to a configuration. [Screens](SCREENS.md) decide which fields a form shows. [Field association schemes](FIELD_ASSOCIATION_SCHEMES.md) are Jira's newer API over the same model. Part of the [Jira platform](JIRA_PLATFORM.md). For status, see [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
-A screen decides which fields a work item form shows. A **field configuration**
-decides how each of those fields behaves: required, hidden, or carrying an
-administrator's help text. A project is assigned a **field configuration
-scheme**, which maps each work type to a configuration.
-
-Site administrators manage both at `/settings/field-configurations`. Screens and
-their schemes are separate; see [SCREENS.md](SCREENS.md) and
-[SCREEN_SCHEMES.md](SCREEN_SCHEMES.md).
-
-## Jira Cloud REST surface
-
-This checkpoint implements all 15 pinned operations:
+## API
 
 | Method and path | Behavior |
 |---|---|
-| `GET/POST /rest/api/3/fieldconfiguration` | Pages field configurations, or creates one. |
-| `PUT/DELETE /rest/api/3/fieldconfiguration/{id}` | Updates a configuration's name and description, or deletes an unused non-default configuration. |
-| `GET/PUT /rest/api/3/fieldconfiguration/{id}/fields` | Pages the configuration's explicit field rules, or applies a partial update to them. |
-| `GET/POST /rest/api/3/fieldconfigurationscheme` | Pages field configuration schemes, or creates one. |
-| `PUT/DELETE /rest/api/3/fieldconfigurationscheme/{id}` | Updates a scheme's name and description, or deletes an unassigned non-default scheme. |
-| `GET /rest/api/3/fieldconfigurationscheme/mapping` | Pages work type to configuration mappings, filtered by scheme. |
+| `GET/POST /rest/api/3/fieldconfiguration` | Pages configurations (filters `id`, `isDefault`, `query` over name and description), or creates one. |
+| `PUT/DELETE /rest/api/3/fieldconfiguration/{id}` | Changes name and description, or deletes an unused, non-default configuration. |
+| `GET/PUT /rest/api/3/fieldconfiguration/{id}/fields` | Pages the configuration's explicit field rules, or partially updates them. |
+| `GET/POST /rest/api/3/fieldconfigurationscheme` | Pages schemes (filter `id`), or creates one. |
+| `PUT/DELETE /rest/api/3/fieldconfigurationscheme/{id}` | Changes name and description, or deletes an unassigned, non-default scheme. |
+| `GET /rest/api/3/fieldconfigurationscheme/mapping` | Pages work type → configuration mappings, filtered by scheme. |
 | `PUT /rest/api/3/fieldconfigurationscheme/{id}/mapping` | Adds or repoints work type mappings. |
 | `POST /rest/api/3/fieldconfigurationscheme/{id}/mapping/delete` | Removes work type mappings. |
-| `GET/PUT /rest/api/3/fieldconfigurationscheme/project` | Pages project assignments, or assigns a project to a scheme. |
+| `GET/PUT /rest/api/3/fieldconfigurationscheme/project` | Pages project assignments, or assigns a project. |
 
-Names are unique per workspace without regard to case, IDs come from dedicated
-sequences, and every mutation writes an immutable action in the same
-transaction.
+Names are unique per site, ignoring case. Every change is written to the action log. Anything still in use returns a conflict.
 
-## What a rule actually does
+## Resolution
 
-Only fields that differ from the baseline need a row, so **an absent rule means
-optional and visible**. `ResolveFieldBehaviour` answers one question — how do
-this project's fields behave for this work type — by following project →
-scheme → work type mapping (falling back to `default`) → configuration.
+`ResolveFieldBehaviour` follows project → scheme → the work type's mapping (or the `default` mapping) → configuration. A configuration stores rows only for fields that differ from the baseline; **a field with no row is optional and visible**.
 
-The rules are enforced, not merely advertised:
+## Enforcement
 
-- `IssueCreateMetadata` marks required fields required, drops hidden fields, and
-  replaces the built-in help text with the administrator's, so the create dialog
-  and `createmeta` agree.
-- `editmeta` applies the same configuration for the work item's own type.
-- Bulk edit offers only the intersection of what every selected work item's own
-  form allows, so a field hidden for one of them is neither offered nor writable.
-- **The command path rejects a write that breaks a rule**, so it holds for REST
-  clients that never read the metadata. On create, a required field may not be
-  omitted and a hidden field may not be supplied. On edit and on a transition
-  carrying field updates, a required field may not be cleared and a hidden field
-  may not be given a value; an update that leaves a governed field alone is never
-  rejected, so the rules never block edits to unrelated fields.
+- `createmeta` and the create dialog mark required fields, drop hidden ones, and show the administrator's help text in place of the built-in text.
+- `editmeta` applies the configuration for the work item's own work type.
+- Bulk edit offers only fields that every selected work item's form allows.
+- Commands enforce the rules for all clients. On create, a required field must be present and a hidden field must be absent. On edit and on a transition with field updates, a required field cannot be cleared and a hidden field cannot be set. An update that doesn't touch a governed field is never refused.
+- A field cannot be both required and hidden. `summary` is always required and visible, and the context fields (project, work type) are exempt.
+- Workflow post functions that set fields bypass the configuration, as in Jira.
+- `overrideScreenSecurity` lets an app with *Administer Jira* set hidden fields ([ISSUE_SURFACE.md](ISSUE_SURFACE.md#writing-work-items)).
+- Help text appears in the browser form and in `/fieldconfiguration/{id}/fields`, but not in `createmeta`, because Jira's `FieldMetadata` has no description.
 
-A field cannot be both required and hidden, and **summary can be neither
-optional nor hidden**: the command path requires it independently, so a
-configuration that relaxed it would advertise something the server would still
-refuse. Context fields — project and work type — are exempt for the same reason.
+## Defaults
 
-Jira's `FieldMetadata` carries no description, so an administrator's help text
-reaches the browser form and the `/fieldconfiguration/{id}/fields` response
-rather than `createmeta`.
+- Every site has a `Default Field Configuration`, whose only rule is that `summary` is required.
+- Every site has a `Default Field Configuration Scheme`, whose `default` mapping points to that configuration.
+- Every project uses that scheme until it is reassigned. New projects get it from a trigger.
+- A new configuration starts from the same baseline. A new scheme maps every work type to the default configuration.
 
-## Defaults and continuity
+## UI
 
-Every workspace is provisioned with a `Default Field Configuration` whose only
-rule is that summary is required — exactly what the command path already
-enforced — and a `Default Field Configuration Scheme` whose `default` mapping
-points at it. Every project is assigned that scheme, existing projects in the
-migration and new ones by trigger. A newly created configuration starts from the
-same baseline, and a new scheme points every work type at the default
-configuration so it can be assigned before anything else is mapped.
+`/settings/field-configurations`: create configurations and schemes, set required, hidden and help text per field, map work types, assign projects, and delete.
 
-## Evidence and current boundary
+## Code
 
-- `internal/api3/field_configurations_test.go` covers all 15 operations,
-  permission rejection, the required-and-hidden and summary guards, unknown
-  fields and work types, every in-use conflict, and the enforcement itself: a
-  create missing a required field and a create supplying a hidden field are both
-  rejected, while the same request with the field supplied succeeds, and
-  removing the mapping falls back to the default configuration.
-- `e2e/field_configurations.spec.ts` covers the browser journey: make priority
-  required with help text, hide labels, map a work type, assign a project, watch
-  the create dialog mark priority required and drop labels, confirm REST rejects
-  the same omission, create the work item, reflow at 320 px, hand the project
-  back, and delete in dependency order.
-- `migrations/135_field_configurations.sql` is exercised from a clean PostgreSQL
-  schema. The page is in the light and dark axe sweep.
+`internal/api3/field_configurations.go`, `internal/store/field_configurations.go`, `internal/store/field_configuration_schemes.go`, `migrations/135_field_configurations.sql`; tests in `internal/api3/field_configurations_test.go` and `e2e/field_configurations.spec.ts`.
 
-Jira's `renderer` on a field configuration item is not stored; ZZIRA renders each
-field type one way. Workflow rules that set fields during a transition are
-automation rather than a person's edit, so they bypass the configuration, as
-post-functions do in Jira. Configurations filter by `isDefault` and by a `query` over names and
-descriptions; the configuration scheme lists take only paging and id filters.
-The `/config/fieldschemes` field association surface and exact Jira error
-wording also remain.
+## Gaps
 
-`PUT /rest/api/3/issue/{key}` accepts a priority by `id` or by `name`, the same
-two wire forms creation accepts, and rejects an unknown one.
+Tracked in [PLAN.md](../PLAN.md).
+
+- A field configuration item's `renderer` (wiki or plain text) is not stored; each field type renders one way.

@@ -1,119 +1,77 @@
-# Issue types, priorities and resolutions
+# Work types, priorities and resolutions
 
-Jira's issue metadata: the issue types work is recorded as, the priorities it is
-ranked by, the resolutions it is finished with, the schemes that decide which of
-those a project offers, and the properties apps store against an issue type.
+Site-wide work item metadata: work types (issue types), priorities, resolutions, the schemes that choose which of them a project offers, and work type properties. Part of the [Jira platform](JIRA_PLATFORM.md). For status, see [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
-## Sites, defaults and ids
+## Defaults and ids
 
-Each of these is site-wide in Jira, and every site starts with the same defaults:
+| Kind | Defaults (Jira id) |
+| --- | --- |
+| Work types | Epic (10000), Story (10001), Task (10002), Sub-task (10003), Bug (10004) |
+| Priorities | Highest (1), High (2), Medium (3, default), Low (4), Lowest (5) |
+| Resolutions | Done (10000, default), Won't Do (10001), Duplicate (10002), Cannot Reproduce (10003) |
 
-| Kind | Defaults | Jira ids |
+- Defaults are stored once and shared by all sites. A site's rename, re-description, reorder or deletion of a default applies to that site only. What a site creates is private to it.
+- Clients only see Jira's numeric ids; lookups also accept a name. This holds across the whole Jira API: work items, changelogs, `createmeta`, every scheme, custom field contexts, workflow schemes and drafts, bulk operations, status and workflow usages, request types and the project list. See [WIRE_IDS.md](WIRE_IDS.md).
+
+## Work type hierarchy
+
+`hierarchy_level` is `1` (epic), `0` (standard) or `-1` (subtask). A database CHECK (`migrations/162_issue_metadata.sql`) limits it to that range, and `subtask` must equal `hierarchy_level = -1`. `GET /rest/api/3/project/{projectId}/hierarchy` groups a project's types into Epic, Base and Subtask ([JIRA_PLATFORM.md](JIRA_PLATFORM.md#site-and-project-reads)). Epic behavior is in [JIRA_SOFTWARE.md](JIRA_SOFTWARE.md).
+
+## Work types
+
+| Method | Path | Notes |
 | --- | --- | --- |
-| Issue types | Epic, Story, Task, Bug, Sub-task | 10000–10004 |
-| Priorities | Highest, High, Medium, Low, Lowest | 1–5 (Medium is the default) |
-| Resolutions | Done, Won't Do, Duplicate, Cannot Reproduce | 10000–10003 (Done is the default) |
-
-Many sites share one database here. A default is stored once and shared, and a
-site's rename, re-description, reorder or deletion of a default is kept for that
-site alone — renaming Medium in one site never renames it in another. What a site
-creates belongs to that site and is invisible to every other.
-
-Clients see Jira's numeric ids. Lookups also accept a name; the ids the product
-stores internally are never sent.
-
-That holds across the whole Jira API, not only these endpoints. Every response
-and request that names an issue type uses the numeric id: issue responses and
-changelog items, create metadata, issue type screen schemes, field configuration
-schemes, field association schemes, custom field contexts, workflow schemes with
-their drafts, bulk updates, status-migration validation, preview and
-capabilities, status and workflow issue-type usages, service request types and
-the project list. Priorities and resolutions on issues and in changelog items
-are reported the same way.
-
-## Issue types
-
-| Method | Path | |
-| --- | --- | --- |
-| `GET` | `/rest/api/3/issuetype` | the site's types, parents first |
-| `POST` | `/rest/api/3/issuetype` | `standard` at level 0 or `subtask` at level −1; a duplicate name is 409 |
-| `GET` | `/rest/api/3/issuetype/project?projectId=&level=` | the types the project's scheme offers |
+| `GET` | `/rest/api/3/issuetype` | parents first |
+| `POST` | `/rest/api/3/issuetype` | `type` `standard` (level 0) or `subtask` (level −1); duplicate name is 409 |
+| `GET` | `/rest/api/3/issuetype/project?projectId=&level=` | types the project's scheme offers |
 | `GET` / `PUT` / `DELETE` | `/rest/api/3/issuetype/{id}` | |
 | `GET` | `/rest/api/3/issuetype/{id}/alternatives` | the site's other types of the same kind |
-| `POST` | `/rest/api/3/issuetype/{id}/avatar2` | JPEG, GIF or PNG; `X-Atlassian-Token: no-check` required |
+| `POST` | `/rest/api/3/issuetype/{id}/avatar2` | JPEG, GIF or PNG; needs `X-Atlassian-Token: no-check` |
+| `GET` | `/rest/api/3/issuetype/{id}/properties` | property keys |
+| `GET` / `PUT` / `DELETE` | `/rest/api/3/issuetype/{id}/properties/{key}` | `PUT` is 201 new, 200 replaced; value is non-empty JSON, at most 32768 characters |
 
-A new type joins the site's default issue type scheme, as in Jira.
-
-Deleting a type that issues use requires `alternativeIssueTypeId`: without one it
-is 404, naming the type itself is 409, and naming a type of the other kind is 400.
-The issues move to the alternative, and the type leaves every issue type scheme,
-screen scheme, field configuration scheme, custom field context and workflow
-scheme mapping that named it.
-
-## Issue type properties
-
-`GET /rest/api/3/issuetype/{id}/properties` lists keys;
-`GET`, `PUT` and `DELETE` on `/properties/{key}` read, store and remove a value.
-`PUT` answers 201 for a new key and 200 for a replaced one. The value must be
-valid, non-empty JSON of at most 32768 characters.
+- A new type joins the site's default work type scheme.
+- Deleting a type in use needs `alternativeIssueTypeId`. Missing: 404. Same type: 409. Other kind (standard vs subtask): 400. Work items move to the alternative. The type is removed from every work type scheme, work type screen scheme, field configuration scheme, custom field context and workflow scheme mapping.
+- Avatars: the system catalogue has five work type icons (`internal/store/universal_avatars.go`), plus the site's uploads.
 
 ## Priorities
 
-| Method | Path | |
+| Method | Path | Notes |
 | --- | --- | --- |
-| `GET` | `/rest/api/3/priority` | in the site's order |
-| `POST` | `/rest/api/3/priority` | `name` and `statusColor` (`#rgb` or `#rrggbb`) required; answers `{id}` |
+| `GET` / `POST` | `/rest/api/3/priority` | `POST` needs `name` and `statusColor` (`#rgb` or `#rrggbb`); answers `{id}` |
 | `GET` | `/rest/api/3/priority/search` | `id`, `projectId`, `priorityName`, `onlyDefault`; paged |
 | `PUT` | `/rest/api/3/priority/default` | |
 | `PUT` | `/rest/api/3/priority/move` | `ids` with `after` or `position` (`First`, `Last`) |
-| `GET` / `PUT` | `/rest/api/3/priority/{id}` | an update needs at least one field |
-| `DELETE` | `/rest/api/3/priority/{id}` | asynchronous: 303 with the task |
+| `GET` / `PUT` | `/rest/api/3/priority/{id}` | update needs at least one field |
+| `DELETE` | `/rest/api/3/priority/{id}` | 303 with a task |
 
-A new priority joins the site's default priority scheme. Deleting one runs as a
-task: its issues take the site's default priority and it leaves every priority
-scheme. The default priority cannot be deleted, and a second delete of the same
-priority while the first is running is 409.
+A new priority joins the default priority scheme. Deletion runs as a task: work items take the site default and the priority leaves every scheme. The default priority cannot be deleted. A second delete while one runs is 409.
 
 ## Resolutions
 
-| Method | Path | |
+| Method | Path | Notes |
 | --- | --- | --- |
 | `GET` / `POST` | `/rest/api/3/resolution` | |
-| `GET` | `/rest/api/3/resolution/search` | `id`, `onlyDefault`; paged, with `default` on each |
+| `GET` | `/rest/api/3/resolution/search` | `id`, `onlyDefault`; paged, `default` on each |
 | `PUT` | `/rest/api/3/resolution/default` | |
 | `PUT` | `/rest/api/3/resolution/move` | |
 | `GET` / `PUT` | `/rest/api/3/resolution/{id}` | |
-| `DELETE` | `/rest/api/3/resolution/{id}?replaceWith=` | asynchronous; `replaceWith` required |
+| `DELETE` | `/rest/api/3/resolution/{id}?replaceWith=` | 303 with a task; `replaceWith` required |
 
-Deleting a resolution moves its issues to the replacement, so a resolved issue is
-never made unresolved by a deletion.
+Deleting a resolution moves its work items to the replacement, so no resolved work item becomes unresolved.
 
-## Resolution on issues
+### On work items
 
-An issue carries `fields.resolution` and `fields.resolutiondate`, both `null`
-while unresolved. Moving it into a status in the done category gives it the site's
-default resolution and records when; moving it out of one clears both. That is
-what Jira's default workflows do. Issues already in a done status when this was
-introduced were given Done, dated by their last update.
+- `fields.resolution` and `fields.resolutiondate` are `null` while unresolved.
+- Entering a status in the done category sets the site's default resolution and the time. Leaving the done category clears both (`internal/store/mutations.go`). Both changes are recorded in the changelog.
+- JQL ([JQL.md](JQL.md)): `resolution = Unresolved` and `resolution is EMPTY` match unresolved items; `resolution != Unresolved` matches resolved ones; `resolution in (Done, Unresolved)` matches either; `NOT IN` never matches an unresolved item; `resolutiondate` compares the resolve time.
+- `ORDER BY priority` and `ORDER BY resolution` use the site's order, not alphabetical order.
 
-### In JQL
+## Work type schemes
 
-`resolution` reads the real resolution:
-
-- `resolution = Unresolved` and `resolution is EMPTY` match issues with no
-  resolution; `resolution != Unresolved` matches resolved ones.
-- `resolution in (Done, Unresolved)` matches either.
-- `NOT IN` never matches an unresolved issue, as in Jira.
-- `resolutiondate` compares the moment the issue was resolved.
-
-`ORDER BY priority` and `ORDER BY resolution` order by the site's order — Highest
-before High — not alphabetically.
-
-## Issue type schemes
-
-| Method | Path | |
+| Method | Path | Notes |
 | --- | --- | --- |
-| `GET` / `POST` | `/rest/api/3/issuetypescheme` | list pages `id`, `queryString`, `orderBy`, `expand=issueTypes,projects` |
+| `GET` / `POST` | `/rest/api/3/issuetypescheme` | list: `id`, `queryString`, `orderBy`, `expand=issueTypes,projects` |
 | `GET` | `/rest/api/3/issuetypescheme/mapping` | |
 | `GET` / `PUT` | `/rest/api/3/issuetypescheme/project` | |
 | `PUT` / `DELETE` | `/rest/api/3/issuetypescheme/{id}` | |
@@ -121,42 +79,43 @@ before High — not alphabetically.
 | `PUT` | `/rest/api/3/issuetypescheme/{id}/issuetype/move` | |
 | `DELETE` | `/rest/api/3/issuetypescheme/{id}/issuetype/{typeId}` | |
 
-Every site has a default scheme that unassigned projects use. The rules are Jira's:
+Rules:
 
-- a scheme name is unique within the site (409);
-- the default type must be one of the scheme's types;
-- assigning a scheme to a project is refused while any issue in the project uses a
-  type the scheme lacks;
-- adding types fails entirely if any is already present;
-- a type cannot be removed while issues in the scheme's projects use it, from the
-  default scheme, or if it is the scheme's last standard type;
-- the default scheme, and a scheme any project uses, cannot be deleted.
+- Projects without a scheme use the site's default scheme.
+- Scheme names are unique per site (409).
+- The default type must be one of the scheme's types.
+- A project cannot be assigned a scheme while any of its work items uses a type the scheme lacks.
+- Adding types fails entirely if any of them is already in the scheme.
+- A type cannot be removed from the default scheme, while work items in the scheme's projects use it, or if it is the scheme's last standard type.
+- The default scheme and schemes in use cannot be deleted.
 
 ## Priority schemes
 
-| Method | Path | |
+| Method | Path | Notes |
 | --- | --- | --- |
 | `GET` / `POST` | `/rest/api/3/priorityscheme` | |
 | `POST` | `/rest/api/3/priorityscheme/mappings` | priorities a change would strand |
 | `GET` | `/rest/api/3/priorityscheme/priorities/available` | |
-| `PUT` / `DELETE` | `/rest/api/3/priorityscheme/{id}` | |
-| `GET` | `/rest/api/3/priorityscheme/{id}/priorities` | with each priority's `sequence` |
+| `PUT` / `DELETE` | `/rest/api/3/priorityscheme/{id}` | `PUT` answers 202 |
+| `GET` | `/rest/api/3/priorityscheme/{id}/priorities` | includes `sequence` |
 | `GET` | `/rest/api/3/priorityscheme/{id}/projects` | |
 
-A change that would leave issues with a priority their project no longer offers
-needs a mapping for each such priority, or it is refused with 400. An update
-accepts complete lists or Jira's `add` and `remove` lists. The default scheme's
-projects are every project without another scheme, and it cannot be deleted; a
-scheme with projects cannot be deleted either.
+- A change that would leave work items with a priority their project no longer offers needs a mapping for each such priority; otherwise it is 400.
+- Updates accept full lists or Jira's `add`/`remove` lists.
+- The default scheme covers every project without another scheme and cannot be deleted. A scheme with projects cannot be deleted.
 
-## Boundary
+## Code
 
-- Updating a priority scheme applies its mappings before answering, so the 202
-  carries no task to follow.
-- Alternative issue types are the site's other types of the same kind. Jira
-  narrows them further to types sharing the same workflow, field configuration and
-  screen schemes.
-- Team-managed project scoping (`scope`, `entityId`) is not modelled; every type
-  is a company-managed type.
-- Avatars are stored and selected, but only the site's own uploads are offered;
-  there is no system avatar catalogue for issue types yet.
+`internal/api3/issue_metadata.go`, `internal/store/issue_metadata.go`, `internal/store/issue_metadata_tasks.go`, `internal/store/issue_schemes.go`, `migrations/162_issue_metadata.sql`; tests in `internal/api3/issue_metadata_test.go`.
+
+## Gaps
+
+Tracked in [PLAN.md](../PLAN.md).
+
+- No hierarchy levels above epic (Jira Premium's configurable work type hierarchy); the CHECK constraint allows only −1 to 1, and there is no hierarchy settings page.
+- A resolution cannot be chosen on a transition or set by edit; reaching done always applies the site default.
+- No browser admin pages for work types, priorities, resolutions, work type schemes or priority schemes.
+- `alternatives` does not narrow to types that share the same workflow, field configuration and screen schemes.
+- Team-managed scoping (`scope`, `entityId`) is not modelled; every type is company-managed.
+- A priority scheme update applies its mappings before answering, so the 202 has no `task`.
+- The system avatar catalogue has five work type icons; Jira's is larger.

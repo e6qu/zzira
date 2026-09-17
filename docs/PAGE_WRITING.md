@@ -1,115 +1,69 @@
 # Writing and reading pages
 
-Updated: 2026-09-14
-
-A Confluence page is more than a storage body under a title. It is written in
-one of three formats, lands beneath the space homepage unless told otherwise,
-may be a live doc, may be private to its creator, has an owner who can hand it
-on, and reads back in any of Confluence's primary formats with its
-collaborators, the reader's star and the resources needed to render it. The v1
-content bean describes all of that on request.
+Page creation and placement, body formats, live docs, private pages, ownership, read flags, the v1 content bean, and Smart Link and archived content views. Part of [Confluence](CONFLUENCE_SITE_SURFACES.md); status in [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Where a new page goes
 
-`POST /pages` without a `parentId` puts the page beneath the space homepage, as
-Confluence documents. `root-level=true` puts it at the root of the space
-instead, and refuses a `parentId` alongside it. A space without a homepage
-takes the page at its root either way.
+`POST /wiki/api/v2/pages` without `parentId` puts the page beneath the space homepage. `root-level=true` puts it at the space root and cannot be combined with `parentId` (400). In a space without a homepage the page goes to the root either way. `parentId` may be any tree node (see [content tree](CONTENT_TREE.md)).
 
 ## Body formats
 
-A body is written flat (`representation` and `value`) or nested under the name
-of its one format (`{"storage": {...}}`). Storage is kept as written; the
-document format (`atlas_doc_format`) and wiki markup (`wiki`) are converted to
-storage, which is what the site keeps. A nested body naming two formats, or a
-representation Confluence does not accept, is refused.
+A body is written flat (`representation`, `value`) or nested under its format (`{"storage": {...}}`). The site stores `storage`:
 
-Wiki markup had no converter at all. `internal/wikimarkup/notation.go` reads
-Confluence's notation — `h1.`–`h6.` headings, `*bold*`, `_emphasis_`,
-`-strike-`, `+underline+`, `{{monospace}}`, nested `*`/`#` lists,
-`[title|url]` links, `{code}`/`{noformat}` blocks, `{quote}`, `bq.`, `----`
-and `||header||`/`|cell|` tables. Text is escaped before any markup is
-applied, so the notation can only produce the elements it names, and links go
-only to `http`, `https` and `mailto` destinations. The body conversion
-operations accept wiki markup as a source for the same reason.
+- `storage` is kept as written;
+- `atlas_doc_format` and `wiki` are converted to storage.
 
-A single page reads back as `storage`, `atlas_doc_format`, `view`,
-`export_view`, `anonymous_export_view`, `styled_view` or `editor`; page lists
-as `storage` or `atlas_doc_format`, which are the formats Confluence lists
-them in.
+A nested body naming two formats, or an unsupported representation, is 400.
+
+Wiki markup (`internal/wikimarkup/notation.go`) supports `h1.` to `h6.`, `*bold*`, `_emphasis_`, `-strike-`, `+underline+`, `{{monospace}}`, nested `*`/`#` lists, `[title|url]` links, `{code}`, `{noformat}`, `{quote}`, `bq.`, `----`, and `||header||`/`|cell|` tables. Text is escaped before markup is applied, and links are limited to `http`, `https` and `mailto`. The [body conversion](CONTENT_HISTORY.md#conversions) operations accept wiki markup too.
+
+Read formats (`body-format`):
+
+- single page: `storage`, `atlas_doc_format`, `view`, `export_view`, `anonymous_export_view`, `styled_view`, `editor`;
+- page lists: `storage`, `atlas_doc_format`.
 
 ## Live docs
 
-A page created with `subtype: "live"` is a live doc: always published, so a
-live doc draft is refused on create and a live doc cannot be turned into a
-draft later. Its subtype is fixed when it is created. `GET /pages?subtype=live`
-lists live docs and `subtype=page` leaves them out. The editor offers a live
-doc when creating a page, and the page calls itself one.
+`subtype: "live"` on create makes a live doc. Live docs are always published: creating one as a draft, or later saving it as a draft, is 400. The subtype cannot change after creation (400). `GET /pages?subtype=live` lists live docs; `subtype=page` excludes them. The editor offers **Live doc** on a new page, and the page view labels it.
 
 ## Private pages
 
-`private=true` creates a page only its creator can view and edit — a view
-restriction and an edit restriction naming the creator, written in the same
-transaction as the page, so there is no moment when anyone else can see it.
-`embedded=true` is accepted: it tells Confluence's collaborative editor where
-to keep the page, and this site has one place for pages.
+`private=true` creates a page only its creator can view and edit, by writing view and edit restrictions for the creator in the same transaction as the page. `embedded=true` is accepted and has no effect (the site has a single page store).
 
 ## Owners
 
-A page is owned by its author until ownership is handed on. `PUT /pages/{id}`
-with an `ownerId` gives the page to another member of the site, and the page
-reports `lastOwnerId`. The page view names the owner, and anyone who can edit
-the page can change it from Page controls; that change writes no new version,
-because changing hands is not an edit.
+The author owns a page until ownership is transferred. `PUT /pages/{id}` with `ownerId` gives it to another site member, and the page reports `ownerId` and `lastOwnerId`. The page view shows the owner; anyone who can edit the page can change it from **Page controls** (`POST /wiki/spaces/{space}/pages/{page}/owner`). Changing the owner writes no version.
 
-## What a page read can include
+## Read flags
 
-- `include-collaborators` lists everyone who has written a version, in the
-  order they first did.
-- `include-favorited-by-current-user-status` reports the reader's star. Pages
-  are starred from the page view and listed under Starred on the wiki home.
-- `include-webresources` names the stylesheets and script this site renders
-  page content with.
+`GET /wiki/api/v2/pages/{id}` accepts:
+
+- `include-collaborators`: everyone who wrote a version, in order of their first version;
+- `include-favorited-by-current-user-status`: the reader's star. Pages are starred from the page view and listed under **Starred** on the wiki home;
+- `include-webresources`: the stylesheets and script used to render page content;
+- `include-direct-children`: the page's direct children;
+- `include-labels`, `include-properties`, `include-operations`, `include-likes`, `include-versions`, `include-version`, `get-draft`, `status`, `version`.
 
 ## The v1 content bean
 
-The v1 copy answers the copy as v1 content with the parts named in `expand`
-(at most eight): `space`, `container`, `version`, `history`, `body.*` in any
-primary format, `ancestors`, `metadata.labels` and `metadata.properties`,
-`operations`, `restrictions`, `childTypes`, `children.*` and `descendants.*`.
-Everything not expanded is listed under `_expandable`.
+The v1 page copy (`POST /wiki/rest/api/content/{id}/copy`) answers v1 content with the parts named in `expand` (at most 8): `space`, `container`, `version`, `history`, `body.*` in any primary format, `ancestors`, `metadata.labels`, `metadata.properties`, `operations`, `restrictions`, `childTypes`, `children.*`, `descendants.*`. Unexpanded parts are listed under `_expandable`.
 
-The v1 descendant read lists each kind it is asked to expand — pages,
-comments, attachments, folders, whiteboards, databases and Smart Links — and
-names the rest under `_expandable`, linking to the typed read where Confluence
-has one. The typed read counts depth the way the content hierarchy does: a
-page's comments and attachments are one level beneath it, a reply one level
-beneath the comment it answers, and a child page's own comments and
-attachments one level beneath that page.
+`GET /wiki/rest/api/content/{id}/descendant` expands pages, comments, attachments, folders, whiteboards, databases and Smart Links, and names the rest under `_expandable` with links to the typed read where Confluence has one. The typed read (`/descendant/{type}`) counts depth by the content hierarchy: a page's comments and attachments are one level below it, a reply one level below its comment, and a child page's comments and attachments one level below that child.
 
 ## Attachments
 
-Attachments carry Confluence's description of their kind (`PDF Document`,
-`PNG Image`) in v2 and in the v1 extensions, and `include-collaborators` lists
-everyone who uploaded a version.
+Attachments report Confluence's kind description (`PDF Document`, `PNG Image`) in v2 and in the v1 extensions. `include-collaborators` on an attachment lists everyone who uploaded a version. See [attachments](ATTACHMENTS.md).
 
-## Smart Links and archived content in the browser
+## Smart Links and archived content in the product
 
-A Smart Link opens as a card showing where it points, with a preview when the
-destination is served over HTTPS, since a sandboxed frame is the only way to
-show another site inside this one. Archived whiteboards and databases still
-open, read-only, with Restore where the reader may restore them.
+A Smart Link opens as a card showing its destination, with a sandboxed preview when the destination uses HTTPS. Archived whiteboards and databases open read-only, with **Restore** for readers allowed to restore them.
 
-## Evidence
+## Tests
 
-- `internal/confluence/page_formats_test.go` covers default and root-level
-  parenting, wiki markup and document-format bodies, refused body forms, every
-  reading format, live docs and their filters, private pages, ownership and
-  its refusal, collaborators, stars, web resources, the v1 copy expansions and
-  their limit, the v1 descendant expansions and typed reads with depth, and
-  attachment descriptions and collaborators.
-- `internal/wikimarkup/notation_test.go` covers the notation, escaping, unsafe
-  links and that the result is valid storage.
-- `e2e/wiki_page_details.spec.ts` creates a live doc, stars it, finds it under
-  Starred, changes its owner, opens a Smart Link card, and archives a
-  whiteboard, opens it read-only and restores it.
+- `internal/confluence/page_formats_test.go`
+- `internal/wikimarkup/notation_test.go`
+- `e2e/wiki_page_details.spec.ts`
+
+## See also
+
+[Drafts and deletion](CONTENT_DRAFTS.md), [page moves](PAGE_MOVES.md), [content templates](CONTENT_TEMPLATES.md), [space permissions](SPACE_PERMISSIONS.md), [presence and live editing](CONFLUENCE_LIVE.md).

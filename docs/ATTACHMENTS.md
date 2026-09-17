@@ -1,65 +1,70 @@
-# Jira attachment compatibility
+# Attachments
 
-ZZIRA keeps attachment metadata and bytes behind the same workspace and issue
-security checks as the parent work item. The Jira Cloud routes currently cover
-settings, multipart upload, metadata, byte downloads and ranges, thumbnails,
-ZIP archive expansion, and deletion.
+Work-item attachments keep metadata and bytes behind the same workspace and
+issue-security checks as their work item. This page also covers the
+Confluence v1 attachment routes for pages and blog posts. Part of the
+[Jira platform](JIRA_PLATFORM.md); see [CLOUD_PARITY.md](CLOUD_PARITY.md) for
+status.
+
+## Jira API
 
 | Route | Behavior |
 |---|---|
-| `GET /rest/api/3/attachment/meta` | Reports whether attachments are enabled and stored, and the site's maximum attachment size |
-| `POST /rest/api/3/issue/{issueIdOrKey}/attachments` | Uploads up to 60 files, each within the maximum size (413 otherwise), for callers with Create attachments; 403 without it or while attachments are disabled |
-| `GET /rest/api/3/attachment/{id}` | Returns `AttachmentMetadata` with its numeric id, the author's user bean, properties, content and image-thumbnail links |
-| `GET /rest/api/3/attachment/content/{id}` | Answers `303` to `/secure/attachment/{id}/{filename}`, or streams the bytes with `redirect=false`; ranges answer 206, malformed ranges 400 |
-| `GET /rest/api/3/attachment/thumbnail/{id}` | Answers `303` to `/secure/thumbnail/{id}/{filename}`, or renders with `redirect=false` |
-| `GET /rest/api/3/attachment/{id}/expand/human` | Lists ZIP entries with labels, paths, media types and display sizes |
-| `GET /rest/api/3/attachment/{id}/expand/raw` | Lists ZIP entries with indexes, names, abbreviated names and byte sizes |
-| `DELETE /rest/api/3/attachment/{id}` | Deletes authorized metadata atomically and schedules durable blob cleanup |
+| `GET /rest/api/3/attachment/meta` | Whether attachments are enabled, and the maximum size |
+| `POST /rest/api/3/issue/{issueIdOrKey}/attachments` | Upload up to 60 files, each within the maximum size (413 otherwise); 403 without Create attachments or while attachments are disabled |
+| `GET /rest/api/3/attachment/{id}` | `AttachmentMetadata`: numeric id, author, properties, content and thumbnail links |
+| `GET /rest/api/3/attachment/content/{id}` | 303 to `/secure/attachment/{id}/{filename}`, or the bytes with `redirect=false`; ranges answer 206, malformed ranges 400 |
+| `GET /rest/api/3/attachment/thumbnail/{id}` | 303 to `/secure/thumbnail/{id}/{filename}`, or the image with `redirect=false` |
+| `GET /rest/api/3/attachment/{id}/expand/human` | ZIP entries with labels, paths, media types and display sizes |
+| `GET /rest/api/3/attachment/{id}/expand/raw` | ZIP entries with indexes, names, abbreviated names and byte sizes |
+| `DELETE /rest/api/3/attachment/{id}` | Delete; needs Delete all attachments, or Delete own attachments for the caller's own |
 
-The `/secure/attachment` and `/secure/thumbnail` downloads apply the same
-checks as the operations that redirect to them, for signed-in and anonymous
-callers alike. While attachments are disabled, every attachment read answers
-404.
+## Behavior
 
-Thumbnails scale images within `width` and `height`, 200 pixels when unset,
-keeping the aspect ratio and never enlarging. JPEG sources stay JPEG and other
-images become PNG. Attachments without an image rendition get the default file
-thumbnail, or 404 with `fallbackToDefault=false`.
+- `/secure/attachment` and `/secure/thumbnail` apply the same checks as the
+  routes that redirect to them, for signed-in and anonymous callers.
+- While attachments are disabled, every attachment read is 404.
+- **Size limit.** 1 byte to 1 GiB, 32 MiB by default. Enforced by the REST
+  upload, the browser upload and the shared attachment command.
+- **Thumbnails** fit within `width` and `height` (200 px default), keep the
+  aspect ratio and never enlarge. JPEG stays JPEG; other images become PNG.
+  Non-images get the default file thumbnail, or 404 with
+  `fallbackToDefault=false`.
+- **Archive expansion** covers ZIP only. Empty, corrupt and non-archive files
+  list no entries; TAR, gzip, bzip2, xz, 7-Zip and RAR answer 409. Raw entry
+  names longer than 40 characters are abbreviated, keeping start and end.
+- **Deletion.** Deleting an attachment or its work item writes blob cleanup
+  intents in the same transaction as the metadata change and action history.
+  Object-store failures are retried with bounded backoff through a leased
+  worker, so a crash or outage cannot orphan bytes.
 
-Jira expands only ZIP archives. Empty, corrupt and non-archive attachments
-list no entries, and TAR, gzip, bzip2, xz, 7-Zip and RAR archives answer 409.
-Raw entries abbreviate names longer than 40 characters, keeping their start and
-end.
+## UI
 
-Administrators set the maximum attachment size (1 byte to 1 GiB, 32 MiB by
-default) beside the attachment switch in the Jira features settings. The
-browser and REST uploads and the shared attachment command all enforce it.
+The work item page uploads (`POST /issues/{key}/attachments`) and deletes
+attachments. Administrators turn attachments on or off and set the maximum
+size under **Administration → Jira features**.
 
-Issue deletion and direct attachment deletion both write blob cleanup intents in
-the same transaction as metadata and action history. Immediate object-store
-failures are deferred with a bounded backoff and reclaimed through a lease, so
-a worker crash or temporary storage outage cannot permanently orphan bytes.
+## Confluence v1 attachments
 
-## Confluence v1 attachments on blog posts, and metadata updates
+The v1 routes under `/wiki/rest/api/content/{id}/child/attachment` treat pages
+and blog posts alike; `{id}` may name either.
 
-The v1 attachment routes treat pages and blog posts alike. `{id}` in
-`/wiki/rest/api/content/{id}/child/attachment…` may name either.
+- `POST` adds files. `PUT` adds them, or adds a new version of a same-named
+  attachment.
+- `POST …/{attachmentId}/data` adds a new version by attachment id.
+- `GET …/{attachmentId}/download` redirects to the file under its container.
+- Beans name the container (`page` or `blogpost`) and carry `collectionName`
+  (`contentId-{containerId}`), the media type description, size, file id and
+  comment.
+- `PUT …/{attachmentId}` changes non-binary data as a new version of the same
+  file: `title` renames, `metadata.mediaType` retypes, `metadata.comment`
+  replaces the comment, and `container` (`{id, type}`) moves it to another
+  page or blog post (the caller must be allowed to add attachments there, and
+  the name must be free). `version.number` must be the next version, or 409.
 
-- **Upload.** `POST` adds files. `PUT` adds them, or makes a new version of
-  an attachment with the same name.
-- **New file for an existing attachment.** `POST …/{attachmentId}/data` adds
-  a new version by attachment id.
-- **Download.** `GET …/{attachmentId}/download` redirects to the file under
-  its container.
-- **Beans** name the container (`page` or `blogpost`) and carry
-  `collectionName` (`contentId-{containerId}`), the media type description,
-  size, file id and comment.
+## See also
 
-`PUT /wiki/rest/api/content/{id}/child/attachment/{attachmentId}` changes an
-attachment's non-binary data as a new version holding the same file:
-- `title` renames it, `metadata.mediaType` retypes it, and
-  `metadata.comment` replaces its comment;
-- `container` (`{id, type}`) moves it to another page or blog post. The caller
-  must be allowed to add attachments there, and a name already used there is
-  refused;
-- `version.number` must be the next version, or the update is refused with 409.
+[ISSUE_SURFACE.md](ISSUE_SURFACE.md) · [BULK_ISSUES.md](BULK_ISSUES.md) ·
+[JIRA_SITE_CONFIGURATION.md](JIRA_SITE_CONFIGURATION.md) ·
+[ANONYMOUS_ACCESS.md](ANONYMOUS_ACCESS.md) ·
+[CONFLUENCE_SITE_SURFACES.md](CONFLUENCE_SITE_SURFACES.md)

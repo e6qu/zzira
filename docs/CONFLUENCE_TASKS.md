@@ -1,7 +1,9 @@
 # Confluence tasks
 
-Tasks live where Confluence keeps them: in the bodies of pages and blog posts,
-as task lists.
+Tasks are stored where Confluence stores them: as task lists inside page and
+blog post bodies. A task store kept in sync with those bodies serves the tasks
+API. Part of [Confluence](CONFLUENCE_SITE_SURFACES.md). Code:
+`internal/confluence/tasks.go`, `internal/store/wiki_tasks.go`.
 
 ```xml
 <ac:task-list>
@@ -13,54 +15,84 @@ as task lists.
 </ac:task-list>
 ```
 
-## What a body says
+## Body semantics
 
-- Each task has an id that is unique within its body. Its status is
-  `complete` or `incomplete`, and `incomplete` when left out.
-- The first person the task mentions is its assignee, provided they belong
-  to the site. The first date in it is when it is due, at the start of that
-  day in UTC.
-- Task lists render as checklists: ☐ for open tasks, ☑ for done ones. Dates
-  render as `<time>` elements.
-- In `atlas_doc_format` a task list is a `taskList` of `taskItem`s, using
-  `localId` and the `TODO`/`DONE` state. Mentions and dates are `mention` and
-  `date` nodes. Converting between the formats keeps tasks, mentions and
-  dates, so tasks written through either format are the same tasks.
+- **Id and status.** Each task has an id that is unique within its body. Its
+  status is `complete` or `incomplete`, and defaults to `incomplete`.
+- **Assignee.** The first person mentioned in the task, if they belong to the
+  site.
+- **Due date.** The first date in the task, taken as the start of that day in
+  UTC.
+- **Rendering.** Tasks render as checklists (☐ open, ☑ done). Dates render as
+  `<time>`.
+- **`atlas_doc_format`.** A task list is a `taskList` of `taskItem`s with a
+  `localId` and a `TODO` or `DONE` state. Mentions and dates are `mention` and
+  `date` nodes. Converting between formats keeps tasks, mentions and dates.
 
-## Keeping the task store in step
+## Keeping the store in sync
 
-Every change to a body reconciles its tasks. That includes publishing, editing,
-restoring a version and redaction, for pages and blog posts alike:
+Any change to a body re-syncs its tasks. That includes publishing, editing,
+restoring a version and [redaction](CONFLUENCE_REDACTION.md), on pages and
+blog posts alike.
 
-- tasks new to the body are created, by whoever saved it;
-- changed tasks are updated. A task that becomes complete is completed by the
-  person who saved the body; a reopened task loses its completer;
-- tasks taken out of the body are deleted.
+- **New tasks** are created, and whoever saved the body becomes their
+  creator.
+- **Changed tasks** are updated. A task that becomes complete is marked
+  completed by whoever saved the body. A reopened task loses its completer.
+- **Removed tasks** are deleted.
 
-## The tasks API
+## API
 
-- `GET /wiki/api/v2/tasks` and `GET /tasks/{id}` list tasks on published
-  pages and blog posts the caller can see.
-  - `page-id` and `blogpost-id` together select tasks on any of those pages
-    or posts.
-  - Beans carry `pageId` or `blogPostId`.
-  - `body-format` is `storage` or `atlas_doc_format`.
-- `PUT /tasks/{id}` changes a task's status. It needs permission to edit the
-  page or blog post, and it ticks the task in the body in place, without
-  making a new version.
+| Method and path | Behavior |
+| --- | --- |
+| `GET /wiki/api/v2/tasks` | Tasks on published pages and blog posts the caller can see. |
+| `GET /wiki/api/v2/tasks/{id}` | One task. |
+| `PUT /wiki/api/v2/tasks/{id}` | Changes a task's status. |
 
-## The web UI
+- **Filters.** The list takes `status`, `task-id`, `space-id`, `page-id`,
+  `blogpost-id`, `created-by`, `assigned-to`, `completed-by`,
+  `created-at-from`/`-to`, `due-at-from`/`-to`, `completed-at-from`/`-to`,
+  `include-blank-tasks`, `cursor` and `limit`.
+  - Passing both `page-id` and `blogpost-id` returns tasks on any of the
+    listed pages or posts.
+- **Beans.** Each task carries `pageId` or `blogPostId`.
+- **`body-format`.** `storage` or `atlas_doc_format`.
+- **`PUT` permissions.** Needs edit permission on the page or blog post.
+- **`PUT` effect.** Ticks the task in the body in place, without creating a
+  new version.
 
-- The page task panel adds a task by writing it into the page body, as a new
-  version. The assignee is written as a mention, so they are notified, and
-  the due date is written as a date.
-- Pages and blog posts list their tasks with **Complete** and **Reopen**.
-- The rich editor keeps text, formatting, links and mentions. A body that
-  holds task lists, macros or dates opens in the storage editor so none of
-  them is lost.
+## UI
 
-## Tasks from before
+- **Adding tasks.** The page task panel (`POST /wiki/spaces/{space}/pages/{page}/tasks`)
+  writes the task into the page body as a new version. The assignee is
+  written as a mention, which notifies them (see
+  [notifications](CONFLUENCE_NOTIFICATIONS.md)). The due date is written as a
+  date.
+- **Completing tasks.** Pages and blog posts list their tasks with
+  **Complete** and **Reopen** buttons.
+- **Editors.** The rich editor handles text, formatting, links and mentions.
+  A body that contains task lists, macros or dates opens in the storage
+  editor instead, so none of them are lost.
 
-Tasks created before tasks moved into bodies were stored beside their pages.
-Migration `179_wiki_body_tasks.sql` writes each of them into its page body,
-with its assignee as a mention and its due date as a date.
+## Storage
+
+Migration `179_wiki_body_tasks.sql` moved tasks that were stored alongside
+their pages into the page bodies.
+
+## Gaps
+
+Tracked in [PLAN.md](../PLAN.md).
+
+- **Rich editor.** It cannot insert or edit task lists, dates or macros; that
+  needs the storage editor.
+- **Task reports.** No "Tasks" macro or report, and no personal task list
+  page.
+- **Reminders.** No due-date reminders.
+
+## Tests
+
+`internal/confluence/tasks_body_test.go`
+
+## See also
+
+[PAGE_WRITING.md](PAGE_WRITING.md) · [CLOUD_PARITY.md](CLOUD_PARITY.md)

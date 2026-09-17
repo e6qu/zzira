@@ -1,12 +1,8 @@
 # People, groups and avatars
 
-Jira's people and identity API: the people on a site and how to find them, the
-groups they belong to, their own preferences, properties and issue table
-columns, the product access they hold, and the avatars of projects, issue types
-and priorities.
+Jira's people API: finding people, groups and their members, the caller's own preferences, properties and columns, application roles, and the avatars of projects, work types and priorities. Part of the [Jira platform](JIRA_PLATFORM.md); directory administration (invitations, suspension, product access) is in [ADMIN.md](ADMIN.md), and sign-in in [shauth-sso.md](shauth-sso.md). For status, see [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
-People are identified by `accountId` everywhere. A person on another site does
-not exist here: looking them up is 404, and adding them to a group is 404.
+People are identified by `accountId`. A person on another site does not exist here: reading them or adding them to a group is 404.
 
 ## Users
 
@@ -21,13 +17,10 @@ not exist here: looking them up is 404, and adding them to a group is 404.
 | `GET` | `/rest/api/3/user/groups?accountId=` | |
 | `GET` | `/rest/api/3/user/email`, `/user/email/bulk` | apps only; a person calling them is 400 |
 
-Every user carries `self` and `avatarUrls`. An email address is shown to the
-person themself and to administrators; others see the record without it.
-Reading someone else needs *Browse users and groups*.
-
-`POST /user` for an address that already has access answers 200 with that
-person. A new address is invited and answers 201. `products` accepts
-`jira-software`, `jira-servicedesk` and `jira-product-discovery`.
+- Every user carries `self` and `avatarUrls`.
+- Email addresses are shown only to the person and to administrators.
+- Reading someone else needs *Browse users and groups* (see [ANONYMOUS_ACCESS.md](ANONYMOUS_ACCESS.md) for the effect on searches).
+- `POST /user` for an address that already has access is 200 with that person; a new address is invited (201). `products` accepts `jira-software`, `jira-servicedesk` and `jira-product-discovery`.
 
 ## Finding people
 
@@ -71,50 +64,27 @@ issue, or a malformed query, is 400.
 | `POST` / `DELETE` | `/rest/api/3/group/user` | administrators |
 | `GET` | `/rest/api/3/groups/picker` | `query`, `exclude`, `excludeId`, `accountId`, `caseInsensitive` |
 
-A group belongs to the organization that owns the site. It is never visible from
-another organization's site.
+Groups belong to the site's organization and are invisible from other organizations.
 
-Deleting a group with a swap group moves everything the group held onto the swap
-group, as Jira does, and gives its members to the swap group. That covers
-permission scheme grants, issue security level members, project role default
-actors, product and site role bindings, filter share permissions, Confluence page
-restrictions, space permissions and space roles, and service request type groups.
-Without a swap group, those grants are removed with it. A group cannot be
-swapped for itself.
+Deleting a group with a swap group moves its members and everything it held to the swap group: permission scheme grants, issue security level members, project role default actors, product and site role bindings, filter share permissions, Confluence page restrictions, space permissions and space roles, and request type groups. Without a swap group those grants are removed. A group cannot be swapped for itself.
 
 ## Myself, preferences, properties and columns
 
-`GET /rest/api/3/myself` adds `locale` and supports `expand=groups,applicationRoles`.
-
-`/rest/api/3/mypreferences?key=` reads, stores (`PUT`, plain-text body of at most
-255 characters) and deletes one of the caller's preferences. A missing key is
-404. `/rest/api/3/mypreferences/locale` reads the locale and sets it from a
-supported list; any other locale is 400. With no locale set, the browser's
-`Accept-Language` decides.
-`user.notify.own.changes` and `user.autowatch.disabled` hold the My changes and
-Autowatch notification preferences that the profile page also edits; see
-[NOTIFICATION_SCHEMES.md](NOTIFICATION_SCHEMES.md).
-
-`/rest/api/3/user/properties?accountId=` lists property keys, and
-`/user/properties/{key}` reads, stores and removes a JSON value. `PUT` answers 201
-for a new key and 200 for a replaced one. Only the person or an administrator may
-use them.
-
-`/rest/api/3/user/columns` reads the caller's issue table columns (`label` and
-`value`), falling back to the site's navigator columns. `PUT` stores them from
-form data (`columns=summary&columns=status`), and `DELETE` resets them.
-Administrators may name another person with `accountId`.
+| Path | Behavior |
+| --- | --- |
+| `GET /rest/api/3/myself` | Adds `locale`; `expand=groups,applicationRoles`. |
+| `/rest/api/3/mypreferences?key=` | GET, PUT (plain text, max 255 characters), DELETE one preference. Missing key: 404. `user.notify.own.changes` and `user.autowatch.disabled` are the My changes and Autowatch settings the profile page edits ([NOTIFICATION_SCHEMES.md](NOTIFICATION_SCHEMES.md)). |
+| `/rest/api/3/mypreferences/locale` | Reads or sets the locale from a supported list; others are 400. Unset, the browser's `Accept-Language` decides. |
+| `/rest/api/3/user/properties?accountId=`, `/user/properties/{key}` | Lists keys; reads, stores (201 new, 200 replaced) and removes JSON values. Only the person or an administrator. |
+| `/rest/api/3/user/columns` | The caller's issue table columns (`label`, `value`), falling back to the site's navigator columns ([JIRA_SITE_CONFIGURATION.md](JIRA_SITE_CONFIGURATION.md)). `PUT` takes form data (`columns=summary&columns=status`); `DELETE` resets. Administrators may pass `accountId`. |
 
 ## Application roles
 
-`GET /rest/api/3/applicationrole` and `/applicationrole/{key}` are for
-administrators. `jira-software` and `jira-servicedesk` report the groups granted
-the product and `userCount`: the people with access directly or through one of
-those groups.
+`GET /rest/api/3/applicationrole` and `/applicationrole/{key}` (administrators) report `jira-software` and `jira-servicedesk` with the groups granted the product and `userCount`: people with access directly or through those groups.
 
 ## Avatars
 
-Projects, issue types and priorities share one avatar store.
+Projects, work types and priorities share one avatar store.
 
 | Method | Path | |
 | --- | --- | --- |
@@ -129,12 +99,9 @@ Projects, issue types and priorities share one avatar store.
 | `PUT` | `/rest/api/3/project/{projectIdOrKey}/avatar` | selects an avatar by `id` |
 | `DELETE` | `/rest/api/3/project/{projectIdOrKey}/avatar/{id}` | |
 
-An upload needs `X-Atlassian-Token: no-check` and a JPEG, GIF or PNG body.
-Issue type avatars uploaded through `/issuetype/{id}/avatar2` live in the same
-store. Priority and issue type icons are served at `/static/img/` and
-`/images/icons/priorities/`.
+Uploads need `X-Atlassian-Token: no-check` and a JPEG, GIF or PNG body. Work type avatars uploaded through `/issuetype/{id}/avatar2` ([ISSUE_METADATA.md](ISSUE_METADATA.md)) use the same store. Priority and work type icons are served at `/static/img/` and `/images/icons/priorities/`.
 
-## Evidence
+## Code and tests
 
 - `internal/api3/people.go`, `internal/api3/user_query.go`
 - `internal/store/jira_people.go`, `jira_groups.go`, `universal_avatars.go`, `application_roles.go`

@@ -1,45 +1,75 @@
 # Confluence redaction
 
-`POST /wiki/api/v2/pages/{id}/redact` and `POST /wiki/api/v2/blogposts/{id}/redact`
-replace sensitive text with a redaction marker.
+Redaction replaces sensitive text in a page or blog post with a marker. Space
+administrators can later restore it. Part of
+[Confluence](CONFLUENCE_SITE_SURFACES.md). Code:
+`internal/store/wiki_redaction.go`.
 
-## What a redaction names
-- **`title` redactions** point at `/title`.
-- **`body` redactions** point in one of two ways:
-  - at the stored text, with `/body/storage/value` and rune offsets into it;
-  - at a text node of the body in the document format, such as
-    `/content/0/content/1/text`, with offsets into that node's text. The
-    pointer is resolved to the stored text the node came from, and entities
-    count as one character.
-- **Overlap.** Ranges that overlap are merged into one redaction. Results keep
-  the order the pointers were given in.
-- **Freshness.** `createdAt` must match the version being redacted, or the
-  request is refused with 400.
+| Surface | Path |
+| --- | --- |
+| API | `POST /wiki/api/v2/pages/{id}/redact`, `POST /wiki/api/v2/blogposts/{id}/redact` |
+| UI | **Redact sensitive text** on the page or blog post; restoring uses the page's `…/metadata` form |
 
-## Markers and restoration
-Each redaction gets a UUID, returned as `redactionId`, and is recorded with
-what it removed.
+## Request
+
+- **Title redactions** point at `/title`.
+- **Body redactions** point at one of two places:
+  - the stored text, as `/body/storage/value` with rune offsets;
+  - a text node in the document format, such as `/content/0/content/1/text`,
+    with offsets into that node. The pointer is mapped back to the stored text,
+    and an entity counts as one character.
+- **Overlapping ranges** are merged into one redaction. Results come back in
+  the order the pointers were given.
+- **`createdAt`** must be an RFC 3339 timestamp that matches the version being
+  redacted.
+- **`versionNumber`**:
+  - Omitted, or set to the current version: the current version is redacted
+    and a new version is created.
+  - Set to an earlier version: only that version changes.
+  - A stale `createdAt` or an out-of-range `versionNumber` is 400
+    (`createdAt or versionNumber is out of date.`).
+- **`cleanHistory`** also replaces the removed text in every other version.
+  Text removed that way cannot be restored.
+
+## Markers
+
+Each redaction gets a UUID, returned as `redactionId`, and a record of the
+text it removed.
 
 | Where the text was | Marker | Restorable |
 | --- | --- | --- |
-| Body | A `redacted` macro whose `ac:macro-id` is the redaction's id and whose body reads `[REDACTED]` | Yes |
+| Body | A `redacted` macro whose `ac:macro-id` is the redaction id and whose body reads `[REDACTED]` | Yes |
 | Title | `[REDACTED]` | Yes |
-| Code block (preformatted text, inline code, or a macro's plain body or parameters) | Plain `[REDACTED]` | No, as in Confluence; the response has no `redactionId` |
+| Code (preformatted text, inline code, a macro's plain-text body or parameters) | Plain `[REDACTED]` | No; the response has no `redactionId` |
 
-Space administrators see a page's or blog post's redactions and restore them
-from the page.
-- **Restoring from the current version** puts the removed text back and makes
-  a new version.
-- **Restoring from an earlier version** restores it in that version. This
-  applies when that version was the one redacted.
-- **Once restored**, the kept text is discarded. A redaction whose marker is
-  gone can no longer be restored.
+## Restoring
 
-Restorations are audited alongside redactions.
+Space administrators see the list of redactions on the page or blog post and
+restore them from there.
 
-## Versions
-- **Without `versionNumber`**, or with the current one, the current version
-  is redacted and a new version is made.
-- **With an earlier `versionNumber`**, only that version is changed.
-- **`cleanHistory`** additionally replaces the removed text in every other
-  version. That text cannot be restored.
+- **In the current version.** The removed text is put back and a new version
+  is created.
+- **In an earlier version.** The text is restored in the version that was
+  redacted.
+- **After restoring.** The stored text is discarded.
+- **Marker gone.** If the marker has since been removed from the content, the
+  redaction can no longer be restored.
+
+Redactions (`wiki.page.redacted`, `wiki.blogpost.redacted`) and
+restorations (`….redaction_restored`) are both written to the organization
+audit log (see [ADMIN.md](ADMIN.md)). After a redaction, inline comments are anchored
+again (see [comments](CONFLUENCE_COMMENTS.md#inline-comment-anchoring)) and
+tasks are reconciled (see [tasks](CONFLUENCE_TASKS.md)).
+
+## Permissions
+
+- **Redacting** needs edit permission on the page or blog post.
+- **Restoring** needs space administration.
+
+## Tests
+
+`internal/confluence/redaction_test.go`
+
+## See also
+
+[CONTENT_HISTORY.md](CONTENT_HISTORY.md) · [CLOUD_PARITY.md](CLOUD_PARITY.md)

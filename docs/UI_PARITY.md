@@ -1,137 +1,45 @@
-# UI, UX, and user-journey ledger
+# User-journey ledger
 
-Updated: 2026-09-16
+This ledger tracks complete user goals, persona by persona, and the browser specs (in `e2e/`) that prove them. A page or an API route on its own does not complete a journey. Product scope and API compatibility are covered in [CLOUD_PARITY.md](CLOUD_PARITY.md), and the remaining work in [PLAN.md](../PLAN.md).
 
-This ledger measures complete user goals across Work, Service, Knowledge,
-Insights, and Admin. A page or API route alone does not complete a journey.
-Product scope and compatibility limits are in [CLOUD_PARITY.md](CLOUD_PARITY.md),
-and delivery order is in [PLAN.md](../PLAN.md).
+**Legend.** ✅ the whole journey is tested in the browser. 🟡 a usable subset is tested, and gaps remain.
 
-Status: ✅ browser-tested complete journey · 🟡 usable tested subset · ⛔ absent.
+## Journeys
 
-## Journey status
+| Persona and goal | State | Browser evidence | Gaps |
+|---|:-:|---|---|
+| User signs in and orients | ✅ | `identity-providers`, `session-isolation`, `directories`, `v0` | — |
+| Contributor finds work | ✅ | `v2`, `filters`, `directories` | — |
+| Contributor creates and triages work | ✅ | `create`, `v1`, `v3`, `triage`, `issue_mentions`, `custom_field_options` | — |
+| Contributor plans and runs a sprint | ✅ | `backlog`, `v4`, `projects` | Column configuration; swimlanes beyond assignee ([AGILE_BOARDS](AGILE_BOARDS.md#gaps)) |
+| Contributor works offline | 🟡 | `v0`, `v5`, `revocation`, `session-isolation` | Only work items are available offline; other entities and richer edits need a connection |
+| Contributor follows code through release | 🟡 | `directories` (development information), `software`, `releases` | Cross-project releases; release gates; environment promotion ([RELEASES](RELEASES.md#gaps)) |
+| Manager configures a project | 🟡 | `projects`, `project_roles`, `permission_schemes`, `notification_schemes`, `issue_security_schemes` | Project templates and delegated administration do not cover every setting |
+| Manager plans across teams | 🟡 | `timeline`, `plans_view`, `plans_teams` | Auto-scheduler; plan creation and configuration in the browser; hierarchy above epic; releases in plans; velocity-based capacity; plan views ([JIRA_SOFTWARE](JIRA_SOFTWARE.md#gaps)) |
+| Agile coach diagnoses delivery | 🟡 | `backlog` (sprint report, velocity), `reports_flow`, `reports_progress`, `report_subscriptions`, `dashboard_reports` | Release burndown, epic burndown, workload and time tracking reports ([REPORTS](REPORTS.md#gaps)) |
+| Engineering manager reviews delivery | 🟡 | `releases` (DORA metrics), `report_subscriptions` | Choosing which environments and incidents count toward DORA metrics ([REPORTS](REPORTS.md#gaps)) |
+| Manager builds an operating dashboard | ✅ | `dashboards`, `dashboard_reports`, `dashboard_subscriptions`, `v6` | Forge gadgets ([DASHBOARDS](DASHBOARDS.md#gaps)) |
+| Admin designs and publishes a workflow | 🟡 | `directories` (workflow editor, statuses, workflow schemes, transition screens) | Workflow scheme administration is incomplete |
+| Admin automates work | 🟡 | `automation` | Much of the trigger, condition and action catalog ([AUTOMATION](AUTOMATION.md)) |
+| Service customer requests help | 🟡 | `service`, `service_assets` | Assets-backed form behavior such as AQL filters |
+| Service agent works a queue | 🟡 | `service`, `service_assets` | Queues support only part of JQL |
+| Service manager runs a service | 🟡 | `service`, `service_assets` | Public Assets import and API |
+| Admin starts a service project | 🟡 | `service` | The rest of the service project lifecycle |
+| Knowledge user authors and discusses a page | 🟡 | `wiki`, `wiki_content_tree`, `wiki_drafts_purge`, `wiki_page_details`, `wiki_page_lifecycle`, `wiki_mentions`, `wiki_watches` | Full editor; moving inline comments with edited passages ([CONFLUENCE_SITE_SURFACES](CONFLUENCE_SITE_SURFACES.md)) |
+| Knowledge team collaborates live | ✅ | `wiki_live_editing`, `wiki_presence` | — |
+| Knowledge user diagrams or models data | 🟡 | `wiki_database`, `wiki_whiteboard` | Direct manipulation, advanced whiteboard objects, rich embeds, exports |
+| Space manager governs knowledge | 🟡 | `wiki_space_tools`, `wiki_page_lifecycle`, `classification_levels` | Space import |
+| Site admin manages people, access and Jira settings | 🟡 | `admin`, `people`, `global_permissions`, `identity-providers`, `permission_schemes`, `permission_helper`, `notification_schemes`, `notification_helper`, `notification_preferences`, `notifications`, `issue_security_schemes`, `screens`, `screen_schemes`, `field_configurations`, `custom_field_contexts` | Remaining enterprise identity journeys ([ADMIN](ADMIN.md)) |
+| Site admin manages apps | 🟡 | `apps` | Several Connect module families; Forge compute; workflow modules ([APPS](APPS.md)) |
 
-| Persona and goal | State | Current evidence and gap |
-|---|---:|---|
-| User signs in and orients | ✅ | Password plus simultaneous Shauth, Google, Microsoft and Atlassian provider choice, profile-based identity review/connect/disconnect, durable admin availability controls, issuer-scoped session revocation, responsive shell, theme and session controls, and an app switcher listing the products the person may use with their recent projects |
-| Contributor finds work | ✅ | Project-scoped basic/JQL search, filters, columns, sorting, pagination, keyboard navigation and contextual preview, plus a saved-filter directory with favorites and visible view/edit access; bulk selection and actions retain 24 px targets and reflow at 320 px |
-| Contributor creates and triages work | ✅ | Screen-scheme-driven create metadata shared by dialog and REST, validation recovery, one-level sub-task creation and reassignment, parent/child navigation, inline fields, security, labels, watchers, links, activity, attachments, worklogs and issue-form lifecycle |
-| Contributor plans and runs a sprint | ✅ | Backlog grouping/ranking, sprint create/edit/start/complete, board movement, quick/assignee filters, WIP feedback, swimlanes and issue preview |
-| Contributor works offline | Partial | ✅ Issue reads/edits, authorization-before-replay, reconnect drain and server reconciliation; suspension while offline purges the private replica, queued mutations and authenticated page cache before sign-out. Other product entities and richer mutations remain online-only |
-| Contributor follows code through release | Partial | ✅ Linked branches, commits, pull requests, builds and deployments on the work item, with the same CI/environment evidence rolled into version scope, progress, notes and lifecycle; complete release governance remains |
-| Manager configures a project | Partial | ✅ Business, service-management and Scrum/Kanban create; details, lead/default assignment, category assignment, notification sender, software feature controls with navigation enforcement, JSON app properties, workflow selection, responsive component lifecycle, project-role catalog/defaults, per-project user/group access, permission-scheme-derived delegated administration, effective permission, notification-scheme and issue-security inspection, archive/restore/trash and confirmed deletion, and project templates a project's administrators save from its configuration, list and remove in the browser, either copying the configuration or following the project; complete templates and delegation across every setting family remain |
-| Manager plans across teams | ✅ | Software project timeline of epics and their child work across whole months, with start and due date bars, open-ended bars for half-scheduled work, today marker, per-row scheduling and permission-filtered work, governed by the project's Roadmap feature, and cross-project plans that gather work from boards, projects and saved filters with exclusion rules, target start/end scheduling, epic nesting, a month timeline and a teams table with capacity, visible to administrators, the plan lead and plan permission holders, plus Jira's Team field, in-plan editing of summary, dates, team, sprint and estimate in scenarios with Review changes to save or discard them, sprint and Kanban-week capacity against estimates, and off-track dependency detection from Blocks links |
-| Agile coach diagnoses delivery | ✅ | Permission-filtered sprint report with completed, incomplete, outside and removed work, added-after-start and re-estimate markers, remaining-estimate burndown against the guideline with its change table, a sprint burnup of scope against completed work, a seven-sprint velocity chart of commitment against completed work by board estimation field or issue count, and 14/30/90-day cumulative flow diagrams and control charts with average and median cycle time for any board, and epic and version reports of total against completed estimate by day with done and incomplete work, plus 7/30/90-day created-versus-resolved (daily or running totals) and resolution-time reports for every project, with dark theme, 320 px reflow, a CSV download and scheduled email of every report, and previous-period comparisons for the control chart, created-versus-resolved, resolution-time and DORA reports |
-| Engineering manager reviews delivery | ✅ | ✅ Permission-filtered DORA summary, window selection, daily accessible production chart/table, recent environment events, release rollup, dark theme and 320 px reflow, previous-period comparison, a CSV download and scheduled report emails (Jira Cloud offers no DORA targets or filters) |
-| Manager builds an operating dashboard | ✅ | ✅ Configurable dashboards, layouts, favourites, sharing, refresh, native work-item gadgets, created vs. resolved, resolution time, velocity and sprint burndown report gadgets, recently created, average age, time since, days remaining in sprint, sprint health, activity stream, calendar, road map and bubble chart gadgets, two dimensional filter statistics, heat map, watched, voted and work-in-progress gadgets, grouping by status, priority, work type, assignee, reporter, resolution, project or label, signed remote standard Connect items, and daily or weekly dashboard emails that give each recipient the gadgets as they see them (Jira Cloud no longer shares dashboards publicly, so there are no anonymous dashboards); configurable and refreshable Connect items that use Connect's JavaScript API, shown under signed-in and administrator conditions; View as wallboard with rotating same-colour gadget groups, and the site's wallboard slide show (Jira has no native dashboard export) |
-| Admin designs and publishes a workflow | Partial | ✅ Global or project-scoped creation, automatic project assignment, connected status map, drag and keyboard layout editing, serialized draft saves, custom transition drafts with visual reporter/assignee/API-only restrictions, typed system-field comparisons, previous-status, separation-of-duties and child-status conditions, history, required-field, changed-field, single-value, regular-expression, date-comparison, date-window, Jira-permission, parent-status and Advanced Forms validators, assignee effects, label append/replace, same-or-parent field copy, registered-webhook and branch-created development triggers, screen fields, published-version isolation, explicit publish/discard, field-value conditions, required-field, changed-field and regular-expression validators and field-update post-functions that name a project's custom fields as readily as the system ones, transition screens that ask for a project's custom fields beside the system ones and render each with the control its type wants, approval conditions that block while an approval is pending or wait until one is approved or declined, transition screens that remind people to update fields rather than ask for them, agent post functions that ask one of the workspace's app accounts to run with a prompt, validator messages an administrator writes and groups a changed-field validator exempts, workflow schemes an administrator deletes from the browser when no project routes through them and they are not the site default, plus nested API rule configuration enforced in browser and REST transitions; complete scheme administration remains |
-| Admin automates work | Partial | ✅ Fixed-interval and Quartz cron scheduled triggers, work item created, transitioned, field changed and commented triggers with JQL scope, work item field conditions over status, priority, work type, assignee, reporter, labels, summary, due date, resolution, created, resolved, parent and key, comparing by equality, containment, prefix, suffix, comma-separated list membership, ordering on the date fields and emptiness, JQL conditions, label/assign/transition/comment/edit summary and due date actions with smart values, a link action naming any of the site's link types, sub-task, parent and linked work item branches with a browser branch step, rule-to-rule trigger control, a browser template gallery, management, run-now and audit; the rest of the trigger/condition/action catalog remains |
-| Service customer requests help | Partial | ✅ Help-center and portal discovery, linked knowledge search/article viewing, request-type-specific forms with required text, number, date-time, date, URL, label, select, multi-select, cascading select, email-matched user picker, and group, project, version, team and Assets object picker fields shown conditionally on choice answers, typed help/incident/problem/change request submission, owned request list/detail with structured answers, participant add/remove, public conversation and files, approvals, subscription controls, completed-request feedback, customer-visible SLA state, organization visibility, and status transitions with light/dark accessibility and 320 px reflow, and Assets object picker fields that offer the desk's inventory, or only the objects of the one Assets schema an administrator scopes the field to; and Assets fields that hold several objects when their custom field context is configured for them; richer Assets-backed form behaviour, such as AQL filters, remains |
-| Service agent works a queue | Partial | ✅ Per-desk agent assignment/revocation, assigned-desk navigation, scoped all-request reads, all-open/SLA-attention/unassigned/assigned-to-me and manager-defined JQL views, responsive request table, take/unassign ownership, raise-on-behalf, request detail, participants, approvals, attachments, private collaboration, customer organizations, incident/problem/change risk assessment, active on-call ownership, change windows, rollback plans, an agent-scoped conflict calendar, request-level overlap warnings, a permission-filtered dependency graph, major-incident declaration with audience-aware status updates, incident commander, communications and technical lead roles, member or email stakeholders with emailed stakeholder updates, post-incident review tracking, visible related-work links, direct affected/dependency asset links with transitive upstream impact, workflow actions, SLA cycles and deduplicated warning/breach notifications, and queue checkboxes with an action bar that assigns, transitions or comments on the selected requests; complete JQL remains |
-| Service manager runs a service | Partial | ✅ Site administrators manage each desk's request-type field forms/help/requirements, custom JQL queues, agent roster, open/closed customer admission, customer invitation/membership, linked Confluence spaces, business calendar, holidays, default goals, ordered and reorderable JQL-based conditional first-response/resolution goals, Jira start/stop SLA conditions (Issue Created, Entered Status, Assignee, Comment, Due Date and Resolution events), custom SLAs searchable by name with the SLA JQL functions and recalculated from open requests' history when conditions change, with status pause conditions replayed over that history so a rebuilt cycle keeps the time a request spent waiting, status approvals from approver users or groups with per-group numberPerPrincipal decisions and pre-populated approvers, per-desk switches for Jira's customer notifications (Customer invited, Request created confirmation, Public comment added, Customer-visible status changed, Participant added, Approval required), CAB risk threshold and membership, incident-review deadline, on-call shifts, and ordered timed major-incident responder escalations, typed Assets schemas and inventory objects, positioned directional service topology and relationship lifecycle; high-risk changes receive one automatic CAB approval, while agents manage customer organizations, membership, properties and desk links and inspect and filter 7/30/90 day volume, open/resolved, SLA-breach and CSAT reports with request-type/channel breakdowns and accessible charts/tables, previous-period comparisons, a CSV download and scheduled report emails, with each desk keeping several business calendars and every conditional goal counting its time in the calendar it names; complete public Assets import/API parity remains |
-| Admin starts a service project | Partial | ✅ Service-management template creation, service-project identity, atomic desk provisioning, default help, incident, problem and change request types with required forms and lifecycle labels, seeded configurable request forms and matching field metadata, customer-only account activation/revocation, agent roster, all-request visibility and internal notes, portal name, introduction text and logo settings, and help center branding with a home page announcement and contrast-checked colours, and portal announcements that agents add once administrators allow them; the remaining service lifecycle remains |
-| Knowledge user authors and discusses a page | Partial | ✅ Space/page create, inherited space classification defaults, permission-filtered page/folder/Smart Link/database/whiteboard trees, folder and validated external Smart Link creation beneath heterogeneous content, creator-private database and template-backed whiteboard containers with classification controls, typed database columns, validated record create/edit/delete and saved filter/sort views, positioned whiteboard objects and directional connectors with visual/list editing, public/private blog post authoring with version history, trash/restore/purge, labels, likes, app properties, classification, exact-text current/history redaction, versioned attachment upload/replace/download/delete, threaded comments and exact-passage inline discussions with replies/resolution, safe link opening and empty-content deletion, storage editor, drafts, history, cross-content search, trash/restore, labels, page likes, built-in classification, exact-text current/history redaction, registered page custom-content discovery, versioned page app properties, threaded page/attachment footer comments, exact-passage inline discussions with replies/resolution, page tasks with assignees/due dates/completion, direct-user/group view/edit restrictions, permission-scoped attachment upload/replacement/download/deletion/labels/versioned JSON properties, and page/space/label watches that open deduplicated in-app notifications, with any content holding any other in one tree ordered before, after or inside other content, mentions that notify and email the people named, tasks read from storage task lists, inline discussions kept on their passage through edits, and watch notifications also delivered by email; complete editor, advanced whiteboard objects/direct manipulation and fuzzy relocation of edited passages remain |
-| Knowledge team collaborates live | ✅ | Presence with who is editing, update and comment notices, and live editing of published pages and blog posts: a shared revisioned document merges concurrent typing in the rich editor or source mode, keeps carets in place, shows a named caret where each co-editor is working, keeps unsent typing on the device through offline reloads and merges it on reconnect, drafts valid merged text and restarts on publish; durable page tasks, inline discussions and watch notifications are available |
-| Knowledge user diagrams or models data | Partial | ✅ Creator-private database containers and template-backed whiteboards can be placed in the content tree and assigned built-in data classifications; databases provide typed text/number/date/checkbox/select schemas, validated editable records and reusable permission-aware filter/sort views; whiteboards provide positioned sticky/text/shape objects, directional solid/dashed connectors and an accessible visual/list editor; direct manipulation, advanced objects, rich embeds and exports remain |
-| Space manager governs knowledge | Partial | ✅ Public/private space creation, role-shaped operation discovery, built-in/custom permission bundles, direct user/group/access-class assignment add/remove flows, runtime content permission enforcement, and scoped `administer/space` control of assignments, labels, default classification and versioned app properties, and organization-defined classification levels that site administrators create, publish and apply to pages, browser space templates that pages start from, space view analytics over 7, 30 or 90 days, space archive and restore, and HTML export of the pages and blog posts an administrator can see, HTML space exports that carry page and blog post attachments, and the site's or a space's custom look and feel applied to wiki pages; space import remains |
-| Site admin manages people, access and Jira settings | Partial | ✅ Organization/site/product foundation, DNS domain claims, policy create/scope/enable/delete, directory group lifecycle, managed profiles, product/invitation access, durable email, directory lifecycle, encrypted OIDC provider registration/rotation/deletion, provider availability, credential revocation, searchable audit and event APIs, private saved-filter discovery and ownership recovery, REST-coherent Jira feature controls, time tracking, navigator columns, advanced properties and a user-visible dismissible announcement journey, global project-category create/edit/delete and coherent assignment, responsive permission-scheme creation/editing/grants/project assignment, notification-scheme creation/event recipients/project assignment with verified recipient inbox delivery, issue-security scheme/level/holder administration with project assignment and verified per-user work-item visibility, and screen composition from tabs and ordered fields against a validated field catalog, wrapped in screen schemes and work type screen schemes that a project is assigned so the create and edit forms follow the chosen screen, field configurations whose required/hidden/help-text rules the create form and the command path both enforce, and custom field contexts that scope a field to projects and work types, give it a starting value, and hold a select field's ordered options, and global permission grants to product audiences or groups that the bulk-change and user-picker paths enforce, verified by a member losing and regaining bulk change, plus Jira-numbered built-in issue events, personal My changes/Autowatch notification preferences and @mention notifications from descriptions and comments, emailed as HTML with a plain-text alternative, a notification helper that explains who is notified, and a permission helper that explains who holds a project permission, organization IP allowlists enforced in front of Jira Software, Jira Service Management and Confluence while administration and sign-in stay reachable, app time tracking providers that administrators list and select, and the applied Jira look and feel (title shown on request, logo, favicons, navigation colours and contrast-checked hero buttons); remaining enterprise identity journeys remain |
-| Site admin manages apps | Partial | ✅ Encrypted native or standard Connect descriptor installation and reinstallation, translated scopes, stable non-human principals with HMAC or Connect JWT/QSH scope-enforced Jira/Agile/JSM/Confluence API access, explicit descriptor format/scope/module/callback review, active/suspended/uninstalled lifecycle controls, organization audit, isolated storage, host-rendered or sandboxed signed remote global navigation and Connect web items, administrator-only signed site pages, signed project pages with selected-project context, ordered project navigation and signed descriptor icons, administrator-only project settings tabs, categorized project report modules beside DORA, standard Connect dashboard items with catalog metadata, configuration, refresh and signed item context, Connect conditions on every module family evaluated for the person, project and work item, Connect's JavaScript API, authenticated signed report/dashboard thumbnails, static and dynamically registered issue panels, ordered signed issue activity tabs, persisted issue quick-add content with signed remote panels, collapsible standard Connect issue contexts and legacy glance fallback with signed icons, issue/project context and property-driven badge/lozenge/icon status, tenant-scoped scalar issue fields that join create/edit/view and REST/JQL journeys, custom-dashboard gadgets and wiki byline items, Jira/Confluence-path dynamic-module register/list/remove for panels, navigation items, scalar fields and keyed webhooks, plus descriptor-declared outbound lifecycle callbacks with Connect JWT, JQL-filtered delivery, four schedule intervals, durable recovery and recent outcome inspection; remaining Connect module families including configure pages, dynamic module types and webhook options, Connect conditions beyond signed-in, administrator, project/issue permission and assignment/reporter checks, issue-content presence conditions/native rendering, further web-item locations, select/read-only field options, Forge-hosted compute, workflow modules and upgrade migrations remain |
-
-## Required persona journeys
-
-### Contributor
-
-1. Choose an identity provider and enter the correct site and product context.
-2. Find or create work without losing project context.
-3. Refine requirements with rich content, relationships, files and discussion.
-4. Plan work in a backlog and sprint, then move it through an enforced workflow.
-5. Inspect code, build, deployment, incident and release evidence.
-6. Continue safe work offline and reconcile it on reconnect.
-
-### Product or project manager
-
-1. Create a project from a real template and configure its work model and access.
-2. Plan hierarchy, teams, capacity, dependencies, dates and alternative scenarios.
-3. Govern versions, readiness, approvals and release communication.
-4. Build, share, subscribe to and export dashboards and reports.
-5. Drill every aggregate into the issues and events that produced it.
-
-### Agile coach
-
-1. Configure Scrum or Kanban policy, estimation, columns, WIP and parallel work.
-2. Inspect sprint report, velocity, burnup, burndown, cumulative flow and control
-   charts with stable historical calculations.
-3. Segment measures by team, type, priority, component, release and saved filter.
-4. Open the exact scope changes, blocked intervals and transitions behind a point.
-
-### Service customer
-
-1. Search a branded help center and linked knowledge base.
-2. Submit a request from a request-type-specific form, including conditional
-   fields where configured.
-3. See customer-visible status and SLA information, add comments and files, add
-   participants, approve or decline, and manage notifications.
-4. Reopen where allowed and leave feedback when the request completes.
-
-### Service agent and manager
-
-1. Work prioritized queues with bulk assignment and impending-breach indicators.
-2. Resolve requests using public replies and private team collaboration.
-3. Coordinate incidents, problems, changes, approvals, assets and knowledge.
-4. Configure portals, request types, forms, calendars, queues, SLAs and automation.
-5. Diagnose service volume, response, resolution, breach and satisfaction trends.
-
-### Knowledge collaborator and space manager
-
-1. Create pages, blogs, live documents, whiteboards, diagrams and databases.
-2. Organize content into a navigable tree and move/copy it safely.
-3. Co-edit, comment inline, mention, assign tasks, watch, like and share.
-4. Embed work and service objects with permission-safe Smart Links.
-5. Govern roles, restrictions, templates, versions, archive and retention.
-6. Search using UI filters and CQL, then import or export supported formats.
-
-### Project, site and organization administrator
-
-1. Manage organizations, sites, products, directories, users, groups and roles.
-2. Configure authentication providers, domains, access policy, sessions and tokens.
-3. Configure permission, notification, security, field, screen, work-type and
-   workflow schemes with impact previews and audit records. The current status
-   directory covers global and project-scoped status creation, classification,
-   ownership labels, editing, live usage counts, protected built-ins, and safe
-   deletion. Workflow-scheme journeys now
-   cover defaults, issue-type overrides, draft publishing, project usage, and
-   explicit replacement choices that migrate incompatible statuses as part of
-   the project assignment transaction.
-4. Install and govern apps, scopes, callbacks, storage and scheduled work.
-5. Archive projects, restore retained work, recover projects from the 60-day
-   trash window, and explicitly confirm permanent deletion. This journey is
-   implemented through project settings and the Active, Archived, and Trash
-   directories, with REST visibility verified after every transition.
-6. Export data, set retention, inspect audit events and perform recovery actions.
-
-## Interaction system
-
-The existing shell remains compact and Jira-like. It gains a stable product
-switcher for Work, Service, Knowledge, Insights, and Admin. Context navigation
-changes by product while global search, create, alerts, help, and account controls
-remain stable.
-
-The visual signature is an operating timeline linking work, code, build,
-deployment, incident, recovery, and release evidence. Reports use accessible SVG
-and equivalent tables. The first DORA report uses immutable delivery updates
-and visible issue history; see [REPORTS.md](REPORTS.md). Diagrams expose keyboard editing and a maintained text
-description. Dense lists keep sorting and filtering visible rather than hiding
-routine work inside cards or modal layers.
+Evidence names refer to `e2e/<name>.spec.ts`. `wire-ids` and `accessibility` apply across all journeys; see [WIRE_IDS.md](WIRE_IDS.md) and [ACCESSIBILITY.md](ACCESSIBILITY.md).
 
 ## Quality gate for every journey
 
-- The browser test starts from the persona's entry point and finishes at their
-  observable outcome.
-- API tests exercise equivalent state changes through the shared command path.
-- Authorization is tested with an allowed user and a plausible denied user.
-- Keyboard, focus, names, contrast, dark mode, reduced motion, and 320px reflow
-  remain usable.
-- Offline and two-client convergence are tested whenever the journey promises
-  local-first behavior.
-- Errors preserve entered data and tell the user which action can fix the problem.
-- The UI contains no enabled control whose behavior is a placeholder.
+- The browser test starts where the persona starts and ends at the result they can see.
+- API tests make the same state changes through the shared command path.
+- Authorization is tested with one user who is allowed and one plausible user who is denied.
+- The journey stays usable with keyboard only, and checks focus, accessible names, contrast, dark mode, reduced motion, and reflow at 320 px.
+- Journeys that promise local-first behavior are tested offline and with two clients converging.
+- Errors keep what the user entered and say which action fixes the problem.
+- No enabled control is a placeholder.

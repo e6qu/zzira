@@ -1,39 +1,66 @@
 # Project components
 
-Updated: 2026-09-09
+Components group a project's work items. Each has a stable numeric ID, a name
+unique within its project (case-insensitive), a description, an optional lead
+and a default-assignee mode (project default, project lead, component lead or
+unassigned). Part of the [Jira platform](JIRA_PLATFORM.md); see
+[CLOUD_PARITY.md](CLOUD_PARITY.md) for status.
 
-ZZIRA stores Jira project components as project-scoped records with stable
-numeric IDs, names, descriptions, optional active workspace leads, and Jira's
-project-default, project-lead, component-lead, or unassigned default-assignee
-mode. Names are unique within a project without regard to case.
+## API
 
-The eight pinned Jira Cloud Platform component operations support global and
-project collections, name search and ordering, offset pagination, create,
-read, partial update, deletion, move-on-delete, and related-work-item counts.
-Responses include the effective assignee and assignment validity. All writes
-require workspace administration and emit both an ordered product action and
-an organization audit event when the workspace belongs to a site.
+| Route | Behavior |
+|---|---|
+| `GET /rest/api/3/component` | Components across browsable projects; `projectIds`, `query`, `orderBy`, offset paging |
+| `POST /rest/api/3/component` | Create |
+| `GET/PUT/DELETE /rest/api/3/component/{id}` | Read, partial update, delete (`moveIssuesTo` reassigns work items) |
+| `GET /rest/api/3/component/{id}/relatedIssueCounts` | Work items using the component |
+| `GET /rest/api/3/project/{projectIdOrKey}/components` | All of a project's components |
+| `GET /rest/api/3/project/{projectIdOrKey}/component` | The same, paged, with search and ordering |
 
-The `components` issue field accepts Jira arrays of component IDs or names on
-create and update. The command path validates project ownership, removes
-duplicates, and stores canonical snapshots. Component renames refresh every
-assigned work item in the same transaction. Deleting a component can remove it
-from assigned work or replace it with another component in the same project;
-both paths emit updated issue snapshots for sync clients.
+Responses include the effective assignee and whether that assignment is valid.
+`componentSource` accepts only `jira`.
 
-Create and edit metadata expose the same project component choices to REST and
-the browser create dialog. When the caller leaves the assignee at its default,
-the first selected component decides the assignee before the project default is
-considered. Search supports singular and plural component field aliases,
-multi-value empty/negation behavior, and
-`component in componentsLeadByUser([user])` against the canonical lead.
+## Behavior
 
-Project administrators manage components on the project settings page. The
-browser journey creates a component, assigns its lead and default, edits it,
-checks the Jira REST representation, and deletes it. The REST integration test
-also proves canonical issue values, component-led assignment, paging, counts,
-JQL, rename propagation, move-on-delete, and removal.
+- The `components` field takes arrays of component IDs or names on create
+  and update. The command checks the project, drops duplicates and stores
+  snapshots.
+- A rename refreshes every assigned work item in the same transaction.
+  Deleting either removes the component from its work items or replaces it
+  with another component of the same project; both emit updated work item
+  snapshots for sync clients.
+- When the assignee is left at its default, the first selected component's
+  default assignee applies before the project default.
+- Every write records a product action and, when the workspace belongs to a
+  site, an organization audit event.
+- JQL: `component`/`components`, multi-value empty and negation semantics, and
+  `component in componentsLeadByUser([user])`. See [JQL.md](JQL.md).
 
-Current gaps are exact per-project Browse Projects and Administer Projects
-permission-scheme enforcement, anonymous reads, Compass component sources,
-archived/deleted Compass representations, and their edge-specific errors.
+## Permissions
+
+- Reads need Browse projects on the component's project; the read routes are
+  open to anonymous callers when anonymous access allows it (see
+  [ANONYMOUS_ACCESS.md](ANONYMOUS_ACCESS.md)).
+- Writes need Administer projects on the project (Administer Jira implies it).
+
+## UI
+
+Project settings (`/projects/{key}/settings`) list components; project
+administrators create, edit (lead, default assignee) and delete them. Create
+and edit metadata offer the same choices to REST and the create dialog.
+
+## Gaps
+
+See [PLAN.md](../PLAN.md).
+
+- Compass components (`componentSource=compass`, archived and deleted Compass
+  representations) are not supported.
+
+## Tests
+
+`internal/api3/components_test.go`, `e2e/projects.spec.ts`.
+
+## See also
+
+[PROJECT_GOVERNANCE.md](PROJECT_GOVERNANCE.md) ·
+[PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md) · [ISSUE_METADATA.md](ISSUE_METADATA.md)
