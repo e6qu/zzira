@@ -1041,7 +1041,7 @@ func (h *Handler) LoginForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/auth/shauth", http.StatusSeeOther)
 		return
 	}
-	writePage(w, "page_login", loginPageData{Providers: providers})
+	writePage(w, "page_login", loginPageData{Providers: providers, Password: !authn.LocalCredentialsRefused(r.Context())})
 }
 
 func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
@@ -1052,7 +1052,7 @@ func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := authn.Login(r.Context(), h.Store, r.PostFormValue("email"), r.PostFormValue("password"))
 	if err != nil {
-		writePageStatus(w, "page_login", loginPageData{Error: "Incorrect email or password.", Providers: h.loginProviders()}, http.StatusUnauthorized)
+		writePageStatus(w, "page_login", loginPageData{Error: "Incorrect email or password.", Providers: h.loginProviders(), Password: !authn.LocalCredentialsRefused(r.Context())}, http.StatusUnauthorized)
 		return
 	}
 	authn.SetSessionCookie(w, token)
@@ -1112,10 +1112,17 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 type loginPageData struct {
 	Error     string
 	Providers []LoginProvider
+	// Password says whether this installation still accepts the credentials
+	// it issued itself. With ZZIRA_LOCAL_CREDENTIALS=off it does not, so the
+	// page offers no password box: every answer to it would be a 401.
+	Password bool
 }
 
 type signedOutData struct {
 	Providers []LoginProvider
+	// Password has the same meaning as on loginPageData: without it the
+	// "Use password" link leads to a form that cannot sign anyone in.
+	Password bool
 }
 
 func (h *Handler) loginProviders() []LoginProvider {
@@ -1131,7 +1138,7 @@ func (h *Handler) loginProviders() []LoginProvider {
 func (h *Handler) SignedOut(w http.ResponseWriter, r *http.Request) {
 	noStoreAuthResponse(w)
 	authn.ClearSessionCookie(w)
-	writePage(w, "page_signed_out", signedOutData{Providers: h.loginProviders()})
+	writePage(w, "page_signed_out", signedOutData{Providers: h.loginProviders(), Password: !authn.LocalCredentialsRefused(r.Context())})
 }
 
 // OIDCLogoutComplete is the registered post-logout redirect bridge Shauth

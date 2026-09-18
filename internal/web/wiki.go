@@ -210,9 +210,22 @@ func (h *Handler) WikiHome(w http.ResponseWriter, r *http.Request) {
 		}
 		status, data.Error = wikiWebError(err)
 	}
-	data.Spaces, err = h.Store.WikiSpaces(r.Context(), ws, user.ID)
+	// The directory lists one status at a time, the way Confluence keeps
+	// archived spaces out of the general list and in an Archived Spaces list of
+	// their own; the trash is a site administrator's list.
+	spaceStatus := r.URL.Query().Get("status")
+	if spaceStatus == "" {
+		spaceStatus = "current"
+	}
+	if !store.WikiSpaceStatusKnown(spaceStatus) {
+		http.Error(w, "Unknown space status.", 400)
+		return
+	}
+	data.Status = spaceStatus
+	data.Spaces, err = h.Store.WikiSpacesWithStatus(r.Context(), ws, user.ID, spaceStatus)
 	if err != nil {
-		http.Error(w, "Could not load wiki spaces.", 500)
+		code, msg := wikiWebError(err)
+		http.Error(w, msg, code)
 		return
 	}
 	data.Starred, err = h.Store.WikiFavouritePages(r.Context(), ws, user.ID)

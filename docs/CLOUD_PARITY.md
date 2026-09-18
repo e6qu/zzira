@@ -43,7 +43,7 @@ errors.
 
 | Surface | Built | Remaining |
 |---|---|---|
-| Identity | Password, sessions, API tokens; OIDC (Google, Entra, Atlassian 3LO, custom providers with encrypted rotation); identity linking; back-channel logout; login audit ([shauth-sso.md](shauth-sso.md)) | [Plan 6](../PLAN.md#6-enterprise-identity): SAML, SCIM, authentication policies, managed accounts, self-service tokens |
+| Identity | Password, sessions, API tokens; OIDC (Google, Entra, Atlassian 3LO, custom providers with encrypted rotation); identity linking; back-channel logout; login audit; an instance that accepts only its identity provider's sessions ([shauth-sso.md](shauth-sso.md)) | [Plan 6](../PLAN.md#6-enterprise-identity): SAML, SCIM, authentication policies, managed accounts, self-service tokens |
 | Organization administration | All 47 Organizations operations; directories, groups, domains (DNS verification), IP allowlists, managed profiles, audit, product plans ([ADMIN.md](ADMIN.md)) | [Plan 6](../PLAN.md#6-enterprise-identity) |
 | Permissions | Permission, notification and issue security schemes enforced in the command layer behind every work item change, including board drags, navigator bulk actions and service agent actions; project roles; global permissions; anonymous REST reads ([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)) | Everything Jira's permission model covers is built |
 | Projects | Create and edit for all project types; categories, properties, features, sender, templates; archive, trash, restore, delete; components; versions ([PROJECT_GOVERNANCE.md](PROJECT_GOVERNANCE.md), [PROJECT_LIFECYCLE.md](PROJECT_LIFECYCLE.md)) | [Plan 1](../PLAN.md#1-work-item-model): sender use, template refs |

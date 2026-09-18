@@ -168,6 +168,7 @@ Remaining work is tracked in [PLAN.md](../PLAN.md).
 ## See also
 
 - [FILTERS.md](FILTERS.md): saved filters.
+- [DEMO_DATA.md](DEMO_DATA.md): a demo scenario declares dashboards and the gadgets on them, and `-mode=demo` builds them.
 - [APPS.md](APPS.md): app modules.
 - Code: `internal/web/custom_dashboards.go`, `internal/web/dashboard_report_gadgets.go`, `internal/web/dashboard_stream_gadgets.go`, `internal/web/dashboard_wallboard.go`, `internal/store/dashboard_*.go`.
 - Browser tests: `e2e/dashboards.spec.ts`, `e2e/dashboard_reports.spec.ts`, `e2e/dashboard_subscriptions.spec.ts`, `e2e/v6.spec.ts`.

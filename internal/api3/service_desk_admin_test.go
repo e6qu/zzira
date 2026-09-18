@@ -110,8 +110,45 @@ func TestServiceDeskAdministrators(t *testing.T) {
 	if err = json.Unmarshal([]byte(callAs(deskAdminID, http.MethodPost, typesPath, newType, http.StatusOK)), &created); err != nil || created.ID == "" {
 		t.Fatalf("request type created by the desk administrator = %+v err=%v", created, err)
 	}
+	// Jira answers 404 for a service desk or an issue type that is not there.
+	callAs(deskAdminID, http.MethodPost, typesPath, `{"name":"No such work type","issueTypeId":"99999999"}`, http.StatusNotFound)
+	callAs(siteAdminID, http.MethodPost, "/rest/servicedeskapi/servicedesk/999999999/requesttype", newType, http.StatusNotFound)
+
+	// Jira leaves a request type created over REST in no group, which keeps it
+	// off the customer portal until an administrator puts it in one. The
+	// administrator arranges the groups, and the listing follows that order.
+	if bean := callAs(deskAdminID, http.MethodGet, typesPath+"/"+created.ID, "", http.StatusOK); !strings.Contains(bean, `"groupIds":[]`) {
+		t.Fatalf("a request type created over REST = %s", bean)
+	}
+	group, err := h.Commands.CreateServiceRequestTypeGroup(ctx, deskAdminID, workspaceID, serviceDeskID, "Desk admin group")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = h.Commands.CreateServiceRequestTypeGroup(ctx, memberID, workspaceID, serviceDeskID, "Member group"); err == nil {
+		t.Fatal("a plain member added a request type group")
+	}
+	if err = h.Commands.SetServiceRequestTypeGroups(ctx, deskAdminID, workspaceID, serviceDeskID, created.ID, []string{group.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if grouped := callAs(deskAdminID, http.MethodGet, typesPath+"?groupId="+group.ID, "", http.StatusOK); !strings.Contains(grouped, `"id":"`+created.ID+`"`) {
+		t.Fatalf("the group's request types = %s", grouped)
+	}
+	groupsPath := "/rest/servicedeskapi/servicedesk/" + serviceDeskID + "/requesttypegroup"
+	listed := callAs(deskAdminID, http.MethodGet, groupsPath, "", http.StatusOK)
+	if !strings.Contains(listed, `"name":"Desk admin group"`) || strings.Index(listed, `"Help and support"`) > strings.Index(listed, `"Desk admin group"`) {
+		t.Fatalf("request type groups = %s", listed)
+	}
+	if err = h.Commands.MoveServiceRequestTypeGroup(ctx, deskAdminID, workspaceID, serviceDeskID, group.ID, "up"); err != nil {
+		t.Fatal(err)
+	}
+	if moved := callAs(deskAdminID, http.MethodGet, groupsPath, "", http.StatusOK); strings.Index(moved, `"Desk admin group"`) > strings.Index(moved, `"Changes"`) {
+		t.Fatalf("request type groups after the move = %s", moved)
+	}
 	callAs(otherAdminID, http.MethodDelete, typesPath+"/"+created.ID, "", http.StatusForbidden)
 	callAs(deskAdminID, http.MethodDelete, typesPath+"/"+created.ID, "", http.StatusNoContent)
+	if err = h.Commands.DeleteServiceRequestTypeGroup(ctx, deskAdminID, workspaceID, serviceDeskID, group.ID); err != nil {
+		t.Fatal(err)
+	}
 
 	// Forms and queues, through the command layer.
 	form := []models.ServiceRequestTypeField{{ID: "summary", Required: true}, {ID: "description"}}

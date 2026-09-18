@@ -209,7 +209,41 @@ func (s *Store) WikiSpace(ctx context.Context, ws, user, id string) (*models.Wik
 	return scanWikiSpace(s.Pool.QueryRow(ctx, wikiSpaceSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND s.id::text=$3`, ws, user, id))
 }
 func (s *Store) WikiSpaces(ctx context.Context, ws, user string) ([]*models.WikiSpace, error) {
-	rows, err := s.Pool.Query(ctx, wikiSpaceSelect+` WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` ORDER BY s.id`, ws, user)
+	return s.wikiSpaces(ctx, ws, user, "")
+}
+
+// WikiSpacesWithStatus lists the spaces the reader can see in one status. The
+// space directory keeps them apart the way Confluence does: archived spaces
+// "won't appear in ... the general list of spaces in the Space Directory.
+// Instead, they'll appear in the Archived Spaces list." The trash is a site
+// administrator's list, because "once trashed, a space can only be restored or
+// permanently deleted by a Confluence admin".
+func (s *Store) WikiSpacesWithStatus(ctx context.Context, ws, user, status string) ([]*models.WikiSpace, error) {
+	if !WikiSpaceStatusKnown(status) {
+		return nil, fmt.Errorf("%w: a space status is current, archived or trashed", ErrWikiValidation)
+	}
+	if status == "trashed" {
+		// The trash is the whole site's, not the reader's: a site
+		// administrator acts on every space in it, including spaces they were
+		// never a member of.
+		admin, err := s.IsAdmin(ctx, ws, user)
+		if err != nil {
+			return nil, err
+		}
+		if !admin {
+			return nil, ErrProjectPermission
+		}
+		return s.wikiSpaceRows(ctx, `WHERE s.workspace_id=$1 AND s.status='trashed' ORDER BY s.id`, ws)
+	}
+	return s.wikiSpaces(ctx, ws, user, status)
+}
+
+func (s *Store) wikiSpaces(ctx context.Context, ws, user, status string) ([]*models.WikiSpace, error) {
+	return s.wikiSpaceRows(ctx, `WHERE s.workspace_id=$1 AND `+wikiSpaceVisible+` AND ($3='' OR s.status=$3) ORDER BY s.id`, ws, user, status)
+}
+
+func (s *Store) wikiSpaceRows(ctx context.Context, where string, args ...any) ([]*models.WikiSpace, error) {
+	rows, err := s.Pool.Query(ctx, wikiSpaceSelect+` `+where, args...)
 	if err != nil {
 		return nil, err
 	}

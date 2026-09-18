@@ -84,6 +84,15 @@ type ServiceRequestTypeGroup struct {
 	Position                int
 }
 
+// ServicePortalGroup is one request type group as the portal shows it: the
+// group and the request types it holds, in the order the desk's
+// administrators arranged them. A request type in no group is not shown on the
+// portal at all.
+type ServicePortalGroup struct {
+	Group        ServiceRequestTypeGroup
+	RequestTypes []ServiceRequestType
+}
+
 type ServiceRequestTypeField struct {
 	ID, RequestTypeID, Name, Type, Description, HelpText string
 	Required, Custom                                     bool

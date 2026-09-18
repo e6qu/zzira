@@ -41,7 +41,21 @@ a service desk with customers and satisfaction ratings, and the knowledge base
 the teams wrote. The people, their passwords and API tokens are written to
 `data/demo-credentials.json`. Everything it builds is declared in
 [demo/company.json](demo/company.json) — change it, run the mode again, and you
-have your own company: see [docs/DEMO_DATA.md](docs/DEMO_DATA.md).
+have your own company: a second run raises only what the scenario has gained
+and leaves the rest as it is.
+
+It builds into the workspace the instance serves — `-workspace`, else
+`WORKSPACE_SLUG`, else the scenario's own slug — so seeding a deployment lands
+where the server will show it: see [docs/DEMO_DATA.md](docs/DEMO_DATA.md).
+
+```bash
+WORKSPACE_SLUG=acme go run ./cmd/server -mode=demo
+```
+
+An instance published behind single sign-on should set
+`ZZIRA_LOCAL_CREDENTIALS=off` before it is seeded: the passwords and API tokens
+the demo mints are then not a way in, and only the identity provider's sessions
+are accepted ([docs/shauth-sso.md](docs/shauth-sso.md#single-sign-on-only)).
 
 With `make seed`, sign in as `demo@zzira.dev` / `demo1234`. The seeded API token
 is printed once; use it for Basic auth:

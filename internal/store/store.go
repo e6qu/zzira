@@ -309,6 +309,19 @@ func (s *Store) SessionUser(ctx context.Context, tokenHash string) (string, erro
 	return userID, err
 }
 
+// IdentityProviderSessionUser is SessionUser for an installation that accepts
+// only single sign-on: it resolves the session only when an identity provider
+// established it. A password session records no issuer, so one that was
+// created before the installation closed to local credentials is refused with
+// the same ErrNoRows an expired session gives.
+func (s *Store) IdentityProviderSessionUser(ctx context.Context, tokenHash string) (string, error) {
+	var userID string
+	err := s.Pool.QueryRow(ctx,
+		`SELECT s.user_id FROM sessions s JOIN users u ON u.id=s.user_id
+		 WHERE s.token_hash=$1 AND s.expires_at > now() AND u.active AND s.oidc_issuer IS NOT NULL`, tokenHash).Scan(&userID)
+	return userID, err
+}
+
 func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
 	_, err := s.Pool.Exec(ctx, `DELETE FROM sessions WHERE token_hash=$1`, tokenHash)
 	return err

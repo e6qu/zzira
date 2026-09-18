@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
 
@@ -204,12 +205,81 @@ func (h *Handler) WikiSpaceStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Choose to archive or restore the space.", http.StatusBadRequest)
 		return
 	}
+	// A space in the trash leaves it only through the trash, which is a site
+	// administrator's decision, so archiving does not reach into it.
+	if space.Status == "trashed" {
+		http.Error(w, "Restore this space from the trash before archiving it.", http.StatusBadRequest)
+		return
+	}
 	if _, err := h.Store.UpdateWikiSpace(r.Context(), ws, user.ID, space.Key, store.UpdateWikiSpaceInput{Status: &target}); err != nil {
 		status, msg := wikiWebError(err)
 		http.Error(w, msg, status)
 		return
 	}
 	redirectLocal(w, r, "/wiki/spaces/"+space.ID)
+}
+
+// WikiSpaceTrash is the browser's delete: Confluence sends a deleted space to
+// the trash rather than removing it, and its administrators may do so.
+func (h *Handler) WikiSpaceTrash(w http.ResponseWriter, r *http.Request) {
+	user, ws, space, ok := h.wikiSpaceLifecycleTarget(w, r)
+	if !ok {
+		return
+	}
+	if _, err := h.Store.TrashWikiSpace(r.Context(), ws, user.ID, space.Key); err != nil {
+		status, msg := wikiWebError(err)
+		http.Error(w, msg, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki")
+}
+
+// WikiSpaceRestore brings a space back from the trash, which only a site
+// administrator may do.
+func (h *Handler) WikiSpaceRestore(w http.ResponseWriter, r *http.Request) {
+	user, ws, space, ok := h.wikiSpaceLifecycleTarget(w, r)
+	if !ok {
+		return
+	}
+	if _, err := h.Store.RestoreWikiSpace(r.Context(), ws, user.ID, space.Key); err != nil {
+		status, msg := wikiWebError(err)
+		http.Error(w, msg, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID)
+}
+
+// WikiSpacePurge permanently deletes a space that is already in the trash. It
+// runs as the same long task the API's delete queues, so the browser returns to
+// the trash while the content goes.
+func (h *Handler) WikiSpacePurge(w http.ResponseWriter, r *http.Request) {
+	user, ws, space, ok := h.wikiSpaceLifecycleTarget(w, r)
+	if !ok {
+		return
+	}
+	if _, err := h.Store.PurgeWikiSpace(r.Context(), ws, user.ID, space.Key); err != nil {
+		status, msg := wikiWebError(err)
+		http.Error(w, msg, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki?status=trashed")
+}
+
+// wikiSpaceLifecycleTarget resolves the space a lifecycle form names. The
+// permission belongs to the store call that follows, which is where Confluence
+// puts a different rule on trashing a space and on acting on the trash.
+func (h *Handler) wikiSpaceLifecycleTarget(w http.ResponseWriter, r *http.Request) (*models.User, string, *models.WikiSpace, bool) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return nil, "", nil, false
+	}
+	space, err := h.Store.WikiSpaceForLifecycle(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, msg := wikiWebError(err)
+		http.Error(w, msg, status)
+		return nil, "", nil, false
+	}
+	return user, ws, space, true
 }
 
 // WikiSpaceExportCreate queues an HTML export of a space for its administrator.

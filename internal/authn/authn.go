@@ -104,6 +104,9 @@ func ClearSessionCookie(w http.ResponseWriter) {
 
 // Login creates a session and returns the cookie token.
 func Login(ctx context.Context, st *store.Store, email, password string) (string, error) {
+	if LocalCredentialsRefused(ctx) {
+		return "", ErrUnauthorized
+	}
 	id, hash, _, err := st.UserByEmail(ctx, email)
 	if err != nil {
 		return "", ErrUnauthorized
@@ -178,6 +181,45 @@ func Anonymous(ctx context.Context) bool {
 	return anonymous
 }
 
+type localCredentialsContextKey struct{}
+
+// RefuseLocalCredentials closes an installation to every credential it issued
+// itself -- a password and an API token -- so the only way in is a session an
+// identity provider established.
+//
+// It is the instance's own configuration, not a site setting the REST API
+// exposes: Jira's public surface is unchanged either way, and a caller
+// refused here gets the same 401 it gets for a wrong password. An
+// installation published on the internet behind single sign-on turns it on,
+// because seeding a demo mints a password and an API token for every person
+// in the scenario, and those would otherwise be working non-SSO logins past
+// the provider. Leaving it off keeps password sign-in and API tokens, which
+// is what a local or private installation wants.
+//
+// It is one middleware over the whole server rather than a field on a
+// handler because Identify is reached from api3, agile, confluence, admin,
+// automation, syncapi and web, and the browser's own password form calls
+// Login directly; a field on any one of those would leave the others open.
+func RefuseLocalCredentials(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(WithoutLocalCredentials(r.Context())))
+	})
+}
+
+// WithoutLocalCredentials marks a request on an installation that accepts
+// only its identity provider's sessions.
+func WithoutLocalCredentials(ctx context.Context) context.Context {
+	return context.WithValue(ctx, localCredentialsContextKey{}, true)
+}
+
+// LocalCredentialsRefused reports whether this installation refuses the
+// credentials it issued itself. Sign-in pages read it so they do not offer a
+// password box that can only ever be answered with a 401.
+func LocalCredentialsRefused(ctx context.Context) bool {
+	refused, _ := ctx.Value(localCredentialsContextKey{}).(bool)
+	return refused
+}
+
 // PresentsCredentials reports whether a request carries any credential: an
 // authenticated app principal, an Authorization header or a session cookie.
 // A request presenting a credential that fails to verify is unauthorized,
@@ -208,7 +250,7 @@ func Identify(ctx context.Context, st *store.Store, r *http.Request) (string, er
 		return principalID, nil
 	}
 	if user, pass, ok := r.BasicAuth(); ok {
-		if i := strings.IndexByte(user, '@'); i > 0 { // Jira-style: email + API token
+		if i := strings.IndexByte(user, '@'); i > 0 && !LocalCredentialsRefused(ctx) { // Jira-style: email + API token
 			userID, err := st.UserByAPIToken(ctx, hashToken(pass))
 			if err == nil {
 				if id, _, _, e := st.UserByEmail(ctx, user); e == nil && id == userID {
@@ -225,6 +267,12 @@ func Identify(ctx context.Context, st *store.Store, r *http.Request) (string, er
 	if err != nil || c.Value == "" {
 		return "", ErrUnauthorized
 	}
+	if LocalCredentialsRefused(ctx) {
+		// A session minted from a password before the installation closed to
+		// local credentials is one of those credentials too, so only a
+		// session an identity provider established is still a way in.
+		return st.IdentityProviderSessionUser(ctx, hashToken(c.Value))
+	}
 	return st.SessionUser(ctx, hashToken(c.Value))
 }
 
@@ -232,6 +280,9 @@ func Identify(ctx context.Context, st *store.Store, r *http.Request) (string, er
 // site APIs commonly use email/token Basic authentication, while Atlassian's
 // organization administration API presents an admin API key as a bearer token.
 func IdentifyBearer(ctx context.Context, st *store.Store, r *http.Request) (string, error) {
+	if LocalCredentialsRefused(ctx) {
+		return "", ErrUnauthorized
+	}
 	parts := strings.Fields(r.Header.Get("Authorization"))
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" {
 		return "", ErrUnauthorized

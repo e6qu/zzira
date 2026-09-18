@@ -289,9 +289,10 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/space_lifecycle_test.go",
+        "internal/store/wiki_space_trash_test.go",
         "docs/SPACE_LIFECYCLE.md"
       ],
-      "notes": "Deleting is tested end to end: it answers 202 with a long task, the task is reported by the long task read, and the space's content goes with it."
+      "notes": "Deleting is tested end to end: it answers 202 with a long task, the task is reported by the long task read, and the space's content goes with it. It removes the space outright, as the operation's own description requires, without sending it to the trash; the browser's delete is the one that uses the trash."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/space/{spaceKey}/label",
@@ -496,9 +497,10 @@
         "internal/store/wiki_search.go",
         "internal/confluence/search.go",
         "internal/confluence/search_test.go",
-        "docs/CQL_SEARCH.md"
+        "docs/CQL_SEARCH.md",
+        "internal/store/wiki_space_trash_test.go"
       ],
-      "notes": "The same CQL engine returning content beans rather than search results, restricted to content so a space is never a result however the query is written."
+      "notes": "The same CQL engine returning content beans rather than search results, restricted to content so a space is never a result however the query is written. Content in a space that is in the trash is never a result, whatever the query or the archived-spaces flag asks for."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/child/attachment/{attachmentId}/download",
@@ -861,9 +863,10 @@
         "internal/store/wiki_search.go",
         "internal/confluence/search.go",
         "internal/confluence/search_test.go",
-        "docs/CQL_SEARCH.md"
+        "docs/CQL_SEARCH.md",
+        "internal/store/wiki_space_trash_test.go"
       ],
-      "notes": "CQL search across pages, blog posts, comments, attachments and spaces with 18 fields, AND/OR/NOT and brackets, IN and NOT IN, currentUser/currentSpace/favouriteSpaces and the relative date functions, ORDER BY, cqlcontext scoping, excerpt strategies and cursor paging; every branch carries the reader's own visibility rules, so results and totals exclude what they may not open."
+      "notes": "CQL search across pages, blog posts, comments, attachments and spaces with 18 fields, AND/OR/NOT and brackets, IN and NOT IN, currentUser/currentSpace/favouriteSpaces and the relative date functions, ORDER BY, cqlcontext scoping, excerpt strategies and cursor paging; every branch carries the reader's own visibility rules, so results and totals exclude what they may not open. Content in a space that is in the trash is never a result, whatever the query or the archived-spaces flag asks for."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/search/user",
@@ -1667,9 +1670,10 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/space_lifecycle_test.go",
+        "internal/store/wiki_space_trash_test.go",
         "docs/SPACE_LIFECYCLE.md"
       ],
-      "notes": "Updating name, description, homepage, type and status is tested, including the refused homepage outside the space, the refused status and type, the 404 for an unknown space and that it is administration."
+      "notes": "Updating name, description, homepage, type and status is tested, including the refused homepage outside the space, the refused status and type, the 404 for an unknown space and that it is administration. Setting the status to archived or trashed has the effects the browser's archive and trash have: the space leaves the space directory's general list and, for a trashed space, every search."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/space/{spaceKey}/settings",
@@ -5248,10 +5252,12 @@
         "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
+        "internal/commands/service_request_types.go",
+        "internal/commands/service_request_types_test.go",
         "internal/store/service.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Deletes a request type for service desk administrators (site administrators or administrators of the desk's project) and removes it from the customer requests that used it, which remain without a request type, in one transaction with an audit event naming how many requests it touched; unknown desks or request types answer 404 and other callers 403."
+      "notes": "Deletes a request type for service desk administrators (site administrators or administrators of the desk's project) through the command layer, removing it from the customer requests that used it, which remain without a request type, and from the portal groups it was in, in one transaction with an audit event naming how many requests it touched; unknown desks or request types answer 404 and other callers 403."
     },
     {
       "operationId": "jira-service-management:DELETE:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}/property/{propertyKey}",
@@ -5768,25 +5774,29 @@
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_admin_test.go",
         "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
+        "internal/store/service_request_types.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Searches and pages request types within one service desk by searchQuery and groupId; a search leaves out request types in no group unless includeHiddenRequestTypesInSearch is true, and restrictionStatus OPEN keeps every request type while RESTRICTED keeps none."
+      "notes": "Searches and pages request types within one service desk by searchQuery and groupId, reading the groups an administrator put each request type in; a search leaves out request types in no group unless includeHiddenRequestTypesInSearch is true, and restrictionStatus OPEN keeps every request type while RESTRICTED keeps none."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}",
       "status": "partial",
       "evidence": [
+        "internal/api3/service_desk_admin_test.go",
         "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
         "internal/store/service.go",
+        "internal/store/service_request_types.go",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Returns a request type with portal, group, issue type and help metadata, its headset icon (a SD_REQTYPE universal avatar with 16, 24, 32 and 48 pixel URLs that serve the image), whether the caller can raise requests with it, and, with expand=field, its form fields and the caller's form permissions; restriction policy is OPEN for every zzira request type."
+      "notes": "Returns a request type with portal, group, issue type and help metadata, its headset icon (a SD_REQTYPE universal avatar with 16, 24, 32 and 48 pixel URLs that serve the image), whether the caller can raise requests with it, and, with expand=field, its form fields and the caller's form permissions; groupIds lists the portal groups it was put in, in portal order, and is empty for a request type the portal does not show. Restriction policy is OPEN for every zzira request type."
     },
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/{requestTypeId}/field",
@@ -5828,12 +5838,15 @@
     {
       "operationId": "jira-service-management:GET:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttypegroup",
       "status": "partial",
-      "notes": "Returns ordered request type group IDs and names for an accessible service desk.",
+      "notes": "Returns the desk's customer request type groups with their names, in the arbitrary order its administrators arranged them in from the agent workspace, where groups are also added, renamed and deleted; a group that still holds request types is not deleted.",
       "evidence": [
+        "internal/api3/service_desk_admin_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service_knowledge.go",
-        "internal/store/service_knowledge.go",
-        "migrations/068_service_knowledge_assets.sql",
+        "internal/commands/service_request_types.go",
+        "internal/commands/service_request_types_test.go",
+        "internal/store/service_request_types.go",
+        "migrations/246_service_request_type_group_members.sql",
         "docs/SERVICE_MANAGEMENT.md"
       ]
     },
@@ -6108,10 +6121,15 @@
         "internal/api3/service_request_fields_test.go",
         "internal/api3/service_test.go",
         "internal/api3/service.go",
+        "internal/commands/service_request_types.go",
+        "internal/commands/service_request_types_test.go",
         "internal/store/service.go",
+        "internal/web/service_request_types.go",
+        "internal/web/service_request_types_test.go",
+        "docs/SERVICE_MANAGEMENT.md",
         "docs/CLOUD_PARITY.md"
       ],
-      "notes": "Creates a workspace-scoped request type backed by an existing Jira issue type for service desk administrators (site administrators or administrators of the desk's project), with Jira's headset icon; its portal form is edited in the agent workspace, where fields can be shown, required, hidden with presets and given help text."
+      "notes": "Creates a workspace-scoped request type backed by an existing Jira issue type for service desk administrators (site administrators or administrators of the desk's project), with Jira's headset icon, through the command layer and with an audit entry. As Jira does, it leaves the request type in no customer request type group, so it is not offered on the customer portal until an administrator puts it in one from the agent workspace, where its name, description, help text, groups, order and form fields are edited. A desk or issue type that does not exist answers 404, and an empty name 400."
     },
     {
       "operationId": "jira-service-management:POST:/rest/servicedeskapi/servicedesk/{serviceDeskId}/requesttype/permissions/check",

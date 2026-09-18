@@ -240,6 +240,10 @@ func (s *Store) EnqueueWikiSpaceDeletion(ctx context.Context, ws, actor, spaceKe
 	if err = tx.Commit(ctx); err != nil {
 		return APITask{}, err
 	}
+	return s.enqueueWikiSpaceDeletion(ctx, ws, actor, space)
+}
+
+func (s *Store) enqueueWikiSpaceDeletion(ctx context.Context, ws, actor string, space *models.WikiSpace) (APITask, error) {
 	task, err := queuedAPITask(ws, actor, "Delete space", apiTaskWikiDeleteSpace,
 		map[string]any{"spaceId": space.ID, "spaceKey": space.Key})
 	if err != nil {
@@ -249,6 +253,117 @@ func (s *Store) EnqueueWikiSpaceDeletion(ctx context.Context, ws, actor, spaceKe
 		return APITask{}, err
 	}
 	return task, nil
+}
+
+// setWikiSpaceStatus moves a space between the statuses Confluence gives a
+// space and records the change, so browsers and reports see it.
+func setWikiSpaceStatus(ctx context.Context, tx pgx.Tx, ws, actor, spaceID, status string) (*models.WikiSpace, error) {
+	if _, err := tx.Exec(ctx, `UPDATE wiki_spaces SET status=$2 WHERE id::text=$1`, spaceID, status); err != nil {
+		return nil, err
+	}
+	updated, err := scanWikiSpace(tx.QueryRow(ctx, wikiSpaceSelect+` WHERE s.id::text=$1`, spaceID))
+	if err != nil {
+		return nil, err
+	}
+	if err := wikiAction(ctx, tx, ws, actor, "wiki_space", spaceID, spaceID, updated); err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+// WikiSpaceForLifecycle resolves the space a lifecycle form names. A site
+// administrator reaches every space, including one in the trash they were never
+// a member of, because acting on the trash is theirs alone; everyone else
+// reaches only the spaces they can see.
+func (s *Store) WikiSpaceForLifecycle(ctx context.Context, ws, actor, id string) (*models.WikiSpace, error) {
+	admin, err := s.IsAdmin(ctx, ws, actor)
+	if err != nil {
+		return nil, err
+	}
+	if admin {
+		return scanWikiSpace(s.Pool.QueryRow(ctx, wikiSpaceSelect+` WHERE s.workspace_id=$1 AND s.id::text=$2`, ws, id))
+	}
+	return s.WikiSpace(ctx, ws, actor, id)
+}
+
+// TrashWikiSpace sends a space to the trash, which is what deleting a space in
+// Confluence does: "When you delete a space, it goes to trash rather than being
+// immediately removed", and "You must have space admin permissions to send a
+// space to the trash." Nothing in the space is removed.
+func (s *Store) TrashWikiSpace(ctx context.Context, ws, actor, spaceKey string) (*models.WikiSpace, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	space, err := lockSpaceForAdmin(ctx, tx, ws, actor, spaceKey)
+	if err != nil {
+		return nil, err
+	}
+	if space.Status == "trashed" {
+		return nil, fmt.Errorf("%w: the space is already in the trash", ErrWikiValidation)
+	}
+	updated, err := setWikiSpaceStatus(ctx, tx, ws, actor, space.ID, "trashed")
+	if err != nil {
+		return nil, err
+	}
+	return updated, tx.Commit(ctx)
+}
+
+// lockTrashedSpaceForSiteAdmin resolves a space in the trash for the only
+// people who may act on it: "Once trashed, a space can only be restored or
+// permanently deleted by a Confluence admin."
+func lockTrashedSpaceForSiteAdmin(ctx context.Context, tx pgx.Tx, ws, actor, spaceKey string) (*models.WikiSpace, error) {
+	space, err := scanWikiSpace(tx.QueryRow(ctx, wikiSpaceSelect+` WHERE s.workspace_id=$1 AND s.key=$2 FOR UPDATE OF s`, ws, spaceKey))
+	if err != nil {
+		return nil, err
+	}
+	if err = projectAdmin(ctx, tx, ws, actor); err != nil {
+		return nil, err
+	}
+	if space.Status != "trashed" {
+		return nil, fmt.Errorf("%w: only a space in the trash can be restored or permanently deleted", ErrWikiValidation)
+	}
+	return space, nil
+}
+
+// RestoreWikiSpace takes a space back out of the trash, which "will immediately
+// return the space and all of its content to Confluence".
+func (s *Store) RestoreWikiSpace(ctx context.Context, ws, actor, spaceKey string) (*models.WikiSpace, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	space, err := lockTrashedSpaceForSiteAdmin(ctx, tx, ws, actor, spaceKey)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := setWikiSpaceStatus(ctx, tx, ws, actor, space.ID, "current")
+	if err != nil {
+		return nil, err
+	}
+	return updated, tx.Commit(ctx)
+}
+
+// PurgeWikiSpace permanently deletes a space that is already in the trash.
+// Confluence warns that "Permanently deleting a trashed space (and all its
+// content) cannot be undone", and it takes the same long running task the API's
+// delete uses, because a space can hold a great deal of content.
+func (s *Store) PurgeWikiSpace(ctx context.Context, ws, actor, spaceKey string) (APITask, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return APITask{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	space, err := lockTrashedSpaceForSiteAdmin(ctx, tx, ws, actor, spaceKey)
+	if err != nil {
+		return APITask{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return APITask{}, err
+	}
+	return s.enqueueWikiSpaceDeletion(ctx, ws, actor, space)
 }
 
 func (s *Store) executeWikiSpaceDeletion(ctx context.Context, task APITask) error {

@@ -110,11 +110,45 @@ test('space manager keeps templates, starts pages from them, reads analytics and
   expect(zipBytes.includes(Buffer.from('restart-checklist.txt'))).toBe(true);
   expect(zipBytes.includes(Buffer.from('attachments/'))).toBe(true);
 
-  // The space is archived and restored.
+  // The space is archived and restored. An archived space leaves the general
+  // list in the directory for the archived list.
   await page.goto(spaceURL);
   await page.getByRole('button', { name: 'Archive space', exact: true }).click();
   await expect(page.getByText('Archived space', { exact: true })).toBeVisible();
+  await page.goto('/wiki');
+  await expect(page.getByRole('link', { name: `Operations ${key}`, exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Archived spaces', exact: true }).click();
+  await expect(page.getByRole('link', { name: `Operations ${key}`, exact: true })).toBeVisible();
+  await accessible(page);
+  await page.goto(spaceURL);
   await page.getByRole('button', { name: 'Restore space', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Archive space', exact: true })).toBeVisible();
   await expect(page.getByText('Archived space', { exact: true })).toHaveCount(0);
+
+  // Deleting the space sends it to the trash with its content, and a site
+  // administrator restores it from there.
+  await page.locator('summary').filter({ hasText: 'Delete space' }).click();
+  await page.getByRole('button', { name: 'Confirm move to trash', exact: true }).click();
+  await expect(page).toHaveURL(/\/wiki$/);
+  await expect(page.getByRole('link', { name: `Operations ${key}`, exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Trash', exact: true }).click();
+  const trashed = page.locator('.directory-card').filter({ hasText: `Operations ${key}` });
+  await expect(trashed).toBeVisible();
+  await accessible(page);
+  await trashed.getByRole('button', { name: 'Restore space', exact: true }).click();
+  await expect(page).toHaveURL(spaceURL);
+  await expect(page.getByRole('button', { name: 'Archive space', exact: true })).toBeVisible();
+  // Nothing in the space was removed while it waited in the trash.
+  await expect(page.getByRole('link', { name: `Restart the service ${key}`, exact: true })).toBeVisible();
+
+  // Deleting it permanently takes the space away for good.
+  await page.locator('summary').filter({ hasText: 'Delete space' }).click();
+  await page.getByRole('button', { name: 'Confirm move to trash', exact: true }).click();
+  await page.getByRole('link', { name: 'Trash', exact: true }).click();
+  await page.locator('.directory-card').filter({ hasText: `Operations ${key}` }).locator('summary').filter({ hasText: 'Delete permanently' }).click();
+  await page.getByRole('button', { name: 'Confirm permanent delete', exact: true }).click();
+  await expect.poll(async () => {
+    await page.reload();
+    return page.locator('.directory-card').filter({ hasText: `Operations ${key}` }).count();
+  }, { timeout: 15_000 }).toBe(0);
 });
