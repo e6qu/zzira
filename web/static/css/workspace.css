@@ -814,3 +814,4 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 .hierarchy-work-types li{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--ds-border);border-radius:8px;background:var(--ds-surface-sunken)}
 .hierarchy-work-types li>span:last-child{display:grid}
 .priority-icon{margin-left:2px}
+.scheme-copy{display:inline-block;margin:12px 12px 0 0}

@@ -49,10 +49,11 @@ Every site has a `Default Screen Scheme`, which points to the `Default Screen`. 
 
 `internal/api3/screen_schemes.go`, `internal/store/screen_schemes.go`, `internal/store/issue_type_screen_schemes.go`, `internal/web/screen_schemes.go`, `migrations/134_screen_schemes.sql`; tests in `internal/api3/screen_schemes_test.go` and `e2e/screen_schemes.spec.ts`.
 
+**Copy.** The settings page copies one, named "Copy of X" (then "Copy 2 of X"), carrying its configuration and nothing else: the copy is assigned to no project and is never the site default.
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
 
 - The `view` operation is stored and resolvable, but the work item view ignores it and uses its own layout.
 - Workflow transition screens do not use screens; they store their own field list (see [SCREENS.md](SCREENS.md#gaps)).
-- No copy action for screen schemes or work type screen schemes.

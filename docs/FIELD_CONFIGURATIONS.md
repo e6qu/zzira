@@ -48,6 +48,8 @@ Names are unique per site, ignoring case. Every change is written to the action 
 
 `internal/api3/field_configurations.go`, `internal/store/field_configurations.go`, `internal/store/field_configuration_schemes.go`, `migrations/135_field_configurations.sql`; tests in `internal/api3/field_configurations_test.go` and `e2e/field_configurations.spec.ts`.
 
+**Copy.** The settings page copies a configuration, named "Copy of X" (then "Copy 2 of X"), carrying its configuration and nothing else: the copy is assigned to no project and is never the site default.
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).

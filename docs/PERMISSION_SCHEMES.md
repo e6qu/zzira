@@ -71,11 +71,12 @@ Malformed ids, unknown expansions, invalid holders, duplicate grants or scheme n
 
 **Permission helper** (`/admin/permission-helper`). Given a person, a work item and a project permission, it says whether the person holds it and why: the administrator role, Administer Jira, or the named grants. Each grant is tested alone in a rolled-back savepoint using `jira_has_project_permission`. For Browse projects it also reports a security level that hides the work item.
 
+**Copy.** The settings page copies one, named "Copy of X" (then "Copy 2 of X"), carrying its configuration and nothing else: the copy is assigned to no project and is never the site default.
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- No copy action for permission schemes in the UI.
 
 ## Tests
 

@@ -96,6 +96,11 @@ func (h *Handler) ScreenMutation(w http.ResponseWriter, r *http.Request) {
 	case "update":
 		name, description := r.PostFormValue("name"), r.PostFormValue("description")
 		_, err = h.Store.UpdateScreen(r.Context(), workspaceID, user.ID, screenID, &name, &description)
+	case "copy":
+		var copied *models.Screen
+		if copied, err = h.Store.CopyScreen(r.Context(), workspaceID, user.ID, screenID); err == nil {
+			notice = copied.Name + " created."
+		}
 	case "delete":
 		err = h.Store.DeleteScreen(r.Context(), workspaceID, user.ID, screenID)
 		notice = "Screen deleted."

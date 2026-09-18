@@ -2,11 +2,12 @@ package web
 
 import (
 	"errors"
-	"github.com/jackc/pgx/v5"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -216,6 +217,11 @@ func (h *Handler) PermissionSchemeMutation(w http.ResponseWriter, r *http.Reques
 	switch r.PostFormValue("action") {
 	case "update":
 		_, err = h.Store.UpdatePermissionScheme(r.Context(), workspaceID, user.ID, schemeID, r.PostFormValue("name"), r.PostFormValue("description"), nil)
+	case "copy":
+		var copied *models.PermissionScheme
+		if copied, err = h.Store.CopyPermissionScheme(r.Context(), workspaceID, user.ID, schemeID); err == nil {
+			notice = copied.Name + " created."
+		}
 	case "delete":
 		err = h.Store.DeletePermissionScheme(r.Context(), workspaceID, user.ID, schemeID)
 		notice = "Permission scheme deleted."

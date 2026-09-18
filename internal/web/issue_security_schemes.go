@@ -203,6 +203,11 @@ func (h *Handler) IssueSecuritySchemeMutation(w http.ResponseWriter, r *http.Req
 	case "update":
 		name, description := r.PostFormValue("name"), r.PostFormValue("description")
 		err = h.Store.UpdateIssueSecurityScheme(r.Context(), workspaceID, user.ID, schemeID, &name, &description)
+	case "copy":
+		var copied *models.SecurityScheme
+		if copied, err = h.Store.CopyIssueSecurityScheme(r.Context(), workspaceID, user.ID, schemeID); err == nil {
+			notice = copied.Name + " created."
+		}
 	case "delete":
 		err = h.Store.DeleteIssueSecurityScheme(r.Context(), workspaceID, user.ID, schemeID)
 		notice = "Issue security scheme deleted."
