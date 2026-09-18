@@ -184,10 +184,24 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 		parentID = parent.ID
 	}
 	priorityID := ""
+	if in.PriorityID == "" {
+		// Jira gives a work item the default priority of its project's scheme.
+		if priorityID, err = s.Store.ProjectDefaultPriority(ctx, in.WorkspaceID, project.ID); err != nil {
+			return nil, nil, err
+		}
+	}
 	if in.PriorityID != "" {
 		priority, err := s.Store.PriorityByIDOrName(ctx, in.WorkspaceID, in.PriorityID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("priority %q not found", in.PriorityID)
+		}
+		// A project offers the priorities of its priority scheme, and no others.
+		offered, err := s.Store.ProjectOffersPriority(ctx, in.WorkspaceID, project.ID, priority.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !offered {
+			return nil, nil, fmt.Errorf("priority %q is not in the priority scheme of project %s", priority.Name, project.Key)
 		}
 		priorityID = priority.ID
 	}

@@ -27,8 +27,11 @@ type prioritiesPageData struct {
 	Priorities []models.Priority
 	Icons      []priorityIcon
 	Schemes    []store.PriorityScheme
-	Notice     string
-	Error      string
+	Projects   []*models.Project
+	// Assigned is the projects each scheme holds, keyed by scheme id.
+	Assigned map[string][]*models.Project
+	Notice   string
+	Error    string
 }
 
 // resolutionsPageData is the resolutions settings page.
@@ -151,6 +154,24 @@ func (h *Handler) PrioritiesPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load priority schemes.", http.StatusInternalServerError)
 		return
 	}
+	if data.Projects, err = h.Store.ProjectsByWorkspace(r.Context(), workspaceID); err != nil {
+		http.Error(w, "Could not load projects.", http.StatusInternalServerError)
+		return
+	}
+	byID := make(map[string]*models.Project, len(data.Projects))
+	for _, project := range data.Projects {
+		byID[project.ID] = project
+	}
+	data.Assigned = make(map[string][]*models.Project, len(data.Schemes))
+	for _, scheme := range data.Schemes {
+		assigned := []*models.Project{}
+		for _, projectID := range scheme.ProjectIDs {
+			if project, ok := byID[projectID]; ok {
+				assigned = append(assigned, project)
+			}
+		}
+		data.Assigned[scheme.ID] = assigned
+	}
 	h.writeWorkspacePage(w, r, "page_priorities", user, workspaceID, data, "priorities", "")
 }
 
@@ -195,11 +216,59 @@ func (h *Handler) PrioritiesMutation(w http.ResponseWriter, r *http.Request) {
 		if _, err = h.Store.EnqueuePriorityDeletion(r.Context(), workspaceID, user.ID, value("priority")); err == nil {
 			notice = "Priority deletion started; its work items take the default priority."
 		}
+	case "create-scheme":
+		priorities := formValues(r, "priority")
+		name, description, defaultPriority := value("name"), r.PostFormValue("description"), value("defaultPriority")
+		if _, err = h.Store.CreatePriorityScheme(r.Context(), workspaceID, store.PrioritySchemeInput{
+			Name: &name, Description: &description, DefaultPriority: &defaultPriority, PriorityIDs: &priorities,
+		}); err == nil {
+			notice = name + " created."
+		}
+	case "update-scheme":
+		priorities := formValues(r, "priority")
+		name, description, defaultPriority := value("name"), r.PostFormValue("description"), value("defaultPriority")
+		if _, err = h.Store.UpdatePriorityScheme(r.Context(), workspaceID, value("scheme"), store.PrioritySchemeInput{
+			Name: &name, Description: &description, DefaultPriority: &defaultPriority,
+			PriorityIDs: &priorities, Mappings: priorityMappings(r),
+		}); err == nil {
+			notice = name + " saved."
+		}
+	case "assign-scheme":
+		if _, err = h.Store.UpdatePriorityScheme(r.Context(), workspaceID, value("scheme"), store.PrioritySchemeInput{
+			AddRemove: &store.PrioritySchemeAddRemove{AddProjects: []string{value("project")}},
+			Mappings:  priorityMappings(r),
+		}); err == nil {
+			notice = "Project assigned to the priority scheme."
+		}
+	case "unassign-scheme":
+		if _, err = h.Store.UpdatePriorityScheme(r.Context(), workspaceID, value("scheme"), store.PrioritySchemeInput{
+			AddRemove: &store.PrioritySchemeAddRemove{RemoveProjects: []string{value("project")}},
+		}); err == nil {
+			notice = "Project removed from the priority scheme; it uses the default scheme again."
+		}
+	case "delete-scheme":
+		if err = h.Store.DeletePriorityScheme(r.Context(), workspaceID, value("scheme")); err == nil {
+			notice = "Priority scheme deleted."
+		}
 	default:
 		http.Error(w, "Unknown priority action.", http.StatusBadRequest)
 		return
 	}
 	h.redirectMetadata(w, r, "/settings/priorities", notice, err)
+}
+
+// priorityMappings reads the "move work items using this priority to" rows a
+// scheme form carries, so dropping a priority says where its work items go.
+func priorityMappings(r *http.Request) []store.PrioritySchemeMapping {
+	mappings := []store.PrioritySchemeMapping{}
+	for name, values := range r.PostForm {
+		from, ok := strings.CutPrefix(name, "map.")
+		if !ok || len(values) == 0 || strings.TrimSpace(values[0]) == "" {
+			continue
+		}
+		mappings = append(mappings, store.PrioritySchemeMapping{From: from, To: strings.TrimSpace(values[0])})
+	}
+	return mappings
 }
 
 // ResolutionsPage lists the site's resolutions.

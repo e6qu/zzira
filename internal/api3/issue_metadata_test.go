@@ -498,16 +498,17 @@ func TestIssueMetadataContract(t *testing.T) {
 
 	// ---- Priority schemes ----
 	priorities = list(one, one.member, "/rest/api/3/priority")
-	high, low := byName(priorities, "High"), byName(priorities, "Low")
+	high, medium, low := byName(priorities, "High"), byName(priorities, "Normal"), byName(priorities, "Low")
 	call(one, one.admin, http.MethodPut, "/rest/api/3/issue/"+taskKey, `{"fields":{"priority":{"id":"`+high.ID+`"}}}`, http.StatusNoContent)
 	var priorityScheme struct {
 		ID json.RawMessage `json:"id"`
 	}
-	// The project's issue uses High, which the new scheme lacks: a mapping is required.
+	// The project's work items use High and the site default, which the new
+	// scheme lacks: each needs a mapping.
 	call(one, one.admin, http.MethodPost, "/rest/api/3/priorityscheme",
 		`{"name":"Lean","defaultPriorityId":`+low.ID+`,"priorityIds":[`+low.ID+`],"projectIds":[`+projectID+`]}`, http.StatusBadRequest)
 	decode(call(one, one.admin, http.MethodPost, "/rest/api/3/priorityscheme",
-		`{"name":"Lean","defaultPriorityId":`+low.ID+`,"priorityIds":[`+low.ID+`],"projectIds":[`+projectID+`],"mappings":{"in":{"`+high.ID+`":`+low.ID+`}}}`, http.StatusCreated), &priorityScheme)
+		`{"name":"Lean","defaultPriorityId":`+low.ID+`,"priorityIds":[`+low.ID+`],"projectIds":[`+projectID+`],"mappings":{"in":{"`+high.ID+`":`+low.ID+`,"`+medium.ID+`":`+low.ID+`}}}`, http.StatusCreated), &priorityScheme)
 	schemeID := strings.Trim(string(priorityScheme.ID), `"`)
 	if mapped := readIssue(taskKey); mapped.Fields.Priority == nil || mapped.Fields.Priority.ID != low.ID {
 		t.Fatalf("the mapping moved the issue to Low: %+v", mapped.Fields.Priority)

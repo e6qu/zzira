@@ -231,6 +231,13 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		if priorityErr != nil {
 			return nil, nil, fmt.Errorf("priority %q not found", *in.PriorityID)
 		}
+		offered, offerErr := s.Store.ProjectOffersPriority(ctx, in.WorkspaceID, issue.ProjectID, priority.ID)
+		if offerErr != nil {
+			return nil, nil, offerErr
+		}
+		if !offered {
+			return nil, nil, fmt.Errorf("priority %q is not in the priority scheme of this project", priority.Name)
+		}
 		in.PriorityID = &priority.ID
 	}
 	// Jira takes a resolution by id or by name; the store keeps its own id.

@@ -103,11 +103,13 @@ func TestCreateDialogRendersMetadataFieldsAndPreservesValues(t *testing.T) {
 		},
 	}
 	data := struct {
-		Metadata   *models.IssueCreateMetadata
-		Selected   models.CreateProjectMeta
-		Values     map[string]string
-		Error      string
-		CreatedKey string
+		Metadata                 *models.IssueCreateMetadata
+		Selected                 models.CreateProjectMeta
+		Values                   map[string]string
+		SelectedIssueTypeSubtask bool
+		DetailTabs               []models.FieldTabView
+		Error                    string
+		CreatedKey               string
 	}{
 		Metadata: &models.IssueCreateMetadata{Projects: []models.CreateProjectMeta{project}}, Selected: project,
 		Values: map[string]string{"project": "ZZ", "issuetype": "it_task", "summary": "Preserved summary", "assignee": "usr_1", "customfield_10000": "8"},

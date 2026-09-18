@@ -33,7 +33,7 @@ Screen names are unique per site, and tab names are unique per screen, both igno
 
 ## Field catalog
 
-A screen can only hold fields the forms can render. The system fields, in order: `summary`, `description`, `assignee`, `priority`, `labels`, `duedate`, `parent`, `components`, `fixVersions`, `versions`, `resolution`, `security` (Restrict to), `timetracking`, `issuetype` and `project` (`systemScreenFields`, `internal/store/screens.go`). After them come the site's custom fields. Adding any other field is refused. `issuetype`, `priority` and `resolution` offer the site's catalogues, and `parent` the work items one level above ([ISSUE_METADATA.md](ISSUE_METADATA.md)).
+A screen can only hold fields the forms can render. The system fields, in order: `summary`, `description`, `assignee`, `priority`, `labels`, `duedate`, `parent`, `components`, `fixVersions`, `versions`, `resolution`, `security` (Restrict to), `timetracking`, `issuetype` and `project` (`systemScreenFields`, `internal/store/screens.go`). After them come the site's custom fields. Adding any other field is refused. `issuetype` and `resolution` offer the site's catalogues, `priority` the priorities of the project's priority scheme, and `parent` the work items one level above ([ISSUE_METADATA.md](ISSUE_METADATA.md)).
 
 ## Default screen
 
@@ -47,6 +47,10 @@ Every site has a `Default Screen` with one `Field Tab`. It holds every system fi
 
 `internal/api3/screens.go`, `internal/store/screens.go`, `internal/web/screens.go`, `migrations/133_screens.sql`; tests in `internal/api3/screens_test.go` and `e2e/screens.spec.ts`.
 
+## Tabs on forms
+
+A screen with more than one tab is shown as tabs on the create form: one panel at a time, with the arrow keys moving between them. A screen with one tab is shown as a plain list, as a single tab is just a form.
+
 ## Transition screens
 
 A workflow transition can name a screen; the transition then asks for the fields that screen holds, and adding or removing a field on the screen changes the transition with no workflow edit and no new version. The workflow editor offers the site's screens beside its own field list ([WORKFLOW_RULES.md](WORKFLOW_RULES.md)).
@@ -57,6 +61,5 @@ A workflow transition can name a screen; the transition then asks for the fields
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- Forms show a screen's fields as one flat list; tabs are not rendered.
 - `GET .../tabs/{tabId}/fields` ignores `projectKey`, so project administrators cannot read tab fields.
 - Reporter, Environment, Attachment and Linked issues are not in the field catalog.

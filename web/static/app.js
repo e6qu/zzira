@@ -484,6 +484,40 @@
     }
   });
 
+  // A create form whose screen has more than one tab shows them as tabs: one
+  // panel at a time, with the arrow keys moving between them as ARIA asks.
+  function selectFieldTab(list, index) {
+    const tabs = Array.from(list.querySelectorAll('[data-field-tab]'));
+    tabs.forEach((tab, position) => {
+      const selected = position === index;
+      tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+      tab.tabIndex = selected ? 0 : -1;
+      const panel = document.getElementById(tab.getAttribute('aria-controls') || '');
+      if (panel) panel.hidden = !selected;
+    });
+    if (tabs[index]) tabs[index].focus();
+  }
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    const tab = target instanceof Element ? target.closest('[data-field-tab]') : null;
+    if (!tab) return;
+    const list = tab.closest('[role="tablist"]');
+    if (!list) return;
+    event.preventDefault();
+    selectFieldTab(list, Array.from(list.querySelectorAll('[data-field-tab]')).indexOf(tab));
+  });
+  document.addEventListener('keydown', (event) => {
+    const target = event.target;
+    const tab = target instanceof Element ? target.closest('[data-field-tab]') : null;
+    if (!tab || (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft')) return;
+    const list = tab.closest('[role="tablist"]');
+    if (!list) return;
+    const tabs = Array.from(list.querySelectorAll('[data-field-tab]'));
+    const step = event.key === 'ArrowRight' ? 1 : -1;
+    event.preventDefault();
+    selectFieldTab(list, (tabs.indexOf(tab) + step + tabs.length) % tabs.length);
+  });
+
   document.addEventListener('DOMContentLoaded', () => {
     initShell();
     refreshNotificationBadge();

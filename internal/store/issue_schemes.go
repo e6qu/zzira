@@ -507,6 +507,67 @@ func (s *Store) ProjectPriorityScheme(ctx context.Context, workspaceID, projectI
 	return PriorityScheme{}, ErrIssueMetadataNotFound
 }
 
+// PrioritiesForProject is the priorities a project offers: the ones in its
+// priority scheme, in the site's order.
+func (s *Store) PrioritiesForProject(ctx context.Context, workspaceID, projectID string) ([]models.Priority, error) {
+	priorities, err := s.PrioritiesForWorkspace(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	scheme, err := s.ProjectPriorityScheme(ctx, workspaceID, projectID)
+	if err != nil || len(scheme.PriorityIDs) == 0 {
+		return priorities, nil //nolint:nilerr // a site without schemes offers every priority
+	}
+	offered := make([]models.Priority, 0, len(scheme.PriorityIDs))
+	for _, priority := range priorities {
+		if containsString(scheme.PriorityIDs, priority.ID) {
+			offered = append(offered, priority)
+		}
+	}
+	return offered, nil
+}
+
+// ProjectOffersPriority reports whether a priority is in the scheme a project
+// uses, so a work item cannot take a priority the project does not offer. A
+// site whose project has no scheme at all offers every priority.
+func (s *Store) ProjectOffersPriority(ctx context.Context, workspaceID, projectID, priorityID string) (bool, error) {
+	var hasScheme, offered bool
+	err := s.Pool.QueryRow(ctx, `
+		WITH assigned AS (SELECT scheme_id FROM project_priority_schemes WHERE project_id=$2),
+		scheme AS (
+			SELECT sc.id FROM priority_schemes sc
+			WHERE sc.workspace_id=$1
+			  AND (sc.id IN (SELECT scheme_id FROM assigned) OR (sc.is_default AND NOT EXISTS(SELECT 1 FROM assigned)))
+			ORDER BY (sc.id IN (SELECT scheme_id FROM assigned)) DESC LIMIT 1)
+		SELECT EXISTS(SELECT 1 FROM scheme),
+			EXISTS(SELECT 1 FROM priority_scheme_items i JOIN scheme ON scheme.id=i.scheme_id WHERE i.priority_id=$3)`,
+		workspaceID, projectID, priorityID).Scan(&hasScheme, &offered)
+	if err != nil {
+		return false, err
+	}
+	return offered || !hasScheme, nil
+}
+
+// ProjectDefaultPriority is the priority a work item takes when none is chosen:
+// the default of the scheme the project uses. It is empty when the site has no
+// priority scheme at all.
+func (s *Store) ProjectDefaultPriority(ctx context.Context, workspaceID, projectID string) (string, error) {
+	var priorityID *string
+	err := s.Pool.QueryRow(ctx, `
+		WITH assigned AS (SELECT scheme_id FROM project_priority_schemes WHERE project_id=$2)
+		SELECT sc.default_priority_id FROM priority_schemes sc
+		WHERE sc.workspace_id=$1
+		  AND (sc.id IN (SELECT scheme_id FROM assigned) OR (sc.is_default AND NOT EXISTS(SELECT 1 FROM assigned)))
+		ORDER BY (sc.id IN (SELECT scheme_id FROM assigned)) DESC LIMIT 1`, workspaceID, projectID).Scan(&priorityID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil || priorityID == nil {
+		return "", err
+	}
+	return *priorityID, nil
+}
+
 // PrioritiesNeedingMapping reports which priorities issues in the given projects
 // use that the given priority list lacks. A change leaving those issues with a
 // priority their project does not offer needs a mapping for each.

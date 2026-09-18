@@ -96,8 +96,11 @@ type createDialogData struct {
 	Selected                 models.CreateProjectMeta
 	SelectedIssueTypeSubtask bool
 	Values                   map[string]string
-	Error                    string
-	CreatedKey               string
+	// DetailTabs are the screen's tabs when it has more than one; the form
+	// then shows the detail fields as tabs rather than one list.
+	DetailTabs []models.FieldTabView
+	Error      string
+	CreatedKey string
 }
 
 type projectIssuesData struct {
@@ -538,7 +541,8 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
-	priorities, err := h.Store.Priorities(r.Context(), wsID)
+	// The priority field offers what the project's priority scheme holds.
+	priorities, err := h.Store.PrioritiesForProject(r.Context(), wsID, issue.ProjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -664,10 +668,6 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		})
 	}
 	sort.SliceStable(activity, func(i, j int) bool { return activity[i].Created > activity[j].Created })
-	priorityValues := make([]models.Priority, 0, len(priorities))
-	for _, priority := range priorities {
-		priorityValues = append(priorityValues, *priority)
-	}
 	linkTypeValues := make([]models.LinkType, 0, len(linkTypes))
 	for _, linkType := range linkTypes {
 		linkTypeValues = append(linkTypeValues, *linkType)
@@ -733,7 +733,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		Worklogs:            derefWorklogs(worklogs),
 		Activity:            activity,
 		Members:             editView.Members,
-		Priorities:          priorityValues,
+		Priorities:          priorities,
 		Resolutions:         resolutionValues,
 		CanResolve:          canResolve,
 		SecurityLevels:      editView.SecurityLevels,
@@ -1360,6 +1360,11 @@ func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID
 		}
 		values[field.ID] = strings.Trim(field.Default, `"`)
 	}
+	// A work item takes the default priority of the project's priority scheme
+	// unless the form says otherwise.
+	if values["priority"] == "" {
+		values["priority"] = selected.DefaultPriorityID
+	}
 	// Parent offers the work items one level above the chosen work type, and
 	// is left out when that level holds none.
 	parents := selected.ParentOptionsForIssueType(values["issuetype"])
@@ -1376,7 +1381,10 @@ func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID
 		visibleFields = append(visibleFields, field)
 	}
 	selected.Fields = visibleFields
-	return createDialogData{Metadata: meta, Selected: selected, SelectedIssueTypeSubtask: selectedSubtask, Values: values}, nil
+	return createDialogData{
+		Metadata: meta, Selected: selected, SelectedIssueTypeSubtask: selectedSubtask, Values: values,
+		DetailTabs: selected.DetailTabsForIssueType(values["issuetype"], selected.Fields),
+	}, nil
 }
 
 func createFieldsFromForm(fields []models.CreateFieldMeta, values map[string]string) (map[string]json.RawMessage, error) {

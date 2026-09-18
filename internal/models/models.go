@@ -395,6 +395,18 @@ type CustomFieldView struct {
 
 // CreateFieldOption is one selectable value exposed by create metadata.
 // Key is populated for project options; ID is used by every other registry.
+// FieldTab is one tab of a screen: its name and the fields on it, in order.
+type FieldTab struct {
+	Name   string
+	Fields []string
+}
+
+// FieldTabView is a tab ready to render: its name and the form fields on it.
+type FieldTabView struct {
+	Name   string
+	Fields []CreateFieldMeta
+}
+
 type CreateFieldOption struct {
 	ID   string `json:"id,omitempty"`
 	Key  string `json:"key,omitempty"`
@@ -427,6 +439,9 @@ type CreateProjectMeta struct {
 	Project    Project           `json:"project"`
 	IssueTypes []IssueType       `json:"issueTypes"`
 	Fields     []CreateFieldMeta `json:"fields"`
+	// ScreenTabs groups the same fields by the tabs of that screen, so a form
+	// can show a screen's tabs as tabs. Keyed by work type id.
+	ScreenTabs map[string][]FieldTab `json:"-"`
 	// ScreenFields holds the ordered field IDs the project's screen scheme
 	// exposes per work type, keyed by issue type ID. An absent or empty entry
 	// means no screen governs that form and every project field applies.
@@ -434,6 +449,9 @@ type CreateProjectMeta struct {
 	// FieldBehaviour holds the project's field configuration rules per work
 	// type. A field without a rule is optional and visible.
 	FieldBehaviour map[string]map[string]FieldBehaviour `json:"-"`
+	// DefaultPriorityID is the priority a work item takes when none is chosen:
+	// the default of the priority scheme the project uses.
+	DefaultPriorityID string `json:"-"`
 	// CustomFieldContexts maps work type to the custom fields whose context
 	// applies there, and what that context supplies. A work type present here
 	// governs which custom fields the form may show.
@@ -472,6 +490,38 @@ func (m CreateProjectMeta) ParentOptionsForIssueType(issueTypeID string) []Creat
 		}
 	}
 	return options
+}
+
+// DetailTabsForIssueType groups a work type's detail fields by the tabs of the
+// screen they come from. It answers nothing when the screen has one tab, since
+// a single tab is just a form.
+func (m CreateProjectMeta) DetailTabsForIssueType(issueTypeID string, fields []CreateFieldMeta) []FieldTabView {
+	tabs := m.ScreenTabs[issueTypeID]
+	if len(tabs) < 2 {
+		return nil
+	}
+	byID := make(map[string]CreateFieldMeta, len(fields))
+	for _, field := range fields {
+		if field.Section == "details" {
+			byID[field.ID] = field
+		}
+	}
+	views := make([]FieldTabView, 0, len(tabs))
+	for _, tab := range tabs {
+		view := FieldTabView{Name: tab.Name}
+		for _, id := range tab.Fields {
+			if field, shown := byID[id]; shown {
+				view.Fields = append(view.Fields, field)
+			}
+		}
+		if len(view.Fields) > 0 {
+			views = append(views, view)
+		}
+	}
+	if len(views) < 2 {
+		return nil
+	}
+	return views
 }
 
 // FieldsForIssueType narrows and orders the project's fields to what the work
