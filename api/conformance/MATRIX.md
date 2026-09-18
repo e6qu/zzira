@@ -50,7 +50,7 @@ certification.
 | `/permissions`, `/mypermissions`, `/permissions/check`, `/permissions/project`, `/user/permission/search` | 🟡 | Scheme-based evaluation, app permissions. Anonymous discovery remains ([PERMISSION_SCHEMES.md](../../docs/PERMISSION_SCHEMES.md)) |
 | `/issueLinkType`, `/issueLink` | ✅ | |
 | `/label`, `/issuetype`, `/priority`, `/status`, `/statuscategory`, `/resolution` | ✅ | |
-| Issue types, schemes, properties, priorities, priority schemes, resolutions (46 ops) | 🟡 | Per-site numeric ids; async deletion tasks. Team-managed scoping remains ([ISSUE_METADATA.md](../../docs/ISSUE_METADATA.md)) |
+| Issue types, schemes, properties, priorities, priority schemes, resolutions (46 ops) | 🟡 | Per-site numeric ids; async deletion tasks; work types on a hierarchy extended above Epic, administered in the browser. Team-managed scoping and priority scheme editing remain ([ISSUE_METADATA.md](../../docs/ISSUE_METADATA.md)) |
 | Jira expressions: `/expression/analyse`, `/eval`, `/evaluate` | 🟡 | Jira's limits and context variables ([JIRA_SOFTWARE.md](../../docs/JIRA_SOFTWARE.md#jira-expressions)) |
 
 ## Jira platform — configuration and administration
@@ -143,6 +143,7 @@ Playwright (Chromium) specs are in [`e2e/`](../../e2e). They cover:
 - Create, triage, backlog, boards and timeline.
 - Dashboards, reports and filters.
 - Notifications and every scheme and admin page.
+- Work types, priorities, resolutions and the work type hierarchy.
 - Releases, plans, people and identity providers.
 - Automation, apps, service management and Assets.
 - Wiki pages, content tree and databases.

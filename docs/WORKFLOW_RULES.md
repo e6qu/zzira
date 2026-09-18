@@ -31,7 +31,7 @@ own, so running the transition records an agent run request with the
 transition's action. The request names the agent account and prompt, and the
 agent must be an active app account of the site.
 
-The `system:transition-screen` rule takes a comma-separated `fields` parameter listing the fields the transition collects (`internal/workflow/workflow.go:889`). It does not reference a [screen](SCREENS.md). `GET /issue/{key}/transitions?expand=transitions.fields` reports those fields.
+The `system:transition-screen` rule takes a comma-separated `fields` parameter listing the fields the transition collects (`Transition.ScreenFields`, `internal/workflow/workflow.go`). It does not reference a [screen](SCREENS.md). `GET /issue/{key}/transitions?expand=transitions.fields` reports those fields. Summary, description, labels, assignee, priority, resolution and the site's custom fields can be collected; a resolution needs Resolve issues ([ISSUE_METADATA.md](ISSUE_METADATA.md#on-work-items)).
 
 `development-triggers` offers one trigger type: branch created.
 
@@ -39,7 +39,7 @@ App rules (`connect:` and `forge:`) keep their app key and module key.
 
 ## Transition ids
 
-Transitions use Jira's numeric ids. A transition added without an id, through REST or the browser editor, gets the next multiple of ten, plus one, above the workflow's highest id (`internal/workflow/workflow.go:831`). The default workflow uses 11, 21 and 31.
+Transitions use Jira's numeric ids. A transition added without an id, through REST or the browser editor, gets the next multiple of ten, plus one, above the workflow's highest id (`NextTransitionID`, `internal/workflow/workflow.go`). The default workflow uses 11, 21 and 31.
 
 ## Transition types
 

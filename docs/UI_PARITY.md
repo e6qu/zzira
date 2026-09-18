@@ -11,6 +11,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | User signs in and orients | ✅ | `identity-providers`, `session-isolation`, `directories`, `v0` | — |
 | Contributor finds work | ✅ | `v2`, `filters`, `directories` | — |
 | Contributor creates and triages work | ✅ | `create`, `v1`, `v3`, `triage`, `issue_mentions`, `custom_field_options` | — |
+| Contributor records how work was resolved | 🟡 | `resolution` (transition screen, work item page, REST) | No denied-user or accessibility pass over the transition screen |
 | Contributor plans and runs a sprint | ✅ | `backlog`, `v4`, `projects` | Column configuration; swimlanes beyond assignee ([AGILE_BOARDS](AGILE_BOARDS.md#gaps)) |
 | Contributor works offline | 🟡 | `v0`, `v5`, `revocation`, `session-isolation` | Only work items are available offline; other entities and richer edits need a connection |
 | Contributor follows code through release | 🟡 | `directories` (development information), `software`, `releases` | Cross-project releases; release gates; environment promotion ([RELEASES](RELEASES.md#gaps)) |
@@ -19,7 +20,9 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | Agile coach diagnoses delivery | 🟡 | `backlog` (sprint report, velocity), `reports_flow`, `reports_progress`, `report_subscriptions`, `dashboard_reports` | Release burndown, epic burndown, workload and time tracking reports ([REPORTS](REPORTS.md#gaps)) |
 | Engineering manager reviews delivery | 🟡 | `releases` (DORA metrics), `report_subscriptions` | Choosing which environments and incidents count toward DORA metrics ([REPORTS](REPORTS.md#gaps)) |
 | Manager builds an operating dashboard | ✅ | `dashboards`, `dashboard_reports`, `dashboard_subscriptions`, `v6` | Forge gadgets ([DASHBOARDS](DASHBOARDS.md#gaps)) |
-| Admin designs and publishes a workflow | 🟡 | `directories` (workflow editor, statuses, workflow schemes, transition screens) | Workflow scheme administration is incomplete |
+| Admin shapes the work item model | 🟡 | `issue_metadata` (work types and their schemes, priorities, resolutions), `custom_field_contexts`, `custom_field_options`, `field_configurations`, `screens`, `screen_schemes` | Custom fields cannot be created, renamed, trashed, restored or deleted in the browser; priority schemes are read-only there ([ISSUE_METADATA](ISSUE_METADATA.md#gaps)) |
+| Admin structures work above the epic | 🟡 | `hierarchy` (add a level, move a work type onto it, parent an epic under it) | Boards, backlogs, plans and reports stop at the epic level; no `hierarchyLevel` in JQL ([ISSUE_METADATA](ISSUE_METADATA.md#work-type-hierarchy)) |
+| Admin designs and publishes a workflow | 🟡 | `directories` (workflow editor, statuses, workflow schemes, transition screens), `resolution` (a transition screen that asks for the resolution) | Workflow scheme administration is incomplete |
 | Admin automates work | 🟡 | `automation` | Much of the trigger, condition and action catalog ([AUTOMATION](AUTOMATION.md)) |
 | Service customer requests help | 🟡 | `service`, `service_assets` | Assets-backed form behavior such as AQL filters |
 | Service agent works a queue | 🟡 | `service`, `service_assets` | Queues support only part of JQL |
@@ -29,7 +32,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | Knowledge team collaborates live | ✅ | `wiki_live_editing`, `wiki_presence` | — |
 | Knowledge user diagrams or models data | 🟡 | `wiki_database`, `wiki_whiteboard` | Direct manipulation, advanced whiteboard objects, rich embeds, exports |
 | Space manager governs knowledge | 🟡 | `wiki_space_tools`, `wiki_page_lifecycle`, `classification_levels` | Space import |
-| Site admin manages people, access and Jira settings | 🟡 | `admin`, `people`, `global_permissions`, `identity-providers`, `permission_schemes`, `permission_helper`, `notification_schemes`, `notification_helper`, `notification_preferences`, `notifications`, `issue_security_schemes`, `screens`, `screen_schemes`, `field_configurations`, `custom_field_contexts` | Remaining enterprise identity journeys ([ADMIN](ADMIN.md)) |
+| Site admin manages people, access and Jira settings | 🟡 | `admin`, `people`, `global_permissions`, `identity-providers`, `permission_schemes`, `permission_helper`, `notification_schemes`, `notification_helper`, `notification_preferences`, `notifications`, `issue_security_schemes` | Remaining enterprise identity journeys ([ADMIN](ADMIN.md)) |
 | Site admin manages apps | 🟡 | `apps` | Several Connect module families; Forge compute; workflow modules ([APPS](APPS.md)) |
 
 Evidence names refer to `e2e/<name>.spec.ts`. `wire-ids` and `accessibility` apply across all journeys; see [WIRE_IDS.md](WIRE_IDS.md) and [ACCESSIBILITY.md](ACCESSIBILITY.md).

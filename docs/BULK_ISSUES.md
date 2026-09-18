@@ -74,17 +74,33 @@ per-item results. Part of the [Jira platform](JIRA_PLATFORM.md); see
 
 ## Permissions
 
-REST bulk operations need the global **Bulk change** permission
-(`BULK_CHANGE`), granted on the global permissions page.
+Every bulk operation, in REST and in the browser, needs the global **Bulk
+change** permission (`BULK_CHANGE`), granted on the global permissions page
+([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)). Without it the REST routes
+and the navigator's bulk forms answer 403.
+
+Bulk change admits the bulk routes; it is not a way around project
+permissions. Each item goes through the same command as the single-item
+operation, so the submitter also needs, per item and per project:
+
+| Operation | Needs |
+|---|---|
+| Delete | Delete issues |
+| Move | Move issues on the source item, and Create issues in the destination project |
+| Transition | Transition issues, plus whatever the transition itself needs |
+| Edit | Edit issues, and the permission each edited field needs (Assign issues, Schedule issues, Resolve issues, Set issue security) |
+
+Jira Service Management's queue actions are a different surface: they act on
+one desk's requests, need agent access rather than Bulk change, and are
+described in [SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md#queues).
 
 ## UI
 
-The issue navigator (`/issues/{projectKey}`) lets people with the Bulk change
-global permission select rows on the current page and bulk delete, move (project, type, parent) or
-transition them, choosing whether to notify watchers. Progress is shown at
-`/issues/{projectKey}/bulk/{taskId}` to the submitter and administrators. Each
-work item still needs the project permission its operation needs
-([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)).
+The issue navigator (`/issues/{projectKey}`) shows its selection checkboxes and
+bulk forms only to people holding Bulk change. They select rows on the current
+page and bulk delete, move (project, type, parent) or transition them, choosing
+whether to notify watchers. Progress is shown at
+`/issues/{projectKey}/bulk/{taskId}` to the submitter and administrators.
 
 ## Gaps
 

@@ -1,0 +1,1968 @@
+{
+  "name": "Northwind",
+  "description": "A company with three months of delivery history: payments work on a board with sprints and releases, an operations project, a service desk with customers, and the knowledge base the teams write in.",
+  "site": {
+    "slug": "northwind",
+    "name": "Northwind"
+  },
+  "groups": [
+    {
+      "id": "engineering",
+      "name": "Engineering"
+    },
+    {
+      "id": "support",
+      "name": "Support"
+    },
+    {
+      "id": "leads",
+      "name": "Team leads"
+    }
+  ],
+  "people": [
+    {
+      "id": "maya",
+      "email": "maya@northwind.test",
+      "displayName": "Maya Oduya",
+      "role": "admin",
+      "groups": [
+        "engineering",
+        "leads"
+      ],
+      "password": "demo1234"
+    },
+    {
+      "id": "ravi",
+      "email": "ravi@northwind.test",
+      "displayName": "Ravi Chandran",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "ines",
+      "email": "ines@northwind.test",
+      "displayName": "In\u00e9s Ferrer",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "tom",
+      "email": "tom@northwind.test",
+      "displayName": "Tom Achebe",
+      "role": "member",
+      "groups": [
+        "engineering",
+        "leads"
+      ]
+    },
+    {
+      "id": "sara",
+      "email": "sara@northwind.test",
+      "displayName": "Sara Lindqvist",
+      "role": "member",
+      "groups": [
+        "support"
+      ]
+    },
+    {
+      "id": "dan",
+      "email": "dan@northwind.test",
+      "displayName": "Dan Whitfield",
+      "role": "member",
+      "groups": [
+        "support"
+      ]
+    },
+    {
+      "id": "nora",
+      "email": "nora@northwind.test",
+      "displayName": "Nora Petrova",
+      "role": "member",
+      "groups": [
+        "leads"
+      ]
+    },
+    {
+      "id": "cust-amara",
+      "email": "amara@riverbank.test",
+      "displayName": "Amara Nwosu",
+      "customer": true
+    },
+    {
+      "id": "cust-felix",
+      "email": "felix@harbourco.test",
+      "displayName": "Felix Braun",
+      "customer": true
+    }
+  ],
+  "customFields": [
+    {
+      "id": "points",
+      "name": "Story points",
+      "type": "number"
+    },
+    {
+      "id": "impact",
+      "name": "Customer impact",
+      "type": "select",
+      "options": [
+        "One customer",
+        "Several customers",
+        "Everyone"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "id": "pay",
+      "key": "PAY",
+      "name": "Payments",
+      "description": "Taking money, refunding it, and paying out.",
+      "type": "software",
+      "lead": "maya",
+      "components": [
+        {
+          "name": "API",
+          "lead": "ravi"
+        },
+        {
+          "name": "Ledger",
+          "lead": "ines"
+        },
+        {
+          "name": "Payouts",
+          "lead": "tom"
+        }
+      ],
+      "versions": [
+        {
+          "id": "pay-1-0",
+          "name": "1.0",
+          "description": "Card payments",
+          "startDay": -84,
+          "releaseDay": -56,
+          "released": true
+        },
+        {
+          "id": "pay-1-1",
+          "name": "1.1",
+          "description": "Refunds",
+          "startDay": -56,
+          "releaseDay": -28,
+          "released": true
+        },
+        {
+          "id": "pay-1-2",
+          "name": "1.2",
+          "description": "Payout reliability",
+          "startDay": -28,
+          "releaseDay": 7
+        }
+      ],
+      "board": {
+        "id": "pay-board",
+        "name": "Payments board",
+        "type": "scrum",
+        "sprints": [
+          {
+            "id": "pay-s1",
+            "name": "Payments sprint 1",
+            "goal": "Card payments end to end",
+            "startDay": -70,
+            "endDay": -56,
+            "state": "closed"
+          },
+          {
+            "id": "pay-s2",
+            "name": "Payments sprint 2",
+            "goal": "Refunds and disputes",
+            "startDay": -56,
+            "endDay": -42,
+            "state": "closed"
+          },
+          {
+            "id": "pay-s3",
+            "name": "Payments sprint 3",
+            "goal": "Payout reliability",
+            "startDay": -42,
+            "endDay": -28,
+            "state": "closed"
+          },
+          {
+            "id": "pay-s4",
+            "name": "Payments sprint 4",
+            "goal": "Fraud signals",
+            "startDay": -14,
+            "endDay": 0,
+            "state": "active"
+          }
+        ]
+      },
+      "template": "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic"
+    },
+    {
+      "id": "ops",
+      "key": "OPS",
+      "name": "Operations",
+      "description": "How the company runs itself.",
+      "type": "business",
+      "lead": "nora"
+    },
+    {
+      "id": "help",
+      "key": "HELP",
+      "name": "Customer support",
+      "description": "The desk customers write to.",
+      "type": "service_desk",
+      "lead": "sara",
+      "serviceDesk": {
+        "portalName": "Northwind support",
+        "agents": [
+          "sara",
+          "dan"
+        ],
+        "requestTypes": [
+          {
+            "id": "help",
+            "name": "Get help",
+            "description": "Ask the support team anything."
+          },
+          {
+            "id": "incident",
+            "name": "Report an incident",
+            "description": "Something is broken right now.",
+            "group": "incidents"
+          },
+          {
+            "id": "access",
+            "name": "Request access",
+            "description": "Ask for an account or a permission."
+          }
+        ]
+      },
+      "template": "com.atlassian.servicedesk:simplified-external-service-desk"
+    }
+  ],
+  "workItems": [
+    {
+      "id": "pay-i1",
+      "project": "pay",
+      "type": "Initiative",
+      "summary": "Take payments end to end",
+      "assignee": "nora",
+      "reporter": "nora",
+      "createdDay": -88,
+      "priority": "High",
+      "labels": [
+        "payments"
+      ],
+      "events": [
+        {
+          "day": -87,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "nora"
+        },
+        {
+          "day": -40,
+          "kind": "comment",
+          "actor": "nora",
+          "body": "Two releases out, payouts remain."
+        }
+      ]
+    },
+    {
+      "id": "pay-e1",
+      "project": "pay",
+      "type": "Epic",
+      "summary": "Card payments",
+      "assignee": "maya",
+      "reporter": "nora",
+      "createdDay": -84,
+      "labels": [
+        "payments"
+      ],
+      "priority": "High",
+      "events": [
+        {
+          "day": -83,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "maya"
+        }
+      ],
+      "parent": "pay-i1"
+    },
+    {
+      "id": "pay-e2",
+      "project": "pay",
+      "type": "Epic",
+      "summary": "Refunds and disputes",
+      "assignee": "maya",
+      "reporter": "nora",
+      "createdDay": -60,
+      "labels": [
+        "payments"
+      ],
+      "priority": "High",
+      "events": [
+        {
+          "day": -59,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "maya"
+        }
+      ],
+      "parent": "pay-i1"
+    },
+    {
+      "id": "pay-e3",
+      "project": "pay",
+      "type": "Epic",
+      "summary": "Payout reliability",
+      "assignee": "maya",
+      "reporter": "nora",
+      "createdDay": -40,
+      "labels": [
+        "payments"
+      ],
+      "priority": "High",
+      "events": [
+        {
+          "day": -39,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "maya"
+        }
+      ],
+      "parent": "pay-i1"
+    },
+    {
+      "id": "pay-1",
+      "project": "pay",
+      "type": "Story",
+      "summary": "Accept card payments end to end",
+      "assignee": "ravi",
+      "reporter": "nora",
+      "createdDay": -84,
+      "parent": "pay-e1",
+      "sprint": "pay-s1",
+      "priority": "Medium",
+      "labels": [
+        "payments"
+      ],
+      "fields": {
+        "points": "5"
+      },
+      "events": [
+        {
+          "day": -83,
+          "kind": "assign",
+          "actor": "maya",
+          "assignee": "ravi"
+        },
+        {
+          "day": -83,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "ravi"
+        },
+        {
+          "day": -82,
+          "kind": "comment",
+          "actor": "ravi",
+          "body": "Picked this up; splitting the API change from the migration."
+        },
+        {
+          "day": -81,
+          "kind": "worklog",
+          "actor": "ravi",
+          "seconds": 14400
+        },
+        {
+          "day": -60,
+          "kind": "comment",
+          "actor": "ines",
+          "body": "Reviewed and merged."
+        },
+        {
+          "day": -60,
+          "kind": "transition",
+          "status": "Done",
+          "actor": "ravi",
+          "resolution": "Done"
+        }
+      ],
+      "fixVersions": [
+        "pay-1-0"
+      ]
+    },
+    {
+      "id": "pay-2",
+      "project": "pay",
+      "type": "Story",
+      "summary": "Store card tokens with the vault",
+      "assignee": "ines",
+      "reporter": "nora",
+      "createdDay": -82,
+      "parent": "pay-e1",
+      "sprint": "pay-s1",
+      "priority": "Medium",
+      "labels": [
+        "payments"
+      ],
+      "fields": {
+        "points": "8"
+      },
+      "events": [
+        {
+          "day": -81,
+          "kind": "assign",
+          "actor": "maya",
+          "assignee": "ines"
+        },
+        {
+          "day": -81,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "ines"
+        },
+        {
+          "day": -80,
+          "kind": "comment",
+          "actor": "ines",
+          "body": "Picked this up; splitting the API change from the migration."
+        },
+        {
+          "day": -79,
+          "kind": "worklog",
+          "actor": "ines",
+          "seconds": 21600
+        },
+        {
+          "day": -58,
+          "kind": "comment",
+          "actor": "ravi",
+          "body": "Reviewed and merged."
+        },
+        {
+          "day": -58,
+          "kind": "transition",
+          "status": "Done",
+          "actor": "ines",
+          "resolution": "Done"
+        }
+      ],
+      "fixVersions": [
+        "pay-1-0"
+      ]
+    },
+    {
+      "id": "pay-3",
+      "project": "pay",
+      "type": "Story",
+      "summary": "Decline handling and retries",
+      "assignee": "tom",
+      "reporter": "nora",
+      "createdDay": -80,
+      "parent": "pay-e1",
+      "sprint": "pay-s1",
+      "priority": "Medium",
+      "labels": [
+        "payments"
+      ],
+      "fields": {
+        "points": "3"
+      },
+      "events": [
+        {
+          "day": -79,
+          "kind": "assign",
+          "actor": "maya",
+          "assignee": "tom"
+        },
+        {
+          "day": -79,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "tom"
+        },
+        {
+          "day": -78,
+          "kind": "comment",
+          "actor": "tom",
+          "body": "Picked this up; splitting the API change from the migration."
+        },
+        {
+          "day": -77,
+          "kind": "worklog",
+          "actor": "tom",
+          "seconds": 7200
+        },
+        {
+          "day": -57,
+          "kind": "comment",
+          "actor": "ravi",
+          "body": "Reviewed and merged."
+        },
+        {
+          "day": -57,
+          "kind": "transition",
+          "status": "Done",
+          "actor": "tom",
+          "resolution": "Done"
+        }
+      ],
+      "fixVersions": [
+        "pay-1-0"
+      ]
+    },
+    {
+      "id": "pay-4",
+      "project": "pay",
+      "type": "Story",
+      "summary": "Refund a captured payment",
+      "assignee": "ravi",
+      "reporter": "nora",
+      "createdDay": -68,
+      "parent": "pay-e2",
+      "sprint": "pay-s2",
+      "priority": "Medium",
+      "labels": [
+        "payments"
+      ],
+      "fields": {
+        "points": "5"
+      },
+      "events": [
+        {
+          "day": -67,
+          "kind": "assign",
+          "actor": "maya",
+          "assignee": "ravi"
+        },
+        {
+          "day": -67,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "ravi"
+        },
+        {
+          "day": -66,
+          "kind": "comment",
+          "actor": "ravi",
+          "body": "Picked this up; splitting the API change from the migration."
+        },
+        {
+          "day": -65,
+          "kind": "worklog",
+          "actor": "ravi",
+          "seconds": 14400
+        },
+        {
+          "day": -46,
+          "kind": "comment",
+          "actor": "ravi",
+          "body": "Reviewed and merged."
+        },
+        {
+          "day": -46,
+          "kind": "transition",
+          "status": "Done",
+          "actor": "ravi",
+          "resolution": "Done"
+        }
+      ],
+      "fixVersions": [
+        "pay-1-1"
+      ]
+    },
+    {
+      "id": "pay-5",
+      "project": "pay",
+      "type": "Story",
+      "summary": "Partial refunds",
+      "assignee": "ines",
+      "reporter": "nora",
+      "createdDay": -66,
+      "parent": "pay-e2",
+      "sprint": "pay-s2",
+      "priority": "Medium",
+      "labels": [
+        "payments"
+      ],
+      "fields": {
+        "points": "3"
+      },
+      "events": [
+        {
+          "day": -65,
+          "kind": "assign",
+          "actor": "maya",
+          "assignee": "ines"
+        },
+        {
+          "day": -65,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "ines"
+        },
+        {
+          "day": -64,
+          "kind": "comment",
+          "actor": "ines",
+          "body": "Picked this up; splitting the API change from the migration."
+        },
+        {
+          "day": -63,
+          "kind": "worklog",
+          "actor": "ines",
+          "seconds": 10800
+        },
+        {
+          "day": -44,
+          "kind": "comment",
+          "actor": "ravi",
+          "body": "Reviewed and merged."
+        },
+        {
+          "day": -44,
+          "kind": "transition",
+          "status": "Done",
+          "actor": "ines",
+          "resolution": "Done"
+        }
+      ],
+      "fixVersions": [
+        "pay-1-1"
+      ]
+    },
+    {
+      "id": "pay-6",
+      "project": "pay",
+      "type": "Story",
+      "summary": "Dispute webhooks from the processor",
+      "assignee": "tom",
+      "reporter": "nora",
+      "createdDay": -64,
+      "parent": "pay-e2",
+      "sprint": "pay-s2",
+      "priority": "Medium",
+      "labels": [
+        "payments"
+      ],
+      "fields": {
+        "points": "8"
+      },
+      "events": [
+        {
+          "day": -63,
+          "kind": "assign",
+          "actor": "maya",
+          "assignee": "tom"
+        },
+        {
+          "day": -63,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "tom"
+        },
+        {
+          "day": -62,
+          "kind": "comment",
+          "actor": "tom",
+          "body": "Picked this up; splitting the API change from the migration."
+        },
+        {
+          "day": -61,
+          "kind": "worklog",
+          "actor": "tom",
+          "seconds": 7200
+        },
+        {
+          "day": -43,
+          "kind": "comment",
+          "actor": "maya",
+          "body": "Reviewed and merged."
+        },
+        {
+          "day": -43,
+          "kind": "transition",
+          "status": "Done",
+          "actor": "tom",
+          "resolution": "Done"
+        }
+      ],
+      "fixVersions": [
+        "pay-1-1"
+      ]
+    },
+    {
+      "id": "pay-7",
+      "project": "pay",
+      "type": "Story",
+      "summary": "Payout batching",
+      "assignee": "ravi",
+      "reporter": "nora",
+      "createdDay": -52,
+      "parent": "pay-e3",
+      "sprint": "pay-s3",
+      "priority": "Medium",
+      "labels": [
+        "payments"
+      ],
+      "fields": {
+        "points": "8"
+      },
+      "events": [
+        {
+          "day": -51,
+          "kind": "assign",
+          "actor": "maya",
+          "assignee": "ravi"
+        },
+        {
+          "day": -51,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "ravi"
+        },
+        {
+          "day": -50,
+          "kind": "comment",
+          "actor": "ravi",
+          "body": "Picked this up; splitting the API change from the migration."
+        },
+        {
+          "day": -49,
+          "kind": "worklog",
+          "actor": "ravi",
+          "seconds": 21600
+        },
+        {
+          "day": -32,
+          "kind": "comment",
+          "actor": "ravi",
+          "body": "Reviewed and merged."
+        },
+        {
+          "day": -32,
+          "kind": "transition",
+          "status": "Done",
+          "actor": "ravi",
+          "resolution": "Done"
+        }
+      ],
+      "fixVersions": [
+        "pay-1-2"
+      ]
+    },
+    {
+      "id": "pay-8",
+      "project": "pay",
+      "type": "Story",
+      "summary": "Retry failed payouts",
+      "assignee": "ines",
+      "reporter": "nora",
+      "createdDay": -50,
+      "parent": "pay-e3",
+      "sprint": "pay-s3",
+      "priority": "Medium",
+      "labels": [
+        "payments"
+      ],
+      "fields": {
+        "points": "5"
+      },
+      "events": [
+        {
+          "day": -49,
+          "kind": "assign",
+          "actor": "maya",
+          "assignee": "ines"
+        },
+        {
+          "day": -49,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "ines"
+        },
+        {
+          "day": -48,
+          "kind": "comment",
+          "actor": "ines",
+          "body": "Picked this up; splitting the API change from the migration."
+        },
+        {
+          "day": -47,
+          "kind": "worklog",
+          "actor": "ines",
+          "seconds": 10800
+        },
+        {
+          "day": -30,
+          "kind": "comment",
+          "actor": "ravi",
+          "body": "Reviewed and merged."
+        },
+        {
+          "day": -30,
+          "kind": "transition",
+          "status": "Done",
+          "actor": "ines",
+          "resolution": "Done"
+        }
+      ],
+      "fixVersions": [
+        "pay-1-2"
+      ]
+    },
+    {
+      "id": "pay-9",
+      "project": "pay",
+      "type": "Story",
+      "summary": "Payout reconciliation report",
+      "assignee": "tom",
+      "reporter": "nora",
+      "createdDay": -48,
+      "parent": "pay-e3",
+      "sprint": "pay-s3",
+      "priority": "Medium",
+      "labels": [
+        "payments"
+      ],
+      "fields": {
+        "points": "5"
+      },
+      "events": [
+        {
+          "day": -47,
+          "kind": "assign",
+          "actor": "maya",
+          "assignee": "tom"
+        },
+        {
+          "day": -47,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "tom"
+        },
+        {
+          "day": -46,
+          "kind": "comment",
+          "actor": "tom",
+          "body": "Picked this up; splitting the API change from the migration."
+        },
+        {
+          "day": -45,
+          "kind": "worklog",
+          "actor": "tom",
+          "seconds": 21600
+        },
+        {
+          "day": -29,
+          "kind": "comment",
+          "actor": "ravi",
+          "body": "Reviewed and merged."
+        },
+        {
+          "day": -29,
+          "kind": "transition",
+          "status": "Done",
+          "actor": "tom",
+          "resolution": "Done"
+        }
+      ]
+    },
+    {
+      "id": "pay-10",
+      "project": "pay",
+      "type": "Story",
+      "summary": "Fraud signal ingestion",
+      "assignee": "ravi",
+      "reporter": "nora",
+      "createdDay": -16,
+      "parent": "pay-e3",
+      "sprint": "pay-s4",
+      "priority": "Medium",
+      "labels": [
+        "payments"
+      ],
+      "fields": {
+        "points": "8"
+      },
+      "events": [
+        {
+          "day": -15,
+          "kind": "assign",
+          "actor": "maya",
+          "assignee": "ravi"
+        },
+        {
+          "day": -15,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "ravi"
+        },
+        {
+          "day": -14,
+          "kind": "comment",
+          "actor": "ravi",
+          "body": "Picked this up; splitting the API change from the migration."
+        },
+        {
+          "day": -13,
+          "kind": "worklog",
+          "actor": "ravi",
+          "seconds": 7200
+        }
+      ],
+      "fixVersions": [
+        "pay-1-2"
+      ]
+    },
+    {
+      "id": "pay-11",
+      "project": "pay",
+      "type": "Story",
+      "summary": "Score payments before capture",
+      "assignee": "ines",
+      "reporter": "nora",
+      "createdDay": -14,
+      "parent": "pay-e3",
+      "sprint": "pay-s4",
+      "priority": "Medium",
+      "labels": [
+        "payments"
+      ],
+      "fields": {
+        "points": "5"
+      },
+      "events": [
+        {
+          "day": -13,
+          "kind": "assign",
+          "actor": "maya",
+          "assignee": "ines"
+        },
+        {
+          "day": -13,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "ines"
+        },
+        {
+          "day": -12,
+          "kind": "comment",
+          "actor": "ines",
+          "body": "Picked this up; splitting the API change from the migration."
+        },
+        {
+          "day": -11,
+          "kind": "worklog",
+          "actor": "ines",
+          "seconds": 10800
+        }
+      ],
+      "fixVersions": [
+        "pay-1-2"
+      ]
+    },
+    {
+      "id": "pay-12",
+      "project": "pay",
+      "type": "Story",
+      "summary": "Explain a declined payment to support",
+      "assignee": "tom",
+      "reporter": "nora",
+      "createdDay": -12,
+      "parent": "pay-e3",
+      "sprint": "pay-s4",
+      "priority": "Medium",
+      "labels": [
+        "payments"
+      ],
+      "fields": {
+        "points": "3"
+      },
+      "events": [
+        {
+          "day": -11,
+          "kind": "assign",
+          "actor": "maya",
+          "assignee": "tom"
+        },
+        {
+          "day": -11,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "tom"
+        },
+        {
+          "day": -10,
+          "kind": "comment",
+          "actor": "tom",
+          "body": "Picked this up; splitting the API change from the migration."
+        },
+        {
+          "day": -9,
+          "kind": "worklog",
+          "actor": "tom",
+          "seconds": 7200
+        }
+      ]
+    },
+    {
+      "id": "pay-20",
+      "project": "pay",
+      "type": "Bug",
+      "summary": "Duplicate charge on retried payment",
+      "assignee": "ravi",
+      "reporter": "sara",
+      "createdDay": -38,
+      "priority": "Highest",
+      "labels": [
+        "payments",
+        "incident"
+      ],
+      "sprint": "pay-s3",
+      "fixVersions": [
+        "pay-1-2"
+      ],
+      "events": [
+        {
+          "day": -38,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "ravi"
+        },
+        {
+          "day": -37,
+          "kind": "comment",
+          "actor": "ravi",
+          "body": "Reproduced: the retry used the same idempotency key."
+        },
+        {
+          "day": -36,
+          "kind": "transition",
+          "status": "Done",
+          "actor": "ravi",
+          "resolution": "Done"
+        }
+      ]
+    },
+    {
+      "id": "pay-21",
+      "project": "pay",
+      "type": "Bug",
+      "summary": "Payout report rounds to the wrong currency unit",
+      "assignee": "ines",
+      "reporter": "dan",
+      "createdDay": -9,
+      "priority": "High",
+      "labels": [
+        "payments"
+      ],
+      "sprint": "pay-s4",
+      "events": [
+        {
+          "day": -8,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "ines"
+        },
+        {
+          "day": -7,
+          "kind": "link",
+          "actor": "ines",
+          "linkType": "blocks",
+          "target": "pay-12"
+        },
+        {
+          "day": -6,
+          "kind": "comment",
+          "actor": "ines",
+          "body": "Blocked on the reconciliation change landing first."
+        }
+      ]
+    },
+    {
+      "id": "pay-22",
+      "project": "pay",
+      "type": "Task",
+      "summary": "Rotate processor credentials",
+      "assignee": "maya",
+      "reporter": "maya",
+      "createdDay": -5,
+      "priority": "Medium",
+      "labels": [
+        "payments",
+        "security"
+      ],
+      "events": [
+        {
+          "day": -4,
+          "kind": "watch",
+          "actor": "nora"
+        },
+        {
+          "day": -4,
+          "kind": "vote",
+          "actor": "tom"
+        }
+      ]
+    },
+    {
+      "id": "ops-1",
+      "project": "ops",
+      "type": "Task",
+      "summary": "Quarterly access review",
+      "assignee": "maya",
+      "reporter": "maya",
+      "createdDay": -40,
+      "priority": "Medium",
+      "events": [
+        {
+          "day": -39,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "maya"
+        },
+        {
+          "day": -20,
+          "kind": "transition",
+          "status": "Done",
+          "actor": "maya",
+          "resolution": "Done"
+        }
+      ]
+    },
+    {
+      "id": "ops-2",
+      "project": "ops",
+      "type": "Task",
+      "summary": "Update the incident runbook",
+      "assignee": "nora",
+      "reporter": "maya",
+      "createdDay": -30,
+      "priority": "Medium",
+      "events": [
+        {
+          "day": -29,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "nora"
+        },
+        {
+          "day": -10,
+          "kind": "transition",
+          "status": "Done",
+          "actor": "nora",
+          "resolution": "Done"
+        }
+      ]
+    },
+    {
+      "id": "ops-3",
+      "project": "ops",
+      "type": "Task",
+      "summary": "Vendor security questionnaire",
+      "assignee": "maya",
+      "reporter": "maya",
+      "createdDay": -18,
+      "priority": "Medium",
+      "events": [
+        {
+          "day": -17,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "maya"
+        }
+      ]
+    },
+    {
+      "id": "ops-4",
+      "project": "ops",
+      "type": "Task",
+      "summary": "Plan the data retention policy",
+      "assignee": "nora",
+      "reporter": "maya",
+      "createdDay": -8,
+      "priority": "Medium",
+      "events": [
+        {
+          "day": -7,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "nora"
+        }
+      ]
+    }
+  ],
+  "deployments": [
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -88,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -85,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -86,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -82,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -79,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -80,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -76,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -73,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -74,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -70,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -67,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -68,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -64,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -61,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -62,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "failed",
+      "day": -58,
+      "workItems": [
+        "pay-1",
+        "pay-2"
+      ]
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -55,
+      "workItems": [
+        "pay-2",
+        "pay-3"
+      ]
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -56,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -52,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -49,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -50,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -46,
+      "workItems": [
+        "pay-4"
+      ]
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -43,
+      "workItems": [
+        "pay-4",
+        "pay-5",
+        "pay-6"
+      ]
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -44,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "rolled_back",
+      "day": -40,
+      "workItems": [
+        "pay-6"
+      ]
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -37,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -38,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -34,
+      "workItems": [
+        "pay-20"
+      ]
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -31,
+      "workItems": [
+        "pay-7"
+      ]
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -32,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -28,
+      "workItems": [
+        "pay-8",
+        "pay-9"
+      ]
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "failed",
+      "day": -25,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -26,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -22,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -19,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -20,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -16,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -13,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -14,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -10,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -7,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -8,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -4,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "production",
+      "type": "production",
+      "state": "successful",
+      "day": -1,
+      "workItems": []
+    },
+    {
+      "pipeline": "payments-service",
+      "environment": "staging",
+      "type": "staging",
+      "state": "successful",
+      "day": -2,
+      "workItems": []
+    }
+  ],
+  "service": {
+    "organizations": [
+      {
+        "id": "riverbank",
+        "name": "Riverbank Foods",
+        "members": [
+          "cust-amara"
+        ]
+      },
+      {
+        "id": "harbour",
+        "name": "Harbour Co",
+        "members": [
+          "cust-felix"
+        ]
+      }
+    ],
+    "requests": [
+      {
+        "id": "sr-1",
+        "project": "help",
+        "requestType": "incident",
+        "customer": "cust-amara",
+        "summary": "Card payments failing for one merchant",
+        "description": "Reported through the customer portal.",
+        "createdDay": -34,
+        "events": [
+          {
+            "day": -34,
+            "kind": "comment",
+            "actor": "sara",
+            "body": "Thanks for the report \u2014 taking a look now."
+          },
+          {
+            "day": -34,
+            "kind": "transition",
+            "status": "In Progress",
+            "actor": "sara"
+          },
+          {
+            "day": -33,
+            "kind": "comment",
+            "actor": "sara",
+            "body": "This is resolved. Closing the request."
+          },
+          {
+            "day": -33,
+            "kind": "transition",
+            "status": "Done",
+            "actor": "sara",
+            "resolution": "Done"
+          }
+        ],
+        "satisfaction": 5,
+        "feedback": "Fixed within the hour, thank you."
+      },
+      {
+        "id": "sr-2",
+        "project": "help",
+        "requestType": "help",
+        "customer": "cust-felix",
+        "summary": "Refund not showing on the statement",
+        "description": "Reported through the customer portal.",
+        "createdDay": -26,
+        "events": [
+          {
+            "day": -26,
+            "kind": "comment",
+            "actor": "sara",
+            "body": "Thanks for the report \u2014 taking a look now."
+          },
+          {
+            "day": -26,
+            "kind": "transition",
+            "status": "In Progress",
+            "actor": "sara"
+          },
+          {
+            "day": -25,
+            "kind": "comment",
+            "actor": "sara",
+            "body": "This is resolved. Closing the request."
+          },
+          {
+            "day": -25,
+            "kind": "transition",
+            "status": "Done",
+            "actor": "sara",
+            "resolution": "Done"
+          }
+        ],
+        "satisfaction": 4,
+        "feedback": "Clear explanation."
+      },
+      {
+        "id": "sr-3",
+        "project": "help",
+        "requestType": "access",
+        "customer": "cust-amara",
+        "summary": "Add a second finance user",
+        "description": "Reported through the customer portal.",
+        "createdDay": -19,
+        "events": [
+          {
+            "day": -19,
+            "kind": "comment",
+            "actor": "sara",
+            "body": "Thanks for the report \u2014 taking a look now."
+          },
+          {
+            "day": -19,
+            "kind": "transition",
+            "status": "In Progress",
+            "actor": "sara"
+          },
+          {
+            "day": -18,
+            "kind": "comment",
+            "actor": "sara",
+            "body": "This is resolved. Closing the request."
+          },
+          {
+            "day": -18,
+            "kind": "transition",
+            "status": "Done",
+            "actor": "sara",
+            "resolution": "Done"
+          }
+        ],
+        "satisfaction": 5
+      },
+      {
+        "id": "sr-4",
+        "project": "help",
+        "requestType": "incident",
+        "customer": "cust-felix",
+        "summary": "Payout delayed by two days",
+        "description": "Reported through the customer portal.",
+        "createdDay": -12,
+        "events": [
+          {
+            "day": -12,
+            "kind": "comment",
+            "actor": "sara",
+            "body": "Thanks for the report \u2014 taking a look now."
+          },
+          {
+            "day": -12,
+            "kind": "transition",
+            "status": "In Progress",
+            "actor": "sara"
+          },
+          {
+            "day": -11,
+            "kind": "comment",
+            "actor": "sara",
+            "body": "This is resolved. Closing the request."
+          },
+          {
+            "day": -11,
+            "kind": "transition",
+            "status": "Done",
+            "actor": "sara",
+            "resolution": "Done"
+          }
+        ],
+        "satisfaction": 3,
+        "feedback": "Resolved, but it took a while."
+      },
+      {
+        "id": "sr-5",
+        "project": "help",
+        "requestType": "help",
+        "customer": "cust-amara",
+        "summary": "Export invoices as CSV",
+        "description": "Reported through the customer portal.",
+        "createdDay": -6,
+        "events": [
+          {
+            "day": -6,
+            "kind": "comment",
+            "actor": "sara",
+            "body": "Thanks for the report \u2014 taking a look now."
+          },
+          {
+            "day": -6,
+            "kind": "transition",
+            "status": "In Progress",
+            "actor": "sara"
+          }
+        ]
+      },
+      {
+        "id": "sr-6",
+        "project": "help",
+        "requestType": "access",
+        "customer": "cust-felix",
+        "summary": "Reset the sandbox keys",
+        "description": "Reported through the customer portal.",
+        "createdDay": -2,
+        "events": [
+          {
+            "day": -2,
+            "kind": "comment",
+            "actor": "sara",
+            "body": "Thanks for the report \u2014 taking a look now."
+          },
+          {
+            "day": -2,
+            "kind": "transition",
+            "status": "In Progress",
+            "actor": "sara"
+          }
+        ]
+      }
+    ]
+  },
+  "wiki": {
+    "spaces": [
+      {
+        "key": "ENG",
+        "name": "Engineering",
+        "description": "How the engineering team works.",
+        "pages": [
+          {
+            "id": "eng-home",
+            "title": "Engineering handbook",
+            "body": "<p>How we build and run Northwind.</p>",
+            "author": "maya",
+            "createdDay": -80,
+            "comments": [
+              {
+                "author": "ravi",
+                "body": "Added the on-call rotation below.",
+                "day": -70
+              }
+            ],
+            "children": [
+              {
+                "id": "eng-oncall",
+                "title": "On-call rotation",
+                "body": "<p>One engineer is on call each week, Monday to Monday.</p>",
+                "author": "ravi",
+                "createdDay": -70
+              },
+              {
+                "id": "eng-review",
+                "title": "Code review",
+                "body": "<p>Two approvals for payment paths, one elsewhere.</p>",
+                "author": "ines",
+                "createdDay": -64
+              },
+              {
+                "id": "eng-incident",
+                "title": "Incident response",
+                "body": "<p>Declare early. Write the review within three days.</p>",
+                "author": "tom",
+                "createdDay": -58,
+                "comments": [
+                  {
+                    "author": "nora",
+                    "body": "Linked this from the support handbook.",
+                    "day": -30
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "eng-arch",
+            "title": "Payments architecture",
+            "body": "<p>The gateway, the ledger and the payout worker.</p>",
+            "author": "ines",
+            "createdDay": -76,
+            "children": [
+              {
+                "id": "eng-ledger",
+                "title": "Ledger invariants",
+                "body": "<p>Every movement balances. No row is ever updated in place.</p>",
+                "author": "ines",
+                "createdDay": -74
+              }
+            ]
+          }
+        ],
+        "blogPosts": [
+          {
+            "title": "1.0 is live",
+            "body": "<p>Card payments shipped this morning.</p>",
+            "author": "maya",
+            "createdDay": -56
+          },
+          {
+            "title": "What we learned from the duplicate charge",
+            "body": "<p>Idempotency keys must cover retries.</p>",
+            "author": "ravi",
+            "createdDay": -35
+          }
+        ]
+      },
+      {
+        "key": "SUP",
+        "name": "Support",
+        "description": "How the desk answers customers.",
+        "pages": [
+          {
+            "id": "sup-home",
+            "title": "Support handbook",
+            "body": "<p>How we answer, escalate and follow up.</p>",
+            "author": "sara",
+            "createdDay": -60,
+            "children": [
+              {
+                "id": "sup-refunds",
+                "title": "Refunds: what we can do",
+                "body": "<p>Full refunds within 90 days; partial any time.</p>",
+                "author": "dan",
+                "createdDay": -50
+              },
+              {
+                "id": "sup-escalate",
+                "title": "When to escalate",
+                "body": "<p>Money moved twice, or a customer is blocked from paying.</p>",
+                "author": "sara",
+                "createdDay": -45
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "filters": [
+    {
+      "name": "My open work",
+      "jql": "assignee = currentUser() AND resolution = Unresolved ORDER BY updated DESC",
+      "owner": "maya",
+      "shared": true
+    },
+    {
+      "name": "Payments bugs",
+      "jql": "project = PAY AND issuetype = Bug AND resolution = Unresolved ORDER BY priority DESC",
+      "owner": "ravi",
+      "shared": true
+    },
+    {
+      "name": "Resolved this month",
+      "jql": "resolution != Unresolved AND resolutiondate >= -30d ORDER BY resolutiondate DESC",
+      "owner": "nora"
+    }
+  ],
+  "dashboards": [
+    {
+      "name": "Delivery",
+      "owner": "nora",
+      "shared": true,
+      "gadgets": [
+        {
+          "type": "filter-results",
+          "title": "Payments bugs",
+          "filter": "Payments bugs"
+        },
+        {
+          "type": "created-vs-resolved",
+          "title": "Created vs resolved",
+          "project": "pay"
+        }
+      ]
+    }
+  ],
+  "hierarchy": [
+    {
+      "level": 2,
+      "name": "Initiative",
+      "workTypes": [
+        "Initiative"
+      ]
+    }
+  ]
+}

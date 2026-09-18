@@ -28,9 +28,16 @@ checks and 320 px reflow.
 |---|---|
 | Site administrator | Everything on every desk. Creates and reactivates portal-only customers, invites customers, revokes portal access, deletes organizations, edits Assets, sets the operations policy, customizes the help center |
 | Service desk administrator (administers the project) | Request types, request type fields, queues, desk customers, knowledge base links, calendars, SLAs, portal settings, per-desk attachment/feedback/notification switches, deployment gating. Request type properties also need agent access |
-| Agent (on the desk roster, holding Service desk agent in the project) | Reads every request of the desk (`requestOwnership=ALL_REQUESTS`), raises requests for enrolled customers, adds internal notes, assigns and transitions requests, runs bulk queue actions, creates organizations, manages participants and approvals, reads Assets |
+| Agent | Reads every request of the desk (`requestOwnership=ALL_REQUESTS`), raises requests for enrolled customers, adds internal notes, assigns and transitions requests, runs bulk queue actions, creates organizations, manages participants and approvals, reads Assets |
 | Customer | Their own requests (as reporter, participant, organization member or approver), public comments and public files |
 
+- **Who is an agent:** a workspace member who is both on the desk's roster and
+  holds the **Service desk agent** project permission
+  (`SERVICEDESK_AGENT`) in the desk's project, from that project's permission
+  scheme ([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)). Losing either one
+  ends agent access at once. A site administrator is an agent on every desk.
+  The default permission scheme grants Service desk agent to the project's
+  Members role, so a desk on that scheme needs only the roster entry.
 - **Desk roster:** site administrators add and remove active members. Removing
   an agent immediately takes away queue access, visibility of all requests,
   request management and internal comments for that desk.
@@ -162,8 +169,15 @@ active first. Values of `requestOwnership` combine:
 - **Bulk actions:** select up to 100 requests (select-all is available), then
   assign them to a desk agent or unassign them, move them to a status through
   each request's own workflow, or add the same internal note or customer reply.
-  Requests that cannot change are listed with the reason; the rest are
-  updated.
+  - Agent access is what admits these actions. They are not Jira's bulk change
+    routes and do not use the Bulk change global permission
+    ([BULK_ISSUES.md](BULK_ISSUES.md)).
+  - Each request still goes through its own command, so Assign issues,
+    Transition issues and Add comments apply per request. Requests that cannot
+    change are listed with the reason; the rest are updated.
+  - A status the request's workflow offers no transition into, an assignee who
+    is not an agent of this desk, and a request from another desk are all
+    reported and skipped.
 
 ## Customers and organizations
 

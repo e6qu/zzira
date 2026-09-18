@@ -19,7 +19,8 @@ A site's levels run Subtask (`-1`), Base (`0`), Epic (`1`) and any named levels 
 
 - **Settings:** `/settings/hierarchy` lists the levels top down with their work types. A site administrator adds a level (it goes on top), renames Epic and the levels above it, moves a work type to another level, and removes the top level once it is empty. Base and Subtask are fixed, as in Jira.
 - **Moving a work type** is refused while its work items have a parent or children, and a shared default type moves for this site only.
-- **Parent:** a work item's parent is a work item exactly one level above it — a task under an epic, an epic under the level above it. Anything else is `Given parent work item does not belong to appropriate hierarchy.` The create form and the work item view offer only the parents of the level above.
+- **Parent:** a work item's parent is a work item exactly one level above it — a task under an epic, an epic under the level above it. Anything else is `Given parent work item does not belong to appropriate hierarchy.` (`internal/commands/commands_v1.go`, `hierarchyParent`). The parent may be in any project. The create form and the work item view offer only the work items of the level above (`ParentOptions`).
+- **Sub-tasks are the exception:** a sub-task's parent is any work item of a non-sub-task type in the sub-task's own project. Sub-tasks are refused entirely while the site switches them off ([JIRA_SITE_CONFIGURATION.md](JIRA_SITE_CONFIGURATION.md)).
 - **REST:** `POST /rest/api/3/issuetype` creates standard types at level 0 and subtask types at −1, as Jira's API does; higher levels are set in the settings page. `GET /rest/api/3/project/{projectId}/hierarchy` reports the site's levels with their names ([JIRA_PLATFORM.md](JIRA_PLATFORM.md#site-and-project-reads)).
 - Boards and backlogs use the epic level. Epic behavior is in [JIRA_SOFTWARE.md](JIRA_SOFTWARE.md).
 
@@ -53,6 +54,8 @@ A site's levels run Subtask (`-1`), Base (`0`), Epic (`1`) and any named levels 
 
 A new priority joins the default priority scheme. Deletion runs as a task: work items take the site default and the priority leaves every scheme. The default priority cannot be deleted. A second delete while one runs is 409.
 
+A priority's icon is either an `iconUrl` or an `avatarId`, never both (400). The site's ten built-in icons are `highest`, `high`, `medium`, `low`, `lowest`, `blocker`, `critical`, `major`, `minor` and `trivial` under `/images/icons/priorities/`. A priority created without an icon takes Jira's medium icon, so every priority renders (`DefaultPriorityIconURL`, `internal/store/issue_metadata.go`). An empty `iconUrl` on an update leaves the icon alone.
+
 ## Resolutions
 
 | Method | Path | Notes |
@@ -69,7 +72,7 @@ Deleting a resolution moves its work items to the replacement, so no resolved wo
 ### On work items
 
 - `fields.resolution` and `fields.resolutiondate` are `null` while unresolved.
-- A person chooses the resolution when a transition screen asks for it, or edits it on the work item; both need the Resolve issues permission ([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)). `fields.resolution` takes an id or a name over REST, and `null` clears it.
+- A person chooses the resolution when a transition screen asks for it (the `system:transition-screen` rule lists `resolution`, [WORKFLOW_RULES.md](WORKFLOW_RULES.md#system-rules)), or edits it on the work item; both need the Resolve issues permission ([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md#enforcement)). `fields.resolution` takes an id or a name over REST, and `null` clears it. `resolution` is in the [screen](SCREENS.md#field-catalog) field catalog, so a screen can place it on a form.
 - Without a chosen resolution, entering a status in the done category applies the site's default and records the time. Leaving the done category clears both (`internal/store/mutations.go`). Every change is recorded in the changelog.
 - JQL ([JQL.md](JQL.md)): `resolution = Unresolved` and `resolution is EMPTY` match unresolved items; `resolution != Unresolved` matches resolved ones; `resolution in (Done, Unresolved)` matches either; `NOT IN` never matches an unresolved item; `resolutiondate` compares the resolve time.
 - `ORDER BY priority` and `ORDER BY resolution` use the site's order, not alphabetical order.
@@ -116,15 +119,15 @@ Rules:
 | Page | What an administrator does |
 | --- | --- |
 | `/settings/work-types` | Create a standard or sub-task work type, rename and describe it, delete it (moving its work items to another type), create a work type scheme with its types and default, assign a scheme to a project, add or remove a type, delete a scheme |
-| `/settings/priorities` | Create a priority with its status colour, rename and describe it, make it the default, move it to the top, delete it (its work items take the default). Priority schemes are listed with their priorities and projects |
+| `/settings/priorities` | Create a priority with its status colour and an icon from the built-in set, rename and describe it, make it the default, move it to the top, delete it (its work items take the default). Priority schemes are listed with their priorities and projects |
 | `/settings/resolutions` | Create a resolution, rename and describe it, make it the default, move it to the top, delete it (its work items take the replacement chosen) |
 | `/settings/hierarchy` | The levels, as described above |
 
-All four need site administration; deleting a priority or resolution runs as a task, as the REST API does.
+Work types, priorities and resolutions need site administration. `/settings/hierarchy` is readable by any member and editable only by a site administrator, which is why its forms appear for administrators alone. Deleting a priority or resolution runs as a task, as the REST API does.
 
 ## Code
 
-`internal/api3/issue_metadata.go`, `internal/store/issue_metadata.go`, `internal/store/issue_metadata_tasks.go`, `internal/store/issue_schemes.go`, `migrations/162_issue_metadata.sql`; tests in `internal/api3/issue_metadata_test.go`.
+`internal/api3/issue_metadata.go`, `internal/store/issue_metadata.go`, `internal/store/issue_metadata_tasks.go`, `internal/store/issue_schemes.go`, `internal/store/work_type_hierarchy.go`, `internal/web/issue_metadata_admin.go`, `internal/web/work_type_hierarchy.go`, `migrations/162_issue_metadata.sql`; tests in `internal/api3/issue_metadata_test.go`, `internal/store/work_type_hierarchy_test.go`, `internal/commands/resolution_test.go` and `internal/commands/hierarchy_workflow_test.go`.
 
 ## Gaps
 
@@ -135,3 +138,11 @@ Tracked in [PLAN.md](../PLAN.md).
 - Team-managed scoping (`scope`, `entityId`) is not modelled; every type is company-managed.
 - A priority scheme update applies its mappings before answering, so the 202 has no `task`.
 - The system avatar catalogue has five work type icons; Jira's is larger.
+
+## See also
+
+- [Permission schemes](PERMISSION_SCHEMES.md#enforcement) — the permission each work item command checks, Resolve issues included.
+- [Screens](SCREENS.md) and [screen schemes](SCREEN_SCHEMES.md) — where `resolution`, `priority` and `issuetype` sit on a form.
+- [Workflow rules](WORKFLOW_RULES.md) — transition screens and the rules that set a resolution.
+- [Jira Software](JIRA_SOFTWARE.md) — epics, boards and backlogs on the epic level.
+- [Ids clients see](WIRE_IDS.md) — the numbers clients get for types, priorities and resolutions.

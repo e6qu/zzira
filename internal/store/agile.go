@@ -750,8 +750,11 @@ func (s *Store) BacklogIssues(ctx context.Context, boardID, userID string) ([]*m
 	if err != nil {
 		return nil, err
 	}
+	// The backlog holds the work a sprint can take: base-level items and their
+	// sub-tasks. Epics and the levels above them are planned elsewhere.
 	rows, err := s.Pool.Query(ctx, issueJoin+`
 		WHERE i.project_id=$1 AND `+VisibleIssuePredicate("i", "$2")+`
+		  AND it.hierarchy_level < 1
 		  AND NOT EXISTS (
 			SELECT 1 FROM sprint_issues si JOIN sprints s ON s.id=si.sprint_id
 			WHERE si.issue_id=i.id AND s.state IN ('future','active')

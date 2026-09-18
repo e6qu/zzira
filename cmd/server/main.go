@@ -28,6 +28,7 @@ import (
 	"github.com/e6qu/zzira/internal/build"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/confluence"
+	"github.com/e6qu/zzira/internal/demo"
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/mailer"
 	"github.com/e6qu/zzira/internal/notifybus"
@@ -39,7 +40,8 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "run", "run|migrate|seed")
+	mode := flag.String("mode", "run", "run|migrate|seed|demo")
+	scenario := flag.String("scenario", "demo/company.json", "the demo scenario -mode=demo applies")
 	healthcheck := flag.Bool("healthcheck", false, "verify the process can serve and exit")
 	addr := flag.String("addr", "", "listen address (default :$SERVER_PORT or :8080)")
 	staticDir := flag.String("static", "", "static dir (default web/static)")
@@ -74,6 +76,12 @@ func main() {
 	}
 	if *mode == "migrate" {
 		fmt.Println("migrations applied")
+		return
+	}
+	if *mode == "demo" {
+		if err := applyDemoScenario(ctx, st, *scenario); err != nil {
+			log.Fatalf("demo: %v", err)
+		}
 		return
 	}
 	if *mode == "seed" {
@@ -1001,4 +1009,44 @@ func servingWorkspaceSlug(getenv func(string) string) (string, error) {
 		}
 	}
 	return slug, nil
+}
+
+// applyDemoScenario builds a demo site from a declarative scenario and writes
+// the credentials it created where the local tooling looks for them.
+func applyDemoScenario(ctx context.Context, st *store.Store, path string) error {
+	// #nosec G304 -- the scenario is the operator's own -scenario flag on a
+	// local command, like -static and -mode; it is read, never written, and no
+	// request can reach it.
+	file, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }()
+	scenario, err := demo.Read(file)
+	if err != nil {
+		return err
+	}
+	blobs, err := attachments.NewFS(envOr("BLOB_DIR", "data/blobs"))
+	if err != nil {
+		return err
+	}
+	result, err := demo.Apply(ctx, st, &commands.Service{Store: st, Blobs: blobs}, scenario, demo.NewClock(time.Now().UTC()))
+	if err != nil {
+		return err
+	}
+	credentials := map[string]any{"site": result.Slug, "passwords": result.Passwords, "tokens": result.Tokens}
+	encoded, err := json.MarshalIndent(credentials, "", "  ")
+	if err != nil {
+		return err
+	}
+	directory := envOr("DATA_DIR", "data")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(directory, "demo-credentials.json"), encoded, 0o600); err != nil {
+		return err
+	}
+	fmt.Printf("built the %s demo site: %d people, %d projects; credentials in %s\n",
+		scenario.Name, len(scenario.People), len(scenario.Projects), filepath.Join(directory, "demo-credentials.json"))
+	return nil
 }

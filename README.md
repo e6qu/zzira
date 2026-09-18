@@ -1,41 +1,50 @@
 # ZZIRA
 
 A self-hosted Jira Cloud, Jira Software, Jira Service Management and Confluence
-Cloud. The UI and REST APIs behave like Atlassian's, so existing clients work by
-changing their base URL. The architecture follows Linear's
-[delta sync](https://linear.app/now/rebuilding-delta-sync-read-path): one command
-layer writes an immutable action log, and browsers keep a permission-shaped local
-replica.
+Cloud. The screens and the REST APIs behave like Atlassian's, so a client works
+by pointing at your own server instead of `*.atlassian.net`. Inside, it follows
+Linear's [delta sync](https://linear.app/now/rebuilding-delta-sync-read-path)
+architecture: one command layer writes an immutable action log, and every
+browser keeps a permission-shaped local replica.
 
-- **Go + PostgreSQL** server: stateless replicas, the action log as the only write
-  path, `LISTEN/NOTIFY` for live updates.
-- **Local-first browser**: SQLite (WASM/OPFS) and one Go HTML renderer compiled
-  for both server and browser; access is checked before replay, and revoked data
-  is purged.
-- **Frontend**: server-rendered HTML with HTMX and SortableJS.
-- **Sign-in**: password, API tokens, and OIDC (Google, Microsoft Entra ID,
-  Atlassian, any custom provider) — see [identity providers](docs/shauth-sso.md).
+- **Jira** — projects, work types on a configurable hierarchy, fields, screens,
+  workflows, permissions, JQL, bulk operations.
+- **Jira Software** — boards, backlogs, sprints, releases, plans, reports and
+  delivery (DORA) metrics.
+- **Jira Service Management** — portals, request types, queues, SLAs,
+  approvals, customers and satisfaction.
+- **Confluence** — spaces, pages, blog posts, comments, whiteboards, databases
+  and CQL search.
+- **Automation and apps** — rules with triggers, conditions and actions; signed
+  Connect-compatible apps.
 
-Status: [compatibility ledger](docs/CLOUD_PARITY.md). Remaining work:
-[PLAN.md](PLAN.md). All docs: [docs index](docs/README.md).
-
-## Quickstart (Docker)
+## Try it
 
 ```bash
-docker compose up -d --build
+docker compose up -d --build            # Postgres and the server
 docker compose exec zzira /zzira-server -mode=migrate
-docker compose exec zzira /zzira-server -mode=seed   # prints a demo API token
+docker compose exec zzira /zzira-server -mode=demo   # a company with three months of history
 ```
 
-## Quickstart (local Go)
+Or run it from source against a local Postgres:
 
 ```bash
 docker compose up -d postgres
-make seed      # applies migrations, prints a demo API token
-make dev       # serves on :8080
+make seed      # migrations plus a demo@zzira.dev account
+make demo      # the Northwind demo company
+make dev       # serve on http://localhost:8080
 ```
 
-Sign in as `demo@zzira.dev` / `demo1234`. Use the printed token for Basic auth:
+`-mode=demo` builds **Northwind**: three projects, a board with closed and
+active sprints, two shipped releases, ninety days of deployments and incidents,
+a service desk with customers and satisfaction ratings, and the knowledge base
+the teams wrote. The people, their passwords and API tokens are written to
+`data/demo-credentials.json`. Everything it builds is declared in
+[demo/company.json](demo/company.json) — change it, run the mode again, and you
+have your own company: see [docs/DEMO_DATA.md](docs/DEMO_DATA.md).
+
+With `make seed`, sign in as `demo@zzira.dev` / `demo1234`. The seeded API token
+is printed once; use it for Basic auth:
 
 ```bash
 curl -u demo@zzira.dev:<token> -X POST localhost:8080/rest/api/3/issue \
@@ -43,30 +52,43 @@ curl -u demo@zzira.dev:<token> -X POST localhost:8080/rest/api/3/issue \
   -d '{"fields":{"project":{"key":"ZZ"},"summary":"Hello","issuetype":{"name":"Task"}}}'
 ```
 
-## Tests
+## Where to go next
 
-```bash
-go test ./...        # set TEST_DATABASE_URL for the Postgres tests
-make build           # server and wasm builds
-make loadtest        # sync latency by workspace size (docs/loadtest.md)
-cd e2e && npm i && npx playwright install chromium && npm test   # see e2e/README.md
-```
+| You want to | Start here |
+|---|---|
+| See what works and what doesn't | [docs/CLOUD_PARITY.md](docs/CLOUD_PARITY.md) |
+| Read about one surface | [docs index](docs/README.md) |
+| Know what is being built next | [PLAN.md](PLAN.md) |
+| Change the demo company | [docs/DEMO_DATA.md](docs/DEMO_DATA.md) |
+| Contribute | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Point an existing client at it | [docs/CLOUD_PARITY.md](docs/CLOUD_PARITY.md#compatibility-promise) |
 
 ## Layout
 
 | Path | Contents |
 |---|---|
 | `cmd/server` | HTTP server, routes, background workers |
-| `cmd/client` | Browser sync worker (wasm) |
-| `internal/commands` | The one mutation layer |
-| `internal/store` | PostgreSQL access |
-| `internal/api3`, `internal/agile`, `internal/confluence`, `internal/admin` | REST APIs |
-| `internal/web`, `internal/render` | Browser UI; the shared renderer |
+| `cmd/client` | Browser sync worker (WebAssembly) |
+| `internal/commands` | The one mutation layer: every write goes through it |
+| `internal/store` | PostgreSQL access and the action log |
+| `internal/api3`, `internal/agile`, `internal/confluence`, `internal/admin` | The REST APIs |
+| `internal/web`, `internal/render` | Browser pages; the renderer shared by server and browser |
 | `internal/automation`, `internal/apps` | Automation engine; app runtime |
+| `internal/demo` | The declarative demo scenarios |
 | `migrations/` | Schema |
-| `api/` | Pinned Atlassian specs and conformance data |
+| `api/` | Pinned Atlassian specifications and conformance evidence |
 | `e2e/` | Playwright journeys |
-| `docs/` | Surface reference ([index](docs/README.md)) |
+| `docs/` | Reference for every surface ([index](docs/README.md)) |
+
+## License
+
+AGPL-3.0-or-later. See [LICENSE](LICENSE) and [NOTICE](NOTICE). If you run a
+modified copy as a network service, the licence asks you to offer its source to
+the people using it.
+
+ZZIRA is an independent reimplementation. Jira, Jira Service Management,
+Confluence and Atlassian are trademarks of Atlassian Pty Ltd, which does not
+endorse this project.
 
 ## Author
 

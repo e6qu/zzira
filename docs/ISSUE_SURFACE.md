@@ -74,6 +74,11 @@ person must be able to see the work item. `DELETE` requires `accountId`.
 `POST /rest/api/3/issue/watching` reports the caller's watch status for a list of
 work item ids, `false` for unknown ones.
 
+Voting follows `/issue/{key}/votes`; a vote is always the caller's own. Adding or
+removing a watch or a vote advances the work item's sequence
+(`markIssueRendered`, `internal/store/agile.go`), so a browser holding an older
+render cannot write the old watcher or voter list back.
+
 `PUT /issue/{key}/assignee` takes exactly one of `accountId`, `name` or `key`:
 `null` unassigns, `"-1"` assigns the project default (the lead when the project
 assigns to its lead), and an unknown person is 400. Usernames and user keys do
@@ -118,8 +123,16 @@ Unknown or hidden work items are left out.
   day, bulk edit sets it as a date picker, and each change is a `jira`
   changelog item whose text is the day at midnight. The work item page edits it
   inline and the create dialog offers it.
-- `priority` is accepted by `id` or `name` on create and edit; an unknown one
-  is 400.
+- `priority` and `resolution` are accepted by `id` or `name` on create and
+  edit; an unknown one is 400. Setting a resolution needs Resolve issues, and
+  the done status category sets one on its own; see
+  [ISSUE_METADATA.md](ISSUE_METADATA.md#on-work-items).
+- `parent` must be a work item one level above this one in the site's
+  [work type hierarchy](ISSUE_METADATA.md#work-type-hierarchy), or, for a
+  sub-task, a non-sub-task in the same project.
+- Every write goes through the command layer, which checks the project
+  permission Jira checks before anything is stored
+  ([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md#enforcement)).
 - `DELETE /rest/api/3/issue/{issueIdOrKey}` refuses a work item with subtasks unless
   `deleteSubtasks=true`, which deletes them too.
 - `GET /issue/{key}/transitions` includes transition screen fields only with

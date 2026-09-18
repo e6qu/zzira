@@ -33,7 +33,7 @@ Screen names are unique per site, and tab names are unique per screen, both igno
 
 ## Field catalog
 
-A screen can only hold fields the forms can render. The system fields, in order: `summary`, `description`, `assignee`, `priority`, `labels`, `duedate`, `parent`, `components`, `fixVersions`, `versions`, `resolution`, `security` (Restrict to), `timetracking`, `issuetype` and `project` (`systemScreenFields`, `internal/store/screens.go:24`). After them come the site's custom fields. Adding any other field is refused.
+A screen can only hold fields the forms can render. The system fields, in order: `summary`, `description`, `assignee`, `priority`, `labels`, `duedate`, `parent`, `components`, `fixVersions`, `versions`, `resolution`, `security` (Restrict to), `timetracking`, `issuetype` and `project` (`systemScreenFields`, `internal/store/screens.go`). After them come the site's custom fields. Adding any other field is refused. `issuetype`, `priority` and `resolution` offer the site's catalogues, and `parent` the work items one level above ([ISSUE_METADATA.md](ISSUE_METADATA.md)).
 
 ## Default screen
 
@@ -51,7 +51,7 @@ Every site has a `Default Screen` with one `Field Tab`. It holds every system fi
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- A workflow transition screen does not point to a Screen. The `system:transition-screen` rule stores a comma-separated `fields` parameter (`internal/workflow/workflow.go:889`) instead of a screen id; see [WORKFLOW_RULES.md](WORKFLOW_RULES.md).
+- A workflow transition screen does not point to a Screen. The `system:transition-screen` rule stores a comma-separated `fields` parameter (`Transition.ScreenFields`) instead of a screen id; see [WORKFLOW_RULES.md](WORKFLOW_RULES.md).
 - Forms show a screen's fields as one flat list; tabs are not rendered.
 - `GET .../tabs/{tabId}/fields` ignores `projectKey`, so project administrators cannot read tab fields.
 - Reporter, Environment, Attachment and Linked issues are not in the field catalog.

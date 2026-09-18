@@ -1,6 +1,6 @@
 # Sync load test
 
-`cmd/loadtest` measures the delta-sync read path (`GET /sync`) and write throughput. Replicas use this path to catch up with the action log. For the architecture, see the [README](../README.md).
+`cmd/loadtest` measures the delta-sync read path (`GET /sync`) and write throughput. Every browser replica of a [Jira](JIRA_PLATFORM.md) work item uses this path to catch up with the action log, so its latency bounds how quickly an offline client converges. For the architecture, see the [README](../README.md); for status, see [CLOUD_PARITY.md](CLOUD_PARITY.md).
 
 ## Run
 
