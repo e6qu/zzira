@@ -61,7 +61,7 @@ Short keys in the table are under `com.atlassian.jira.plugin.system.customfieldt
 
 ## UI
 
-`/settings/custom-fields` lists custom fields and manages their [contexts](CUSTOM_FIELD_CONTEXTS.md#ui) and [options](CUSTOM_FIELD_OPTIONS.md#ui). Fields themselves are created, renamed, trashed, restored and deleted only through the API. The system fields with a catalogue of their own — work type, priority and resolution — are administered on their own pages ([ISSUE_METADATA.md](ISSUE_METADATA.md#settings-pages)).
+`/settings/custom-fields` (site administration) creates a custom field of any type the forms render, renames and describes it, manages its [contexts](CUSTOM_FIELD_CONTEXTS.md#ui) and [options](CUSTOM_FIELD_OPTIONS.md#ui), and moves it through the trash: a trashed field keeps its values and leaves every form until it is restored, and deleting it removes its values for good. An app's fields are managed by the app, so they have no trash action. The system fields with a catalogue of their own — work type, priority and resolution — are administered on their own pages ([ISSUE_METADATA.md](ISSUE_METADATA.md#settings-pages)).
 
 ## Code
 
@@ -71,5 +71,4 @@ Short keys in the table are under `com.atlassian.jira.plugin.system.customfieldt
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- No browser UI to create, rename, trash, restore or delete a custom field.
 - `translatedName` and `translatedDescription` echo the field's own text; per-language field translations are not stored.

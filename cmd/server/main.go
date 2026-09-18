@@ -505,6 +505,7 @@ func main() {
 	mux.HandleFunc("POST /settings/notification-schemes", webHandler.NotificationSchemesPage)
 	mux.HandleFunc("POST /settings/notification-schemes/{id}", webHandler.NotificationSchemeMutation)
 	mux.HandleFunc("GET /settings/custom-fields", webHandler.CustomFieldsPage)
+	mux.HandleFunc("POST /settings/custom-fields", webHandler.CustomFieldMutation)
 	mux.HandleFunc("POST /settings/custom-fields/{id}", webHandler.CustomFieldContextMutation)
 	mux.HandleFunc("GET /settings/field-configurations", webHandler.FieldConfigurationsPage)
 	mux.HandleFunc("POST /settings/field-configurations", webHandler.FieldConfigurationsPage)
