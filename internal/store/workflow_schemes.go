@@ -442,6 +442,9 @@ func workflowByIDQuery(ctx context.Context, q workflowSchemeQuerier, workspaceID
 		return result, err
 	}
 	result.ProjectID = projectID
+	if err := resolveTransitionScreens(ctx, q, workspaceID, &result); err != nil {
+		return result, err
+	}
 	return result, nil
 }
 

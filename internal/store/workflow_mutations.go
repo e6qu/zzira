@@ -85,6 +85,7 @@ func (s *Store) workflowBatchDefinitions(ctx context.Context, workspaceID string
 				visible = append(visible, status)
 			}
 		}
+		forgetResolvedScreenFields(&wf)
 		definition, err := validateWorkflowAgainstStatuses(wf, visible)
 		if err != nil {
 			return nil, nil, err

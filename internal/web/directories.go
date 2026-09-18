@@ -134,8 +134,10 @@ type workflowEditorData struct {
 	// beside the system fields. A transition screen is not among them, because
 	// the transition dialog renders only system field controls.
 	TransitionFields []*models.CustomField
-	CanEdit          bool
-	CanAssign        bool
+	// Screens are the screens a transition can collect its fields on.
+	Screens   []*models.Screen
+	CanEdit   bool
+	CanAssign bool
 }
 
 type statusDirectoryData struct {
@@ -927,6 +929,11 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 		http.Error(w, "Could not load agent accounts.", http.StatusInternalServerError)
 		return
 	}
+	screens, err := h.Store.Screens(r.Context(), wsID, store.ScreenFilter{})
+	if err != nil {
+		http.Error(w, "Could not load screens.", http.StatusInternalServerError)
+		return
+	}
 	approverFields := make([]*models.CustomField, 0)
 	for _, field := range fields {
 		if field.Type == models.CustomFieldUser || field.Type == models.CustomFieldMultiUser {
@@ -934,7 +941,7 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 		}
 	}
 	h.writeWorkspacePage(w, r, "page_workflow", user, wsID, workflowEditorData{
-		Workflow: wf, Initial: initial, Global: global, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks, Events: events, ApproverFields: approverFields, TransitionFields: fields, AgentAccounts: agentAccounts,
+		Workflow: wf, Initial: initial, Global: global, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks, Events: events, ApproverFields: approverFields, TransitionFields: fields, Screens: screens, AgentAccounts: agentAccounts,
 		CanEdit: admin && wf.ID != workflow.Default().ID, CanAssign: admin,
 	}, "workflows", "")
 }
@@ -1144,6 +1151,12 @@ func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, 
 		} else {
 			transition.Screen = &workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleTransitionScreen, Parameters: map[string]string{"fields": strings.Join(fields, ",")}}
 		}
+	}
+	// A transition that names a screen asks for whatever that screen holds,
+	// so it keeps the screen rather than a list of fields.
+	if screenID := strings.TrimSpace(r.PostFormValue("screen_id")); screenID != "" {
+		transition.Screen = &workflow.Rule{ID: store.NewID("rule"), RuleKey: workflow.RuleTransitionScreen,
+			Parameters: map[string]string{store.ScreenIDParameter: screenID}}
 	}
 	conditions := make([]workflow.Rule, 0, 2)
 	if restriction := r.PostFormValue("restriction"); restriction == "block-users" || restriction == "block-all" {
