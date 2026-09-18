@@ -31,7 +31,7 @@ own, so running the transition records an agent run request with the
 transition's action. The request names the agent account and prompt, and the
 agent must be an active app account of the site.
 
-The `system:transition-screen` rule takes a comma-separated `fields` parameter listing the fields the transition collects (`Transition.ScreenFields`, `internal/workflow/workflow.go`). It does not reference a [screen](SCREENS.md). `GET /issue/{key}/transitions?expand=transitions.fields` reports those fields. Summary, description, labels, assignee, priority, resolution and the site's custom fields can be collected; a resolution needs Resolve issues ([ISSUE_METADATA.md](ISSUE_METADATA.md#on-work-items)).
+The `system:transition-screen` rule collects fields in one of two ways. A `screenId` parameter names a [screen](SCREENS.md): the transition asks for whatever that screen holds when the work item is transitioned, so the two never drift apart, and the workflow records the screen rather than a copy of its fields. A `fields` parameter instead carries its own comma-separated list. Either way the rest of the product reads one field list (`Transition.ScreenFields`, `internal/workflow/workflow.go`); the store fills it in from the screen when the workflow is read. `GET /issue/{key}/transitions?expand=transitions.fields` reports those fields. Summary, description, labels, assignee, priority, resolution and the site's custom fields can be collected; a resolution needs Resolve issues ([ISSUE_METADATA.md](ISSUE_METADATA.md#on-work-items)).
 
 `development-triggers` offers one trigger type: branch created.
 
@@ -98,5 +98,5 @@ Workflow resources follow Jira's permissions:
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- A transition screen does not reference a Screen entity; Jira's rule takes a screen id, and the screen's tabs and layout apply.
+- A transition screen renders its fields as one list; a screen's tabs are not shown as tabs.
 - `development-triggers` has only the branch-created trigger. Jira also triggers on commits, pull requests, reviews and deployments.

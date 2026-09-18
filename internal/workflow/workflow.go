@@ -899,7 +899,9 @@ func ValidateTransitionRules(transition Transition) error {
 		}
 		switch transition.Screen.RuleKey {
 		case RuleTransitionScreen:
-			if len(commaValues(transition.Screen.Parameters["fields"])) == 0 {
+			// A transition screen either names a screen, whose fields it
+			// follows, or carries its own list of fields.
+			if transition.Screen.Parameters["screenId"] == "" && len(commaValues(transition.Screen.Parameters["fields"])) == 0 {
 				return fmt.Errorf("workflow transition screen is unsupported or incomplete")
 			}
 		case RuleRemindToUpdateFields:

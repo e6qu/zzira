@@ -47,11 +47,14 @@ Every site has a `Default Screen` with one `Field Tab`. It holds every system fi
 
 `internal/api3/screens.go`, `internal/store/screens.go`, `internal/web/screens.go`, `migrations/133_screens.sql`; tests in `internal/api3/screens_test.go` and `e2e/screens.spec.ts`.
 
+## Transition screens
+
+A workflow transition can name a screen; the transition then asks for the fields that screen holds, and adding or removing a field on the screen changes the transition with no workflow edit and no new version. The workflow editor offers the site's screens beside its own field list ([WORKFLOW_RULES.md](WORKFLOW_RULES.md)).
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- A workflow transition screen does not point to a Screen. The `system:transition-screen` rule stores a comma-separated `fields` parameter (`Transition.ScreenFields`) instead of a screen id; see [WORKFLOW_RULES.md](WORKFLOW_RULES.md).
 - Forms show a screen's fields as one flat list; tabs are not rendered.
 - `GET .../tabs/{tabId}/fields` ignores `projectKey`, so project administrators cannot read tab fields.
 - Reporter, Environment, Attachment and Linked issues are not in the field catalog.

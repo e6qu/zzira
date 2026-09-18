@@ -70,9 +70,9 @@ Each numbered item is one or more substantial PRs.
 
 **Metadata and configuration UI.**
 - Per-language field translations, and editing priority schemes in the browser.
-- Transition screens reference a Screen, not a field list; forms render screen
-  tabs; the screen catalog includes Reporter, Environment, Attachment, Linked
-  work items; `projectKey` honored on tab-field reads.
+- Forms render screen tabs as tabs; the screen catalog includes Reporter,
+  Environment, Attachment and Linked work items; `projectKey` honored on
+  tab-field reads.
 - Copy for permission, notification, issue security, screen, screen and work type
   screen schemes.
 - Issue security scheme form sends the level mapping for projects with secured

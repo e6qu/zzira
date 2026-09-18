@@ -1477,6 +1477,9 @@ func (s *Store) CreateWorkflow(ctx context.Context, workspaceID string, wf workf
 }
 
 func (s *Store) validateWorkflow(ctx context.Context, workspaceID string, wf workflow.Workflow) ([]byte, error) {
+	// A transition that names a screen is stored naming it; the fields come
+	// from the screen every time the workflow is read.
+	forgetResolvedScreenFields(&wf)
 	var statuses []models.Status
 	var err error
 	if workspaceID == "" {
@@ -1615,6 +1618,9 @@ func (s *Store) WorkflowByID(ctx context.Context, workspaceID, id string) (workf
 		return workflow.Workflow{}, err
 	}
 	wf.EntityID = entityID
+	if err := resolveTransitionScreens(ctx, s.Pool, workspaceID, &wf); err != nil {
+		return workflow.Workflow{}, err
+	}
 	return wf, nil
 }
 
@@ -1630,6 +1636,9 @@ func (s *Store) WorkflowDraftByID(ctx context.Context, workspaceID, id string) (
 		return workflow.Workflow{}, err
 	}
 	wf.EntityID = entityID
+	if err := resolveTransitionScreens(ctx, s.Pool, workspaceID, &wf); err != nil {
+		return workflow.Workflow{}, err
+	}
 	return wf, nil
 }
 
