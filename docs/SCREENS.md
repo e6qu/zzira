@@ -51,6 +51,8 @@ Every site has a `Default Screen` with one `Field Tab`. It holds every system fi
 
 A workflow transition can name a screen; the transition then asks for the fields that screen holds, and adding or removing a field on the screen changes the transition with no workflow edit and no new version. The workflow editor offers the site's screens beside its own field list ([WORKFLOW_RULES.md](WORKFLOW_RULES.md)).
 
+**Copy.** The settings page copies one, named "Copy of X" (then "Copy 2 of X"), carrying its configuration and nothing else: the copy is assigned to no project and is never the site default.
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
@@ -58,4 +60,3 @@ Tracked in [PLAN.md](../PLAN.md).
 - Forms show a screen's fields as one flat list; tabs are not rendered.
 - `GET .../tabs/{tabId}/fields` ignores `projectKey`, so project administrators cannot read tab fields.
 - Reporter, Environment, Attachment and Linked issues are not in the field catalog.
-- No screen copy action.

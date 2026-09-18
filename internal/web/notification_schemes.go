@@ -2,11 +2,12 @@ package web
 
 import (
 	"errors"
-	"github.com/jackc/pgx/v5"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -205,6 +206,11 @@ func (h *Handler) NotificationSchemeMutation(w http.ResponseWriter, r *http.Requ
 	case "update":
 		name, description := r.PostFormValue("name"), r.PostFormValue("description")
 		err = h.Store.UpdateNotificationScheme(r.Context(), workspaceID, user.ID, schemeID, &name, &description)
+	case "copy":
+		var copied *models.NotificationScheme
+		if copied, err = h.Store.CopyNotificationScheme(r.Context(), workspaceID, user.ID, schemeID); err == nil {
+			notice = copied.Name + " created."
+		}
 	case "delete":
 		err = h.Store.DeleteNotificationScheme(r.Context(), workspaceID, user.ID, schemeID)
 		notice = "Notification scheme deleted."

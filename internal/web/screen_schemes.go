@@ -163,6 +163,16 @@ func (h *Handler) ScreenSchemeMutation(w http.ResponseWriter, r *http.Request) {
 		_, err = h.Store.UpdateScreenScheme(r.Context(), workspaceID, user.ID, schemeID, nil, nil,
 			map[string]string{r.PostFormValue("operation"): r.PostFormValue("screenId")})
 		notice = "Screen scheme mapping saved."
+	case "copy-screen-scheme":
+		var copied *models.ScreenScheme
+		if copied, err = h.Store.CopyScreenScheme(r.Context(), workspaceID, user.ID, schemeID); err == nil {
+			notice = copied.Name + " created."
+		}
+	case "copy-issue-type-scheme":
+		var copied *models.IssueTypeScreenScheme
+		if copied, err = h.Store.CopyIssueTypeScreenScheme(r.Context(), workspaceID, user.ID, schemeID); err == nil {
+			notice = copied.Name + " created."
+		}
 	case "delete-screen-scheme":
 		err = h.Store.DeleteScreenScheme(r.Context(), workspaceID, user.ID, schemeID)
 		notice = "Screen scheme deleted."

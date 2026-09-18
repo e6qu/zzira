@@ -1,11 +1,12 @@
 package web
 
 import (
-	"github.com/e6qu/zzira/internal/models"
 	"math"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/e6qu/zzira/internal/models"
 )
 
 // lookAndFeelSpaceID is the space whose look and feel a wiki page shows.

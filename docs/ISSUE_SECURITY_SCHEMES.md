@@ -42,12 +42,13 @@ The nine Jira holder types: `applicationRole`, `assignee`, `group`, `groupCustom
 - **A level the project's scheme does not define** hides the work item from non-administrators.
 - **Where it applies:** JQL and search (`VisibleIssuePredicate`), the sync action stream that feeds replicas and the offline worker, notification delivery, the levels offered on create, and REST reads. A restricted work item disappears from search, boards, the navigator, sync, notifications and the API together.
 
+**Copy.** The settings page copies one, named "Copy of X" (then "Copy 2 of X"), carrying its configuration and nothing else: the copy is assigned to no project and is never the site default.
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
 
 - The browser's assign-to-project form sends no level mapping, so assigning a scheme to a project whose work items already have levels fails with the mapping error. Only the REST association can remap levels.
-- No copy action for issue security schemes in the UI.
 
 ## Tests
 

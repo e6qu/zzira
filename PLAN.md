@@ -73,8 +73,6 @@ Each numbered item is one or more substantial PRs.
 - Forms render screen tabs as tabs; the screen catalog includes Reporter,
   Environment, Attachment and Linked work items; `projectKey` honored on
   tab-field reads.
-- Copy for permission, notification, issue security, screen, screen and work type
-  screen schemes.
 - Issue security scheme form sends the level mapping for projects with secured
   work.
 - Custom field contexts: a global context coexists with project contexts that

@@ -175,6 +175,11 @@ func (h *Handler) FieldConfigurationMutation(w http.ResponseWriter, r *http.Requ
 	case "update":
 		name, description := r.PostFormValue("name"), r.PostFormValue("description")
 		err = h.Store.UpdateFieldConfiguration(r.Context(), workspaceID, user.ID, id, &name, &description)
+	case "copy":
+		var copied *models.FieldConfiguration
+		if copied, err = h.Store.CopyFieldConfiguration(r.Context(), workspaceID, user.ID, id); err == nil {
+			notice = copied.Name + " created."
+		}
 	case "delete":
 		err = h.Store.DeleteFieldConfiguration(r.Context(), workspaceID, user.ID, id)
 		notice = "Field configuration deleted."

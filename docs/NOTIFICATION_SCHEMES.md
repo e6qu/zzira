@@ -58,11 +58,12 @@ A `mention` node in a description or comment notifies that person (in-app and em
 
 **Notification helper** (`/admin/notification-helper`). Given a person, a work item and an event, it names the project's scheme and the rules that name the person. It says whether a Current user rule also notifies the actor, and whether the person is an active member, can browse the project, and can see the work item's security level.
 
+**Copy.** The settings page copies one, named "Copy of X" (then "Copy 2 of X"), carrying its configuration and nothing else: the copy is assigned to no project and is never the site default.
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- No copy action for notification schemes in the UI.
 
 ## Tests
 
