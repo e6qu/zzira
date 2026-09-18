@@ -14,7 +14,9 @@ Jira Software adds agile planning and delivery tracking to Jira projects: epics,
 
 ## Epics
 
-An epic is a work item whose work type is at hierarchy level 1. Every site gets Jira's Epic work type. Standard work items can take an epic as their parent on create, on edit, and through the Agile move operations. The epic can be in any project, as in company-managed Jira. A sub-task's parent must be in the sub-task's own project. An epic's own parent comes from a level above it, when the site's [work type hierarchy](ISSUE_METADATA.md#work-type-hierarchy) has one.
+An epic is a work item whose work type is at hierarchy level 1. Every site gets Jira's Epic work type. Standard work items can take an epic as their parent on create, on edit, and through the Agile move operations. The epic can be in any project, as in company-managed Jira. A sub-task's parent must be in the sub-task's own project.
+
+A parent always sits exactly one level above its child in the site's [work type hierarchy](ISSUE_METADATA.md#work-type-hierarchy), and a parent from any other level is refused. So an epic takes its own parent from the level above Epic, once a site administrator adds one.
 
 An epic has three extra fields:
 - **Name.** Defaults to the summary.
@@ -36,7 +38,9 @@ Deleting an epic keeps its work items. They lose their parent, and that change i
 
 There is one rank order for the whole site. `PUT /rest/agile/1.0/issue/rank` places up to 50 work items before or after a reference work item and keeps their relative order. `POST` on the same path does the same thing.
 
-If a work item cannot be ranked, the response is 207, with one entry per work item. The only accepted `rankCustomFieldId` is `10019`, Jira's Rank field. Board configuration reports that same id.
+Ranking a work item needs **Schedule issues** in its project, as in Jira. The response is 204 when every work item is ranked, and 207 with one entry per work item otherwise: 404 for one the caller cannot see, 403 for one whose project withholds Schedule issues, 400 for one ranked relative to itself.
+
+The only accepted `rankCustomFieldId` is `10019`, Jira's Rank field. Board configuration reports that same id. Ranking on a board, and every other board write, is in [AGILE_BOARDS.md](AGILE_BOARDS.md#permissions).
 
 ## Estimation
 
@@ -65,9 +69,9 @@ Dates come from Jira's **Start date** field, which every site has, and the **Due
 - A line marks today.
 
 **Scheduling**
-- Each row's **Schedule** form (`POST /projects/{key}/timeline`) sets both dates through the normal edit path.
-- Workflow editability, field configuration and permissions all apply.
-- A due date earlier than the start date is refused.
+- Each row's **Schedule** form (`POST /projects/{key}/timeline`) sets both dates through the normal edit path, so it needs **Edit issues** for the start date and **Schedule issues** for the due date.
+- Workflow editability and field configuration apply: a status that sets `jira.issue.editable` to false refuses the form.
+- A due date earlier than the start date is refused, as is a start date on a site with no Start date field.
 
 If the project's Roadmap feature (`jsw.classic.roadmap`) is off, the Timeline is removed from navigation and its page returns 404.
 

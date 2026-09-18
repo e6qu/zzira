@@ -11,6 +11,7 @@ work is in [PLAN.md](../PLAN.md); status per product is in
 - [API matrix](../api/conformance/MATRIX.md) and [pinned specs](../api/PINNED.md)
 - [Ids clients see](WIRE_IDS.md)
 - [Accessibility](ACCESSIBILITY.md)
+- [Demo data](DEMO_DATA.md) — the declarative demo company
 - [Sync load test](loadtest.md)
 - [End-to-end tests](../e2e/README.md)
 

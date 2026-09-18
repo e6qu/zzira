@@ -367,10 +367,12 @@ func (h *Handler) agileIssueSearch(w http.ResponseWriter, r *http.Request, works
 
 const (
 	// boardIssueScope is the board's project work in a status mapped to one of
-	// its columns; a scrum board leaves out epics.
-	boardIssueScope = `i.project_id = {1} AND i.status_id = ANY({2}) AND ({3} <> 'scrum' OR it.hierarchy_level <> 1)`
+	// its columns; a scrum board leaves out epics and anything above them,
+	// which belong to the backlog and the plans rather than to a sprint board.
+	boardIssueScope = `i.project_id = {1} AND i.status_id = ANY({2}) AND ({3} <> 'scrum' OR it.hierarchy_level < 1)`
 	// backlogScope is the board's project work in no active or future sprint.
-	backlogScope = `i.project_id = {1} AND NOT EXISTS (
+	// Epics and the levels above them are planned elsewhere.
+	backlogScope = `i.project_id = {1} AND it.hierarchy_level < 1 AND NOT EXISTS (
 		SELECT 1 FROM sprint_issues si JOIN sprints s ON s.id = si.sprint_id
 		WHERE si.issue_id = i.id AND s.state IN ('future', 'active'))`
 	// sprintScope is the work in one sprint, kept in the sprint's order.

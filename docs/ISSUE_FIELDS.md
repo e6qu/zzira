@@ -61,7 +61,7 @@ Short keys in the table are under `com.atlassian.jira.plugin.system.customfieldt
 
 ## UI
 
-`/settings/custom-fields` lists custom fields and manages their contexts and options. Fields are created, renamed and trashed only through the API.
+`/settings/custom-fields` lists custom fields and manages their [contexts](CUSTOM_FIELD_CONTEXTS.md#ui) and [options](CUSTOM_FIELD_OPTIONS.md#ui). Fields themselves are created, renamed, trashed, restored and deleted only through the API. The system fields with a catalogue of their own — work type, priority and resolution — are administered on their own pages ([ISSUE_METADATA.md](ISSUE_METADATA.md#settings-pages)).
 
 ## Code
 

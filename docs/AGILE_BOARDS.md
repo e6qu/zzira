@@ -6,7 +6,7 @@ Boards show a project's work in columns. They also carry the board's backlog, sp
 
 | Page | Purpose |
 |---|---|
-| `/board/{id}` | Columns with cards in rank order. Supports drag and keyboard moves (a move to another column runs the workflow transition into its status; ranking needs Schedule issues), quick filters, assignee filters, WIP limit feedback, swimlanes and a work item preview. |
+| `/board/{id}` | Columns with cards in rank order. Supports drag and keyboard moves, quick filters, assignee filters, WIP limit feedback, swimlanes and a work item preview. |
 | `/board/{id}/backlog` | Backlog and sprints: create, edit, start and complete sprints, and move and rank work items. |
 | `/board/{id}/settings` | For board administrators. Swimlanes (`none` or `assignee`), card fields (priority, assignee, labels), column WIP limits, up to 20 quick filters, and the board's administrators (users and groups). |
 | `/projects/{key}/settings` | Create and delete the project's boards (`POST /projects/{key}/boards`). |
@@ -61,7 +61,28 @@ The board, backlog and sprint issue reads take Jira's parameters:
 
 **Sprint states.** A sprint moves from future to active to closed. A board runs one active sprint at a time unless the site turns on **parallel sprints** in Jira settings (`parallelSprintsEnabled`). Starting a second sprint without that setting is refused.
 
-**Permissions.** Boards and sprints are served only to people who can browse the board's project. Everyone else gets 404, as in Jira. A board is configured by its board administrators and by the administrators of its project.
+**Moving a card between columns.** A drag or keyboard move that changes column is a real workflow transition, not a status write. The board tries each transition out of the card's current status whose destination is the target column's status, in workflow order, and keeps the first that runs. Conditions, validators, post-functions and history therefore apply exactly as on the work item page.
+- A target status that is not one of the board's columns is 400.
+- A column the current workflow offers no transition into is refused, and the card stays where it was.
+- A missing permission stops the move at once, without trying the next transition.
+- The refusal is 403 for a missing permission and 400 otherwise.
+
+## Permissions
+
+Boards and sprints are served only to people who can browse the board's project. Everyone else gets 404, as in Jira. A board is configured by its board administrators and by the administrators of its project.
+
+Every write goes through the command layer, which asks for the project permission Jira asks for ([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)):
+
+| Action | Needs |
+|---|---|
+| Rank a card, on the board or through the rank APIs | Schedule issues |
+| Move a card to another column | Schedule issues, plus Transition issues and whatever the transition itself needs |
+| Move work between the backlog and a sprint, on the board or through the Agile APIs | Edit issues and Schedule issues |
+| Create, edit, start, complete, delete or reorder a sprint, and write sprint properties | Manage sprints |
+| Edit an epic's name, color or done flag | Edit issues |
+| Configure a board: swimlanes, card fields, WIP limits, quick filters and its administrators | Board administrator, or Administer projects on the board's project |
+
+The default permission scheme grants Schedule issues, Edit issues, Transition issues and Manage sprints to the project's Members role, which every workspace member joins. A project on a scheme that withholds them serves the board read-only. See [PROJECT_ROLES.md](PROJECT_ROLES.md).
 
 ## Gaps
 

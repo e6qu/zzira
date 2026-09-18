@@ -6,7 +6,7 @@ Project reports chart delivery, sprint, flow and issue-analysis data. They count
 
 | Report | Path | Projects | Scope |
 |---|---|---|---|
-| Report list | `/projects/{key}/reports` | all | Built-in reports, plus `jira:report` app modules grouped by category ([APPS.md](APPS.md)) |
+| Report list | `/projects/{key}/reports` | all | The built-in reports, with the agile ones offered on software projects only, then a card for each `jira:report` app module labelled with its category ([APPS.md](APPS.md)) |
 | DORA metrics | `/projects/{key}/reports/dora` | all | `window` of 7, 30 (default) or 90 days |
 | Sprint report | `/projects/{key}/reports/sprint` | software | A scrum board and one started sprint |
 | Velocity chart | `/projects/{key}/reports/velocity` | software | A scrum board |
@@ -19,34 +19,65 @@ Project reports chart delivery, sprint, flow and issue-analysis data. They count
 | Service desk report | `/service/agent/{desk}/reports` | service | 7, 30 or 90 days |
 
 - A window value outside the allowed set returns 400.
-- If a project turns off its Reports feature, it has no report pages.
-- The board-based reports use the board's estimation field. On a board without one, they count work items instead.
+- The Projects column is where the report list offers the report. The agile pages answer for any project; on one without a board they show their empty state.
+- If a software project turns off its Reports feature (`jsw.classic.reports`), every report page under it is 404. Other project types have no features to turn off. See [PROJECT_GOVERNANCE.md](PROJECT_GOVERNANCE.md).
+- The board-based reports use the board's estimation field, which is Story point estimate on a scrum board. On a board without one, they count work items instead.
+- A page with no board, sprint, epic or version to read says so instead of drawing an empty chart.
 - Every chart is an SVG with a title and description, and has a data table you can reach with the keyboard.
 - Every report is tested in light and dark themes and at 320 px width.
 
+## What each report needs
+
+A report draws only from data that already exists, so a site being filled for a demo needs each row below before its chart says anything.
+
+| Report | Needs |
+|---|---|
+| DORA metrics | Deployments submitted to `/rest/deployments/0.1/bulk` whose environment `type` is `production`, whose `issueKeys` name work items of this project the viewer can browse, and whose `lastUpdated` falls in the window. Lead time also needs commits submitted to `/rest/devinfo/0.10/bulk` with `issueKeys` that a production deployment shares. Time to restore also needs service desk incident requests ([SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md#operations-incidents-problems-changes)) that were given a resolution inside the window. |
+| Sprint report | A scrum board, and a sprint that has started. Future sprints are not offered, so the board needs an active or a completed sprint holding work items. |
+| Velocity chart | A scrum board with at least one completed sprint. Each bar needs work that was in the sprint at its start (commitment) and work done before it closed. |
+| Cumulative flow diagram | A board whose columns carry statuses, and work its filter shows. Work with no recorded status change counts in its current status from the day it was created. |
+| Control chart | Work that moved into an in-progress status and then into a done status, with the done move inside the window. Work created straight into a done status never has a cycle time. |
+| Epic report | A board, plus an epic with child work items. Sub-tasks are not counted. |
+| Version report | A board, plus an unarchived version that work items name in `fixVersions`. |
+| Created vs. resolved | Work items created, or given a resolution, on days inside the window. |
+| Resolution time | Work items whose current resolution was set on a day inside the window. |
+| Service desk report | Requests created on the desk inside the window. CSAT also needs satisfaction ratings, and the breach count needs SLA cycles that have breached. |
+
+Each report also counts only work the viewer can browse, so a demo account needs Browse projects on the project (and, for the service report, agent access to the desk).
+
 ## DORA metrics
+
+Builds, deployments and commits arrive through the [Jira Software DevOps APIs](JIRA_SOFTWARE.md#development-and-devops-data); nothing else feeds this report.
 
 | Measure | Calculation |
 |---|---|
-| Deployment frequency | Number of successful production deployments, plus a weekly rate |
-| Lead time for changes | Median time from a linked commit to the first successful production deployment after it |
+| Deployment frequency | Number of successful production deployments, plus a weekly rate (`count × 7 ÷ window days`) |
+| Lead time for changes | Median, over the commits linked to those deployments, of the time from the commit to the earliest successful production deployment at or after it that shares one of its work items |
 | Change failure rate | Failed and rolled-back production deployments divided by all successful, failed and rolled-back production deployments |
-| Time to restore service | Median time from an incident's creation to when it first got a resolution |
+| Time to restore service | Median time from an incident's creation to the first change that gave it a resolution |
 
 **Which deployments count**
 - **Production:** the deployment's environment `type`, as sent by the provider, must be `production`. The environment name is ignored.
-- **Visibility:** the deployment must be linked to a work item in this project that the viewer can see.
-- **Latest update:** every accepted build and deployment update is stored and never changed. For each deployment, the report uses the update with the highest update sequence number.
-- **Ignored states:** `pending`, `in_progress`, `cancelled` and `unknown`.
+- **Identity:** a deployment is its pipeline, environment and `deploymentSequenceNumber`.
+- **Latest update:** every accepted build and deployment update is stored and never changed. For each deployment, the report reads the update with the highest `updateSequenceNumber`, and dates it by that update's `lastUpdated`.
+- **Window:** that date must fall in the window, which ends at the moment the page is drawn and runs back 7, 30 or 90 days.
+- **Visibility:** the deployment's `issueKeys` must name a work item in this project that the viewer can browse.
+- **Counted states:** `successful` counts as a deployment; `failed` and `rolled_back` count as failures. `pending`, `in_progress`, `cancelled` and `unknown` count toward neither, though they still appear in the recent list.
 - **Time zone:** all timestamps are UTC.
 
+**How lead time is measured**
+- Commits come from the development information API, and need an `issueKeys` list and a commit timestamp.
+- A commit pairs with a successful production deployment when they share a work item key and the deployment is not earlier than the commit. Each commit contributes one sample, its earliest such deployment.
+- At least one shared key must be visible to the viewer in this project.
+
 **What counts as an incident**
-- An incident is a Jira Service Management request raised as an incident. Incident teams, escalations and incident updates use the same definition.
+- An incident is a Jira Service Management request raised as an incident, which is the operations profile the desk stores. Incident teams, escalations and incident updates use the same definition.
 - Labels do not matter. A work item labeled `incident` is not counted unless it was raised as an incident, and an incident still counts if the label is removed.
+- The incident counts when the change that gave it a resolution falls in the window; the incident itself may be older.
 
 **The page shows**
-- a daily chart of production deployments, with its data table;
-- the ten most recent production events.
+- a daily chart of production deployments and failures, with its data table;
+- the ten most recent production events, whatever their state.
 
 ## Sprint report and velocity chart
 
@@ -127,7 +158,7 @@ An epic the viewer cannot see returns 404.
 
 ## Service desk report
 
-Service project agents and managers see:
+Service project agents and managers see, for the requests the desk received in the window:
 - **Request volume.**
 - **Open and resolved counts.** A request is open while it has no resolution and resolved once it has one.
 - **SLA breaches.** Requests with a breached SLA cycle, calculated with the desk's calendars and holidays.
@@ -139,6 +170,8 @@ Service project agents and managers see:
 - A request counts in every organization of the desk that its customer belongs to.
 - Requests with no priority show as None.
 - Requests whose customer belongs to none of the desk's organizations show as No organization.
+
+**Filters.** The page narrows every figure by request type, by channel, and by open or resolved. A request type or channel the desk does not have is 400. See [SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md).
 
 ## Common features
 
@@ -162,6 +195,7 @@ Service project agents and managers see:
 **Email this report** (`POST /reports/email`)
 - **Schedule:** every day or every Monday at 08:00, or a cron expression you supply, in a time zone you choose.
 - **What is sent:** the board, sprint, epic, version, window, filters and comparison that were on the page when you subscribed. The same report with different choices is a separate email.
+- **Recipients:** up to 50 active members of the site, besides the subscriber.
 - **Access check at subscription:** the subscriber and every recipient must be able to open the report.
 - **Each run:** the report is drawn for each recipient with that recipient's own access, and emailed with a link back to the page.
 - **Failures:** if a recipient has lost access or left the site, the run fails.
@@ -179,8 +213,10 @@ Remaining work is tracked in [PLAN.md](../PLAN.md).
 
 ## See also
 
+- [AGILE_BOARDS.md](AGILE_BOARDS.md): the boards and sprints the agile reports read.
 - [DASHBOARDS.md](DASHBOARDS.md): report gadgets.
 - [RELEASES.md](RELEASES.md): delivery evidence for each version.
+- [SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md): the service desk report and incidents.
 - Code:
   - Store: `internal/store/reports.go` (DORA), `internal/store/agile_reports.go`, `internal/store/board_reports.go`, `internal/store/progress_reports.go`, `internal/store/issue_analysis_reports.go`, `internal/store/service_reports.go`.
   - Web: `internal/web/reports.go`, `internal/web/agile_reports.go`, `internal/web/report_csv.go`, `internal/web/report_compare.go`, `internal/web/report_email.go`.

@@ -51,13 +51,15 @@ Malformed ids, unknown expansions, invalid holders, duplicate grants or scheme n
   | Action | Permission |
   | --- | --- |
   | Create | Create issues; plus Assign issues for an assignee, Modify reporter for another reporter, Set issue security for a level, Schedule issues for a due date, Resolve issues for fix versions |
-  | Edit fields | Edit issues; plus Set issue security, Schedule issues or Resolve issues for those fields |
+  | Edit fields | Edit issues; plus Set issue security for the security level, Schedule issues for the due date, Resolve issues for fix versions and the [resolution](ISSUE_METADATA.md#on-work-items) |
   | Assign | Assign issues; the assignee needs Assignable user |
-  | Transition, board column moves | Transition issues; a move runs a workflow transition into the column's status |
+  | Transition | Transition issues; plus Resolve issues when the transition sets a resolution, and Assign issues when it reassigns |
+  | Board column moves | Schedule issues for the rank, and a workflow transition into the column's status, with everything that transition needs |
   | Rank, sprint and backlog moves | Schedule issues; sprint and backlog moves also Edit issues |
   | Sprints | Manage sprints in the board's project |
   | Links | Link issues on the outward work item (REST also asks Edit issues) |
-  | Others' watches | Manage watchers |
+  | Own watch and vote | None beyond seeing the work item ([ISSUE_SURFACE.md](ISSUE_SURFACE.md#watchers-and-assignment)) |
+  | Others' watches | Manage watchers; the watcher must be able to see the work item |
   | Move | Move issues where the work item is, Create issues where it goes |
   | Delete | Delete issues |
   | Comments | Add comments; edit or delete all / own comments |

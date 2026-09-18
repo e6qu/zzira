@@ -26,7 +26,7 @@ Context names are unique per field, ignoring case. Every change is written to th
 ## Behavior
 
 - A context with no projects applies to every project; one with no work types applies to every work type. Removing the last project or work type returns the context to "all".
-- No two contexts of a field may cover the same project and work type. A create or widen that would overlap is 409 (`assertNoContextOverlapTx`, `internal/store/custom_field_contexts.go:192`). A global context therefore blocks any other context on that field.
+- No two contexts of a field may cover the same project and work type. A create or widen that would overlap is 409 (`assertNoContextOverlapTx`, `internal/store/custom_field_contexts.go`). A global context therefore blocks any other context on that field.
 - A custom field always keeps at least one context. A new custom field gets a global context from a database trigger.
 - The SQL function `jira_custom_field_context(field, project, work type)` returns the governing context, preferring one that names the project, then one that names the work type. Everything below uses it:
   - `createmeta` and the create dialog leave out a field whose context does not reach the project and work type.

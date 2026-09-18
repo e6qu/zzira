@@ -7,7 +7,7 @@ The Jira platform is the layer Jira Software and Jira Service Management share: 
 | Area | Docs |
 | --- | --- |
 | Work items | [Work item surface](ISSUE_SURFACE.md) (comments, links, watchers, changelogs, archiving) · [Bulk operations](BULK_ISSUES.md) · [Attachments](ATTACHMENTS.md) · [Time tracking](TIME_TRACKING.md) · [Worklogs](WORKLOGS.md) |
-| Fields | [Fields](ISSUE_FIELDS.md) · [Work types, priorities, resolutions](ISSUE_METADATA.md) · [Custom field contexts](CUSTOM_FIELD_CONTEXTS.md) · [Custom field options](CUSTOM_FIELD_OPTIONS.md) · [App field options](APP_FIELD_OPTIONS.md) · [Field configurations](FIELD_CONFIGURATIONS.md) · [Field association schemes](FIELD_ASSOCIATION_SCHEMES.md) · [Screens](SCREENS.md) · [Screen schemes](SCREEN_SCHEMES.md) |
+| Fields | [Fields](ISSUE_FIELDS.md) · [Work types, priorities, resolutions and the work type hierarchy](ISSUE_METADATA.md) · [Custom field contexts](CUSTOM_FIELD_CONTEXTS.md) · [Custom field options](CUSTOM_FIELD_OPTIONS.md) · [App field options](APP_FIELD_OPTIONS.md) · [Field configurations](FIELD_CONFIGURATIONS.md) · [Field association schemes](FIELD_ASSOCIATION_SCHEMES.md) · [Screens](SCREENS.md) · [Screen schemes](SCREEN_SCHEMES.md) |
 | Workflows | [Workflow rules](WORKFLOW_RULES.md) · [Workflow schemes](WORKFLOW_SCHEMES.md) · [Workflow history](#workflow-history) |
 | Search | [JQL and search](JQL.md) · [Saved filters](FILTERS.md) · [Dashboards API](DASHBOARDS_API.md) · [Dashboards UI](DASHBOARDS.md) |
 | Projects | [Components](COMPONENTS.md) · [Versions](PROJECT_VERSIONS.md) · [Releases](RELEASES.md) · [Governance](PROJECT_GOVERNANCE.md) (categories, properties, features, sender email) · [Lifecycle](PROJECT_LIFECYCLE.md) (archive, trash, restore) · [Project roles](PROJECT_ROLES.md) |
@@ -18,6 +18,28 @@ The Jira platform is the layer Jira Software and Jira Service Management share: 
 | Extensibility | [Apps](APPS.md) · [Automation](AUTOMATION.md) |
 
 Operations marked *app* accept only a request authenticated as an installed app (a Connect JWT or ZZIRA's Forge app token); a user's token is refused, as in Jira.
+
+## Jira settings pages
+
+Every page under **Jira settings** is described by the doc for the surface it configures:
+
+| Page | Doc |
+| --- | --- |
+| `/settings/hierarchy` | [Work type hierarchy](ISSUE_METADATA.md#work-type-hierarchy) |
+| `/settings/work-types`, `/settings/priorities`, `/settings/resolutions` | [Work types, priorities, resolutions](ISSUE_METADATA.md#settings-pages) |
+| `/settings/custom-fields` | [Custom field contexts](CUSTOM_FIELD_CONTEXTS.md#ui) and [options](CUSTOM_FIELD_OPTIONS.md#ui); the fields themselves are administered over REST ([ISSUE_FIELDS.md](ISSUE_FIELDS.md#ui)) |
+| `/settings/field-configurations` | [Field configurations](FIELD_CONFIGURATIONS.md#ui), which is also where [field association schemes](FIELD_ASSOCIATION_SCHEMES.md#ui) are edited |
+| `/settings/screens`, `/settings/screen-schemes` | [Screens](SCREENS.md#ui), [screen schemes](SCREEN_SCHEMES.md#ui) |
+| `/settings/statuses`, `/settings/workflows`, `/settings/workflow-schemes` | [Workflow rules](WORKFLOW_RULES.md#ui), [workflow schemes](WORKFLOW_SCHEMES.md#ui) |
+| `/settings/permission-schemes`, `/settings/issue-security-schemes`, `/settings/project-roles` | [Permission schemes](PERMISSION_SCHEMES.md), [issue security schemes](ISSUE_SECURITY_SCHEMES.md), [project roles](PROJECT_ROLES.md) |
+| `/settings/notification-schemes` | [Notification schemes](NOTIFICATION_SCHEMES.md) |
+| `/settings/automation` | [Automation](AUTOMATION.md) |
+
+Site administration outside Jira settings is in [ADMIN.md](ADMIN.md); the site switches are in [JIRA_SITE_CONFIGURATION.md](JIRA_SITE_CONFIGURATION.md).
+
+## Permission checks on work items
+
+Every work item command — REST, browser pages, bulk tasks, automation, plans and board drags — goes through one layer that checks the project permission Jira checks (`internal/commands/permissions.go`). The action-by-action table is in [PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md#enforcement); no other doc repeats it.
 
 ## App properties
 

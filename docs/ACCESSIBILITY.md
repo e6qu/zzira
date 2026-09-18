@@ -1,6 +1,6 @@
 # Accessibility
 
-ZZIRA's browser UI targets WCAG 2.2 Level AA. Custom widgets follow the WAI-ARIA Authoring Practices. This is an engineering baseline enforced by tests, not a third-party certification. See [UI_PARITY.md](UI_PARITY.md) for the per-journey quality gate.
+ZZIRA's browser UI targets WCAG 2.2 Level AA across every product — [Jira](JIRA_PLATFORM.md), [Jira Software](JIRA_SOFTWARE.md), [Jira Service Management](SERVICE_MANAGEMENT.md), [Confluence](CONFLUENCE_SITE_SURFACES.md) and [site administration](ADMIN.md). Custom widgets follow the WAI-ARIA Authoring Practices. This is an engineering baseline enforced by tests, not a third-party certification. See [UI_PARITY.md](UI_PARITY.md) for the per-journey quality gate and [CLOUD_PARITY.md](CLOUD_PARITY.md) for status.
 
 ## Behavior
 

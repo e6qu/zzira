@@ -4,7 +4,7 @@ WORKSPACE_SLUG ?= zzira
 VERSION ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 LDFLAGS = -s -w -X github.com/e6qu/zzira/internal/build.Version=$(VERSION)
 
-.PHONY: all assets server client-wasm test build migrate dev down seed conformance e2e clean
+.PHONY: all assets server client-wasm test build migrate dev down seed demo conformance e2e clean
 
 all: assets build test
 
@@ -39,6 +39,11 @@ down:
 
 seed:
 	go run ./cmd/server -mode=seed
+
+# demo builds the declarative demo company: three months of history across
+# Jira, Jira Software, Jira Service Management and Confluence.
+demo:
+	go run ./cmd/server -mode=demo -scenario=demo/company.json
 
 conformance: build
 	python3 -m unittest api/conformance/test_inventory.py api/conformance/test_coverage.py

@@ -93,7 +93,7 @@ When a share is revoked, the person's rendered gadgets are cleared on their next
   - its project has turned Reports off;
   - its board is not a scrum board.
 - The configuration form offers only projects and scrum boards the editor can browse.
-- See [REPORTS.md](REPORTS.md) for how each report counts.
+- See [REPORTS.md](REPORTS.md) for how each report counts and [what each one needs](REPORTS.md#what-each-report-needs) before it shows anything.
 
 ## App gadgets
 

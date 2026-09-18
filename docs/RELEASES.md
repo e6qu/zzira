@@ -18,20 +18,21 @@ The release hub plans a project's versions, tracks their scope and delivery evid
   - edit the name, description and dates;
   - release, unrelease, archive, unarchive and delete the version (delete asks for confirmation);
   - set the driver and add or remove approvers.
-- **Members** can add or remove work items they can see.
+- **Members** can add or remove work items they can see, which writes `fixVersions` through the ordinary edit command and so needs **Edit issues** and **Resolve issues** in the work item's project.
 - **Approvers** approve or decline, optionally giving a reason.
 
 ## Behavior
 
 **Permissions**
-- Managing versions needs the project's **Administer projects** permission from its permission scheme, so project roles and groups that hold it can manage versions.
+- Managing versions needs the project's **Administer projects** permission from its permission scheme ([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)), so project roles and groups that hold it can manage versions.
+- Putting a work item in a version, or taking it out, needs Edit issues and Resolve issues on that work item.
 - Counts, scope lists and release notes include only work items the viewer can see.
 - A version change can update restricted work items, but those updates are hidden from members who cannot read them.
 
 **Scope and progress**
 - The page shows to do, in progress and done counts by status category, as Jira does.
 - *Unresolved* means the resolution is empty. This is what `unresolvedIssueCount` counts and what releasing a version moves.
-- Reaching a done status sets the site's default resolution, and leaving one clears it.
+- A work item that reaches a done status without a chosen resolution takes the site's default; leaving the done category clears it. A resolution set on a transition screen or by an edit wins over the default. See [ISSUE_METADATA.md](ISSUE_METADATA.md#on-work-items).
 
 **Releasing**
 - A release can move the version's unresolved work items to another version in the same project. On the page this is a choice in the release form; through the API it is `moveUnfixedIssuesTo` on a version update.

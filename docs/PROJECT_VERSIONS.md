@@ -53,6 +53,12 @@ projects.
 `/projects/{key}/releases` and `/projects/{key}/releases/{version}`; see
 [RELEASES.md](RELEASES.md).
 
+## Gaps
+
+A version belongs to one project, and the other release gaps are listed in
+[RELEASES.md](RELEASES.md#gaps). Remaining work is tracked in
+[PLAN.md](../PLAN.md).
+
 ## Tests
 
 `internal/api3/versions_test.go`, `internal/api3/expansions_filters_test.go`,
