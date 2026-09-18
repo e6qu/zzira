@@ -64,7 +64,9 @@ func TestScreenTabAndOptionReadScopes(t *testing.T) {
 		}
 	})
 
-	h := &Handler{Store: st, Commands: &commands.Service{Store: st}, WorkspaceSlug: workspaceID, BaseURL: "https://zzira.test"}
+	// The anonymous read scopes below exist only where the instance admits an
+	// anonymous user at all.
+	h := &Handler{Store: st, Commands: &commands.Service{Store: st}, WorkspaceSlug: workspaceID, BaseURL: "https://zzira.test", AnonymousAccess: true}
 	call := func(user, method, path, body string, want int) string {
 		t.Helper()
 		request := httptest.NewRequest(method, path, strings.NewReader(body))

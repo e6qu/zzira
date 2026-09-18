@@ -49,7 +49,10 @@ func TestIssuePropertyLifecycle(t *testing.T) {
 		exec(`DELETE FROM users WHERE id=$1`, actorID)
 	})
 
-	h := &Handler{Store: st, WorkspaceSlug: workspaceID, BaseURL: "https://zzira.test"}
+	// This test covers what Jira's anonymous user may read, so the instance
+	// admits one; an installation that sets AnonymousAccess false refuses the
+	// same request outright.
+	h := &Handler{Store: st, WorkspaceSlug: workspaceID, BaseURL: "https://zzira.test", AnonymousAccess: true}
 	call := func(method, path, body string, want int) *httptest.ResponseRecorder {
 		t.Helper()
 		r := httptest.NewRequest(method, path, strings.NewReader(body))

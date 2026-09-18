@@ -36,13 +36,25 @@ type Handler struct {
 	WorkspaceSlug     string
 	// StaticDir holds the server's static assets, such as system avatar icons.
 	StaticDir string
+	// AnonymousAccess admits callers who present no credentials to the
+	// operations Jira lets its anonymous user reach, and to the attachment and
+	// thumbnail downloads anonymous content links to.
+	//
+	// It is the instance's own configuration, not a site setting the REST API
+	// exposes: Jira's public surface is unchanged either way. An installation
+	// that must not be reachable without signing in -- one published on the
+	// internet behind single sign-on -- sets it false, and every caller
+	// without credentials is refused, downloads included. Leaving it true
+	// keeps Jira's anonymous user, whose reach is then whatever the site's
+	// permission schemes grant to "anyone", which is usually nothing.
+	AnonymousAccess bool
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// The attachment downloads anonymous content and thumbnail reads redirect
 	// to are anonymous too.
 	secureDownload := r.Method == http.MethodGet && (strings.HasPrefix(r.URL.Path, "/secure/attachment/") || strings.HasPrefix(r.URL.Path, "/secure/thumbnail/"))
-	if !authn.PresentsCredentials(r) && (anonymousOperation(r.Method, r.URL.Path) || secureDownload) {
+	if h.AnonymousAccess && !authn.PresentsCredentials(r) && (anonymousOperation(r.Method, r.URL.Path) || secureDownload) {
 		r = r.WithContext(authn.WithAnonymous(r.Context()))
 	}
 	r = h.withRequestViewer(r)

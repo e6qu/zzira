@@ -156,7 +156,16 @@ func main() {
 		Store: st, Commands: cmdSvc, Automation: automationSvc, OIDC: identityProviders.Provider("shauth"), IdentityProviders: identityProviders, ProviderSecrets: providerSecrets, IdentityExternalURL: identityExternalURL,
 		WorkspaceSlug: workspaceSlug, BaseURL: baseURL, InvitationNotificationsConfigured: smtpSender != nil,
 	}
-	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: baseURL, WorkspaceSlug: workspaceSlug, StaticDir: static}
+	// ZZIRA_ANONYMOUS_ACCESS=off closes the instance to callers without
+	// credentials, downloads included, for an installation that must be
+	// reachable only after signing in. The REST API is unchanged: this is the
+	// instance's configuration, the way a Jira site's administrator decides
+	// whether the anonymous user exists at all, and the default keeps it.
+	anonymousAccess := envOr("ZZIRA_ANONYMOUS_ACCESS", "on") != "off"
+	if !anonymousAccess {
+		log.Printf("anonymous access is off: a caller without credentials is refused, downloads included")
+	}
+	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: baseURL, WorkspaceSlug: workspaceSlug, StaticDir: static, AnonymousAccess: anonymousAccess}
 	st.IssueExpressionEvaluator = api.EvaluateIssueExpression
 	if providerSecrets != nil {
 		appJQL := &apps.JQLFunctionEvaluator{Store: st, Secrets: providerSecrets, Client: &http.Client{Timeout: 10 * time.Second}}

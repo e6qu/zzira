@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -66,7 +67,10 @@ func TestAnonymousAccess(t *testing.T) {
 	})
 
 	service := &commands.Service{Store: st, Blobs: blobs}
-	h := &Handler{Store: st, Commands: service, Blobs: blobs, WorkspaceSlug: workspaceID, BaseURL: "https://zzira.test"}
+	// AnonymousAccess is the instance's own setting: an installation that must
+	// be reached only after signing in leaves it off, and this test is about
+	// what Jira's anonymous user may see when the installation allows one.
+	h := &Handler{Store: st, Commands: service, Blobs: blobs, WorkspaceSlug: workspaceID, BaseURL: "https://zzira.test", AnonymousAccess: true}
 	serve := func(authenticated bool, method, path, contentType, body string) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(method, path, strings.NewReader(body))
 		if authenticated {
@@ -247,6 +251,33 @@ func TestAnonymousAccess(t *testing.T) {
 	if body := anonymous(http.MethodGet, "/rest/api/3/issue/"+public.issueKey, "", http.StatusOK); !strings.Contains(body, public.marker+" summary") {
 		t.Fatalf("public issue: %s", body)
 	}
+
+	// The instance's own setting closes it to callers without credentials.
+	// Jira's public API is unchanged -- the same request that the anonymous
+	// user may make above is refused here, because this installation admits no
+	// anonymous user at all. The attachment download goes with it: an
+	// installation reachable only after signing in must not serve its files to
+	// a caller who has not.
+	t.Run("an installation with anonymous access off refuses every caller without credentials", func(t *testing.T) {
+		h.AnonymousAccess = false
+		t.Cleanup(func() { h.AnonymousAccess = true })
+		for _, probe := range []struct{ method, path string }{
+			{http.MethodGet, "/rest/api/3/issue/" + public.issueKey},
+			{http.MethodGet, "/rest/api/3/search?jql=" + url.QueryEscape("order by created")},
+			{http.MethodGet, "/secure/attachment/" + public.attachmentID + "/file.txt"},
+			{http.MethodGet, "/secure/thumbnail/" + public.attachmentID + "/file.txt"},
+		} {
+			response := serve(false, probe.method, probe.path, "application/json", "")
+			if response.Code != http.StatusUnauthorized {
+				t.Errorf("anonymous %s %s: got %d want 401: %.200s",
+					probe.method, probe.path, response.Code, response.Body.String())
+			}
+		}
+		// A caller who signs in still reaches what it always did.
+		if response := serve(true, http.MethodGet, "/rest/api/3/issue/"+public.issueKey, "application/json", ""); response.Code != http.StatusOK {
+			t.Errorf("authenticated read with anonymous access off: got %d want 200: %.200s", response.Code, response.Body.String())
+		}
+	})
 	anonymous(http.MethodGet, "/rest/api/3/issue/"+private.issueKey, "", http.StatusNotFound)
 	if body := anonymous(http.MethodPost, "/rest/api/3/search/jql", `{"jql":"project in (`+publicKey+`,`+privateKey+`) order by key","fields":["summary"]}`, http.StatusOK); !strings.Contains(body, public.issueKey) || strings.Contains(body, private.issueKey) {
 		t.Fatalf("anonymous search: %s", body)
