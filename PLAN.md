@@ -69,8 +69,7 @@ Each numbered item is one or more substantial PRs.
 - `hierarchyLevel` in JQL (see [JQL and filters](#5-jql-and-filters)).
 
 **Metadata and configuration UI.**
-- Admin pages for custom fields (create, rename, trash, restore, delete,
-  translations) and for editing priority schemes.
+- Per-language field translations, and editing priority schemes in the browser.
 - Transition screens reference a Screen, not a field list; forms render screen
   tabs; the screen catalog includes Reporter, Environment, Attachment, Linked
   work items; `projectKey` honored on tab-field reads.

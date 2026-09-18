@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -26,10 +27,46 @@ type customFieldCard struct {
 
 type customFieldsData struct {
 	Fields     []customFieldCard
+	Trashed    []*models.CustomField
+	FieldTypes []customFieldTypeOption
 	Projects   []*models.Project
 	IssueTypes []models.IssueType
 	Notice     string
 	Error      string
+}
+
+// customFieldTypeOption is one custom field type an administrator can create.
+type customFieldTypeOption struct {
+	Type string
+	Name string
+}
+
+// customFieldTypes are the field types the forms render, in the order Jira
+// lists them.
+func customFieldTypes() []customFieldTypeOption {
+	names := []struct{ kind, label string }{
+		{models.CustomFieldText, "Text"},
+		{models.CustomFieldNumber, "Number"},
+		{models.CustomFieldDate, "Date"},
+		{models.CustomFieldDatetime, "Date and time"},
+		{models.CustomFieldURL, "URL"},
+		{models.CustomFieldLabels, "Labels"},
+		{models.CustomFieldSelect, "Select list (single choice)"},
+		{models.CustomFieldMultiSelect, "Select list (multiple choices)"},
+		{models.CustomFieldCascadingSelect, "Select list (cascading)"},
+		{models.CustomFieldUser, "Person"},
+		{models.CustomFieldMultiUser, "People"},
+		{models.CustomFieldGroup, "Group"},
+		{models.CustomFieldMultiGroup, "Groups"},
+		{models.CustomFieldProject, "Project"},
+		{models.CustomFieldVersion, "Version"},
+		{models.CustomFieldMultiVersion, "Versions"},
+	}
+	options := make([]customFieldTypeOption, 0, len(names))
+	for _, entry := range names {
+		options = append(options, customFieldTypeOption{Type: entry.kind, Name: entry.label})
+	}
+	return options
 }
 
 func fieldContextMutationMessage(err error) string {
@@ -43,8 +80,12 @@ func fieldContextMutationMessage(err error) string {
 }
 
 func (h *Handler) loadCustomFieldsPage(r *http.Request, workspaceID string) (customFieldsData, error) {
-	data := customFieldsData{Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
-	var err error
+	data := customFieldsData{FieldTypes: customFieldTypes(), Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
+	trashed, err := h.Store.SearchCustomFields(r.Context(), workspaceID, store.FieldSearch{Trashed: true, MaxResults: 100})
+	if err != nil {
+		return data, err
+	}
+	data.Trashed = trashed.Fields
 	if data.Projects, err = h.Store.ProjectsByWorkspace(r.Context(), workspaceID); err != nil {
 		return data, err
 	}
@@ -202,4 +243,65 @@ func formValues(r *http.Request, name string) []string {
 		}
 	}
 	return values
+}
+
+// CustomFieldMutation creates a custom field and moves one through its
+// lifecycle: rename, trash, restore, delete.
+func (h *Handler) CustomFieldMutation(w http.ResponseWriter, r *http.Request) {
+	_, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	value := func(name string) string { return strings.TrimSpace(r.PostFormValue(name)) }
+	fieldID := value("field")
+	notice, err := "", error(nil)
+	switch r.PostFormValue("action") {
+	case "create":
+		name, kind := value("name"), value("type")
+		if name == "" {
+			err = fmt.Errorf("a field name is required")
+			break
+		}
+		if _, known := models.CustomFieldTypeKeys[kind]; !known {
+			err = fmt.Errorf("choose a field type")
+			break
+		}
+		var seq int
+		if seq, err = h.Store.NextCustomFieldNumber(r.Context()); err != nil {
+			break
+		}
+		id := fmt.Sprintf("customfield_%d", seq)
+		if _, err = h.Store.CreateWorkspaceCustomFieldOfKind(r.Context(), workspaceID, id, name,
+			kind, models.CustomFieldTypeKeys[kind], r.PostFormValue("description")); err == nil {
+			notice = name + " created."
+		}
+	case "update":
+		name, description := value("name"), r.PostFormValue("description")
+		if _, err = h.Store.UpdateCustomField(r.Context(), workspaceID, fieldID, &name, &description, nil); err == nil {
+			notice = name + " saved."
+		}
+	case "trash":
+		if err = h.Store.SetCustomFieldTrashed(r.Context(), workspaceID, fieldID, true); err == nil {
+			notice = "Field moved to the trash; it no longer appears on forms."
+		}
+	case "restore":
+		if err = h.Store.SetCustomFieldTrashed(r.Context(), workspaceID, fieldID, false); err == nil {
+			notice = "Field restored."
+		}
+	case "delete":
+		if err = h.Store.DeleteCustomField(r.Context(), workspaceID, fieldID); err == nil {
+			notice = "Field deleted with its values."
+		}
+	default:
+		http.Error(w, "Unknown custom field action.", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		redirectLocal(w, r, "/settings/custom-fields?error="+url.QueryEscape(err.Error()))
+		return
+	}
+	redirectLocal(w, r, "/settings/custom-fields?notice="+url.QueryEscape(notice))
 }
