@@ -41,9 +41,11 @@ seed:
 	go run ./cmd/server -mode=seed
 
 # demo builds the declarative demo company: three months of history across
-# Jira, Jira Software, Jira Service Management and Confluence.
+# Jira, Jira Software, Jira Service Management and Confluence. It builds into
+# the workspace `make dev` serves, or the company would be in a site the
+# server never shows.
 demo:
-	go run ./cmd/server -mode=demo -scenario=demo/company.json
+	WORKSPACE_SLUG='$(WORKSPACE_SLUG)' go run ./cmd/server -mode=demo -scenario=demo/company.json
 
 conformance: build
 	python3 -m unittest api/conformance/test_inventory.py api/conformance/test_coverage.py

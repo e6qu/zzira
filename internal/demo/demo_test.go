@@ -122,7 +122,7 @@ func TestApplyDemoCompany(t *testing.T) {
 	}
 	cmds := &commands.Service{Store: st, Blobs: blobs}
 	today := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
-	result, err := demo.Apply(ctx, st, cmds, scenario, demo.NewClock(today))
+	result, err := demo.Apply(ctx, st, cmds, scenario, demo.NewClock(today), scenario.Site.Slug)
 	if err != nil {
 		t.Fatalf("apply the demo company: %v", err)
 	}
@@ -297,7 +297,20 @@ func cleanWorkspace(t *testing.T, ctx context.Context, st *store.Store, workspac
 	}
 	for _, statement := range []string{
 		`DELETE FROM api_tokens WHERE user_id IN (SELECT user_id FROM memberships WHERE workspace_id=$1)`,
+		`DELETE FROM sessions WHERE user_id IN (SELECT user_id FROM memberships WHERE workspace_id=$1)`,
+		`DELETE FROM dashboards WHERE workspace_id=$1`,
 		`DELETE FROM filters WHERE workspace_id=$1`,
+		// The knowledge base points at both the site and the people who wrote
+		// it, so leaving it behind held every one of them alive and the next
+		// run of this suite inherited them. Its own rows go first, innermost
+		// out, because none of these foreign keys cascades.
+		`DELETE FROM wiki_footer_comment_versions WHERE comment_id IN (SELECT id FROM wiki_footer_comments WHERE page_id IN (SELECT id FROM wiki_pages WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)) OR blog_post_id IN (SELECT id FROM wiki_blog_posts WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)))`,
+		`DELETE FROM wiki_footer_comments WHERE page_id IN (SELECT id FROM wiki_pages WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)) OR blog_post_id IN (SELECT id FROM wiki_blog_posts WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1))`,
+		`DELETE FROM wiki_page_versions WHERE page_id IN (SELECT id FROM wiki_pages WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1))`,
+		`DELETE FROM wiki_pages WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`,
+		`DELETE FROM wiki_blog_post_versions WHERE blog_post_id IN (SELECT id FROM wiki_blog_posts WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1))`,
+		`DELETE FROM wiki_blog_posts WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`,
+		`DELETE FROM wiki_spaces WHERE workspace_id=$1`,
 		`DELETE FROM issues WHERE workspace_id=$1`,
 		`DELETE FROM projects WHERE workspace_id=$1`,
 		`DELETE FROM memberships WHERE workspace_id=$1`,
@@ -311,8 +324,184 @@ func cleanWorkspace(t *testing.T, ctx context.Context, st *store.Store, workspac
 		if _, err := st.Pool.Exec(ctx, `DELETE FROM api_tokens WHERE user_id = ANY($1)`, people); err != nil {
 			t.Logf("clean up tokens: %v", err)
 		}
-		if _, err := st.Pool.Exec(ctx, `DELETE FROM users WHERE id = ANY($1)`, people); err != nil {
+		// The scenario's people have fixed emails, so two sites built from it
+		// share their accounts; an account still on another site stays.
+		if _, err := st.Pool.Exec(ctx,
+			`DELETE FROM users WHERE id = ANY($1)
+			 AND NOT EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=users.id)`, people); err != nil {
 			t.Logf("clean up people: %v", err)
 		}
+	}
+}
+
+// openStore is the test database, migrated.
+func openStore(t *testing.T) (context.Context, *store.Store) {
+	t.Helper()
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(st.Close)
+	if err := store.Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+	return ctx, st
+}
+
+// A deployment serves exactly one workspace, the one WORKSPACE_SLUG names, so
+// the demo has to build into that one. Seeding it with the scenario's own
+// slug built a company in a workspace the server would never show, and said
+// nothing about it.
+func TestApplyBuildsIntoTheWorkspaceItIsGiven(t *testing.T) {
+	ctx, st := openStore(t)
+	scenario := companyScenario(t)
+	scenario.Site.Slug = "scenario-" + store.NewID("x")[2:10]
+	served := "served-" + store.NewID("x")[2:10]
+	blobs, err := attachments.NewFS(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmds := &commands.Service{Store: st, Blobs: blobs}
+	result, err := demo.Apply(ctx, st, cmds, scenario, demo.NewClock(time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)), served)
+	if err != nil {
+		t.Fatalf("apply into %s: %v", served, err)
+	}
+	t.Cleanup(func() { cleanWorkspace(t, ctx, st, result.WorkspaceID) })
+
+	if result.Slug != served {
+		t.Fatalf("the demo reported the site %q, applied to %q", result.Slug, served)
+	}
+	if _, err := st.WorkspaceBySlug(ctx, scenario.Site.Slug); err == nil {
+		t.Fatalf("a second workspace was built under the scenario's own slug %q", scenario.Site.Slug)
+	}
+	var slug, name string
+	if err := st.Pool.QueryRow(ctx, `SELECT slug,name FROM workspaces WHERE id=$1`, result.WorkspaceID).Scan(&slug, &name); err != nil {
+		t.Fatal(err)
+	}
+	if slug != served {
+		t.Fatalf("the site's slug is %q, want %q", slug, served)
+	}
+	// Only the slug is the deployment's; the company is still the scenario's.
+	if name != scenario.Site.Name {
+		t.Fatalf("the site is called %q, want the scenario's name %q", name, scenario.Site.Name)
+	}
+	project, err := st.ProjectByKey(ctx, result.WorkspaceID, scenario.Projects[0].Key)
+	if err != nil || project == nil {
+		t.Fatalf("the served workspace has no %s project: %v", scenario.Projects[0].Key, err)
+	}
+
+	// Naming no workspace at all is refused rather than guessed at.
+	if _, err := demo.Apply(ctx, st, cmds, scenario, demo.NewClock(time.Now().UTC()), ""); err == nil {
+		t.Fatal("applying a scenario with no workspace was accepted")
+	}
+}
+
+// The README invites re-running the mode after editing the scenario. A second
+// run keeps the company it built -- one project per key, one sprint per
+// sprint, one copy of the work and its history -- and raises only what the
+// scenario has gained.
+func TestReapplyingAScenarioRaisesOnlyWhatIsNew(t *testing.T) {
+	ctx, st := openStore(t)
+	scenario := companyScenario(t)
+	slug := "rerun-" + store.NewID("x")[2:10]
+	scenario.Site.Slug = slug
+	blobs, err := attachments.NewFS(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmds := &commands.Service{Store: st, Blobs: blobs}
+	today := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	first, err := demo.Apply(ctx, st, cmds, scenario, demo.NewClock(today), slug)
+	if err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+	t.Cleanup(func() { cleanWorkspace(t, ctx, st, first.WorkspaceID) })
+
+	count := func(what, query string) int {
+		t.Helper()
+		var n int
+		if err := st.Pool.QueryRow(ctx, query, first.WorkspaceID).Scan(&n); err != nil {
+			t.Fatalf("count %s: %v", what, err)
+		}
+		return n
+	}
+	const (
+		projects   = `SELECT count(*) FROM projects WHERE workspace_id=$1`
+		issues     = `SELECT count(*) FROM issues WHERE workspace_id=$1`
+		components = `SELECT count(*) FROM project_components c JOIN projects p ON p.id=c.project_id WHERE p.workspace_id=$1`
+		versions   = `SELECT count(*) FROM project_versions v JOIN projects p ON p.id=v.project_id WHERE p.workspace_id=$1`
+		boards     = `SELECT count(*) FROM boards b JOIN projects p ON p.id=b.project_id WHERE p.workspace_id=$1`
+		sprints    = `SELECT count(*) FROM sprints s JOIN boards b ON b.id=s.board_id JOIN projects p ON p.id=b.project_id WHERE p.workspace_id=$1`
+		comments   = `SELECT count(*) FROM comments c JOIN issues i ON i.id=c.issue_id WHERE i.workspace_id=$1`
+		filters    = `SELECT count(*) FROM filters WHERE workspace_id=$1`
+		dashboards = `SELECT count(*) FROM dashboards WHERE workspace_id=$1`
+		pages      = `SELECT count(*) FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1`
+		spaces     = `SELECT count(*) FROM wiki_spaces WHERE workspace_id=$1`
+		fields     = `SELECT count(*) FROM custom_fields WHERE workspace_id=$1`
+		groups     = `SELECT count(*) FROM groups g JOIN directories d ON d.id=g.directory_id JOIN sites si ON si.organization_id=d.organization_id WHERE si.workspace_id=$1`
+		levels     = `SELECT count(*) FROM issue_type_hierarchy_levels WHERE workspace_id=$1`
+		requests   = `SELECT count(*) FROM service_request_types t JOIN service_desks d ON d.id=t.service_desk_id WHERE d.workspace_id=$1`
+		customers  = `SELECT count(*) FROM service_organizations WHERE workspace_id=$1`
+		deliveries = `SELECT count(*) FROM software_deployments WHERE workspace_id=$1`
+	)
+	before := map[string]int{"issues": count("issues", issues)}
+	if before["issues"] == 0 {
+		t.Fatal("the first run raised no work")
+	}
+	kept := map[string]string{
+		"projects": projects, "components": components, "versions": versions,
+		"boards": boards, "sprints": sprints, "comments": comments, "filters": filters,
+		"dashboards": dashboards, "pages": pages, "spaces": spaces, "custom fields": fields,
+		"groups": groups, "hierarchy levels": levels, "request types": requests,
+		"customer organizations": customers, "deliveries": deliveries,
+	}
+	for what, query := range kept {
+		before[what] = count(what, query)
+		if before[what] == 0 {
+			t.Fatalf("the first run built no %s", what)
+		}
+	}
+
+	// The scenario gains one work item, which is the edit the README invites.
+	added := scenario.WorkItems[0]
+	added.ID = "added"
+	added.Summary = "Work the second run added"
+	added.Parent = ""
+	added.Sprint = ""
+	added.Events = nil
+	scenario.WorkItems = append(scenario.WorkItems, added)
+
+	second, err := demo.Apply(ctx, st, cmds, scenario, demo.NewClock(today), slug)
+	if err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+	if second.WorkspaceID != first.WorkspaceID {
+		t.Fatalf("the second run built another workspace: %q then %q", first.WorkspaceID, second.WorkspaceID)
+	}
+	for what, query := range kept {
+		if got := count(what, query); got != before[what] {
+			t.Errorf("the second run left %d %s, the first left %d", got, what, before[what])
+		}
+	}
+	if got := count("issues", issues); got != before["issues"]+1 {
+		t.Errorf("the second run left %d work items, want the first run's %d plus the one added", got, before["issues"])
+	}
+	var raised int
+	if err := st.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM issues WHERE workspace_id=$1 AND summary=$2`, first.WorkspaceID, added.Summary).Scan(&raised); err != nil {
+		t.Fatal(err)
+	}
+	if raised != 1 {
+		t.Fatalf("the work item the edit added was raised %d times", raised)
+	}
+	// A person keeps the account they already had, and the run still reports
+	// how to sign in as them.
+	if second.Passwords[scenario.People[0].Email] == "" || second.Tokens[scenario.People[0].Email] == "" {
+		t.Fatal("the second run reported no credentials for a person who already had an account")
 	}
 }

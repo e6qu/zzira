@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/commands"
@@ -48,9 +50,12 @@ type Applier struct {
 	boards      map[string]*models.Board
 	fields      map[string]string
 	items       map[string]*models.Issue
-	spaces      map[string]string
-	stamps      []stamp
-	ordinal     int
+	// existing indexes the work already on the site by project and summary,
+	// so a re-run keeps it rather than raising it twice.
+	existing map[string]string
+	spaces   map[string]string
+	stamps   []stamp
+	ordinal  int
 }
 
 // stamp records that everything written between two action sequences happened
@@ -61,23 +66,32 @@ type stamp struct {
 }
 
 // Apply builds the scenario's site and returns how to sign in to it.
-func Apply(ctx context.Context, st *store.Store, cmds *commands.Service, scenario *Scenario, clock Clock) (*Result, error) {
+//
+// slug names the workspace to build into, and is the scenario's own slug
+// unless the operator named another. A deployment serves exactly one
+// workspace, so seeding it means naming that one: a scenario applied to a
+// slug the server does not serve builds a company nobody can see. The site
+// keeps the scenario's display name either way.
+func Apply(ctx context.Context, st *store.Store, cmds *commands.Service, scenario *Scenario, clock Clock, slug string) (*Result, error) {
 	if err := scenario.Validate(); err != nil {
 		return nil, err
+	}
+	if slug == "" {
+		return nil, errors.New("name the workspace to apply the scenario to")
 	}
 	applier := &Applier{
 		Store: st, Commands: cmds, Clock: clock,
 		people: map[string]string{}, groups: map[string]string{}, projects: map[string]*models.Project{},
 		desks: map[string]string{}, requestType: map[string]string{}, versions: map[string]*models.Version{},
 		sprints: map[string]*models.Sprint{}, boards: map[string]*models.Board{}, fields: map[string]string{},
-		items: map[string]*models.Issue{}, spaces: map[string]string{},
+		items: map[string]*models.Issue{}, existing: map[string]string{}, spaces: map[string]string{},
 	}
-	return applier.run(ctx, scenario)
+	return applier.run(ctx, scenario, slug)
 }
 
-func (a *Applier) run(ctx context.Context, scenario *Scenario) (*Result, error) {
-	result := &Result{Slug: scenario.Site.Slug, Tokens: map[string]string{}, Passwords: map[string]string{}}
-	if err := a.workspace(ctx, scenario.Site); err != nil {
+func (a *Applier) run(ctx context.Context, scenario *Scenario, slug string) (*Result, error) {
+	result := &Result{Slug: slug, Tokens: map[string]string{}, Passwords: map[string]string{}}
+	if err := a.workspace(ctx, scenario.Site, slug); err != nil {
 		return nil, err
 	}
 	result.WorkspaceID = a.workspaceID
@@ -94,6 +108,9 @@ func (a *Applier) run(ctx context.Context, scenario *Scenario) (*Result, error) 
 		if err := a.project(ctx, project); err != nil {
 			return nil, fmt.Errorf("project %s: %w", project.ID, err)
 		}
+	}
+	if err := a.readExistingWork(ctx); err != nil {
+		return nil, err
 	}
 	for _, item := range scenario.WorkItems {
 		if err := a.workItem(ctx, item); err != nil {
@@ -158,15 +175,17 @@ func (a *Applier) sequence(ctx context.Context) (int64, error) {
 	return seq, err
 }
 
-// workspace finds or creates the site the scenario describes.
-func (a *Applier) workspace(ctx context.Context, site Site) error {
-	if id, err := a.Store.WorkspaceBySlug(ctx, site.Slug); err == nil && id != "" {
+// workspace finds or creates the site the scenario describes, under the slug
+// the operator asked for. A site that is already there keeps its name -- the
+// scenario is being poured into someone's workspace, not renaming it.
+func (a *Applier) workspace(ctx context.Context, site Site, slug string) error {
+	if id, err := a.Store.WorkspaceBySlug(ctx, slug); err == nil && id != "" {
 		a.workspaceID = id
 		return nil
 	}
 	id := store.NewID("ws")
 	if _, err := a.Store.Pool.Exec(ctx,
-		`INSERT INTO workspaces(id,slug,name,seq) VALUES($1,$2,$3,0)`, id, site.Slug, site.Name); err != nil {
+		`INSERT INTO workspaces(id,slug,name,seq) VALUES($1,$2,$3,0)`, id, slug, site.Name); err != nil {
 		return fmt.Errorf("create the site: %w", err)
 	}
 	a.workspaceID = id
@@ -229,7 +248,17 @@ func (a *Applier) accounts(ctx context.Context, scenario *Scenario, result *Resu
 	if a.admin == "" {
 		return fmt.Errorf("the scenario needs one person with the admin role")
 	}
+	existingGroups, err := a.Store.WikiGroups(ctx, a.workspaceID, a.admin, "")
+	if err != nil {
+		return fmt.Errorf("read the groups: %w", err)
+	}
 	for _, group := range scenario.Groups {
+		// A group name is unique in the directory, so a group the scenario
+		// already made is that group.
+		if id := groupNamed(existingGroups, group.Name); id != "" {
+			a.groups[group.ID] = id
+			continue
+		}
 		created, err := a.Store.CreateWikiGroup(ctx, a.workspaceID, a.admin, group.Name)
 		if err != nil {
 			return fmt.Errorf("create group %s: %w", group.Name, err)
@@ -246,12 +275,31 @@ func (a *Applier) accounts(ctx context.Context, scenario *Scenario, result *Resu
 	return nil
 }
 
+// groupNamed finds a group by the name a scenario gives it.
+func groupNamed(groups []store.WikiGroup, name string) string {
+	for _, group := range groups {
+		if group.Name == name {
+			return group.ID
+		}
+	}
+	return ""
+}
+
 // hierarchy adds the levels above Epic and puts work types on them, which is
 // what Jira's work type hierarchy settings do.
 func (a *Applier) hierarchy(ctx context.Context, levels []HierarchyLevel) error {
+	existing, err := a.Store.HierarchyLevels(ctx, a.workspaceID)
+	if err != nil {
+		return fmt.Errorf("read the work type hierarchy: %w", err)
+	}
 	for _, level := range levels {
-		if _, err := a.Store.AddHierarchyLevel(ctx, a.workspaceID, a.admin, level.Name); err != nil {
-			return fmt.Errorf("hierarchy level %s: %w", level.Name, err)
+		// A level name is unique in the hierarchy, so a level the scenario
+		// already added is that level; its work types are set below either
+		// way, which is what makes an edited scenario take effect.
+		if !slices.ContainsFunc(existing, func(l store.HierarchyLevel) bool { return l.Name == level.Name }) {
+			if _, err := a.Store.AddHierarchyLevel(ctx, a.workspaceID, a.admin, level.Name); err != nil {
+				return fmt.Errorf("hierarchy level %s: %w", level.Name, err)
+			}
 		}
 		for _, workType := range level.WorkTypes {
 			if _, err := a.Store.IssueTypeByIDOrName(ctx, a.workspaceID, workType); err != nil {
@@ -268,9 +316,20 @@ func (a *Applier) hierarchy(ctx context.Context, levels []HierarchyLevel) error 
 	return nil
 }
 
-// customFields registers the fields the work items use.
+// customFields registers the fields the work items use. A field the scenario
+// already made is that field: two fields of the same name would be two
+// different columns on the same work, and the work raised last time is on the
+// first one.
 func (a *Applier) customFields(ctx context.Context, fields []CustomField) error {
+	existing, err := a.Store.CustomFieldsForWorkspace(ctx, a.workspaceID)
+	if err != nil {
+		return fmt.Errorf("read the custom fields: %w", err)
+	}
 	for _, field := range fields {
+		if made := customFieldNamed(existing, field.Name); made != "" {
+			a.fields[field.ID] = made
+			continue
+		}
 		seq, err := a.Store.NextCustomFieldNumber(ctx)
 		if err != nil {
 			return err
@@ -300,26 +359,58 @@ func (a *Applier) customFields(ctx context.Context, fields []CustomField) error 
 	return nil
 }
 
-// project creates a project with its components, versions, board and sprints.
-func (a *Applier) project(ctx context.Context, project Project) error {
-	created, err := a.Commands.CreateProject(ctx, a.admin, a.workspaceID, commands.CreateProjectInput{
-		Key: project.Key, Name: project.Name, Description: project.Description,
-		LeadAccountID: a.people[project.Lead], ProjectTypeKey: project.Type, ProjectTemplateKey: project.Template,
-	})
-	if err != nil {
-		var invalid *commands.ProjectValidationError
-		if errors.As(err, &invalid) {
-			return fmt.Errorf("%s: %v", err, invalid.Fields)
+// customFieldNamed finds a custom field by the name a scenario gives it.
+func customFieldNamed(fields []*models.CustomField, name string) string {
+	for _, field := range fields {
+		if field.Name == name {
+			return field.ID
 		}
-		return err
+	}
+	return ""
+}
+
+// project creates a project with its components, versions, board and sprints,
+// or takes the ones already there. A scenario is applied more than once -- the
+// README invites it: change the document, run the mode again -- and a project
+// key, a component name and a version name are each unique within a site, so
+// building them a second time could only fail. Keeping what is there is the
+// same rule the site, the accounts and the board already follow.
+func (a *Applier) project(ctx context.Context, project Project) error {
+	created, err := a.Store.ProjectByKey(ctx, a.workspaceID, project.Key)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("look for the %s project: %w", project.Key, err)
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		created, err = a.Commands.CreateProject(ctx, a.admin, a.workspaceID, commands.CreateProjectInput{
+			Key: project.Key, Name: project.Name, Description: project.Description,
+			LeadAccountID: a.people[project.Lead], ProjectTypeKey: project.Type, ProjectTemplateKey: project.Template,
+		})
+		if err != nil {
+			var invalid *commands.ProjectValidationError
+			if errors.As(err, &invalid) {
+				return fmt.Errorf("%s: %v", err, invalid.Fields)
+			}
+			return err
+		}
 	}
 	a.projects[project.ID] = created
+	existingComponents, err := a.Store.Components(ctx, a.workspaceID, created.ID, "", "")
+	if err != nil {
+		return fmt.Errorf("read the components of %s: %w", project.Key, err)
+	}
 	for _, component := range project.Components {
+		if slices.ContainsFunc(existingComponents, func(c *models.ProjectComponent) bool { return c.Name == component.Name }) {
+			continue
+		}
 		if _, err := a.Store.CreateComponent(ctx, a.workspaceID, a.admin, store.ComponentInput{
 			ProjectIDOrKey: created.ID, Name: component.Name, LeadAccountID: a.people[component.Lead],
 		}); err != nil {
 			return fmt.Errorf("component %s: %w", component.Name, err)
 		}
+	}
+	existingVersions, err := a.Store.ProjectVersions(ctx, created.ID)
+	if err != nil {
+		return fmt.Errorf("read the versions of %s: %w", project.Key, err)
 	}
 	for _, version := range project.Versions {
 		update := store.VersionUpdate{Name: &version.Name}
@@ -334,7 +425,11 @@ func (a *Applier) project(ctx context.Context, project Project) error {
 			day := a.Clock.Day(*version.ReleaseDay)
 			update.ReleaseDate = &day
 		}
-		saved, err := a.Store.SaveVersion(ctx, a.workspaceID, a.admin, created.ID, "", update)
+		id := ""
+		if existing := versionNamed(existingVersions, version.Name); existing != nil {
+			id = existing.ID
+		}
+		saved, err := a.Store.SaveVersion(ctx, a.workspaceID, a.admin, created.ID, id, update)
 		if err != nil {
 			return fmt.Errorf("version %s: %w", version.Name, err)
 		}
@@ -348,6 +443,16 @@ func (a *Applier) project(ctx context.Context, project Project) error {
 	if project.ServiceDesk != nil {
 		if err := a.serviceDesk(ctx, project, created); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// versionNamed finds a version by the name a scenario gives it.
+func versionNamed(versions []*models.Version, name string) *models.Version {
+	for _, version := range versions {
+		if version.Name == name {
+			return version
 		}
 	}
 	return nil
@@ -371,12 +476,33 @@ func (a *Applier) board(ctx context.Context, project *models.Project, declared B
 		}
 	}
 	a.boards[declared.ID] = board
+	existing, err := a.Store.SprintsByBoard(ctx, board.ID)
+	if err != nil {
+		return fmt.Errorf("read the sprints of %s: %w", board.Name, err)
+	}
 	for _, sprint := range declared.Sprints {
+		// A sprint the scenario already ran on this board is that sprint, not
+		// a second one with the same name: re-running must not leave a board
+		// with two "Sprint 1"s, one of them closed.
+		if found := sprintNamed(existing, sprint.Name); found != nil {
+			a.sprints[sprint.ID] = found
+			continue
+		}
 		created, _, err := a.Store.CreateSprint(ctx, a.admin, a.workspaceID, board.ID, sprint.Name, sprint.Goal)
 		if err != nil {
 			return fmt.Errorf("sprint %s: %w", sprint.Name, err)
 		}
 		a.sprints[sprint.ID] = created
+	}
+	return nil
+}
+
+// sprintNamed finds a sprint by the name a scenario gives it.
+func sprintNamed(sprints []*models.Sprint, name string) *models.Sprint {
+	for _, sprint := range sprints {
+		if sprint.Name == name {
+			return sprint
+		}
 	}
 	return nil
 }
@@ -395,6 +521,12 @@ func (a *Applier) startSprints(ctx context.Context, scenario *Scenario) error {
 				continue
 			}
 			created := a.sprints[sprint.ID]
+			// A sprint a previous run already put where the scenario wants it
+			// stays there: Jira does not move a sprint back from closed to
+			// active, and its report would lose the dates it closed with.
+			if created.State == state {
+				continue
+			}
 			update := store.SprintUpdate{Name: sprint.Name, Goal: sprint.Goal, State: "active"}
 			if sprint.StartDay != nil {
 				start := a.Clock.At(*sprint.StartDay, 0)
@@ -460,9 +592,41 @@ func (a *Applier) releaseVersions(ctx context.Context, scenario *Scenario) error
 	return nil
 }
 
+// readExistingWork indexes the work already on the site by project and
+// summary, which is how a re-run recognises the work it raised last time.
+func (a *Applier) readExistingWork(ctx context.Context) error {
+	rows, err := a.Store.Pool.Query(ctx,
+		`SELECT id,project_id,summary FROM issues WHERE workspace_id=$1`, a.workspaceID)
+	if err != nil {
+		return fmt.Errorf("read the work already on the site: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, projectID, summary string
+		if err := rows.Scan(&id, &projectID, &summary); err != nil {
+			return err
+		}
+		a.existing[projectID+"\x00"+summary] = id
+	}
+	return rows.Err()
+}
+
 // workItem raises one piece of work and replays everything that happened to it.
+//
+// Work the scenario already raised on this site is left exactly as it is: its
+// summary within its project is what identifies it. A second run therefore
+// adds no second copy of the company and replays no history onto work that
+// already has it -- it raises only what the scenario has gained since.
 func (a *Applier) workItem(ctx context.Context, item WorkItem) error {
 	project := a.projects[item.Project]
+	if id := a.existing[project.ID+"\x00"+item.Summary]; id != "" {
+		found, err := a.Store.IssueByIDOrKey(ctx, a.workspaceID, id)
+		if err != nil {
+			return fmt.Errorf("read the work already raised for %q: %w", item.Summary, err)
+		}
+		a.items[item.ID] = found
+		return nil
+	}
 	fields := map[string]json.RawMessage{}
 	for field, value := range item.Fields {
 		encoded, err := json.Marshal(value)
@@ -674,15 +838,96 @@ func (a *Applier) deployments(ctx context.Context, declared []Deployment) error 
 	return a.Store.UpsertSoftwareDeployments(ctx, a.workspaceID, deployments)
 }
 
-// filtersAndDashboards saves the searches and dashboards people keep.
+// filtersAndDashboards saves the searches and dashboards people keep. A
+// filter and a dashboard the scenario already saved are found by their name
+// and owner, so a re-run leaves one of each rather than a growing pile.
 func (a *Applier) filtersAndDashboards(ctx context.Context, scenario *Scenario) error {
+	saved := map[string]string{}
 	for _, filter := range scenario.Filters {
 		owner := a.people[filter.Owner]
 		if owner == "" {
 			owner = a.admin
 		}
-		if _, err := a.Store.CreateFilter(ctx, store.NewID("flt"), a.workspaceID, filter.Name, filter.JQL, filter.Description, owner); err != nil {
+		existing, err := a.Store.Filters(ctx, a.workspaceID, owner, store.FilterSearch{Name: filter.Name, OwnerID: owner})
+		if err != nil {
+			return fmt.Errorf("read the saved filters: %w", err)
+		}
+		if len(existing) > 0 {
+			saved[filter.Name] = existing[0].ID
+			continue
+		}
+		created, err := a.Store.CreateFilter(ctx, store.NewID("flt"), a.workspaceID, filter.Name, filter.JQL, filter.Description, owner)
+		if err != nil {
 			return fmt.Errorf("filter %s: %w", filter.Name, err)
+		}
+		saved[filter.Name] = created.ID
+	}
+	for _, dashboard := range scenario.Dashboards {
+		if err := a.dashboard(ctx, dashboard, saved); err != nil {
+			return fmt.Errorf("dashboard %s: %w", dashboard.Name, err)
+		}
+	}
+	return nil
+}
+
+// dashboard saves one dashboard and the gadgets on it. A gadget's type is a
+// ZZIRA gadget module; its project or saved filter is the configuration the
+// gadget reads when it draws (see docs/DASHBOARDS.md).
+func (a *Applier) dashboard(ctx context.Context, declared Dashboard, filters map[string]string) error {
+	owner := a.people[declared.Owner]
+	if owner == "" {
+		owner = a.admin
+	}
+	existing, err := a.Store.Dashboards(ctx, a.workspaceID, owner)
+	if err != nil {
+		return err
+	}
+	id := ""
+	for _, found := range existing {
+		if found.Name == declared.Name {
+			id = found.ID
+			break
+		}
+	}
+	if id != "" {
+		return nil
+	}
+	details := store.DashboardDetails{Name: declared.Name}
+	if declared.Shared {
+		details.SharePermissions = []models.DashboardShare{{Type: "loggedin"}}
+	}
+	created, err := a.Store.SaveDashboard(ctx, a.workspaceID, owner, "", details)
+	if err != nil {
+		return err
+	}
+	for index, gadget := range declared.Gadgets {
+		// The default two-column layout is what a new dashboard has, so the
+		// gadgets fill it left to right; an unknown type is refused by the
+		// store against the gadget catalog.
+		update := store.GadgetUpdate{
+			ModuleKey: "com.zzira:" + gadget.Type,
+			Position:  &models.GadgetPosition{Column: index % 2, Row: index / 2},
+		}
+		if gadget.Title != "" {
+			update.Title = &gadget.Title
+		}
+		saved, err := a.Store.SaveDashboardGadget(ctx, a.workspaceID, owner, created.ID, 0, update)
+		if err != nil {
+			return fmt.Errorf("gadget %s: %w", gadget.Type, err)
+		}
+		config := models.GadgetConfig{FilterID: filters[gadget.Filter]}
+		if gadget.Project != "" {
+			config.ProjectKey = a.projects[gadget.Project].Key
+		}
+		if err := store.NormalizeGadgetConfig(&config); err != nil {
+			return fmt.Errorf("gadget %s: %w", gadget.Type, err)
+		}
+		raw, err := json.Marshal(config)
+		if err != nil {
+			return err
+		}
+		if _, err := a.Store.SetDashboardProperty(ctx, a.workspaceID, owner, created.ID, saved.ID, "zzira.config", raw); err != nil {
+			return fmt.Errorf("gadget %s configuration: %w", gadget.Type, err)
 		}
 	}
 	return nil
@@ -761,10 +1006,18 @@ func (a *Applier) serviceDesk(ctx context.Context, declared Project, project *mo
 // service raises the requests customers made, replays what happened to each,
 // and records the satisfaction they left.
 func (a *Applier) service(ctx context.Context, declared *Service) error {
+	enrolled, err := a.Store.ServiceOrganizations(ctx, a.workspaceID, a.admin, "", true)
+	if err != nil {
+		return fmt.Errorf("read the customer organizations: %w", err)
+	}
 	for _, organization := range declared.Organizations {
-		created, err := a.Store.CreateServiceOrganization(ctx, a.workspaceID, organization.Name)
-		if err != nil {
-			return fmt.Errorf("organization %s: %w", organization.Name, err)
+		created := serviceOrganizationNamed(enrolled, organization.Name)
+		if created == nil {
+			made, err := a.Store.CreateServiceOrganization(ctx, a.workspaceID, organization.Name)
+			if err != nil {
+				return fmt.Errorf("organization %s: %w", organization.Name, err)
+			}
+			created = made
 		}
 		members := make([]string, 0, len(organization.Members))
 		for _, member := range organization.Members {
@@ -782,6 +1035,16 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 			return fmt.Errorf("request %s names the project %s, which has no service desk", request.ID, request.Project)
 		}
 		customer := a.people[request.Customer]
+		// A request the scenario already raised is found the same way its
+		// work is: it is a work item in the desk's project.
+		if id := a.existing[a.projects[request.Project].ID+"\x00"+request.Summary]; id != "" {
+			found, err := a.Store.IssueByIDOrKey(ctx, a.workspaceID, id)
+			if err != nil {
+				return fmt.Errorf("read the request already raised for %q: %w", request.Summary, err)
+			}
+			a.items[request.ID] = found
+			continue
+		}
 		var raised *models.ServiceRequest
 		if err := a.at(ctx, request.CreatedDay, func() error {
 			created, err := a.Commands.CreateServiceRequest(ctx, commands.CreateServiceRequestInput{
@@ -820,15 +1083,33 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 	return nil
 }
 
+// serviceOrganizationNamed finds a customer organization by name.
+func serviceOrganizationNamed(organizations []models.ServiceOrganization, name string) *models.ServiceOrganization {
+	for index, organization := range organizations {
+		if organization.Name == name {
+			return &organizations[index]
+		}
+	}
+	return nil
+}
+
 // wiki builds the knowledge base: spaces, their page trees, blog posts and
 // the comments people left.
 func (a *Applier) wiki(ctx context.Context, declared *Wiki) error {
 	for _, space := range declared.Spaces {
-		created, err := a.Store.CreateWikiSpaceFull(ctx, a.workspaceID, a.admin, store.CreateWikiSpaceInput{
-			Key: space.Key, Name: space.Name, Description: space.Description,
-		})
-		if err != nil {
-			return fmt.Errorf("space %s: %w", space.Key, err)
+		// A space key is unique, so a space the scenario already made is that
+		// space; its pages and posts are then matched by title below.
+		created, err := a.Store.WikiSpaceByKey(ctx, a.workspaceID, a.admin, space.Key)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("look for the %s space: %w", space.Key, err)
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			created, err = a.Store.CreateWikiSpaceFull(ctx, a.workspaceID, a.admin, store.CreateWikiSpaceInput{
+				Key: space.Key, Name: space.Name, Description: space.Description,
+			})
+			if err != nil {
+				return fmt.Errorf("space %s: %w", space.Key, err)
+			}
 		}
 		a.spaces[space.Key] = created.ID
 		if err := a.pages(ctx, created.ID, "", space.Pages); err != nil {
@@ -838,6 +1119,13 @@ func (a *Applier) wiki(ctx context.Context, declared *Wiki) error {
 			author := a.people[post.Author]
 			if author == "" {
 				author = a.admin
+			}
+			written, err := a.Store.WikiBlogPosts(ctx, a.workspaceID, a.admin, created.ID, "current", post.Title, "")
+			if err != nil {
+				return fmt.Errorf("read the blog posts of %s: %w", space.Key, err)
+			}
+			if len(written) > 0 {
+				continue
 			}
 			if err := a.at(ctx, post.CreatedDay, func() error {
 				_, err := a.Store.SaveWikiBlogPost(ctx, a.workspaceID, author, models.WikiBlogPost{
@@ -860,7 +1148,22 @@ func (a *Applier) pages(ctx context.Context, spaceID, parentID string, pages []P
 		if author == "" {
 			author = a.admin
 		}
+		// A page the scenario already wrote in this space is that page: it
+		// keeps the body someone may have edited and is not commented on
+		// twice. Its children are still walked, so an edited scenario can add
+		// a page under one that is already there.
+		written, err := a.Store.WikiPages(ctx, a.workspaceID, a.admin, spaceID, "current", page.Title)
+		if err != nil {
+			return fmt.Errorf("read the pages of %s: %w", page.Title, err)
+		}
 		var saved *models.WikiPage
+		if len(written) > 0 {
+			saved = written[0]
+			if err := a.pages(ctx, spaceID, saved.ID, page.Children); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := a.at(ctx, page.CreatedDay, func() error {
 			created, err := a.Commands.SaveWikiPage(ctx, a.workspaceID, author, models.WikiPage{
 				SpaceID: spaceID, ParentID: parentID, Title: page.Title, Status: "current",

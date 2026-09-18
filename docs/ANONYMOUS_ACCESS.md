@@ -10,6 +10,12 @@ Jira's REST specification marks which operations "can be accessed anonymously". 
 - A credential that fails verification is 401; it is never treated as anonymous.
 - Every other operation, and every write, requires an account.
 
+## Whether the installation has an anonymous user at all
+
+`ZZIRA_ANONYMOUS_ACCESS=off` closes the instance to callers with no credentials, attachment and thumbnail downloads included, the way a Jira site's administrator decides whether the anonymous user exists. It is the instance's own configuration, not a site setting the REST API exposes, and the table below is unchanged either way. The default, `on`, keeps Jira's anonymous user.
+
+An installation published behind single sign-on usually sets it together with `ZZIRA_LOCAL_CREDENTIALS=off`, which refuses the passwords and API tokens the installation issued itself ([shauth-sso.md](shauth-sso.md#single-sign-on-only)).
+
 ## What the anonymous user sees
 
 The anonymous user holds no global permissions, is in no group or role, and is never a project lead, assignee, reporter or administrator. Access comes only from grants to `anyone` ("Anyone on the web"). The same checks apply to signed-in callers:

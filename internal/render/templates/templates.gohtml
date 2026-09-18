@@ -1056,8 +1056,9 @@
     <div class="login-providers" aria-label="Single sign-on providers">
       {{range .Providers}}<a class="btn btn-secondary btn-block" href="/auth/{{.Key}}">Continue with {{.DisplayName}}</a>{{end}}
     </div>
-    <p class="login-separator"><span>or use your ZZIRA account</span></p>
+    {{if .Password}}<p class="login-separator"><span>or use your ZZIRA account</span></p>{{end}}
     {{end}}
+    {{if .Password}}
     <form method="post" action="/login">
       <label for="login-email">Email</label>
       <input id="login-email" type="email" name="email" required autofocus autocomplete="email" placeholder="you@company.com">
@@ -1066,6 +1067,9 @@
       {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
       <button type="submit" class="btn btn-primary btn-block">Log in</button>
     </form>
+    {{else}}
+    <p class="login-intro">This site is signed in to through its identity provider. It accepts no password.</p>
+    {{end}}
     </section>
   </main>
 </body>
@@ -1084,7 +1088,7 @@
     <div class="login-providers" aria-label="Sign-in providers">
       {{range .Providers}}<a class="btn btn-primary btn-block" href="/auth/{{.Key}}">Sign in with {{.DisplayName}}</a>{{end}}
     </div>
-    <a class="btn btn-secondary btn-block" href="/login">Use password</a>
+    {{if .Password}}<a class="btn btn-secondary btn-block" href="/login">Use password</a>{{end}}
     {{else}}
     <a class="btn btn-primary btn-block" href="/login">Log in</a>
     {{end}}

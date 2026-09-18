@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/e6qu/zzira/internal/demo"
+)
 
 func TestServingWorkspaceSlug(t *testing.T) {
 	tests := []struct {
@@ -22,6 +26,30 @@ func TestServingWorkspaceSlug(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Fatalf("servingWorkspaceSlug()=%q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// An instance serves only the workspace WORKSPACE_SLUG names, so -mode=demo
+// has to be able to seed that one. The flag is the operator's one-off
+// override; the environment is the deployment's own answer; the scenario's
+// slug is what a scenario applied to nothing in particular builds.
+func TestDemoWorkspaceSlug(t *testing.T) {
+	scenario := &demo.Scenario{Site: demo.Site{Slug: "northwind", Name: "Northwind"}}
+	tests := []struct {
+		name, flag, env, want string
+	}{
+		{name: "nothing named takes the scenario's own slug", want: "northwind"},
+		{name: "the deployment's workspace", env: "zzira", want: "zzira"},
+		{name: "the flag overrides the deployment", flag: "staging", env: "zzira", want: "staging"},
+		{name: "the flag alone", flag: "staging", want: "staging"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := demoWorkspaceSlug(tt.flag, func(string) string { return tt.env }, scenario)
+			if got != tt.want {
+				t.Fatalf("demoWorkspaceSlug()=%q, want %q", got, tt.want)
 			}
 		})
 	}

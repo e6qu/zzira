@@ -42,6 +42,7 @@ import (
 func main() {
 	mode := flag.String("mode", "run", "run|migrate|seed|demo")
 	scenario := flag.String("scenario", "demo/company.json", "the demo scenario -mode=demo applies")
+	workspace := flag.String("workspace", "", "the workspace -mode=demo applies the scenario to (default $WORKSPACE_SLUG, then the scenario's own slug)")
 	healthcheck := flag.Bool("healthcheck", false, "verify the process can serve and exit")
 	addr := flag.String("addr", "", "listen address (default :$SERVER_PORT or :8080)")
 	staticDir := flag.String("static", "", "static dir (default web/static)")
@@ -79,7 +80,7 @@ func main() {
 		return
 	}
 	if *mode == "demo" {
-		if err := applyDemoScenario(ctx, st, *scenario); err != nil {
+		if err := applyDemoScenario(ctx, st, *scenario, *workspace, os.Getenv); err != nil {
 			log.Fatalf("demo: %v", err)
 		}
 		return
@@ -164,6 +165,21 @@ func main() {
 	anonymousAccess := envOr("ZZIRA_ANONYMOUS_ACCESS", "on") != "off"
 	if !anonymousAccess {
 		log.Printf("anonymous access is off: a caller without credentials is refused, downloads included")
+	}
+	// ZZIRA_LOCAL_CREDENTIALS=off refuses the credentials this installation
+	// issued itself -- passwords and API tokens -- so the only way in is a
+	// session an identity provider established. An installation published
+	// behind single sign-on sets it, because -mode=demo mints a password and
+	// an API token for every person in the scenario and those would otherwise
+	// be working logins past the provider. Like anonymous access it is the
+	// instance's configuration, not a site setting the REST API exposes, and
+	// the default keeps password sign-in and API tokens.
+	localCredentials := envOr("ZZIRA_LOCAL_CREDENTIALS", "on") != "off"
+	if !localCredentials {
+		if len(identityProviders.LoginProviders()) == 0 {
+			log.Fatal("ZZIRA_LOCAL_CREDENTIALS=off needs an identity provider: nothing else could sign anyone in")
+		}
+		log.Printf("local credentials are off: only a session from an identity provider is accepted")
 	}
 	api := &api3.Handler{Store: st, Commands: cmdSvc, Blobs: blobs, BaseURL: baseURL, WorkspaceSlug: workspaceSlug, StaticDir: static, AnonymousAccess: anonymousAccess}
 	st.IssueExpressionEvaluator = api.EvaluateIssueExpression
@@ -899,9 +915,17 @@ func main() {
 	webHandler.Routes = mux
 	go (&store.ReportSubscriptionRunner{Store: st, BaseURL: baseURL, Render: webHandler.RenderReport}).Run(ctx, workspaceID)
 
+	handler := appAPI.APIPrincipal(store.RequestMetadataHandler(st.IPAllowlistHandler(workspaceSlug, mux)))
+	if !localCredentials {
+		// Outside every route, so no entry point can authenticate a password
+		// or an API token: the browser's sign-in form, the REST APIs, the
+		// sync and event streams and the organization administration API all
+		// resolve their caller below this.
+		handler = authn.RefuseLocalCredentials(handler)
+	}
 	srv := &http.Server{
 		Addr:              address,
-		Handler:           http.MaxBytesHandler(authn.SecurityHeadersDynamic(authn.ProtectCookieMutations(appAPI.APIPrincipal(store.RequestMetadataHandler(st.IPAllowlistHandler(workspaceSlug, mux)))), identityProviders.FormActionOrigins), 34<<20),
+		Handler:           http.MaxBytesHandler(authn.SecurityHeadersDynamic(authn.ProtectCookieMutations(handler), identityProviders.FormActionOrigins), 34<<20),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
@@ -1026,9 +1050,27 @@ func servingWorkspaceSlug(getenv func(string) string) (string, error) {
 	return slug, nil
 }
 
+// demoWorkspaceSlug names the workspace -mode=demo applies a scenario to.
+//
+// An instance serves exactly one workspace, the one WORKSPACE_SLUG names, so
+// seeding a deployment with the scenario's own slug built a company the server
+// would never show. The -workspace flag wins, then WORKSPACE_SLUG, then the
+// scenario's slug: the same order -static and -addr use, where the flag is the
+// operator's one-off override of the deployment's environment. Only the slug
+// is taken; the site keeps the scenario's display name.
+func demoWorkspaceSlug(flagValue string, getenv func(string) string, scenario *demo.Scenario) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if slug := getenv("WORKSPACE_SLUG"); slug != "" {
+		return slug
+	}
+	return scenario.Site.Slug
+}
+
 // applyDemoScenario builds a demo site from a declarative scenario and writes
 // the credentials it created where the local tooling looks for them.
-func applyDemoScenario(ctx context.Context, st *store.Store, path string) error {
+func applyDemoScenario(ctx context.Context, st *store.Store, path, workspaceFlag string, getenv func(string) string) error {
 	// #nosec G304 -- the scenario is the operator's own -scenario flag on a
 	// local command, like -static and -mode; it is read, never written, and no
 	// request can reach it.
@@ -1045,7 +1087,8 @@ func applyDemoScenario(ctx context.Context, st *store.Store, path string) error 
 	if err != nil {
 		return err
 	}
-	result, err := demo.Apply(ctx, st, &commands.Service{Store: st, Blobs: blobs}, scenario, demo.NewClock(time.Now().UTC()))
+	slug := demoWorkspaceSlug(workspaceFlag, getenv, scenario)
+	result, err := demo.Apply(ctx, st, &commands.Service{Store: st, Blobs: blobs}, scenario, demo.NewClock(time.Now().UTC()), slug)
 	if err != nil {
 		return err
 	}
@@ -1061,7 +1104,7 @@ func applyDemoScenario(ctx context.Context, st *store.Store, path string) error 
 	if err := os.WriteFile(filepath.Join(directory, "demo-credentials.json"), encoded, 0o600); err != nil {
 		return err
 	}
-	fmt.Printf("built the %s demo site: %d people, %d projects; credentials in %s\n",
-		scenario.Name, len(scenario.People), len(scenario.Projects), filepath.Join(directory, "demo-credentials.json"))
+	fmt.Printf("built the %s demo site in the %s workspace: %d people, %d projects; credentials in %s\n",
+		scenario.Name, result.Slug, len(scenario.People), len(scenario.Projects), filepath.Join(directory, "demo-credentials.json"))
 	return nil
 }
