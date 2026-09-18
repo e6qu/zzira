@@ -50,14 +50,20 @@ func scanServiceRequestType(row interface{ Scan(...any) error }) (*models.Servic
 	return requestType, err
 }
 
-const serviceRequestTypeSelect = `SELECT id,service_desk_id,name,description,help_text,issue_type_id,group_ids FROM service_request_types `
+// serviceRequestTypeSelect reads a request type with the groups it belongs to,
+// in the order the portal shows those groups.
+const serviceRequestTypeSelect = `SELECT rt.id,rt.service_desk_id,rt.name,rt.description,rt.help_text,rt.issue_type_id,
+	COALESCE((SELECT array_agg(m.group_id ORDER BY g.position,g.id)
+		FROM service_request_type_group_members m
+		JOIN service_request_type_groups g ON g.service_desk_id=m.service_desk_id AND g.id=m.group_id
+		WHERE m.request_type_id=rt.id),'{}') FROM service_request_types rt `
 
 func (s *Store) ServiceRequestTypes(ctx context.Context, workspaceID, serviceDeskID, search string) ([]models.ServiceRequestType, error) {
 	search = strings.TrimSpace(search)
 	rows, err := s.Pool.Query(ctx, serviceRequestTypeSelect+`
-		WHERE service_desk_id IN (SELECT id FROM service_desks WHERE workspace_id=$1)
-		  AND ($2='' OR service_desk_id=$2) AND ($3='' OR name ILIKE '%'||$3||'%' OR description ILIKE '%'||$3||'%')
-		ORDER BY service_desk_id::bigint,id::bigint`, workspaceID, serviceDeskID, search)
+		WHERE rt.service_desk_id IN (SELECT id FROM service_desks WHERE workspace_id=$1)
+		  AND ($2='' OR rt.service_desk_id=$2) AND ($3='' OR rt.name ILIKE '%'||$3||'%' OR rt.description ILIKE '%'||$3||'%')
+		ORDER BY rt.service_desk_id::bigint,rt.id::bigint`, workspaceID, serviceDeskID, search)
 	if err != nil {
 		return nil, err
 	}
@@ -75,30 +81,72 @@ func (s *Store) ServiceRequestTypes(ctx context.Context, workspaceID, serviceDes
 
 func (s *Store) ServiceRequestType(ctx context.Context, workspaceID, serviceDeskID, id string) (*models.ServiceRequestType, error) {
 	return scanServiceRequestType(s.Pool.QueryRow(ctx, serviceRequestTypeSelect+`
-		WHERE service_desk_id=$2 AND id=$3 AND service_desk_id IN (SELECT id FROM service_desks WHERE workspace_id=$1)`, workspaceID, serviceDeskID, id))
+		WHERE rt.service_desk_id=$2 AND rt.id=$3 AND rt.service_desk_id IN (SELECT id FROM service_desks WHERE workspace_id=$1)`, workspaceID, serviceDeskID, id))
 }
 
-func (s *Store) CreateServiceRequestType(ctx context.Context, workspaceID, serviceDeskID, name, description, helpText, issueTypeID string) (*models.ServiceRequestType, error) {
+// CreateServiceRequestType adds a request type to a service desk. Jira's REST
+// create leaves the groups empty, which keeps the request type off the portal;
+// the agent workspace passes the groups it should appear in.
+func (s *Store) CreateServiceRequestType(ctx context.Context, workspaceID, actorID, serviceDeskID, name, description, helpText, issueTypeID string, groupIDs []string) (*models.ServiceRequestType, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	requestType := &models.ServiceRequestType{}
+	requestType := &models.ServiceRequestType{GroupIDs: []string{}}
 	err = tx.QueryRow(ctx, `
 		INSERT INTO service_request_types(service_desk_id,name,description,help_text,issue_type_id)
 		SELECT sd.id,$3,$4,$5,$6 FROM service_desks sd
 		WHERE sd.workspace_id=$1 AND sd.id=$2
-		RETURNING id,service_desk_id,name,description,help_text,issue_type_id,group_ids`, workspaceID, serviceDeskID, name, description, helpText, issueTypeID).Scan(
+		RETURNING id,service_desk_id,name,description,help_text,issue_type_id`, workspaceID, serviceDeskID, name, description, helpText, issueTypeID).Scan(
 		&requestType.ID, &requestType.ServiceDeskID, &requestType.Name, &requestType.Description,
-		&requestType.HelpText, &requestType.IssueTypeID, &requestType.GroupIDs)
+		&requestType.HelpText, &requestType.IssueTypeID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrServiceDeskNotFound
+	}
 	if err != nil {
-		return nil, err
+		return nil, serviceRequestTypeWriteError(err)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO service_request_type_fields(request_type_id,field_id,required,help_text,position) VALUES($1,'summary',TRUE,$2,0),($1,'description',FALSE,'Describe the request.',1)`, requestType.ID, requestType.HelpText); err != nil {
 		return nil, err
 	}
+	if err := setServiceRequestTypeGroups(ctx, tx, requestType.ServiceDeskID, requestType.ID, groupIDs); err != nil {
+		return nil, err
+	}
+	requestType.GroupIDs, err = serviceRequestTypeGroupIDs(ctx, tx, requestType.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err := writeServiceAudit(ctx, tx, workspaceID, actorID, "service.request_type.created", "service_request_type", requestType.ID,
+		map[string]any{"serviceDeskId": requestType.ServiceDeskID, "name": name, "groupIds": requestType.GroupIDs}); err != nil {
+		return nil, err
+	}
 	return requestType, tx.Commit(ctx)
+}
+
+// UpdateServiceRequestType renames a request type and changes the description
+// and help text the portal shows with it.
+func (s *Store) UpdateServiceRequestType(ctx context.Context, workspaceID, actorID, serviceDeskID, id, name, description, helpText string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	result, err := tx.Exec(ctx, `
+		UPDATE service_request_types rt SET name=$4,description=$5,help_text=$6
+		FROM service_desks sd WHERE sd.id=rt.service_desk_id AND sd.workspace_id=$1 AND sd.id=$2 AND rt.id=$3`,
+		workspaceID, serviceDeskID, id, name, description, helpText)
+	if err != nil {
+		return serviceRequestTypeWriteError(err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrServiceRequestTypeNotFound
+	}
+	if err := writeServiceAudit(ctx, tx, workspaceID, actorID, "service.request_type.updated", "service_request_type", id,
+		map[string]any{"serviceDeskId": serviceDeskID, "name": name}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // DeleteServiceRequestType deletes a request type and removes it from the

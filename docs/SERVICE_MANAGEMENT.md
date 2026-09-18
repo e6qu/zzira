@@ -11,11 +11,11 @@ time to restore ([REPORTS.md](REPORTS.md)). Status: [CLOUD_PARITY.md](CLOUD_PARI
 | Page | Who | Purpose |
 |---|---|---|
 | `/service` | signed-in users | Help center: the portals the user may use, plus site-admin customization |
-| `/service/portals/{desk}` | admitted customers | Portal: request type and knowledge search |
+| `/service/portals/{desk}` | admitted customers | Portal: request types under their groups, in the order the desk arranged, and knowledge search |
 | `/service/portals/{desk}/request/{requestType}` | admitted customers | Request form |
 | `/service/requests/{key}` | reporter, participants, approvers, agents | Request view: status, fields, conversation, files, approvals, transitions, subscription, feedback; operations panels for agents |
 | `/service/knowledge/{page}` | admitted customers | Rendered knowledge article |
-| `/service/agent[/{desk}]` | desk agents | Queues and desk administration: agents, customers, organizations, request type fields, portal, knowledge, calendars, SLAs, operations, deployment gating |
+| `/service/agent[/{desk}]` | desk agents | Queues and desk administration: agents, customers, organizations, request types, request type groups, request type fields, portal, knowledge, calendars, SLAs, operations, deployment gating |
 | `/service/agent/{desk}/reports` | desk agents | Service report ([REPORTS.md](REPORTS.md)) |
 | `/service/agent/{desk}/assets` | desk agents | Assets inventory and dependency map |
 
@@ -27,7 +27,7 @@ checks and 320 px reflow.
 | Role | Can |
 |---|---|
 | Site administrator | Everything on every desk. Creates and reactivates portal-only customers, invites customers, revokes portal access, deletes organizations, edits Assets, sets the operations policy, customizes the help center |
-| Service desk administrator (administers the project) | Request types, request type fields, queues, desk customers, knowledge base links, calendars, SLAs, portal settings, per-desk attachment/feedback/notification switches, deployment gating. Request type properties also need agent access |
+| Service desk administrator (administers the project) | Request types and their portal groups, request type fields, queues, desk customers, knowledge base links, calendars, SLAs, portal settings, per-desk attachment/feedback/notification switches, deployment gating. Request type properties also need agent access |
 | Agent | Reads every request of the desk (`requestOwnership=ALL_REQUESTS`), raises requests for enrolled customers, adds internal notes, assigns and transitions requests, runs bulk queue actions, creates organizations, manages participants and approvals, reads Assets |
 | Customer | Their own requests (as reporter, participant, organization member or approver), public comments and public files |
 
@@ -58,6 +58,23 @@ checks and 320 px reflow.
   - Incident, problem and change requests get one fixed label: `incident`,
     `problem` or `change`.
   - Problem and change requests need a description.
+- **Administering request types (desk administrators, in the agent
+  workspace):** add a request type on top of one of the project's work types,
+  edit its name, description and help text, delete it, and choose the portal
+  groups it appears in.
+  - A name is 1 to 255 characters on one line and unique within the desk; the
+    description and help text take at most 255 characters each.
+  - Jira's REST create leaves the groups empty, so a request type raised over
+    REST is not on the portal until an administrator puts it in a group.
+  - Creating one for a desk or work type that is not there answers 404.
+- **Portal groups:** the headings the portal lists request types under.
+  - Add, rename and delete a group, and move it up or down; the portal and
+    `requesttypegroup` follow that order.
+  - A group that still holds request types is not deleted, because that would
+    take them off the portal.
+  - A request type can be in several groups, and its place inside each group
+    moves up and down on its own.
+  - All of these changes are audited.
 - **Request type REST:** shows Jira's `SD_REQTYPE` headset avatar and
   `canCreateRequest`, and includes the form with `expand=field`.
   - Lists filter by `groupId`, repeated `serviceDeskId` and `restrictionStatus`.
@@ -407,6 +424,9 @@ active first. Values of `requestOwnership` combine:
   - Introduction: up to 1,000 characters.
   - Logo: a site path or an http(s) URL.
   - These appear on the portal and in the help center list.
+  - The portal lists request types under their group headings, in the order the
+    desk's administrators arranged; a request type in no group is not offered.
+    The portal search narrows the request types inside their groups.
   - The **Agents can add announcements to this portal** setting lets agents
     post a portal announcement: a title of up to 255 characters and a message
     of up to 2,000. A message needs a title, and clearing both removes the
@@ -443,7 +463,6 @@ See [PLAN.md](../PLAN.md).
 - Assets object type hierarchy, typed reference attributes and AQL in JQL
   (`aqlFunction()`).
 - Request type restrictions (`RESTRICTED` returns nothing).
-- Create, edit and delete request types in the agent workspace UI (REST only).
 - Email channel: requests created from incoming mail. Channels are `portal`
   (the default), whatever a REST caller passes in `channel`, and `api` for
   deployment-gating changes.

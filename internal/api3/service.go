@@ -138,8 +138,16 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		requestType, err := h.Store.CreateServiceRequestType(r.Context(), workspaceID, parts[1], strings.TrimSpace(input.Name), input.Description, input.HelpText, ids.toInternal(input.IssueTypeID))
+		// Jira creates a request type in no group, which keeps it off the
+		// customer portal until an administrator puts it in one.
+		requestType, err := h.Commands.CreateServiceRequestType(r.Context(), actorID, workspaceID, parts[1], strings.TrimSpace(input.Name), input.Description, input.HelpText, ids.toInternal(input.IssueTypeID), nil)
 		if err != nil {
+			// Jira answers 404 when the service desk or the issue type the
+			// request type would be raised as does not exist.
+			if errors.Is(err, store.ErrServiceDeskNotFound) || errors.Is(err, store.ErrServiceRequestTypeWorkTypeNotFound) {
+				jiraError(w, http.StatusNotFound, "The service desk or issue type does not exist.")
+				return
+			}
 			jiraError(w, http.StatusBadRequest, "Could not create request type.")
 			return
 		}
@@ -205,7 +213,7 @@ func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
 				jiraError(w, http.StatusForbidden, "Service desk administrator access is required.")
 				return
 			}
-			if err := h.Store.DeleteServiceRequestType(r.Context(), workspaceID, actorID, parts[1], parts[3]); err != nil {
+			if err := h.Commands.DeleteServiceRequestType(r.Context(), actorID, workspaceID, parts[1], parts[3]); err != nil {
 				if errors.Is(err, store.ErrServiceRequestTypeNotFound) {
 					jiraError(w, http.StatusNotFound, "The service desk or request type does not exist.")
 					return

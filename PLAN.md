@@ -209,7 +209,6 @@ links, the Assets portal field, and the workspace discovery endpoints.
 ## 9. Service Management
 
 - Request type restrictions (`RESTRICTED` returns the permitted people).
-- Create, edit and delete request types in the agent UI.
 - Email channel: incoming mail creates and comments on requests.
 - Customer notification email templates.
 - Knowledge base ranking and analytics.

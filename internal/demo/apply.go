@@ -736,11 +736,20 @@ func (a *Applier) serviceDesk(ctx context.Context, declared Project, project *mo
 		seeded[strings.ToLower(requestType.Name)] = requestType.ID
 	}
 	for _, requestType := range declared.ServiceDesk.RequestTypes {
+		// A request type in no group is not shown on the portal, so a
+		// declared type joins its group, or the desk's help group.
+		group := requestType.Group
+		if group == "" {
+			group = "help"
+		}
 		if id, ok := seeded[strings.ToLower(requestType.Name)]; ok {
 			a.requestType[requestType.ID] = id
+			if err := a.Store.SetServiceRequestTypeGroups(ctx, a.workspaceID, a.admin, deskID, id, []string{group}); err != nil {
+				return fmt.Errorf("request type %s: %w", requestType.Name, err)
+			}
 			continue
 		}
-		created, err := a.Store.CreateServiceRequestType(ctx, a.workspaceID, deskID, requestType.Name, requestType.Description, "", workTypeID)
+		created, err := a.Store.CreateServiceRequestType(ctx, a.workspaceID, a.admin, deskID, requestType.Name, requestType.Description, "", workTypeID, []string{group})
 		if err != nil {
 			return fmt.Errorf("request type %s: %w", requestType.Name, err)
 		}

@@ -214,7 +214,7 @@ func TestServiceRequestTypeFieldsAndHiddenPresets(t *testing.T) {
 	}
 
 	// Request type searches leave out types in no group unless asked.
-	exec(`UPDATE service_request_types SET group_ids='{}' WHERE id=$1`, requestTypeID)
+	exec(`DELETE FROM service_request_type_group_members WHERE request_type_id=$1`, requestTypeID)
 	var requestTypeName string
 	if err = st.Pool.QueryRow(ctx, `SELECT name FROM service_request_types WHERE id=$1`, requestTypeID).Scan(&requestTypeName); err != nil {
 		t.Fatal(err)

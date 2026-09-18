@@ -97,15 +97,8 @@ func (s *Store) DeleteSiteGroup(ctx context.Context, ws, actor, groupID, swapID 
 			return err
 		}
 	}
-	// Request types keep an array of the groups that may raise them.
-	if swapID == "" {
-		_, err = tx.Exec(ctx, `UPDATE service_request_types SET group_ids=array_remove(group_ids,$1) WHERE $1=ANY(group_ids)`, groupID)
-	} else {
-		_, err = tx.Exec(ctx, `UPDATE service_request_types SET group_ids=(SELECT COALESCE(array_agg(DISTINCT x),'{}') FROM unnest(array_replace(group_ids,$1,$2)) x) WHERE $1=ANY(group_ids)`, groupID, swapID)
-	}
-	if err != nil {
-		return err
-	}
+	// A request type's groups are the portal's customer request type groups,
+	// not site groups, so deleting a site group leaves them alone.
 	if swapID != "" {
 		// Members of the deleted group keep their access through the swap group.
 		if _, err = tx.Exec(ctx, `INSERT INTO group_members(group_id,user_id) SELECT $2::uuid,user_id FROM group_members WHERE group_id::text=$1 ON CONFLICT DO NOTHING`, groupID, swapID); err != nil {

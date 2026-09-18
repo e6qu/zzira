@@ -107,17 +107,27 @@ func (s *Store) CreateProjectWithSchemes(ctx context.Context, actorID string, p 
 			return nil, err
 		}
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO service_request_types(service_desk_id,name,description,help_text,issue_type_id,group_ids)
-			VALUES ($1,'Get IT help','Request help from the service team.','Describe what you need and its impact.','it_task',ARRAY['help']),
-			       ($1,'Report an incident','Report a service interruption or degradation.','Include the affected service and when the impact began.','it_task',ARRAY['incidents']),
-			       ($1,'Investigate a problem','Investigate the underlying cause of recurring incidents.','Describe the affected service, related incidents, and known symptoms.','it_task',ARRAY['problems']),
-			       ($1,'Request a change','Plan, assess, approve, and track a service change.','Describe the change, expected impact, implementation plan, and rollback plan.','it_task',ARRAY['changes'])`, serviceDeskID); err != nil {
-			return nil, err
-		}
-		if _, err := tx.Exec(ctx, `
 			INSERT INTO service_request_type_groups(service_desk_id,id,name,position) VALUES
 			($1,'help','Help and support',0),($1,'incidents','Incidents',1),
 			($1,'problems','Problems',2),($1,'changes','Changes',3)`, serviceDeskID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO service_request_types(service_desk_id,name,description,help_text,issue_type_id)
+			VALUES ($1,'Get IT help','Request help from the service team.','Describe what you need and its impact.','it_task'),
+			       ($1,'Report an incident','Report a service interruption or degradation.','Include the affected service and when the impact began.','it_task'),
+			       ($1,'Investigate a problem','Investigate the underlying cause of recurring incidents.','Describe the affected service, related incidents, and known symptoms.','it_task'),
+			       ($1,'Request a change','Plan, assess, approve, and track a service change.','Describe the change, expected impact, implementation plan, and rollback plan.','it_task')`, serviceDeskID); err != nil {
+			return nil, err
+		}
+		// Each seeded request type opens the portal group it belongs to.
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO service_request_type_group_members(service_desk_id,group_id,request_type_id,position)
+			SELECT rt.service_desk_id,g.id,rt.id,0 FROM service_request_types rt
+			JOIN (VALUES ('Get IT help','help'),('Report an incident','incidents'),
+			             ('Investigate a problem','problems'),('Request a change','changes')) AS g(name,id)
+			  ON g.name=rt.name
+			WHERE rt.service_desk_id=$1`, serviceDeskID); err != nil {
 			return nil, err
 		}
 		if _, err := tx.Exec(ctx, `

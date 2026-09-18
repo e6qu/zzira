@@ -298,6 +298,8 @@ func main() {
 	mux.HandleFunc("POST /service/agent/{desk}/escalations", webHandler.ServiceEscalationSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/queues", webHandler.ServiceQueueSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/request-types/{requestType}/fields", webHandler.ServiceRequestTypeFieldSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/request-types", webHandler.ServiceRequestTypeSettings)
+	mux.HandleFunc("POST /service/agent/{desk}/request-type-groups", webHandler.ServiceRequestTypeGroupSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/customers", webHandler.ServiceCustomerSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/portal", webHandler.ServicePortalSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/announcement", webHandler.ServicePortalAnnouncement)

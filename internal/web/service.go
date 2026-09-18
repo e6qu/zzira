@@ -118,6 +118,20 @@ type servicePageData struct {
 	KnowledgeSpaceLinks map[string]bool
 	RequestTypeForms    []serviceRequestTypeFormView
 	RequestTypeFields   []models.ServiceRequestTypeField
+	// RequestTypeGroups are the portal's groups in the order the portal shows
+	// them, each with its request types in order; UngroupedRequestTypes are
+	// the request types in no group, which the portal does not show;
+	// RequestTypeAdmin is what the settings form edits for each request type;
+	// WorkTypes are the work types a new request type can be raised as;
+	// PortalGroups is what the portal itself lists.
+	RequestTypeGroups     []serviceRequestTypeGroupView
+	UngroupedRequestTypes []models.ServiceRequestType
+	RequestTypeAdmin      []serviceRequestTypeAdminView
+	WorkTypes             []models.IssueType
+	PortalGroups          []models.ServicePortalGroup
+	// RequestTypeCount is how many request types the portal shows, so an empty
+	// portal says so once rather than under every group.
+	RequestTypeCount    int
 	RequestFieldValues  []serviceRequestFieldValueView
 	OperationsSettings  *models.ServiceOperationsSettings
 	OperationsProfile   *models.ServiceOperationsProfile
@@ -335,6 +349,10 @@ func (h *Handler) ServiceAgent(w http.ResponseWriter, r *http.Request) {
 			data.RequestTypes, err = h.Store.ServiceRequestTypes(r.Context(), workspaceID, deskID, "")
 			if err != nil {
 				http.Error(w, "Could not load request types.", http.StatusInternalServerError)
+				return
+			}
+			if err := h.serviceRequestTypeAdmin(r, workspaceID, desk, &data); err != nil {
+				http.Error(w, "Could not load request type groups.", http.StatusInternalServerError)
 				return
 			}
 			customFields, err := h.Store.CustomFieldsForProject(r.Context(), desk.ProjectID)
@@ -1267,7 +1285,10 @@ func (h *Handler) ServicePortal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	requestTypes, err := h.Store.ServiceRequestTypes(r.Context(), workspaceID, desk.ID, query)
+	// The portal lists request types under their groups, in the order the
+	// desk's administrators arranged. A request type in no group is not shown
+	// on the portal at all, as Jira Service Management hides it.
+	portalGroups, err := h.Store.ServicePortalGroups(r.Context(), workspaceID, desk.ID, query)
 	if err != nil {
 		http.Error(w, "Could not load request types.", http.StatusInternalServerError)
 		return
@@ -1277,7 +1298,11 @@ func (h *Handler) ServicePortal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load requests.", http.StatusInternalServerError)
 		return
 	}
-	data := servicePageData{Desk: desk, RequestTypes: requestTypes, Requests: requests, Query: query}
+	shown := 0
+	for _, group := range portalGroups {
+		shown += len(group.RequestTypes)
+	}
+	data := servicePageData{Desk: desk, PortalGroups: portalGroups, Requests: requests, Query: query, RequestTypeCount: shown}
 	if query != "" {
 		admin, err := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
 		if err != nil {
