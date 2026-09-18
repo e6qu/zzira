@@ -116,6 +116,9 @@ func init() {
 		"detailField": func(field any, values any, subtask bool) map[string]any {
 			return map[string]any{"Field": field, "Values": values, "SelectedIssueTypeSubtask": subtask}
 		},
+		// holds reports whether a list of ids contains one, for checkboxes that
+		// show what a scheme already carries.
+		"holds": func(ids []string, id string) bool { return slices.Contains(ids, id) },
 		"humanSize": func(n int64) string {
 			const kb, mb = 1 << 10, 1 << 20
 			switch {

@@ -449,6 +449,9 @@ type CreateProjectMeta struct {
 	// FieldBehaviour holds the project's field configuration rules per work
 	// type. A field without a rule is optional and visible.
 	FieldBehaviour map[string]map[string]FieldBehaviour `json:"-"`
+	// DefaultPriorityID is the priority a work item takes when none is chosen:
+	// the default of the priority scheme the project uses.
+	DefaultPriorityID string `json:"-"`
 	// CustomFieldContexts maps work type to the custom fields whose context
 	// applies there, and what that context supplies. A work type present here
 	// governs which custom fields the form may show.

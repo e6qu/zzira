@@ -69,7 +69,7 @@ Each numbered item is one or more substantial PRs.
 - `hierarchyLevel` in JQL (see [JQL and filters](#5-jql-and-filters)).
 
 **Metadata and configuration UI.**
-- Per-language field translations, and editing priority schemes in the browser.
+- Per-language field translations.
 - The screen catalog includes Reporter, Environment, Attachment and Linked
   work items; `projectKey` honored on tab-field reads.
 - Issue security scheme form sends the level mapping for projects with secured

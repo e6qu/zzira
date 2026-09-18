@@ -114,12 +114,18 @@ Rules:
 - Updates accept full lists or Jira's `add`/`remove` lists.
 - The default scheme covers every project without another scheme and cannot be deleted. A scheme with projects cannot be deleted.
 
+A project offers the priorities of the scheme it uses, and nothing else: its
+create form, its work item view and its transition screens list those, a command
+that sets any other priority is rejected, and a work item created without a
+priority takes the scheme's default (`ProjectOffersPriority`,
+`ProjectDefaultPriority`, `PrioritiesForProject` in `internal/store/issue_schemes.go`).
+
 ## Settings pages
 
 | Page | What an administrator does |
 | --- | --- |
 | `/settings/work-types` | Create a standard or sub-task work type, rename and describe it, delete it (moving its work items to another type), create a work type scheme with its types and default, assign a scheme to a project, add or remove a type, delete a scheme |
-| `/settings/priorities` | Create a priority with its status colour and an icon from the built-in set, rename and describe it, make it the default, move it to the top, delete it (its work items take the default). Priority schemes are listed with their priorities and projects |
+| `/settings/priorities` | Create a priority with its status colour and an icon from the built-in set, rename and describe it, make it the default, move it to the top, delete it (its work items take the default). Create a priority scheme with its priorities and default, edit one, say where work items using a dropped priority go, assign a project to it, remove a project from it, delete it |
 | `/settings/resolutions` | Create a resolution, rename and describe it, make it the default, move it to the top, delete it (its work items take the replacement chosen) |
 | `/settings/hierarchy` | The levels, as described above |
 
@@ -127,13 +133,12 @@ Work types, priorities and resolutions need site administration. `/settings/hier
 
 ## Code
 
-`internal/api3/issue_metadata.go`, `internal/store/issue_metadata.go`, `internal/store/issue_metadata_tasks.go`, `internal/store/issue_schemes.go`, `internal/store/work_type_hierarchy.go`, `internal/web/issue_metadata_admin.go`, `internal/web/work_type_hierarchy.go`, `migrations/162_issue_metadata.sql`; tests in `internal/api3/issue_metadata_test.go`, `internal/store/work_type_hierarchy_test.go`, `internal/commands/resolution_test.go` and `internal/commands/hierarchy_workflow_test.go`.
+`internal/api3/issue_metadata.go`, `internal/store/issue_metadata.go`, `internal/store/issue_metadata_tasks.go`, `internal/store/issue_schemes.go`, `internal/store/work_type_hierarchy.go`, `internal/web/issue_metadata_admin.go`, `internal/web/work_type_hierarchy.go`, `migrations/162_issue_metadata.sql`; tests in `internal/api3/issue_metadata_test.go`, `internal/store/priority_schemes_test.go`, `internal/store/work_type_hierarchy_test.go`, `e2e/priority_schemes.spec.ts`, `internal/commands/resolution_test.go` and `internal/commands/hierarchy_workflow_test.go`.
 
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- The priority schemes section of `/settings/priorities` is read-only; schemes are edited over REST.
 - `alternatives` does not narrow to types that share the same workflow, field configuration and screen schemes.
 - Team-managed scoping (`scope`, `entityId`) is not modelled; every type is company-managed.
 - A priority scheme update applies its mappings before answering, so the 202 has no `task`.

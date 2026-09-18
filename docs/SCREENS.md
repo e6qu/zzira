@@ -33,7 +33,7 @@ Screen names are unique per site, and tab names are unique per screen, both igno
 
 ## Field catalog
 
-A screen can only hold fields the forms can render. The system fields, in order: `summary`, `description`, `assignee`, `priority`, `labels`, `duedate`, `parent`, `components`, `fixVersions`, `versions`, `resolution`, `security` (Restrict to), `timetracking`, `issuetype` and `project` (`systemScreenFields`, `internal/store/screens.go`). After them come the site's custom fields. Adding any other field is refused. `issuetype`, `priority` and `resolution` offer the site's catalogues, and `parent` the work items one level above ([ISSUE_METADATA.md](ISSUE_METADATA.md)).
+A screen can only hold fields the forms can render. The system fields, in order: `summary`, `description`, `assignee`, `priority`, `labels`, `duedate`, `parent`, `components`, `fixVersions`, `versions`, `resolution`, `security` (Restrict to), `timetracking`, `issuetype` and `project` (`systemScreenFields`, `internal/store/screens.go`). After them come the site's custom fields. Adding any other field is refused. `issuetype` and `resolution` offer the site's catalogues, `priority` the priorities of the project's priority scheme, and `parent` the work items one level above ([ISSUE_METADATA.md](ISSUE_METADATA.md)).
 
 ## Default screen
 

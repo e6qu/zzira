@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -73,6 +74,21 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	for _, priority := range priorities {
 		priorityOptions = append(priorityOptions, models.CreateFieldOption{ID: priority.ID, Name: priority.Name})
 	}
+	// A project offers the priorities of the priority scheme assigned to it, or
+	// of the site's default scheme when it has none of its own.
+	prioritySchemes, err := s.PrioritySchemes(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	schemeByProject, defaultScheme := map[string]PriorityScheme{}, PriorityScheme{}
+	for _, scheme := range prioritySchemes {
+		if scheme.IsDefault {
+			defaultScheme = scheme
+		}
+		for _, projectID := range scheme.ProjectIDs {
+			schemeByProject[projectID] = scheme
+		}
+	}
 	memberOptions := make([]models.CreateFieldOption, 0, len(members))
 	for _, member := range members {
 		memberOptions = append(memberOptions, models.CreateFieldOption{ID: member.ID, Name: member.DisplayName})
@@ -121,13 +137,26 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 		for _, issueType := range projectTypes {
 			projectTypeOptions = append(projectTypeOptions, models.CreateFieldOption{ID: issueType.ID, Name: issueType.Name})
 		}
+		priorityScheme, ok := schemeByProject[project.ID]
+		if !ok {
+			priorityScheme = defaultScheme
+		}
+		projectPriorityOptions := priorityOptions
+		if len(priorityScheme.PriorityIDs) > 0 {
+			projectPriorityOptions = make([]models.CreateFieldOption, 0, len(priorityScheme.PriorityIDs))
+			for _, option := range priorityOptions {
+				if slices.Contains(priorityScheme.PriorityIDs, option.ID) {
+					projectPriorityOptions = append(projectPriorityOptions, option)
+				}
+			}
+		}
 		fields := []models.CreateFieldMeta{
 			{ID: "project", Name: "Project", Type: "project", Required: true, Section: "context", Options: projectOptions},
 			{ID: "issuetype", Name: "Issue type", Type: "issuetype", Required: true, Section: "context", Options: projectTypeOptions},
 			{ID: "summary", Name: "Summary", Type: "string", Required: true, Section: "primary"},
 			{ID: "description", Name: "Description", Type: "doc", Section: "primary"},
 			{ID: "assignee", Name: "Assignee", Type: "user", Section: "details", Options: memberOptions},
-			{ID: "priority", Name: "Priority", Type: "priority", Section: "details", Options: priorityOptions},
+			{ID: "priority", Name: "Priority", Type: "priority", Section: "details", Options: projectPriorityOptions},
 			{ID: "labels", Name: "Labels", Type: "array", Description: "Separate labels with commas. Spaces are not allowed inside a label.", Section: "details"},
 			{ID: "duedate", Name: "Due date", Type: "date", Section: "details"},
 			{ID: "parent", Name: "Parent", Type: "parent", Description: "Required for sub-tasks. Choose a work item one level above this work type.", Section: "details", Options: parentOptions},
@@ -232,7 +261,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 		meta.Projects = append(meta.Projects, models.CreateProjectMeta{
 			Project: *project, IssueTypes: projectTypes, Fields: fields,
 			ScreenFields: createScreenFields[project.ID], ScreenTabs: createScreenTabs[project.ID], FieldBehaviour: fieldBehaviour[project.ID],
-			CustomFieldContexts: customFieldContexts[project.ID]})
+			DefaultPriorityID: priorityScheme.DefaultPriorityID, CustomFieldContexts: customFieldContexts[project.ID]})
 	}
 	return meta, nil
 }
