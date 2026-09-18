@@ -421,8 +421,10 @@ func resolveScreenFieldsTx(ctx context.Context, tx pgx.Tx, workspaceID, projectI
 // work type in the workspace with one query. IssueCreateMetadata builds the
 // whole workspace at once, so resolving per project and work type would open a
 // transaction per combination.
-func (s *Store) ResolveScreenFieldsByProject(ctx context.Context, workspaceID, operation string) (map[string]map[string][]string, error) {
-	rows, err := s.Pool.Query(ctx, `
+// screenFieldResolutionQuery resolves, for every project and work type, the
+// fields of the screen its screen scheme chooses for an operation, in tab and
+// field order.
+const screenFieldResolutionQuery = `
 		WITH assigned AS (
 			SELECT p.id AS project_id, a.scheme_id
 			FROM projects p
@@ -446,11 +448,14 @@ func (s *Store) ResolveScreenFieldsByProject(ctx context.Context, workspaceID, o
 				AND item.operation IN ($2, 'default')
 			ORDER BY pick_scheme.project_id, pick_scheme.issue_type_id, (item.operation = $2) DESC
 		)
-		SELECT chosen.project_id, chosen.issue_type_id, field.field_id
+		SELECT chosen.project_id, chosen.issue_type_id, field.field_id, tab.name
 		FROM pick_screen chosen
 		JOIN screen_tab_fields field ON field.screen_id=chosen.screen_id
 		JOIN screen_tabs tab ON tab.id=field.tab_id
-		ORDER BY chosen.project_id, chosen.issue_type_id, tab.position, tab.id, field.position, field.field_id`,
+		ORDER BY chosen.project_id, chosen.issue_type_id, tab.position, tab.id, field.position, field.field_id`
+
+func (s *Store) ResolveScreenFieldsByProject(ctx context.Context, workspaceID, operation string) (map[string]map[string][]string, error) {
+	rows, err := s.Pool.Query(ctx, screenFieldResolutionQuery,
 		workspaceID, operation, DefaultIssueTypeMapping)
 	if err != nil {
 		return nil, err
@@ -458,14 +463,42 @@ func (s *Store) ResolveScreenFieldsByProject(ctx context.Context, workspaceID, o
 	defer rows.Close()
 	resolved := map[string]map[string][]string{}
 	for rows.Next() {
-		var projectID, issueTypeID, fieldID string
-		if err = rows.Scan(&projectID, &issueTypeID, &fieldID); err != nil {
+		var projectID, issueTypeID, fieldID, tabName string
+		if err = rows.Scan(&projectID, &issueTypeID, &fieldID, &tabName); err != nil {
 			return nil, err
 		}
 		if resolved[projectID] == nil {
 			resolved[projectID] = map[string][]string{}
 		}
 		resolved[projectID][issueTypeID] = append(resolved[projectID][issueTypeID], fieldID)
+	}
+	return resolved, rows.Err()
+}
+
+// ResolveScreenTabsByProject answers the same question as
+// ResolveScreenFieldsByProject, keeping the tabs the fields are grouped on:
+// a form shows a screen's tabs as tabs when it has more than one.
+func (s *Store) ResolveScreenTabsByProject(ctx context.Context, workspaceID, operation string) (map[string]map[string][]models.FieldTab, error) {
+	rows, err := s.Pool.Query(ctx, screenFieldResolutionQuery, workspaceID, operation, DefaultIssueTypeMapping)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	resolved := map[string]map[string][]models.FieldTab{}
+	for rows.Next() {
+		var projectID, issueTypeID, fieldID, tabName string
+		if err = rows.Scan(&projectID, &issueTypeID, &fieldID, &tabName); err != nil {
+			return nil, err
+		}
+		if resolved[projectID] == nil {
+			resolved[projectID] = map[string][]models.FieldTab{}
+		}
+		tabs := resolved[projectID][issueTypeID]
+		if len(tabs) == 0 || tabs[len(tabs)-1].Name != tabName {
+			tabs = append(tabs, models.FieldTab{Name: tabName})
+		}
+		tabs[len(tabs)-1].Fields = append(tabs[len(tabs)-1].Fields, fieldID)
+		resolved[projectID][issueTypeID] = tabs
 	}
 	return resolved, rows.Err()
 }

@@ -815,3 +815,6 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 .hierarchy-work-types li>span:last-child{display:grid}
 .priority-icon{margin-left:2px}
 .scheme-copy{display:inline-block;margin:12px 12px 0 0}
+.create-field-tabs .tablist{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--ds-border)}
+.create-field-tabs .tablist button{padding:7px 12px;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;background:none;color:var(--ds-text-subtle);font:inherit;font-weight:650;cursor:pointer}
+.create-field-tabs .tablist button[aria-selected="true"]{border-color:var(--ds-border);background:var(--ds-surface);color:var(--ds-text)}

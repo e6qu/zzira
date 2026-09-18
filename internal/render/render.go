@@ -110,6 +110,12 @@ func init() {
 		"customFieldControl": func(field any, prefix, name string) map[string]any {
 			return map[string]any{"Field": field, "Prefix": prefix, "Name": name}
 		},
+		// detailField passes one create-form field to its control along with the
+		// values and flags the control needs, so tabs and the plain list render
+		// the same markup.
+		"detailField": func(field any, values any, subtask bool) map[string]any {
+			return map[string]any{"Field": field, "Values": values, "SelectedIssueTypeSubtask": subtask}
+		},
 		"humanSize": func(n int64) string {
 			const kb, mb = 1 << 10, 1 << 20
 			switch {

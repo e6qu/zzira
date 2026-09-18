@@ -70,9 +70,8 @@ Each numbered item is one or more substantial PRs.
 
 **Metadata and configuration UI.**
 - Per-language field translations, and editing priority schemes in the browser.
-- Forms render screen tabs as tabs; the screen catalog includes Reporter,
-  Environment, Attachment and Linked work items; `projectKey` honored on
-  tab-field reads.
+- The screen catalog includes Reporter, Environment, Attachment and Linked
+  work items; `projectKey` honored on tab-field reads.
 - Issue security scheme form sends the level mapping for projects with secured
   work.
 - Custom field contexts: a global context coexists with project contexts that

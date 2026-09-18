@@ -96,8 +96,11 @@ type createDialogData struct {
 	Selected                 models.CreateProjectMeta
 	SelectedIssueTypeSubtask bool
 	Values                   map[string]string
-	Error                    string
-	CreatedKey               string
+	// DetailTabs are the screen's tabs when it has more than one; the form
+	// then shows the detail fields as tabs rather than one list.
+	DetailTabs []models.FieldTabView
+	Error      string
+	CreatedKey string
 }
 
 type projectIssuesData struct {
@@ -1376,7 +1379,10 @@ func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID
 		visibleFields = append(visibleFields, field)
 	}
 	selected.Fields = visibleFields
-	return createDialogData{Metadata: meta, Selected: selected, SelectedIssueTypeSubtask: selectedSubtask, Values: values}, nil
+	return createDialogData{
+		Metadata: meta, Selected: selected, SelectedIssueTypeSubtask: selectedSubtask, Values: values,
+		DetailTabs: selected.DetailTabsForIssueType(values["issuetype"], selected.Fields),
+	}, nil
 }
 
 func createFieldsFromForm(fields []models.CreateFieldMeta, values map[string]string) (map[string]json.RawMessage, error) {
