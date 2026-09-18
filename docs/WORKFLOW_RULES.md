@@ -100,4 +100,3 @@ Tracked in [PLAN.md](../PLAN.md).
 
 - A transition screen does not reference a Screen entity; Jira's rule takes a screen id, and the screen's tabs and layout apply.
 - `development-triggers` has only the branch-created trigger. Jira also triggers on commits, pull requests, reviews and deployments.
-- A transition cannot collect or set a resolution; see [ISSUE_METADATA.md](ISSUE_METADATA.md#gaps).

@@ -64,6 +64,7 @@ type IssueUpdate struct {
 	AssigneeID          *string         // "" = unassign, nil = unchanged
 	ParentID            *string         // "" = clear, nil = unchanged
 	StatusID            *string         // transitions only; "" invalid
+	ResolutionID        *string         // "" = clear, nil = leave to the status
 	SecurityLevelID     *string         // "" = public, nil = unchanged
 	Labels              *[]string       // empty = clear, nil = unchanged
 	DueDate             *string         // yyyy-MM-dd; "" = clear, nil = unchanged
@@ -228,6 +229,9 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 		// it leaves one, which is what Jira's default workflows do; the site's
 		// default resolution records how it was finished.
 		switch {
+		// An explicit resolution, from a transition screen or an edit, decides
+		// for itself.
+		case up.ResolutionID != nil:
 		case newCategory == "done" && current.Resolution == nil:
 			var resolutionID, resolutionName string
 			err := tx.QueryRow(ctx, `SELECT r.id, COALESCE(o.name, r.name) FROM workspace_issue_defaults d
@@ -244,6 +248,30 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 		case newCategory != "done" && current.Resolution != nil:
 			diff["resolution"] = diffItem("resolution", current.Resolution.ID, current.Resolution.Name, "", "")
 			sets = append(sets, "resolution_id = NULL", "resolved_at = NULL")
+		}
+	}
+	if up.ResolutionID != nil {
+		newID := *up.ResolutionID
+		oldID, oldName := "", ""
+		if current.Resolution != nil {
+			oldID, oldName = current.Resolution.ID, current.Resolution.Name
+		}
+		if newID != oldID {
+			newName := ""
+			if newID != "" {
+				if err := tx.QueryRow(ctx, `SELECT COALESCE(o.name,r.name) FROM resolutions r
+					LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$2 AND o.entity_type='resolution' AND o.entity_id=r.id
+					WHERE r.id=$1 AND (r.workspace_id IS NULL OR r.workspace_id=$2) AND NOT COALESCE(o.deleted,FALSE)`,
+					newID, current.WorkspaceID).Scan(&newName); err != nil {
+					return nil, nil, fmt.Errorf("unknown resolution %q", newID)
+				}
+			}
+			diff["resolution"] = diffItem("resolution", oldID, oldName, newID, newName)
+			if newID == "" {
+				sets = append(sets, "resolution_id = NULL", "resolved_at = NULL")
+			} else {
+				sets = append(sets, "resolution_id = "+arg(newID), "resolved_at = COALESCE(resolved_at, now())")
+			}
 		}
 	}
 	if up.PriorityID != nil {

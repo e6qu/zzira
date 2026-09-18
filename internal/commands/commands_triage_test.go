@@ -133,3 +133,59 @@ func blocksLinkTypeID(t *testing.T, svc *Service) string {
 	}
 	return id
 }
+
+// A watch or a vote changes what the work item view shows, so the work item's
+// sequence advances: a browser replica compares it before replacing a render
+// the server has already sent, and a stale render must not win.
+func TestWatchingAdvancesTheWorkItemSequence(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(st.Close)
+	if err := store.Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+	actorID := store.NewID("usr")
+	ensureCommandTestActor(t, ctx, st, actorID)
+	svc := &Service{Store: st}
+	issue, _, err := svc.CreateIssue(ctx, CreateIssueInput{
+		ActorID: actorID, WorkspaceID: "ws_default", ProjectIDOrKey: "ZZ",
+		Summary: "sequence moves with the view", IssueTypeID: "it_task",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM issues WHERE id=$1`, issue.ID) })
+	sequence := func() int64 {
+		t.Helper()
+		current, err := st.IssueByIDOrKey(ctx, "ws_default", issue.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return current.UpdatedSeq
+	}
+	for _, step := range []struct {
+		name string
+		run  func() error
+	}{
+		// Creating the work item already watched it for its creator.
+		{"unwatch", func() error { _, err := svc.SetWatching(ctx, actorID, "ws_default", issue.ID, false); return err }},
+		{"watch", func() error { _, err := svc.SetWatching(ctx, actorID, "ws_default", issue.ID, true); return err }},
+		{"vote", func() error { _, err := svc.SetVoting(ctx, actorID, "ws_default", issue.ID, true); return err }},
+		{"unvote", func() error { _, err := svc.SetVoting(ctx, actorID, "ws_default", issue.ID, false); return err }},
+	} {
+		before := sequence()
+		if err := step.run(); err != nil {
+			t.Fatalf("%s: %v", step.name, err)
+		}
+		if after := sequence(); after <= before {
+			t.Fatalf("%s left the sequence at %d (was %d)", step.name, after, before)
+		}
+	}
+}

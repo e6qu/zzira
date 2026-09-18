@@ -283,3 +283,28 @@ func appendHierarchyAction(ctx context.Context, tx pgx.Tx, workspaceID, actorID,
 		SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
 	})
 }
+
+// ParentOptions lists the work items in a project that a work type at level
+// may take as a parent: those one level above it, most recently updated first.
+func (s *Store) ParentOptions(ctx context.Context, workspaceID, projectID string, level int) ([]models.CreateFieldOption, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT i.jira_id::text, i.key, i.summary
+		FROM issues i JOIN issue_types t ON t.id=i.issuetype_id
+		LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$2 AND o.entity_type='issuetype' AND o.entity_id=t.id
+		WHERE i.project_id=$1 AND COALESCE(o.hierarchy_level,t.hierarchy_level)=$3
+		ORDER BY i.updated_seq DESC, i.key LIMIT 200`, projectID, workspaceID, level+1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	options := []models.CreateFieldOption{}
+	for rows.Next() {
+		option := models.CreateFieldOption{HierarchyLevel: level + 1}
+		if err := rows.Scan(&option.ID, &option.Key, &option.Name); err != nil {
+			return nil, err
+		}
+		option.Name = option.Key + " — " + option.Name
+		options = append(options, option)
+	}
+	return options, rows.Err()
+}

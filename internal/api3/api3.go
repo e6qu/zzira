@@ -975,7 +975,7 @@ func createIssueFieldError(err error) map[string]string {
 		return fields
 	}
 	message := err.Error()
-	for _, field := range []string{"summary", "project", "priority", "assignee", "security", "labels", "description", "components", "parent"} {
+	for _, field := range []string{"summary", "project", "priority", "assignee", "security", "resolution", "labels", "description", "components", "parent"} {
 		if strings.Contains(message, field) {
 			return map[string]string{field: message}
 		}
@@ -1002,6 +1002,10 @@ type putIssueRequest struct {
 		Security *struct {
 			ID string `json:"id"`
 		} `json:"security"`
+		Resolution *struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"resolution"`
 		Labels       *[]string          `json:"labels"`
 		TimeTracking *timeTrackingInput `json:"timetracking"`
 	} `json:"fields"`
@@ -1120,6 +1124,26 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		sid := req.Fields.Security.ID
 		securityID = &sid
 	}
+	// A resolution is named by id or by name; null clears it, as Jira reopens
+	// work by clearing the field.
+	var resolutionID *string
+	if raw, provided := rawFields.Fields["resolution"]; provided {
+		value := ""
+		if string(raw) != "null" {
+			if req.Fields.Resolution == nil {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"resolution": "Resolution takes an id or a name."})
+				return
+			}
+			if value = req.Fields.Resolution.ID; value == "" {
+				value = req.Fields.Resolution.Name
+			}
+			if strings.TrimSpace(value) == "" {
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"resolution": "Resolution takes an id or a name."})
+				return
+			}
+		}
+		resolutionID = &value
+	}
 	// duedate is set as a field, where null clears it, or with the update
 	// operation's set.
 	var dueDate *string
@@ -1208,7 +1232,7 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		Summary: up.Summary, Description: up.Description,
 		PriorityID: up.PriorityID, AssigneeID: up.AssigneeID,
 		ParentIDOrKey:   parentIDOrKey,
-		SecurityLevelID: securityID, Labels: req.Fields.Labels, DueDate: dueDate, Fields: fields, VersionOperations: req.Update,
+		SecurityLevelID: securityID, ResolutionID: resolutionID, Labels: req.Fields.Labels, DueDate: dueDate, Fields: fields, VersionOperations: req.Update,
 		OriginalEstimate: originalEstimate, RemainingEstimate: remainingEstimate,
 	}); err != nil {
 		if fields, ok := permissionFieldError(err); ok {
@@ -1645,6 +1669,8 @@ func transitionFieldMetadata(field string, required bool) map[string]any {
 		name, schema = "Assignee", map[string]any{"type": "user", "system": "assignee"}
 	case "priority":
 		name, schema = "Priority", map[string]any{"type": "priority", "system": "priority"}
+	case "resolution":
+		name, schema = "Resolution", map[string]any{"type": "resolution", "system": "resolution"}
 	}
 	return map[string]any{"required": required, "name": name, "schema": schema, "operations": []string{"set"}}
 }
@@ -1677,7 +1703,7 @@ func transitionIssueUpdate(fields map[string]json.RawMessage) (store.IssueUpdate
 			} else {
 				update.DueDate = &value
 			}
-		case "assignee", "priority":
+		case "assignee", "priority", "resolution":
 			value := ""
 			if string(raw) != "null" {
 				var object map[string]any
@@ -1690,15 +1716,22 @@ func transitionIssueUpdate(fields map[string]json.RawMessage) (store.IssueUpdate
 					key = "accountId"
 				}
 				value, _ = object[key].(string)
+				if value == "" && field == "resolution" {
+					value, _ = object["name"].(string)
+					key = "id or name"
+				}
 				if value == "" {
 					errors[field] = "Field value requires " + key + "."
 					continue
 				}
 			}
-			if field == "assignee" {
+			switch field {
+			case "assignee":
 				update.AssigneeID = &value
-			} else {
+			case "priority":
 				update.PriorityID = &value
+			default:
+				update.ResolutionID = &value
 			}
 		default:
 			if strings.HasPrefix(field, "customfield_") {

@@ -309,6 +309,8 @@ type IssueView struct {
 	Activity          []IssueActivityItem
 	Members           []User
 	Priorities        []Priority
+	Resolutions       []Resolution
+	CanResolve        bool
 	SecurityLevels    []WorkflowTransition
 	SecurityLevelName string
 	CustomFields      []CustomFieldView
