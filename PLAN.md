@@ -232,8 +232,9 @@ links, the Assets portal field, and the workspace discovery endpoints.
 - Import (Confluence XML, HTML, Markdown, Word) and export (XML full/custom, site,
   PDF, Word, CSV, per page) including hierarchy, comments, whiteboards, databases
   and custom content.
-- Space trash and restore, icons, browser rename, description edit and delete;
-  `routeOverrideEnabled`, `contentMode` and themes take effect.
+- Space icons, browser rename and description edit; emptying the space trash 60
+  days after a space lands there; `routeOverrideEnabled`, `contentMode` and
+  themes take effect.
 - Permissions: `export/space`, `restrict_content/space`, `archive/page`,
   anonymous and guest grants, content permission checks beyond pages, browser UI
   for grants and custom roles; GUEST, ANONYMOUS and APP transition principals;

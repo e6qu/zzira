@@ -252,6 +252,9 @@ func (s *Store) SearchWiki(ctx context.Context, ws, actor string, request WikiSe
 		args = append(args, request.ContentID)
 		scope = append(scope, cql.ColumnEntityID+" = $"+strconv.Itoa(len(args)))
 	}
+	// A trashed space is out of Confluence until it is restored, so nothing in
+	// it is findable, whatever the request asks for.
+	scope = append(scope, "space_status <> 'trashed'")
 	// Archived spaces are left out of a search unless they were asked for, and
 	// asking only for them leaves out the current ones.
 	switch {

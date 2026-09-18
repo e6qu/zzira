@@ -289,9 +289,10 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/space_lifecycle_test.go",
+        "internal/store/wiki_space_trash_test.go",
         "docs/SPACE_LIFECYCLE.md"
       ],
-      "notes": "Deleting is tested end to end: it answers 202 with a long task, the task is reported by the long task read, and the space's content goes with it."
+      "notes": "Deleting is tested end to end: it answers 202 with a long task, the task is reported by the long task read, and the space's content goes with it. It removes the space outright, as the operation's own description requires, without sending it to the trash; the browser's delete is the one that uses the trash."
     },
     {
       "operationId": "confluence-v1:DELETE:/wiki/rest/api/space/{spaceKey}/label",
@@ -496,9 +497,10 @@
         "internal/store/wiki_search.go",
         "internal/confluence/search.go",
         "internal/confluence/search_test.go",
-        "docs/CQL_SEARCH.md"
+        "docs/CQL_SEARCH.md",
+        "internal/store/wiki_space_trash_test.go"
       ],
-      "notes": "The same CQL engine returning content beans rather than search results, restricted to content so a space is never a result however the query is written."
+      "notes": "The same CQL engine returning content beans rather than search results, restricted to content so a space is never a result however the query is written. Content in a space that is in the trash is never a result, whatever the query or the archived-spaces flag asks for."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/content/{id}/child/attachment/{attachmentId}/download",
@@ -861,9 +863,10 @@
         "internal/store/wiki_search.go",
         "internal/confluence/search.go",
         "internal/confluence/search_test.go",
-        "docs/CQL_SEARCH.md"
+        "docs/CQL_SEARCH.md",
+        "internal/store/wiki_space_trash_test.go"
       ],
-      "notes": "CQL search across pages, blog posts, comments, attachments and spaces with 18 fields, AND/OR/NOT and brackets, IN and NOT IN, currentUser/currentSpace/favouriteSpaces and the relative date functions, ORDER BY, cqlcontext scoping, excerpt strategies and cursor paging; every branch carries the reader's own visibility rules, so results and totals exclude what they may not open."
+      "notes": "CQL search across pages, blog posts, comments, attachments and spaces with 18 fields, AND/OR/NOT and brackets, IN and NOT IN, currentUser/currentSpace/favouriteSpaces and the relative date functions, ORDER BY, cqlcontext scoping, excerpt strategies and cursor paging; every branch carries the reader's own visibility rules, so results and totals exclude what they may not open. Content in a space that is in the trash is never a result, whatever the query or the archived-spaces flag asks for."
     },
     {
       "operationId": "confluence-v1:GET:/wiki/rest/api/search/user",
@@ -1667,9 +1670,10 @@
       "status": "partial",
       "evidence": [
         "internal/confluence/space_lifecycle_test.go",
+        "internal/store/wiki_space_trash_test.go",
         "docs/SPACE_LIFECYCLE.md"
       ],
-      "notes": "Updating name, description, homepage, type and status is tested, including the refused homepage outside the space, the refused status and type, the 404 for an unknown space and that it is administration."
+      "notes": "Updating name, description, homepage, type and status is tested, including the refused homepage outside the space, the refused status and type, the 404 for an unknown space and that it is administration. Setting the status to archived or trashed has the effects the browser's archive and trash have: the space leaves the space directory's general list and, for a trashed space, every search."
     },
     {
       "operationId": "confluence-v1:PUT:/wiki/rest/api/space/{spaceKey}/settings",

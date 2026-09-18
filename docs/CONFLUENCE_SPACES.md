@@ -2,9 +2,10 @@
 
 This doc covers space types and statuses, the v2 space list and create
 endpoints, space templates, the space permission report, and the space tools
-in the browser: templates, analytics, archiving and HTML export. Part of
-[Confluence](CONFLUENCE_SITE_SURFACES.md). The v1 create, update and delete
-endpoints are in [SPACE_LIFECYCLE.md](SPACE_LIFECYCLE.md).
+in the browser: templates, analytics, archiving, deleting and HTML export.
+Part of [Confluence](CONFLUENCE_SITE_SURFACES.md). The v1 create, update and
+delete endpoints, the space trash and the space directory's lists are in
+[SPACE_LIFECYCLE.md](SPACE_LIFECYCLE.md).
 
 ## Types and statuses
 
@@ -96,7 +97,13 @@ The space page (`/wiki/spaces/{space}`) links to the following tools:
     [analytics](CONTENT_ANALYTICS.md).
 - **Archive and restore** (`POST /wiki/spaces/{space}/status`, space
   administrators only). Archiving sets the space status to `archived`.
-  Restoring sets it back to `current`.
+  Restoring sets it back to `current`. An archived space leaves the general
+  list in the space directory for the directory's archived list, and leaves
+  search; its content is kept. A space in the trash cannot be archived.
+- **Delete** (`POST /wiki/spaces/{space}/trash`, space administrators only).
+  The space goes to the trash rather than away, and a site administrator
+  restores it or deletes it permanently from there. See
+  [lifecycle](SPACE_LIFECYCLE.md).
 - **Export to HTML** (`POST /wiki/spaces/{space}/exports`, space
   administrators only). This queues a background task (`wiki-space-export`)
   that builds a zip containing:
@@ -126,13 +133,14 @@ Tracked in [PLAN.md](../PLAN.md).
   no site export, and no PDF, Word or CSV export of a space.
 - **Export contents.** The HTML export has no page hierarchy, comments,
   whiteboards, databases, folders or custom content.
-- **Space management UI.** Spaces cannot be deleted, renamed or given a new
-  description in the browser. Those changes are API-only (see
+- **Space management UI.** Spaces cannot be renamed or given a new
+  description in the browser. Those two changes are API-only (see
   [lifecycle](SPACE_LIFECYCLE.md)).
 
 ## Tests
 
-`internal/confluence/spaces_test.go`, `internal/store/wiki_space_export_test.go`
+`internal/confluence/spaces_test.go`, `internal/store/wiki_space_export_test.go`,
+`internal/store/wiki_space_trash_test.go`, `internal/web/wiki_space_trash_test.go`
 
 ## See also
 
