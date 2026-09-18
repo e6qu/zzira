@@ -1014,7 +1014,10 @@ func servingWorkspaceSlug(getenv func(string) string) (string, error) {
 // applyDemoScenario builds a demo site from a declarative scenario and writes
 // the credentials it created where the local tooling looks for them.
 func applyDemoScenario(ctx context.Context, st *store.Store, path string) error {
-	file, err := os.Open(path)
+	// #nosec G304 -- the scenario is the operator's own -scenario flag on a
+	// local command, like -static and -mode; it is read, never written, and no
+	// request can reach it.
+	file, err := os.Open(filepath.Clean(path))
 	if err != nil {
 		return err
 	}
