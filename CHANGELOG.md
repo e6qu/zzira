@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/e6qu/zzira/compare/v0.15.1...v0.16.0) (2026-09-19)
+
+
+### Features
+
+* run a service desk portal, trash a space, and seed the site an instance serves ([#158](https://github.com/e6qu/zzira/issues/158)) ([262ad2b](https://github.com/e6qu/zzira/commit/262ad2bfb5283056958a2f90b5d6e5b385e1f912))
+
 ## [0.15.1](https://github.com/e6qu/zzira/compare/v0.15.0...v0.15.1) (2026-09-11)
 
 
