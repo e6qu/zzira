@@ -334,7 +334,8 @@ func statusUsage(ctx context.Context, q interface {
 	err := q.QueryRow(ctx, `
 		SELECT st.id,st.name,st.description,st.category,COALESCE(st.project_id,''),st.workspace_id IS NULL,
 		 (SELECT count(*) FROM issues i WHERE i.workspace_id=$1 AND i.status_id=st.id),
-		 (SELECT count(*) FROM boards b JOIN projects p ON p.id=b.project_id WHERE p.workspace_id=$1 AND st.id=ANY(b.column_status_ids)),
+		 (SELECT count(*) FROM boards b JOIN projects p ON p.id=b.project_id WHERE p.workspace_id=$1
+		   AND EXISTS(SELECT 1 FROM jsonb_array_elements(b.board_columns) col WHERE col->'statusIds' ? st.id)),
 		 (SELECT count(*) FROM workflows w WHERE (w.workspace_id=$1 OR (w.id='wf_default' AND w.workspace_id IS NULL)) AND (
 		   EXISTS (SELECT 1 FROM jsonb_array_elements(w.def->'transitions') t WHERE t->>'to'=st.id OR (t->'from') ? st.id)
 		   OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(w.draft_def,w.def)->'transitions') t WHERE t->>'to'=st.id OR (t->'from') ? st.id))),
@@ -460,7 +461,8 @@ func (s *Store) StatusProjectUsages(ctx context.Context, workspaceID, statusID s
 	rows, err := s.Pool.Query(ctx, `
 		SELECT DISTINCT p.id FROM projects p WHERE p.workspace_id=$1 AND (
 		 EXISTS(SELECT 1 FROM issues i WHERE i.project_id=p.id AND i.status_id=$2)
-		 OR EXISTS(SELECT 1 FROM boards b WHERE b.project_id=p.id AND $2=ANY(b.column_status_ids))
+		 OR EXISTS(SELECT 1 FROM boards b WHERE b.project_id=p.id
+		   AND EXISTS(SELECT 1 FROM jsonb_array_elements(b.board_columns) col WHERE col->'statusIds' ? $2))
 		 OR EXISTS(SELECT 1 FROM workflows w WHERE w.id IN `+projectWorkflowIDs+` AND `+fmt.Sprintf(statusWorkflowContains, "w")+`)
 		) ORDER BY p.id`, workspaceID, statusID)
 	if err != nil {

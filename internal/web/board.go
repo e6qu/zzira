@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -26,6 +27,8 @@ type boardCard struct {
 }
 
 type boardColumn struct {
+	// StatusID is the status a card dropped on this column takes: the first
+	// of the column's statuses. The column shows work in any of them.
 	StatusID string
 	Name     string
 	Cards    []boardCard
@@ -34,6 +37,7 @@ type boardColumn struct {
 type boardColumnHeader struct {
 	StatusID     string
 	Name         string
+	StatusNames  []string
 	Category     string
 	VisibleCount int
 	TotalCount   int
@@ -67,9 +71,13 @@ type boardViewData struct {
 	Admin            bool
 }
 
+// boardSettingColumn is one column on the settings page, with the statuses it
+// gathers named for the reader.
 type boardSettingColumn struct {
-	Status models.Status
-	Limit  int
+	Name      string
+	Limit     int
+	Statuses  []models.Status
+	StatusIDs []string
 }
 
 type boardSettingsData struct {
@@ -84,6 +92,12 @@ type boardSettingsData struct {
 	ShowAssignee bool
 	ShowLabels   bool
 	EmptyFilter  models.BoardQuickFilter
+	// Statuses are every status the project uses; UnmappedStatuses are those
+	// no column shows, which are invisible on the board until a column takes
+	// them.
+	Statuses         []models.Status
+	UnmappedStatuses []models.Status
+	EstimationFields []*models.CustomField
 }
 
 func boardPageURL(boardID string, selectedFilters []string, assignee string) string {
@@ -171,24 +185,30 @@ func (h *Handler) buildBoardView(r *http.Request, user *models.User, wsID string
 			return boardViewData{}, err
 		}
 	}
-	statuses := make(map[string]models.Status, len(board.ColumnStatusIDs))
 	data := boardViewData{
 		Board: board, Members: members, SelectedFilters: selected, SelectedAssignee: assignee,
 		ClearFiltersURL: boardPageURL(board.ID, nil, ""), HasFilters: len(selected) > 0 || assignee != "",
 		HasSwimlanes: board.SwimlaneStrategy == "assignee", Admin: admin,
 	}
-	for _, statusID := range board.ColumnStatusIDs {
-		status, err := h.Store.StatusByIDForProject(r.Context(), statusID, board.ProjectID)
-		if err != nil {
-			return boardViewData{}, err
+	// A column counts the work in every status it gathers, and takes its
+	// category from the first of them, which is what colours the header.
+	for _, boardColumn := range board.Columns {
+		header := boardColumnHeader{Name: boardColumn.Name, Limit: boardColumn.Limit}
+		for index, statusID := range boardColumn.StatusIDs {
+			status, err := h.Store.StatusByIDForProject(r.Context(), statusID, board.ProjectID)
+			if err != nil {
+				return boardViewData{}, err
+			}
+			if index == 0 {
+				header.StatusID = statusID
+				header.Category = status.Category
+			}
+			header.StatusNames = append(header.StatusNames, status.Name)
+			header.VisibleCount += len(columns[statusID])
+			header.TotalCount += len(allColumns[statusID])
 		}
-		statuses[statusID] = status
-		limit := board.ColumnLimits[statusID]
-		total := len(allColumns[statusID])
-		data.ColumnHeaders = append(data.ColumnHeaders, boardColumnHeader{
-			StatusID: statusID, Name: status.Name, Category: status.Category,
-			VisibleCount: len(columns[statusID]), TotalCount: total, Limit: limit, OverLimit: limit > 0 && total > limit,
-		})
+		header.OverLimit = header.Limit > 0 && header.TotalCount > header.Limit
+		data.ColumnHeaders = append(data.ColumnHeaders, header)
 	}
 	active := map[string]bool{}
 	for _, id := range selected {
@@ -218,7 +238,7 @@ func (h *Handler) buildBoardView(r *http.Request, user *models.User, wsID string
 	lanes := []laneIssues{}
 	if board.SwimlaneStrategy == "assignee" {
 		byAssignee := map[string]map[string][]*models.Issue{}
-		for _, statusID := range board.ColumnStatusIDs {
+		for _, statusID := range board.StatusIDs() {
 			for _, issue := range columns[statusID] {
 				laneID := "unassigned"
 				if issue.Assignee != nil {
@@ -243,9 +263,25 @@ func (h *Handler) buildBoardView(r *http.Request, user *models.User, wsID string
 	}
 	for _, lane := range lanes {
 		view := boardSwimlane{ID: lane.id, Name: lane.name}
-		for _, statusID := range board.ColumnStatusIDs {
-			column := boardColumn{StatusID: statusID, Name: statuses[statusID].Name}
-			for _, issue := range lane.issues[statusID] {
+		for _, boardColumnConfig := range board.Columns {
+			column := boardColumn{Name: boardColumnConfig.Name}
+			if len(boardColumnConfig.StatusIDs) > 0 {
+				column.StatusID = boardColumnConfig.StatusIDs[0]
+			}
+			// Work from several statuses shares one column, and the board's
+			// order is rank, so the column is ranked as a whole rather than
+			// status after status.
+			gathered := []*models.Issue{}
+			for _, statusID := range boardColumnConfig.StatusIDs {
+				gathered = append(gathered, lane.issues[statusID]...)
+			}
+			sort.SliceStable(gathered, func(i, j int) bool {
+				if gathered[i].Rank != gathered[j].Rank {
+					return gathered[i].Rank < gathered[j].Rank
+				}
+				return gathered[i].Key < gathered[j].Key
+			})
+			for _, issue := range gathered {
 				column.Cards = append(column.Cards, boardCardFor(issue, board.CardFields))
 			}
 			view.Columns = append(view.Columns, column)
@@ -337,12 +373,47 @@ func (h *Handler) boardSettingsData(r *http.Request, board *models.Board, messag
 			data.ShowLabels = true
 		}
 	}
-	for _, statusID := range board.ColumnStatusIDs {
-		status, err := h.Store.StatusByIDForProject(r.Context(), statusID, board.ProjectID)
-		if err != nil {
-			return boardSettingsData{}, err
+	// The statuses the project's workflows use are what a column may gather,
+	// so the page offers all of them and marks which column holds each.
+	available, err := h.Store.StatusesForProject(r.Context(), board.WorkspaceID, board.ProjectID, true)
+	if err != nil {
+		return boardSettingsData{}, err
+	}
+	byID := make(map[string]models.Status, len(available))
+	for _, status := range available {
+		byID[status.ID] = status
+	}
+	data.Statuses = available
+	placed := map[string]bool{}
+	for _, column := range board.Columns {
+		view := boardSettingColumn{Name: column.Name, Limit: column.Limit, StatusIDs: column.StatusIDs}
+		for _, statusID := range column.StatusIDs {
+			placed[statusID] = true
+			status, ok := byID[statusID]
+			if !ok {
+				// A status the project stopped using still stands in the
+				// column until someone moves it, and is named by its id
+				// rather than hidden.
+				status = models.Status{ID: statusID, Name: statusID}
+			}
+			view.Statuses = append(view.Statuses, status)
 		}
-		data.Columns = append(data.Columns, boardSettingColumn{Status: status, Limit: board.ColumnLimits[statusID]})
+		data.Columns = append(data.Columns, view)
+	}
+	for _, status := range available {
+		if !placed[status.ID] {
+			data.UnmappedStatuses = append(data.UnmappedStatuses, status)
+		}
+	}
+	// A scrum board estimates with a number field, so those are the choices.
+	fields, err := h.Store.CustomFieldsForWorkspace(r.Context(), board.WorkspaceID)
+	if err != nil {
+		return boardSettingsData{}, err
+	}
+	for _, field := range fields {
+		if field.Type == models.CustomFieldNumber {
+			data.EstimationFields = append(data.EstimationFields, field)
+		}
 	}
 	return data, nil
 }
@@ -437,18 +508,51 @@ func boardConfigurationForm(r *http.Request, board *models.Board) (store.BoardCo
 		return store.BoardConfigurationUpdate{}, boardFilterError("invalid form")
 	}
 	input := store.BoardConfigurationUpdate{
-		SwimlaneStrategy: r.PostFormValue("swimlanes"), CardFields: r.PostForm["cardField"], ColumnLimits: map[string]int{},
+		SwimlaneStrategy: r.PostFormValue("swimlanes"), CardFields: r.PostForm["cardField"],
+		FilterJQL: r.PostFormValue("filterJQL"), EstimationFieldID: r.PostFormValue("estimationField"),
 	}
-	for _, statusID := range board.ColumnStatusIDs {
-		value := strings.TrimSpace(r.PostFormValue("limit_" + statusID))
-		if value == "" {
+	// The columns arrive as parallel lists in display order -- a key, a name
+	// and a limit each -- and every status names the column it stands in.
+	// Asking each status once is what keeps a status out of two columns: the
+	// form cannot express it.
+	deletedColumns := map[string]bool{}
+	for _, key := range r.PostForm["deleteColumn"] {
+		deletedColumns[key] = true
+	}
+	placement := map[string][]string{}
+	for _, statusID := range r.PostForm["statusID"] {
+		key := r.PostFormValue("statusColumn_" + statusID)
+		if key == "" || deletedColumns[key] {
+			// A status in no column, or in one being deleted, leaves the
+			// board rather than following its column into nothing.
 			continue
 		}
-		limit, err := strconv.Atoi(value)
-		if err != nil {
-			return input, boardFilterError("column limits must be whole numbers")
+		placement[key] = append(placement[key], statusID)
+	}
+	columnKeys := r.PostForm["columnKey"]
+	columnNames := r.PostForm["columnName"]
+	columnLimits := r.PostForm["columnLimit"]
+	if len(columnKeys) != len(columnNames) || len(columnKeys) != len(columnLimits) {
+		return input, boardFilterError("column fields are incomplete")
+	}
+	for index, key := range columnKeys {
+		// "new" is the row that adds a column; it is read from
+		// newColumnName below, so the list of existing columns skips it.
+		if key == "new" || deletedColumns[key] {
+			continue
 		}
-		input.ColumnLimits[statusID] = limit
+		column := models.BoardColumn{Name: columnNames[index], StatusIDs: placement[key]}
+		if value := strings.TrimSpace(columnLimits[index]); value != "" {
+			limit, err := strconv.Atoi(value)
+			if err != nil {
+				return input, boardFilterError("column limits must be whole numbers")
+			}
+			column.Limit = limit
+		}
+		input.Columns = append(input.Columns, column)
+	}
+	if name := strings.TrimSpace(r.PostFormValue("newColumnName")); name != "" {
+		input.Columns = append(input.Columns, models.BoardColumn{Name: name, StatusIDs: placement["new"]})
 	}
 	ids := r.PostForm["quickFilterID"]
 	names := r.PostForm["quickFilterName"]
@@ -484,10 +588,17 @@ func (h *Handler) UpdateBoardSettings(w http.ResponseWriter, r *http.Request, bo
 		board, err = h.Commands.UpdateBoardConfiguration(r.Context(), user.ID, wsID, boardID, input)
 	}
 	if errors.Is(err, store.ErrBoardValidation) {
+		// The page comes back holding what was typed, so nothing is retyped
+		// after a rejected save.
 		board.QuickFilters = input.QuickFilters
 		board.SwimlaneStrategy = input.SwimlaneStrategy
 		board.CardFields = input.CardFields
-		board.ColumnLimits = input.ColumnLimits
+		if len(input.Columns) > 0 {
+			board.Columns = input.Columns
+		}
+		if input.FilterJQL != "" {
+			board.FilterJQL = input.FilterJQL
+		}
 		data, dataErr := h.boardSettingsData(r, board, strings.TrimPrefix(err.Error(), store.ErrBoardValidation.Error()+": "))
 		if dataErr != nil {
 			log.Print("board settings: validation response failed")
@@ -539,7 +650,7 @@ func (h *Handler) RankIssue(w http.ResponseWriter, r *http.Request, boardID stri
 }
 
 func boardHasStatus(b *models.Board, statusID string) bool {
-	for _, s := range b.ColumnStatusIDs {
+	for _, s := range b.StatusIDs() {
 		if s == statusID {
 			return true
 		}

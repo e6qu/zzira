@@ -130,9 +130,7 @@ but nothing shows or uses it.
 
 ## 4. Boards, reports and DORA
 
-- Boards: column configuration with several statuses per column, swimlanes by
-  query, epic, project and stories; `PUT …/features`; changing a board's filter
-  and estimation field.
+- Boards: swimlanes by query, epic, project and stories; `PUT …/features`.
 - Reports: release burndown, epic burndown, user and version workload, time
   tracking, single-level group-by, deployment frequency, cycle time.
 - DORA: configurable mappings (which environments, pipelines and incident types

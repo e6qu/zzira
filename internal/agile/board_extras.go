@@ -210,7 +210,7 @@ func (h *Handler) softwareRoute(w http.ResponseWriter, r *http.Request, path str
 	case len(parts) == 3 && parts[1] == "backlog" && parts[2] == "approximate-count":
 		count(h.Store.BacklogIssues(r.Context(), board.ID, userID))
 	case len(parts) == 2 && parts[1] == "issue":
-		h.agileIssueSearch(w, r, workspaceID, userID, boardIssueScope, []any{board.ProjectID, board.ColumnStatusIDs, board.Type}, "")
+		h.agileIssueSearch(w, r, workspaceID, userID, boardIssueScope, []any{board.ProjectID, board.StatusIDs(), board.Type}, "")
 	case len(parts) == 3 && parts[1] == "issue" && parts[2] == "approximate-count":
 		count(h.boardIssueList(r, board, userID))
 	case len(parts) == 4 && parts[1] == "epic" && parts[3] == "issue":
@@ -228,7 +228,7 @@ func (h *Handler) boardIssueList(r *http.Request, board *models.Board, userID st
 		return nil, err
 	}
 	issues := []*models.Issue{}
-	for _, statusID := range board.ColumnStatusIDs {
+	for _, statusID := range board.StatusIDs() {
 		issues = append(issues, columns[statusID]...)
 	}
 	return issues, nil

@@ -277,7 +277,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE TABLE IF NOT EXISTS boards (
   id TEXT PRIMARY KEY, project_id TEXT, name TEXT, type TEXT,
   quick_filters TEXT NOT NULL DEFAULT '[]', swimlane_strategy TEXT NOT NULL DEFAULT 'none',
-  card_fields TEXT NOT NULL DEFAULT '[]', column_limits TEXT NOT NULL DEFAULT '{}'
+  card_fields TEXT NOT NULL DEFAULT '[]', board_columns TEXT NOT NULL DEFAULT '[]'
 );
 CREATE TABLE IF NOT EXISTS sprints (
   id TEXT PRIMARY KEY, board_id TEXT, name TEXT, state TEXT, goal TEXT,
@@ -320,7 +320,9 @@ func initDB() error {
 	ensureColumn("boards", "quick_filters", "TEXT NOT NULL DEFAULT '[]'")
 	ensureColumn("boards", "swimlane_strategy", "TEXT NOT NULL DEFAULT 'none'")
 	ensureColumn("boards", "card_fields", "TEXT NOT NULL DEFAULT '[]'")
-	ensureColumn("boards", "column_limits", "TEXT NOT NULL DEFAULT '{}'")
+	// A replica made before columns were named keeps its old column_limits
+	// column; it is ignored, and board_columns carries the board's columns.
+	ensureColumn("boards", "board_columns", "TEXT NOT NULL DEFAULT '[]'")
 	ensureColumn("notifications", "read_at", "TEXT")
 	return nil
 }
@@ -643,19 +645,19 @@ func applyBoard(a models.Action) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encode board card fields: %w", err)
 	}
-	columnLimits, err := json.Marshal(p.Board.ColumnLimits)
+	boardColumns, err := json.Marshal(p.Board.Columns)
 	if err != nil {
-		return nil, fmt.Errorf("encode board column limits: %w", err)
+		return nil, fmt.Errorf("encode board columns: %w", err)
 	}
 	exec(`INSERT INTO boards
-		(id, project_id, name, type, quick_filters, swimlane_strategy, card_fields, column_limits)
+		(id, project_id, name, type, quick_filters, swimlane_strategy, card_fields, board_columns)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		ON CONFLICT(id) DO UPDATE SET
 		project_id=excluded.project_id, name=excluded.name, type=excluded.type,
 		quick_filters=excluded.quick_filters, swimlane_strategy=excluded.swimlane_strategy,
-		card_fields=excluded.card_fields, column_limits=excluded.column_limits`,
+		card_fields=excluded.card_fields, board_columns=excluded.board_columns`,
 		[]any{p.Board.ID, p.Board.ProjectID, p.Board.Name, p.Board.Type, string(quickFilters),
-			p.Board.SwimlaneStrategy, string(cardFields), string(columnLimits)})
+			p.Board.SwimlaneStrategy, string(cardFields), string(boardColumns)})
 	return nil, nil
 }
 

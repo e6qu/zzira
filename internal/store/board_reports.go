@@ -128,14 +128,18 @@ func dayEnds(days int, now time.Time) []time.Time {
 func (s *Store) CumulativeFlow(ctx context.Context, board *models.Board, userID string, days int, now time.Time) (models.CumulativeFlow, error) {
 	now = now.UTC()
 	flow := models.CumulativeFlow{}
+	// One count per column, so statuses grouped into a column are counted
+	// together -- which is what the column means.
 	column := map[string]int{}
-	for index, statusID := range board.ColumnStatusIDs {
-		status, err := s.StatusByIDForProject(ctx, statusID, board.ProjectID)
-		if err != nil {
-			return flow, err
+	for index, boardColumn := range board.Columns {
+		first := ""
+		if len(boardColumn.StatusIDs) > 0 {
+			first = boardColumn.StatusIDs[0]
 		}
-		flow.Columns = append(flow.Columns, models.FlowColumn{StatusID: statusID, Name: status.Name})
-		column[statusID] = index
+		flow.Columns = append(flow.Columns, models.FlowColumn{StatusID: first, Name: boardColumn.Name})
+		for _, statusID := range boardColumn.StatusIDs {
+			column[statusID] = index
+		}
 	}
 	work, err := s.boardWorkHistory(ctx, board, userID)
 	if err != nil {

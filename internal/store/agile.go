@@ -36,7 +36,14 @@ type BoardConfigurationUpdate struct {
 	QuickFilters     []models.BoardQuickFilter
 	SwimlaneStrategy string
 	CardFields       []string
-	ColumnLimits     map[string]int
+	// Columns are the board's columns in order, with the statuses each one
+	// gathers and its work-in-progress limit.
+	Columns []models.BoardColumn
+	// FilterJQL and EstimationFieldID are the board's scope and its estimate,
+	// both of which Jira lets a board administrator change after the board
+	// exists. An empty EstimationFieldID means work items are counted.
+	FilterJQL         string
+	EstimationFieldID string
 }
 
 // SetIssueRank repositions a work item; status changes go through a workflow
@@ -110,8 +117,8 @@ func (s *Store) RankBetween(ctx context.Context, workspaceID, projectID, statusI
 // ---- boards ----
 
 const boardJoin = `
-SELECT b.id, b.project_id, p.key, p.name, p.workspace_id, b.name, b.type, b.column_status_ids, b.filter_jql,
-       b.quick_filters, b.swimlane_strategy, b.card_fields, b.column_limits, b.jira_id, b.filter_jira_id,
+SELECT b.id, b.project_id, p.key, p.name, p.workspace_id, b.name, b.type, b.board_columns, b.filter_jql,
+       b.quick_filters, b.swimlane_strategy, b.card_fields, b.jira_id, b.filter_jira_id,
        COALESCE(b.estimation_field_id,''), COALESCE(ef.name,''), COALESCE(b.source_filter_id,''), COALESCE(sf.jira_id,0), p.project_type_key
 FROM boards b JOIN projects p ON p.id=b.project_id AND p.lifecycle_state='ACTIVE'
 LEFT JOIN custom_fields ef ON ef.id=b.estimation_field_id
@@ -120,9 +127,9 @@ LEFT JOIN filters sf ON sf.id=b.source_filter_id
 
 func scanBoard(row pgx.Row) (*models.Board, error) {
 	b := &models.Board{}
-	var quickFilters, columnLimits []byte
-	err := row.Scan(&b.ID, &b.ProjectID, &b.ProjectKey, &b.ProjectName, &b.WorkspaceID, &b.Name, &b.Type, &b.ColumnStatusIDs, &b.FilterJQL,
-		&quickFilters, &b.SwimlaneStrategy, &b.CardFields, &columnLimits, &b.JiraID, &b.FilterJiraID,
+	var quickFilters, columns []byte
+	err := row.Scan(&b.ID, &b.ProjectID, &b.ProjectKey, &b.ProjectName, &b.WorkspaceID, &b.Name, &b.Type, &columns, &b.FilterJQL,
+		&quickFilters, &b.SwimlaneStrategy, &b.CardFields, &b.JiraID, &b.FilterJiraID,
 		&b.EstimationFieldID, &b.EstimationFieldName, &b.SourceFilterID, &b.SourceFilterJiraID, &b.ProjectTypeKey)
 	if err != nil {
 		return b, err
@@ -130,8 +137,8 @@ func scanBoard(row pgx.Row) (*models.Board, error) {
 	if err := json.Unmarshal(quickFilters, &b.QuickFilters); err != nil {
 		return b, fmt.Errorf("decode board quick filters: %w", err)
 	}
-	if err := json.Unmarshal(columnLimits, &b.ColumnLimits); err != nil {
-		return b, fmt.Errorf("decode board column limits: %w", err)
+	if err := json.Unmarshal(columns, &b.Columns); err != nil {
+		return b, fmt.Errorf("decode board columns: %w", err)
 	}
 	return b, err
 }
@@ -248,7 +255,7 @@ func (s *Store) BoardIssuesFiltered(ctx context.Context, boardID, userID string,
 	}
 	defer rows.Close()
 	out := map[string][]*models.Issue{}
-	for _, st := range board.ColumnStatusIDs {
+	for _, st := range board.StatusIDs() {
 		out[st] = []*models.Issue{}
 	}
 	for rows.Next() {
@@ -275,7 +282,12 @@ func validBoardFilterID(id string) bool {
 	return true
 }
 
-func normalizeBoardConfiguration(input BoardConfigurationUpdate, statusIDs []string, validate func(*jql.Query) error) (BoardConfigurationUpdate, error) {
+// normalizeBoardConfiguration checks a board configuration and puts it in the
+// shape the store keeps. availableStatuses are the statuses the board's
+// project offers: every column status must be one of them, no status may
+// stand in two columns, and a board must keep at least one column or it would
+// show nothing.
+func normalizeBoardConfiguration(input BoardConfigurationUpdate, availableStatuses []string, validate func(*jql.Query) error) (BoardConfigurationUpdate, error) {
 	if input.SwimlaneStrategy != "none" && input.SwimlaneStrategy != "assignee" {
 		return input, fmt.Errorf("%w: swimlanes must be none or assignee", ErrBoardValidation)
 	}
@@ -337,23 +349,62 @@ func normalizeBoardConfiguration(input BoardConfigurationUpdate, statusIDs []str
 		return input, fmt.Errorf("%w: cards support at most three optional fields", ErrBoardValidation)
 	}
 	input.CardFields = cardFields
-	allowedStatuses := make(map[string]bool, len(statusIDs))
-	for _, id := range statusIDs {
+	allowedStatuses := make(map[string]bool, len(availableStatuses))
+	for _, id := range availableStatuses {
 		allowedStatuses[id] = true
 	}
-	limits := map[string]int{}
-	for statusID, limit := range input.ColumnLimits {
-		if !allowedStatuses[statusID] {
-			return input, fmt.Errorf("%w: a column limit references an unknown status", ErrBoardValidation)
+	if len(input.Columns) == 0 {
+		return input, fmt.Errorf("%w: a board needs at least one column", ErrBoardValidation)
+	}
+	if len(input.Columns) > 20 {
+		return input, fmt.Errorf("%w: boards support at most 20 columns", ErrBoardValidation)
+	}
+	columns := make([]models.BoardColumn, 0, len(input.Columns))
+	placed := map[string]bool{}
+	for _, column := range input.Columns {
+		column.Name = strings.TrimSpace(column.Name)
+		if column.Name == "" || utf8.RuneCountInString(column.Name) > 64 {
+			return input, fmt.Errorf("%w: column names are required and cannot exceed 64 characters", ErrBoardValidation)
 		}
-		if limit < 0 || limit > 999 {
+		if column.Limit < 0 || column.Limit > 999 {
 			return input, fmt.Errorf("%w: column limits must be between 1 and 999, or 0 for no limit", ErrBoardValidation)
 		}
-		if limit > 0 {
-			limits[statusID] = limit
+		statuses := make([]string, 0, len(column.StatusIDs))
+		for _, statusID := range column.StatusIDs {
+			if !allowedStatuses[statusID] {
+				return input, fmt.Errorf("%w: a column references a status this project does not use", ErrBoardValidation)
+			}
+			// A status in two columns would put the same work item in both,
+			// and the board would count it twice.
+			if placed[statusID] {
+				return input, fmt.Errorf("%w: a status can stand in one column only", ErrBoardValidation)
+			}
+			placed[statusID] = true
+			statuses = append(statuses, statusID)
+		}
+		column.StatusIDs = statuses
+		columns = append(columns, column)
+	}
+	input.Columns = columns
+	if utf8.RuneCountInString(input.FilterJQL) > 2000 {
+		return input, fmt.Errorf("%w: the board filter cannot exceed 2000 characters", ErrBoardValidation)
+	}
+	// An empty filter is a board that shows everything in its project, which
+	// is what a board created without one has always done.
+	input.FilterJQL = strings.TrimSpace(input.FilterJQL)
+	if input.FilterJQL != "" {
+		query, err := jql.Parse(input.FilterJQL)
+		if err != nil {
+			return input, fmt.Errorf("%w: board filter: %v", ErrBoardValidation, err)
+		}
+		if validate != nil {
+			if err := validate(query); err != nil {
+				return input, fmt.Errorf("%w: board filter: %v", ErrBoardValidation, err)
+			}
+		} else if err := jql.Compile(query, "validation-user", jql.DefaultResolver()).Err; err != nil {
+			return input, fmt.Errorf("%w: board filter: %v", ErrBoardValidation, err)
 		}
 	}
-	input.ColumnLimits = limits
 	return input, nil
 }
 
@@ -373,7 +424,17 @@ func (s *Store) UpdateBoardConfiguration(ctx context.Context, actorID, workspace
 	if err != nil {
 		return nil, nil, err
 	}
-	input, err = normalizeBoardConfiguration(input, board.ColumnStatusIDs, func(query *jql.Query) error {
+	// Columns may take any status the project's workflows use, not only the
+	// ones the board already shows, or a column could never gain a status.
+	available, err := s.StatusesForProject(ctx, workspaceID, board.ProjectID, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	availableIDs := make([]string, 0, len(available))
+	for _, status := range available {
+		availableIDs = append(availableIDs, status.ID)
+	}
+	input, err = normalizeBoardConfiguration(input, availableIDs, func(query *jql.Query) error {
 		if err := s.ExpandAppJQL(ctx, workspaceID, query); err != nil {
 			return err
 		}
@@ -402,20 +463,37 @@ func (s *Store) UpdateBoardConfiguration(ctx context.Context, actorID, workspace
 	if err != nil {
 		return nil, nil, err
 	}
-	columnLimits, err := json.Marshal(input.ColumnLimits)
+	columns, err := json.Marshal(input.Columns)
 	if err != nil {
 		return nil, nil, err
 	}
+	// An empty estimation field means the board counts work items, which is
+	// how a scrum board without a chosen field already behaved.
+	var estimation any
+	if input.EstimationFieldID != "" {
+		var known bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM custom_fields
+			WHERE id=$1 AND workspace_id=$2 AND type='number')`, input.EstimationFieldID, workspaceID).Scan(&known); err != nil {
+			return nil, nil, err
+		}
+		if !known {
+			return nil, nil, fmt.Errorf("%w: the estimate must be a number field of this site", ErrBoardValidation)
+		}
+		estimation = input.EstimationFieldID
+	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE boards
-		SET quick_filters=$2, swimlane_strategy=$3, card_fields=$4, column_limits=$5
-		WHERE id=$1`, boardID, quickFilters, input.SwimlaneStrategy, input.CardFields, columnLimits); err != nil {
+		SET quick_filters=$2, swimlane_strategy=$3, card_fields=$4, board_columns=$5, filter_jql=$6, estimation_field_id=$7
+		WHERE id=$1`, boardID, quickFilters, input.SwimlaneStrategy, input.CardFields, columns,
+		input.FilterJQL, estimation); err != nil {
 		return nil, nil, err
 	}
 	board.QuickFilters = input.QuickFilters
 	board.SwimlaneStrategy = input.SwimlaneStrategy
 	board.CardFields = input.CardFields
-	board.ColumnLimits = input.ColumnLimits
+	board.Columns = input.Columns
+	board.FilterJQL = input.FilterJQL
+	board.EstimationFieldID = input.EstimationFieldID
 	seq, err := nextSeq(ctx, tx, workspaceID)
 	if err != nil {
 		return nil, nil, err

@@ -12,7 +12,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | Contributor finds work | ✅ | `v2`, `filters`, `directories` | — |
 | Contributor creates and triages work | ✅ | `create`, `v1`, `v3`, `triage`, `issue_mentions`, `custom_field_options` | — |
 | Contributor records how work was resolved | 🟡 | `resolution` (transition screen, work item page, REST) | No denied-user or accessibility pass over the transition screen |
-| Contributor plans and runs a sprint | ✅ | `backlog`, `v4`, `projects` | Column configuration; swimlanes beyond assignee ([AGILE_BOARDS](AGILE_BOARDS.md#gaps)) |
+| Contributor plans and runs a sprint | ✅ | `backlog`, `board_columns`, `v4`, `projects` | Swimlanes beyond assignee ([AGILE_BOARDS](AGILE_BOARDS.md#gaps)) |
 | Contributor works offline | 🟡 | `v0`, `v5`, `revocation`, `session-isolation` | Only work items are available offline; other entities and richer edits need a connection |
 | Contributor follows code through release | 🟡 | `directories` (development information), `software`, `releases` | Cross-project releases; release gates; environment promotion ([RELEASES](RELEASES.md#gaps)) |
 | Manager configures a project | 🟡 | `projects`, `project_roles`, `permission_schemes`, `notification_schemes`, `issue_security_schemes` | Project templates and delegated administration do not cover every setting |
