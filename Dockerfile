@@ -17,6 +17,13 @@ COPY --from=build /out/zzira-server /zzira-server
 COPY --from=build /out/zzira-worker.wasm /static/zzira-worker.wasm
 COPY --from=build /out/wasm_exec.js /static/wasm/wasm_exec.js
 COPY web/static /static
+# The demo scenario the -mode=demo flag defaults to. Without it in the image,
+# the documented `docker compose exec zzira /zzira-server -mode=demo` answers
+# "open demo/company.json: no such file or directory" -- the mode cannot build
+# a company anywhere but a source checkout. The default path is relative and
+# the working directory of a scratch image is /, so /demo/company.json is
+# exactly what the flag already looks for.
+COPY demo/company.json /demo/company.json
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 ENV STATIC_DIR=/static \
     DATA_DIR=/data \
