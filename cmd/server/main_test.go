@@ -54,3 +54,28 @@ func TestDemoWorkspaceSlug(t *testing.T) {
 		})
 	}
 }
+
+func TestBlobDir(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{name: "unset", env: nil, want: "data/attachments"},
+		{name: "data dir", env: map[string]string{"DATA_DIR": "/data"}, want: "/data"},
+		{name: "empty data dir", env: map[string]string{"DATA_DIR": ""}, want: "data/attachments"},
+		{
+			name: "blob dir is not a knob",
+			env:  map[string]string{"BLOB_DIR": "/elsewhere", "DATA_DIR": "/data"},
+			want: "/data",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := blobDir(func(key string) string { return tt.env[key] })
+			if got != tt.want {
+				t.Fatalf("blobDir = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
