@@ -120,7 +120,7 @@ func main() {
 	if static == "" {
 		static = envOr("STATIC_DIR", "web/static")
 	}
-	blobs, err := attachments.NewFS(envOr("DATA_DIR", "data/attachments"))
+	blobs, err := attachments.NewFS(blobDir(os.Getenv))
 	if err != nil {
 		log.Fatalf("blob storage: %v", err)
 	}
@@ -1027,6 +1027,19 @@ func ensureUser(ctx context.Context, st *store.Store, wsID, email, password, dis
 	return u.ID, nil
 }
 
+// blobDir is the one place that decides where attachment bytes live. The
+// server and the demo seeder resolve it through this function so they cannot
+// disagree: the seeder used to read a BLOB_DIR that nothing else set, and so
+// on a deployment that sets only DATA_DIR it wrote the scenario's attachments
+// to a relative data/blobs the server never read -- and on the scratch image,
+// where the working directory is not writable, could not create at all.
+func blobDir(getenv func(string) string) string {
+	if dir := getenv("DATA_DIR"); dir != "" {
+		return dir
+	}
+	return "data/attachments"
+}
+
 func envOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -1083,7 +1096,7 @@ func applyDemoScenario(ctx context.Context, st *store.Store, path, workspaceFlag
 	if err != nil {
 		return err
 	}
-	blobs, err := attachments.NewFS(envOr("BLOB_DIR", "data/blobs"))
+	blobs, err := attachments.NewFS(blobDir(getenv))
 	if err != nil {
 		return err
 	}
