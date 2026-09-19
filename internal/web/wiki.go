@@ -19,6 +19,13 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// wikiSpaceGrantView is one direct space permission grant with the subject's
+// name resolved, because a grant reads as an account id otherwise.
+type wikiSpaceGrantView struct {
+	store.WikiSpacePermissionGrant
+	SubjectName string
+}
+
 type wikiData struct {
 	Spaces                                []*models.WikiSpace
 	Space                                 *models.WikiSpace
@@ -55,6 +62,8 @@ type wikiData struct {
 	SpaceRoleGroups                       []models.WikiRestrictionSubject
 	SpaceRoleNames                        map[string]string
 	SpaceRolePrincipalNames               map[string]string
+	SpacePermissionCatalogue              []string
+	SpaceGrants                           []wikiSpaceGrantView
 	Attachments                           []*models.WikiAttachment
 	AttachmentComments                    map[string][]wikiCommentNode
 	Restrictions                          []models.WikiPageRestriction
@@ -456,7 +465,33 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{ContentStateSettings: stateSettings, SpaceExports: exports, Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "")
+	// Direct grants are the other half of Confluence's space access: a role
+	// gathers permissions for many people, a grant gives one subject one
+	// permission. Both decide what a reader may do here, so both belong on
+	// the page that explains this space's access.
+	// Who may do what is the space administrator's business, so the grants and
+	// the catalogue to add from are read only for them.
+	catalogue := []string{}
+	grants := []wikiSpaceGrantView{}
+	if canManageSpace {
+		if catalogue, err = h.Store.WikiSpacePermissions(r.Context(), ws, user.ID); err != nil {
+			http.Error(w, "Could not load space permissions.", 500)
+			return
+		}
+		rawGrants, grantErr := h.Store.WikiSpacePermissionGrants(r.Context(), ws, user.ID, space.Key)
+		if grantErr != nil {
+			http.Error(w, "Could not load space permission grants.", 500)
+			return
+		}
+		for _, grant := range rawGrants {
+			view := wikiSpaceGrantView{WikiSpacePermissionGrant: grant, SubjectName: principalNames[grant.SubjectID]}
+			if view.SubjectName == "" {
+				view.SubjectName = grant.SubjectID
+			}
+			grants = append(grants, view)
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{ContentStateSettings: stateSettings, SpaceExports: exports, Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames, SpacePermissionCatalogue: catalogue, SpaceGrants: grants, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "")
 }
 
 // WikiSpaceContentStateSettings saves whether the space's pages carry content
@@ -526,17 +561,73 @@ func (h *Handler) WikiSpaceProperty(w http.ResponseWriter, r *http.Request) {
 	redirectLocal(w, r, "/wiki/spaces/"+spaceID+"#wiki-space-properties")
 }
 
-func (h *Handler) WikiSpaceRoleCreate(w http.ResponseWriter, r *http.Request) {
+// WikiSpaceRoleSettings keeps the site's custom space roles: Confluence's
+// custom roles are created, edited and deleted from a space's access settings,
+// and until now the browser could only create them.
+func (h *Handler) WikiSpaceRoleSettings(w http.ResponseWriter, r *http.Request) {
 	user, ws, ok := h.pageContext(w, r)
 	if !ok || !parseForm(w, r) {
 		return
 	}
-	if _, err := h.Commands.CreateWikiSpaceRole(r.Context(), ws, user.ID, r.PostFormValue("name"), r.PostFormValue("description"), r.PostForm["permissions"]); err != nil {
+	var err error
+	switch action := r.PostFormValue("action"); action {
+	case "", "create":
+		_, err = h.Commands.CreateWikiSpaceRole(r.Context(), ws, user.ID, r.PostFormValue("name"), r.PostFormValue("description"), r.PostForm["permissions"])
+	case "update":
+		// The two reassignment roles are how Confluence moves anonymous and
+		// guest holders off a role whose permissions no longer suit them; an
+		// empty choice leaves them where they are.
+		_, _, err = h.Commands.UpdateWikiSpaceRole(r.Context(), ws, user.ID, r.PostFormValue("roleId"), r.PostFormValue("name"),
+			r.PostFormValue("description"), r.PostForm["permissions"], r.PostFormValue("anonymousRoleId"), r.PostFormValue("guestRoleId"))
+	case "delete":
+		_, err = h.Commands.DeleteWikiSpaceRole(r.Context(), ws, user.ID, r.PostFormValue("roleId"))
+	default:
+		err = fmt.Errorf("%w: choose a space role action", store.ErrWikiValidation)
+	}
+	if err != nil {
 		status, message := wikiWebError(err)
 		http.Error(w, message, status)
 		return
 	}
 	redirectLocal(w, r, "/wiki/spaces/"+r.PathValue("space")+"#wiki-space-roles")
+}
+
+// WikiSpacePermissionGrants adds and removes a space's direct grants: one
+// subject, one permission, the half of Confluence's space access that roles do
+// not cover and that the browser could not reach.
+func (h *Handler) WikiSpacePermissionGrants(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpaceForAdministration(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	switch r.PostFormValue("action") {
+	case "add":
+		// The catalogue spells a permission "operation/target"; the form posts
+		// it whole, the way it is listed.
+		key, target, found := strings.Cut(r.PostFormValue("permission"), "/")
+		if !found {
+			http.Error(w, "Choose a permission to grant.", http.StatusBadRequest)
+			return
+		}
+		_, err = h.Store.AddWikiSpacePermission(r.Context(), ws, user.ID, space.Key, r.PostFormValue("subjectType"), r.PostFormValue("subjectId"), key, target)
+	case "remove":
+		err = h.Store.RemoveWikiSpacePermission(r.Context(), ws, user.ID, space.Key, r.PostFormValue("grantId"))
+	default:
+		http.Error(w, "Choose a space permission action.", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		status, message := wikiWebError(err)
+		http.Error(w, message, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID+"#wiki-space-grants")
 }
 
 func (h *Handler) WikiSpaceRoleAssignments(w http.ResponseWriter, r *http.Request) {

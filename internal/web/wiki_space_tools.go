@@ -188,13 +188,44 @@ func (h *Handler) WikiSpaceAnalytics(w http.ResponseWriter, r *http.Request) {
 	h.writeWorkspacePage(w, r, "page_wiki_space_analytics", user, ws, data, "wiki", "")
 }
 
+// WikiSpaceDetails renames a space, rewrites its description and chooses the
+// page it opens on -- Confluence's space details form, which until now was
+// only reachable through the REST API.
+func (h *Handler) WikiSpaceDetails(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	space, err := h.Store.WikiSpaceForAdministration(r.Context(), ws, user.ID, r.PathValue("space"))
+	if err != nil {
+		status, msg := wikiWebError(err)
+		http.Error(w, msg, status)
+		return
+	}
+	name := r.PostFormValue("name")
+	description := r.PostFormValue("description")
+	input := store.UpdateWikiSpaceInput{Name: &name, Description: &description}
+	// An empty homepage field means "leave the home page as it is": the store
+	// requires a current page in this space, so there is no way to clear it,
+	// and Confluence has none either.
+	if homepage := r.PostFormValue("homepageId"); homepage != "" {
+		input.HomepageID = &homepage
+	}
+	if _, err := h.Store.UpdateWikiSpace(r.Context(), ws, user.ID, space.Key, input); err != nil {
+		status, msg := wikiWebError(err)
+		http.Error(w, msg, status)
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+space.ID)
+}
+
 // WikiSpaceStatus archives a space or restores it, for its administrators.
 func (h *Handler) WikiSpaceStatus(w http.ResponseWriter, r *http.Request) {
 	user, ws, ok := h.pageContext(w, r)
 	if !ok || !parseForm(w, r) {
 		return
 	}
-	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	space, err := h.Store.WikiSpaceForAdministration(r.Context(), ws, user.ID, r.PathValue("space"))
 	if err != nil {
 		status, msg := wikiWebError(err)
 		http.Error(w, msg, status)
@@ -273,7 +304,7 @@ func (h *Handler) wikiSpaceLifecycleTarget(w http.ResponseWriter, r *http.Reques
 	if !ok || !parseForm(w, r) {
 		return nil, "", nil, false
 	}
-	space, err := h.Store.WikiSpaceForLifecycle(r.Context(), ws, user.ID, r.PathValue("space"))
+	space, err := h.Store.WikiSpaceForAdministration(r.Context(), ws, user.ID, r.PathValue("space"))
 	if err != nil {
 		status, msg := wikiWebError(err)
 		http.Error(w, msg, status)
@@ -288,7 +319,7 @@ func (h *Handler) WikiSpaceExportCreate(w http.ResponseWriter, r *http.Request) 
 	if !ok || !parseForm(w, r) {
 		return
 	}
-	space, err := h.Store.WikiSpace(r.Context(), ws, user.ID, r.PathValue("space"))
+	space, err := h.Store.WikiSpaceForAdministration(r.Context(), ws, user.ID, r.PathValue("space"))
 	if err != nil {
 		status, msg := wikiWebError(err)
 		http.Error(w, msg, status)

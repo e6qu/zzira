@@ -31,6 +31,28 @@ func init() {
 			value, err := wikimarkup.Render(storage)
 			return template.HTML(value), err // #nosec G203 -- strict tag/attribute validation and escaping in wikimarkup.
 		},
+		// wikiPermission reads a space permission key the way Confluence names
+		// it: "create/blogpost" is "Create blog post". The key itself is still
+		// shown beside it, because that is what the API speaks.
+		"wikiPermission": func(key string) string {
+			operation, target, found := strings.Cut(key, "/")
+			if !found {
+				return key
+			}
+			targets := map[string]string{
+				"space": "space", "page": "page", "blogpost": "blog post", "comment": "comment",
+				"attachment": "attachment", "folder": "folder", "embed": "Smart Link",
+				"database": "database", "whiteboard": "whiteboard", "custom": "custom content",
+			}
+			name, ok := targets[target]
+			if !ok {
+				name = target
+			}
+			if operation == "" {
+				return name
+			}
+			return strings.ToUpper(operation[:1]) + operation[1:] + " " + name
+		},
 		// planNumber shows a plan estimate or capacity without trailing zeros.
 		"planNumber": func(value any) string {
 			switch number := value.(type) {
