@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -146,9 +147,19 @@ func (s *Store) CreateProjectWithSchemes(ctx context.Context, actorID string, p 
 		}
 	}
 	board := models.Board{ID: NewID("brd"), ProjectID: p.ID, Name: p.Name + " board", Type: boardType}
-	err = tx.QueryRow(ctx, `INSERT INTO boards (id,project_id,name,type,filter_jql) VALUES ($1,$2,$3,$4,$5) RETURNING column_status_ids,filter_jql,quick_filters,swimlane_strategy,card_fields,column_limits`, board.ID, p.ID, board.Name, board.Type, "project = "+p.Key).Scan(&board.ColumnStatusIDs, &board.FilterJQL, &board.QuickFilters, &board.SwimlaneStrategy, &board.CardFields, &board.ColumnLimits)
+	var boardColumns, quickFilters []byte
+	err = tx.QueryRow(ctx, `INSERT INTO boards (id,project_id,name,type,filter_jql) VALUES ($1,$2,$3,$4,$5)
+		RETURNING board_columns,filter_jql,quick_filters,swimlane_strategy,card_fields`,
+		board.ID, p.ID, board.Name, board.Type, "project = "+p.Key).
+		Scan(&boardColumns, &board.FilterJQL, &quickFilters, &board.SwimlaneStrategy, &board.CardFields)
 	if err != nil {
 		return nil, err
+	}
+	if err = json.Unmarshal(boardColumns, &board.Columns); err != nil {
+		return nil, fmt.Errorf("decode board columns: %w", err)
+	}
+	if err = json.Unmarshal(quickFilters, &board.QuickFilters); err != nil {
+		return nil, fmt.Errorf("decode board quick filters: %w", err)
 	}
 	seq, err := nextSeq(ctx, tx, p.WorkspaceID)
 	if err != nil {

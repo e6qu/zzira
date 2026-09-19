@@ -611,6 +611,7 @@
   <div class="board-column-labels">
     {{range .ColumnHeaders}}<div class="board-column-head{{if .OverLimit}} is-over-limit{{end}}" id="board-column-{{.StatusID}}" data-status="{{.StatusID}}" data-total="{{.TotalCount}}" data-limit="{{.Limit}}"{{if .OverLimit}} aria-describedby="board-limit-{{.StatusID}}"{{end}}>
       <h2><span class="lozenge lozenge-column">{{.Name}}</span> <span class="column-count">{{.VisibleCount}}</span>{{if $.HasFilters}}<span class="column-total">of {{.TotalCount}}</span>{{end}}</h2>
+      {{if gt (len .StatusNames) 1}}<small class="column-statuses">{{range $index, $status := .StatusNames}}{{if $index}}, {{end}}{{$status}}{{end}}</small>{{end}}
       {{if .Limit}}<span class="column-limit" id="board-limit-{{.StatusID}}"><span aria-hidden="true">{{.TotalCount}} / {{.Limit}}</span><span class="sr-only">{{.TotalCount}} of {{.Limit}} work item limit{{if .OverLimit}}; limit exceeded{{end}}</span></span>{{end}}
     </div>{{end}}
   </div>
@@ -691,7 +692,23 @@
         <label><span>Swimlanes</span><select name="swimlanes"><option value="none"{{if eq .Data.Board.SwimlaneStrategy "none"}} selected{{end}}>No swimlanes</option><option value="assignee"{{if eq .Data.Board.SwimlaneStrategy "assignee"}} selected{{end}}>Group by assignee</option></select></label>
         <fieldset class="board-card-field-picker"><legend>Card fields</legend><label><input type="checkbox" name="cardField" value="priority"{{if .Data.ShowPriority}} checked{{end}}> Priority</label><label><input type="checkbox" name="cardField" value="assignee"{{if .Data.ShowAssignee}} checked{{end}}> Assignee</label><label><input type="checkbox" name="cardField" value="labels"{{if .Data.ShowLabels}} checked{{end}}> Labels</label></fieldset>
       </div></section>
-      <section class="surface-card board-setting-section" aria-labelledby="board-limits-heading"><div><span class="eyebrow">Flow</span><h2 id="board-limits-heading">Column limits</h2><p>Show a visible warning when a column carries more work than the team intends. Leave a limit at zero for no constraint.</p></div><div class="board-limit-grid">{{range .Data.Columns}}<label><span>{{.Status.Name}}</span><input type="number" name="limit_{{.Status.ID}}" value="{{.Limit}}" min="0" max="999" inputmode="numeric"><small>Maximum work items</small></label>{{end}}</div></section>
+      <section class="surface-card board-setting-section board-column-settings" aria-labelledby="board-columns-heading"><div><span class="eyebrow">Flow</span><h2 id="board-columns-heading">Columns</h2><p>Name each column, say which statuses stand in it, and cap the work it carries. A status can stand in one column only, and a status in none is not on the board.</p></div>
+        <div class="board-column-grid">{{range $index, $column := .Data.Columns}}<fieldset class="board-column-row"><legend>Column {{inc $index}}</legend>
+          <input type="hidden" name="columnKey" value="c{{$index}}">
+          <label><span>Name</span><input name="columnName" value="{{$column.Name}}" maxlength="64" required></label>
+          <label><span>Limit</span><input type="number" name="columnLimit" value="{{$column.Limit}}" min="0" max="999" inputmode="numeric"><small>Maximum work items, 0 for none</small></label>
+          <label class="board-column-delete"><input type="checkbox" name="deleteColumn" value="c{{$index}}"> Delete this column</label>
+        </fieldset>{{end}}
+        <fieldset class="board-column-row board-column-new"><legend>Add a column</legend>
+          <label><span>Name</span><input name="newColumnName" maxlength="64"><small>Leave empty to add none</small></label>
+        </fieldset></div>
+        <div class="board-status-placement"><h3>Statuses</h3><p>Each status stands in one column.</p>
+        {{range .Data.Statuses}}{{$status := .}}<div class="board-status-row"><input type="hidden" name="statusID" value="{{.ID}}"><label for="status-column-{{.ID}}">{{.Name}}</label><select id="status-column-{{.ID}}" name="statusColumn_{{.ID}}"><option value="">Not on the board</option>{{range $index, $column := $.Data.Columns}}<option value="c{{$index}}"{{if hasString $column.StatusIDs $status.ID}} selected{{end}}>{{$column.Name}}</option>{{end}}<option value="new">The column added above</option></select></div>{{end}}
+        </div></section>
+      <section class="surface-card board-setting-section" aria-labelledby="board-scope-heading"><div><span class="eyebrow">Scope</span><h2 id="board-scope-heading">Filter and estimate</h2><p>The filter decides which work the board and its backlog show. A scrum board estimates with a number field, or counts work items when none is chosen.</p></div><div class="board-setting-controls">
+        <label><span>Board filter (JQL)</span><input name="filterJQL" value="{{.Data.Board.FilterJQL}}" maxlength="2000"><small>Empty shows every work item in the project</small></label>
+        <div class="board-setting-field"><label for="board-estimate">Estimate</label><select id="board-estimate" name="estimationField"><option value="">Count work items</option>{{range .Data.EstimationFields}}<option value="{{.ID}}"{{if eq .ID $.Data.Board.EstimationFieldID}} selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+      </div></section>
       <section class="surface-card board-setting-section board-quick-filter-settings" aria-labelledby="board-filters-heading"><div><span class="eyebrow">Focus</span><h2 id="board-filters-heading">Quick filters</h2><p>Give the whole team reusable JQL buttons for the questions they ask during planning.</p></div><div data-quick-filter-list>{{range .Data.Board.QuickFilters}}{{template "board_quick_filter_row" .}}{{end}}{{template "board_quick_filter_row" .Data.EmptyFilter}}</div><button type="button" class="btn" data-add-quick-filter>Add quick filter</button><template data-quick-filter-template>{{template "board_quick_filter_row" .Data.EmptyFilter}}</template></section>
       <div class="board-settings-actions"><a class="btn" href="/board/{{.Data.Board.ID}}">Cancel</a><button class="btn btn-primary" type="submit">Save board settings</button></div>
     </form>

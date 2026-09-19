@@ -8,7 +8,7 @@ Boards show a project's work in columns. They also carry the board's backlog, sp
 |---|---|
 | `/board/{id}` | Columns with cards in rank order. Supports drag and keyboard moves, quick filters, assignee filters, WIP limit feedback, swimlanes and a work item preview. |
 | `/board/{id}/backlog` | Backlog and sprints: create, edit, start and complete sprints, and move and rank work items. |
-| `/board/{id}/settings` | For board administrators. Swimlanes (`none` or `assignee`), card fields (priority, assignee, labels), column WIP limits, up to 20 quick filters, and the board's administrators (users and groups). |
+| `/board/{id}/settings` | For board administrators. The board's columns (add, rename, delete, reorder the statuses between them, and a WIP limit each), its filter and its estimate, swimlanes (`none` or `assignee`), card fields (priority, assignee, labels), up to 20 quick filters, and the board's administrators (users and groups). |
 | `/projects/{key}/settings` | Create and delete the project's boards (`POST /projects/{key}/boards`). |
 
 ## Board REST API
@@ -61,7 +61,11 @@ The board, backlog and sprint issue reads take Jira's parameters:
 
 **Sprint states.** A sprint moves from future to active to closed. A board runs one active sprint at a time unless the site turns on **parallel sprints** in Jira settings (`parallelSprintsEnabled`). Starting a second sprint without that setting is refused.
 
-**Moving a card between columns.** A drag or keyboard move that changes column is a real workflow transition, not a status write. The board tries each transition out of the card's current status whose destination is the target column's status, in workflow order, and keeps the first that runs. Conditions, validators, post-functions and history therefore apply exactly as on the work item page.
+**Columns.** A column is a name and the statuses that stand in it, in order. Several statuses may share a column -- work in any of them appears there, ranked as one list -- and a status stands in at most one column, which the settings page enforces by asking each status once which column it belongs to. A status in no column is not on the board: its work items are out of the board's scope until a column takes them. A column's WIP limit counts the work in every status it gathers. Each board keeps at least one column.
+
+**Filter and estimate.** A board administrator changes the board's filter (JQL, empty for every work item in the project) and its estimate (a number field, or counting work items) after the board exists, which is what Jira's board settings do.
+
+**Moving a card between columns.** A drag or keyboard move that changes column is a real workflow transition, not a status write. A card dropped on a column takes the first of that column's statuses. The board tries each transition out of the card's current status whose destination is that status, in workflow order, and keeps the first that runs. Conditions, validators, post-functions and history therefore apply exactly as on the work item page.
 - A target status that is not one of the board's columns is 400.
 - A column the current workflow offers no transition into is refused, and the card stays where it was.
 - A missing permission stops the move at once, without trying the next transition.
@@ -86,10 +90,8 @@ The default permission scheme grants Schedule issues, Edit issues, Transition is
 
 ## Gaps
 
-- Columns map one status each. You cannot configure columns (add, rename, or group several statuses in one column).
 - Swimlanes support only `none` and `assignee`; Jira also offers epics, stories, queries and projects.
 - Board features cannot be toggled (`PUT …/features`).
-- A board's filter and estimation field cannot be changed after the board is created.
 
 Remaining work is tracked in [PLAN.md](../PLAN.md).
 

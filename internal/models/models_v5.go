@@ -12,6 +12,17 @@ const (
 	EntityServiceRequest = "service_request"
 )
 
+// BoardColumn is one column of a board: a name and the statuses whose work
+// items stand in it. Jira maps several statuses to one column -- a work item
+// in any of them belongs to that column -- and this product mapped exactly
+// one, which is why a column could not be named or grouped.
+type BoardColumn struct {
+	Name      string   `json:"name"`
+	StatusIDs []string `json:"statusIds"`
+	// Limit is the column's maximum work items; 0 is no limit.
+	Limit int `json:"limit,omitempty"`
+}
+
 type Board struct {
 	ID               string             `json:"id"`
 	ProjectID        string             `json:"projectId"`
@@ -20,12 +31,11 @@ type Board struct {
 	WorkspaceID      string             `json:"-"`
 	Name             string             `json:"name"`
 	Type             string             `json:"type"`
-	ColumnStatusIDs  []string           `json:"columnStatusIds"`
+	Columns          []BoardColumn      `json:"columns"`
 	FilterJQL        string             `json:"filterJql"`
 	QuickFilters     []BoardQuickFilter `json:"quickFilters,omitempty"`
 	SwimlaneStrategy string             `json:"swimlaneStrategy"`
 	CardFields       []string           `json:"cardFields,omitempty"`
-	ColumnLimits     map[string]int     `json:"columnLimits,omitempty"`
 	// JiraID and FilterJiraID are the board and board filter ids clients see.
 	JiraID       int64 `json:"-"`
 	FilterJiraID int64 `json:"-"`
@@ -37,6 +47,29 @@ type Board struct {
 	SourceFilterJiraID int64  `json:"-"`
 	// ProjectTypeKey is the type of the project the board is located in.
 	ProjectTypeKey string `json:"-"`
+}
+
+// StatusIDs are every status the board shows, in column order. Most callers
+// want this rather than the columns themselves: a board's scope is the work
+// items in any of its statuses.
+func (b *Board) StatusIDs() []string {
+	ids := make([]string, 0, len(b.Columns))
+	for _, column := range b.Columns {
+		ids = append(ids, column.StatusIDs...)
+	}
+	return ids
+}
+
+// ColumnOfStatus is the index of the column a status stands in, or -1.
+func (b *Board) ColumnOfStatus(statusID string) int {
+	for index, column := range b.Columns {
+		for _, id := range column.StatusIDs {
+			if id == statusID {
+				return index
+			}
+		}
+	}
+	return -1
 }
 
 // BoardAdmin is one holder of a board's administration rights. Jira Software
