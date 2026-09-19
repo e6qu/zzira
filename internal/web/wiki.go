@@ -615,6 +615,25 @@ func (h *Handler) WikiSpacePermissionGrants(w http.ResponseWriter, r *http.Reque
 			http.Error(w, "Choose a permission to grant.", http.StatusBadRequest)
 			return
 		}
+		// A space that says nothing about access is open to every member; the
+		// first grant ends that and leaves only the people it names. Record
+		// the administrator writing it as an administrator of this space, or
+		// granting someone else the first permission would take the space
+		// away from the person granting it -- including the page they would
+		// grant the second permission from.
+		implicit, implicitErr := h.Store.WikiSpaceAccessIsImplicit(r.Context(), ws, user.ID, space.Key)
+		if implicitErr != nil {
+			status, message := wikiWebError(implicitErr)
+			http.Error(w, message, status)
+			return
+		}
+		if implicit {
+			if _, err = h.Store.AddWikiSpacePermission(r.Context(), ws, user.ID, space.Key, "user", user.ID, "administer", "space"); err != nil {
+				status, message := wikiWebError(err)
+				http.Error(w, message, status)
+				return
+			}
+		}
 		_, err = h.Store.AddWikiSpacePermission(r.Context(), ws, user.ID, space.Key, r.PostFormValue("subjectType"), r.PostFormValue("subjectId"), key, target)
 	case "remove":
 		err = h.Store.RemoveWikiSpacePermission(r.Context(), ws, user.ID, space.Key, r.PostFormValue("grantId"))

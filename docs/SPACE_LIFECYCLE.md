@@ -109,6 +109,15 @@ A site whose only change is a private space created with `_private` reports
 `PRE_ROLES`. See [roles](CONFLUENCE_SPACE_ROLES.md) and
 [transition](SPACE_PERMISSION_TRANSITION.md).
 
+## Browser
+
+A space's own page carries **Space details** for its administrators: the name,
+the description and which current page the space opens on. The form posts to
+`POST /wiki/spaces/{space}/details`, which resolves the space the way the
+other administration forms do -- as an administrator, not through the
+visibility gate -- so a space whose grants name somebody else stays
+administrable by the people who own it.
+
 ## Permissions
 
 Update, delete, settings changes and theme changes need space
@@ -125,8 +134,6 @@ Tracked in [PLAN.md](../PLAN.md).
 - **Stored-only settings.** `routeOverrideEnabled` (alias URLs),
   `contentMode` and the selected theme are stored and reported, but the
   browser UI does not use them.
-- **Space management UI.** Spaces cannot be renamed or given a new
-  description in the browser. Archiving, restoring and deleting are there.
 
 ## Tests
 

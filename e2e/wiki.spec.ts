@@ -39,10 +39,13 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await expect(page.getByRole('region', { name: 'Space properties' })).toContainText('handbook-config');
   let spaceRoles = page.getByRole('region', { name: 'Space roles' });
   await spaceRoles.locator('summary').filter({ hasText: 'Create custom role' }).click();
-  await spaceRoles.getByLabel('Role name').fill(editorRole);
-  await spaceRoles.getByLabel('Description').fill('Edit governed handbook pages');
-  await spaceRoles.getByLabel('Update pages').check();
-  await spaceRoles.getByRole('button', { name: 'Create custom role', exact: true }).click();
+  // Each custom role carries an edit form of its own, so the create form is
+  // addressed by the button that submits it rather than by the card.
+  const createRole = spaceRoles.locator('form').filter({ has: page.getByRole('button', { name: 'Create custom role', exact: true }) });
+  await createRole.getByLabel('Role name').fill(editorRole);
+  await createRole.getByLabel('Description').fill('Edit governed handbook pages');
+  await createRole.getByLabel('Update pages').check();
+  await createRole.getByRole('button', { name: 'Create custom role', exact: true }).click();
   spaceRoles = page.getByRole('region', { name: 'Space roles' });
   await expect(spaceRoles).toContainText(editorRole);
   await spaceRoles.locator('summary').filter({ hasText: 'Set access-class assignment' }).click();

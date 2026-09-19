@@ -224,12 +224,24 @@ func TestDirectSpaceGrantsAreManagedInTheBrowser(t *testing.T) {
 	if response := f.post(t, f.handler.WikiSpacePermissionGrants, f.adminID, path, add); response.Code != http.StatusSeeOther {
 		t.Fatalf("add = %d, want 303: %s", response.Code, response.Body.String())
 	}
+	// The space had no roles and no grants, so it was open to every member.
+	// The first grant ends that, and the administrator writing it keeps the
+	// space: theirs is recorded beside the one they asked for.
 	grants, err := f.store.WikiSpacePermissionGrants(ctx, f.workspaceID, f.adminID, f.spaceKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(grants) != 1 || grants[0].SubjectID != f.memberID || grants[0].Permission != "read/space" {
-		t.Fatalf("grants after add = %+v", grants)
+	held := map[string]string{}
+	for _, grant := range grants {
+		held[grant.SubjectID] = grant.Permission
+	}
+	if len(grants) != 2 || held[f.memberID] != "read/space" || held[f.adminID] != "administer/space" {
+		t.Fatalf("grants after the first add = %+v", grants)
+	}
+	// The space page still opens for them, which is the point of that second
+	// grant: the visibility gate now names who may read this space.
+	if _, err = f.store.WikiSpace(ctx, f.workspaceID, f.adminID, f.spaceID); err != nil {
+		t.Fatalf("the granting administrator lost the space page: %v", err)
 	}
 
 	denied := f.post(t, f.handler.WikiSpacePermissionGrants, f.memberID, path,
@@ -238,7 +250,13 @@ func TestDirectSpaceGrantsAreManagedInTheBrowser(t *testing.T) {
 		t.Fatalf("a member granting themselves administration = %d, want 403", denied.Code)
 	}
 
-	remove := url.Values{"action": {"remove"}, "grantId": {grants[0].ID}}
+	memberGrant := ""
+	for _, grant := range grants {
+		if grant.SubjectID == f.memberID {
+			memberGrant = grant.ID
+		}
+	}
+	remove := url.Values{"action": {"remove"}, "grantId": {memberGrant}}
 	if response := f.post(t, f.handler.WikiSpacePermissionGrants, f.adminID, path, remove); response.Code != http.StatusSeeOther {
 		t.Fatalf("remove = %d, want 303: %s", response.Code, response.Body.String())
 	}
@@ -246,7 +264,7 @@ func TestDirectSpaceGrantsAreManagedInTheBrowser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(grants) != 0 {
+	if len(grants) != 1 || grants[0].SubjectID != f.adminID {
 		t.Fatalf("grants after remove = %+v", grants)
 	}
 }

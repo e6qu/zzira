@@ -39,10 +39,13 @@ func init() {
 			if !found {
 				return key
 			}
+			// The content targets read as plurals, the way the space
+			// permission form has always named them ("Update pages"), and the
+			// space itself stays singular.
 			targets := map[string]string{
-				"space": "space", "page": "page", "blogpost": "blog post", "comment": "comment",
-				"attachment": "attachment", "folder": "folder", "embed": "Smart Link",
-				"database": "database", "whiteboard": "whiteboard", "custom": "custom content",
+				"space": "space", "page": "pages", "blogpost": "blog posts", "comment": "comments",
+				"attachment": "attachments", "folder": "folders", "embed": "Smart Links",
+				"database": "databases", "whiteboard": "whiteboards", "custom": "custom content",
 			}
 			name, ok := targets[target]
 			if !ok {

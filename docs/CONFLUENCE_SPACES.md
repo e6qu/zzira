@@ -133,9 +133,11 @@ Tracked in [PLAN.md](../PLAN.md).
   no site export, and no PDF, Word or CSV export of a space.
 - **Export contents.** The HTML export has no page hierarchy, comments,
   whiteboards, databases, folders or custom content.
-- **Space management UI.** Spaces cannot be renamed or given a new
-  description in the browser. Those two changes are API-only (see
-  [lifecycle](SPACE_LIFECYCLE.md)).
+
+## Browser
+
+Renaming a space, rewriting its description and choosing its home page live on
+the space page; see [lifecycle](SPACE_LIFECYCLE.md#browser).
 
 ## Tests
 
