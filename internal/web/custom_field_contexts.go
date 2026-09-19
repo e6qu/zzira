@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,8 +17,20 @@ type fieldContextView struct {
 	Context  *models.CustomFieldContext
 	Projects []*models.Project
 	Types    []string
-	Options  []models.CustomFieldOption
+	Options  []optionView
 	IsSelect bool
+	// Cascading is true for a cascading select, whose options may be children
+	// of a first-level option.
+	Cascading bool
+	// Parents are the options a cascading child may be added under.
+	Parents []models.CustomFieldOption
+}
+
+// optionView is one option with the name of the parent it belongs to, so a
+// cascading select's second level reads as a pair rather than a bare value.
+type optionView struct {
+	models.CustomFieldOption
+	ParentValue string
 }
 
 type customFieldCard struct {
@@ -120,13 +133,26 @@ func (h *Handler) loadCustomFieldsPage(r *http.Request, workspaceID string) (cus
 			for _, issueTypeID := range found.IssueTypeIDs {
 				view.Types = append(view.Types, typeNames[issueTypeID])
 			}
-			if field.Type == models.CustomFieldSelect || field.Type == models.CustomFieldMultiSelect {
+			// A cascading select's options are managed here too: it is a
+			// select whose options may carry a parent.
+			if field.Type == models.CustomFieldSelect || field.Type == models.CustomFieldMultiSelect ||
+				field.Type == models.CustomFieldCascadingSelect {
 				view.IsSelect = true
 				options, optionErr := h.Store.CustomFieldOptions(r.Context(), workspaceID, field.ID, found.ID)
 				if optionErr != nil {
 					return data, optionErr
 				}
-				view.Options = options
+				view.Cascading = field.Type == models.CustomFieldCascadingSelect
+				values := make(map[string]string, len(options))
+				for _, option := range options {
+					values[option.ID] = option.Value
+				}
+				for _, option := range options {
+					view.Options = append(view.Options, optionView{CustomFieldOption: option, ParentValue: values[option.ParentID]})
+					if view.Cascading && option.ParentID == "" {
+						view.Parents = append(view.Parents, option)
+					}
+				}
 			}
 			card.Contexts = append(card.Contexts, view)
 		}
@@ -207,8 +233,10 @@ func (h *Handler) CustomFieldContextMutation(w http.ResponseWriter, r *http.Requ
 		err = h.Store.SetCustomFieldContextAssetsMultiple(r.Context(), workspaceID, user.ID, fieldID, contextID, r.PostFormValue("assetsMultiple") == "on")
 		notice = "Assets objects saved."
 	case "add-option":
-		_, err = h.Store.CreateCustomFieldOptions(r.Context(), workspaceID, user.ID, fieldID, contextID,
-			[]string{r.PostFormValue("value")})
+		// A cascading select's second level is an option with a parent; every
+		// other select has one level, and the form posts no parent.
+		_, err = h.Store.CreateCustomFieldOptionsWithParents(r.Context(), workspaceID, user.ID, fieldID, contextID,
+			[]models.CustomFieldOption{{Value: r.PostFormValue("value"), ParentID: r.PostFormValue("parentId")}})
 		notice = "Option added."
 	case "disable-option":
 		err = h.Store.UpdateCustomFieldOptions(r.Context(), workspaceID, user.ID, fieldID, contextID,
@@ -217,8 +245,16 @@ func (h *Handler) CustomFieldContextMutation(w http.ResponseWriter, r *http.Requ
 				Disabled: r.PostFormValue("disabled") == "true"}})
 		notice = "Option updated."
 	case "move-option":
-		err = h.Store.ReorderCustomFieldOptions(r.Context(), workspaceID, user.ID, fieldID, contextID,
-			[]string{r.PostFormValue("optionId")}, "", "First")
+		// Jira's move takes an option to sit after, or First/Last. The page
+		// offers the four moves an administrator actually makes, and works
+		// out which option "up" and "down" land after.
+		var after, position string
+		after, position, err = h.optionMoveTarget(r.Context(), workspaceID, fieldID, contextID,
+			r.PostFormValue("optionId"), r.PostFormValue("direction"))
+		if err == nil {
+			err = h.Store.ReorderCustomFieldOptions(r.Context(), workspaceID, user.ID, fieldID, contextID,
+				[]string{r.PostFormValue("optionId")}, after, position)
+		}
 		notice = "Option moved."
 	case "delete-option":
 		err = h.Store.DeleteCustomFieldOption(r.Context(), workspaceID, user.ID, fieldID, contextID,
@@ -233,6 +269,61 @@ func (h *Handler) CustomFieldContextMutation(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	redirectLocal(w, r, target+"?notice="+url.QueryEscape(notice))
+}
+
+// optionMoveTarget turns a direction from the settings page into the move the
+// store takes. Up and down are expressed as the option to sit after, because
+// that is the only relative move Jira's API has: "up" is after the option two
+// places above, and "down" is after the option below.
+func (h *Handler) optionMoveTarget(ctx context.Context, workspaceID, fieldID, contextID, optionID, direction string) (after, position string, err error) {
+	switch direction {
+	case "first", "":
+		return "", "First", nil
+	case "last":
+		return "", "Last", nil
+	case "up", "down":
+	default:
+		return "", "", store.ErrFieldContextValidation
+	}
+	options, err := h.Store.CustomFieldOptions(ctx, workspaceID, fieldID, contextID)
+	if err != nil {
+		return "", "", err
+	}
+	// A cascading select orders each parent's children among themselves, so
+	// only the option's own siblings decide where it can go.
+	var parentID string
+	index := -1
+	for _, option := range options {
+		if option.ID == optionID {
+			parentID = option.ParentID
+		}
+	}
+	siblings := make([]models.CustomFieldOption, 0, len(options))
+	for _, option := range options {
+		if option.ParentID == parentID {
+			if option.ID == optionID {
+				index = len(siblings)
+			}
+			siblings = append(siblings, option)
+		}
+	}
+	if index < 0 {
+		return "", "", store.ErrFieldContextNotFound
+	}
+	if direction == "up" {
+		switch index {
+		case 0:
+			return "", "First", nil
+		case 1:
+			return "", "First", nil
+		default:
+			return siblings[index-2].ID, "", nil
+		}
+	}
+	if index >= len(siblings)-1 {
+		return "", "Last", nil
+	}
+	return siblings[index+1].ID, "", nil
 }
 
 func formValues(r *http.Request, name string) []string {

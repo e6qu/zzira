@@ -52,16 +52,15 @@ Responses use Jira's beans:
 
 ## UI
 
-- `/settings/custom-fields`: add, reorder (move first), disable or enable options for each context.
+- `/settings/custom-fields`: for each context, add an option (under a first-level option, for a cascading select), move it up, down, first or last, disable or enable it, and delete it — naming the option that replaces it on work items that hold it, since an option in use is otherwise refused.
 - Create form: shows a cascading select's first-level options.
 - Work item page and edit dialog: every picker lists its choices (cascading pairs, people, groups, projects, the project's versions) and names the chosen values. When the choices are not loaded, as in the offline replica, the field is a plain input, so an edit never clears it.
 
 ## Code
 
-`internal/api3/custom_field_options.go`, `internal/api3/custom_field_values.go`, `migrations/137_custom_field_options.sql`; tests in `internal/api3/custom_field_contexts_test.go`, `custom_field_pickers_test.go` and `e2e/custom_field_options.spec.ts`.
+`internal/api3/custom_field_options.go`, `internal/api3/custom_field_values.go`, `internal/web/custom_field_contexts.go` (the settings page), `migrations/137_custom_field_options.sql`; tests in `internal/api3/custom_field_contexts_test.go`, `custom_field_pickers_test.go`, `internal/web/custom_field_options_admin_test.go` and `e2e/custom_field_options.spec.ts`.
 
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- The settings page cannot delete an option, replace it on work items, or move it anywhere but first; those actions are API-only.

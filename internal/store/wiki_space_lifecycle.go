@@ -271,11 +271,13 @@ func setWikiSpaceStatus(ctx context.Context, tx pgx.Tx, ws, actor, spaceID, stat
 	return updated, nil
 }
 
-// WikiSpaceForLifecycle resolves the space a lifecycle form names. A site
-// administrator reaches every space, including one in the trash they were never
-// a member of, because acting on the trash is theirs alone; everyone else
-// reaches only the spaces they can see.
-func (s *Store) WikiSpaceForLifecycle(ctx context.Context, ws, actor, id string) (*models.WikiSpace, error) {
+// WikiSpaceForAdministration resolves the space an administration form names.
+// A site administrator reaches every space -- one in the trash they were never
+// a member of, and one whose grants name someone else, because a space that
+// says who may read it hides itself from everyone it did not name and an
+// administrator locked out of the space they are configuring could not undo
+// it. Everyone else reaches only the spaces they can see.
+func (s *Store) WikiSpaceForAdministration(ctx context.Context, ws, actor, id string) (*models.WikiSpace, error) {
 	admin, err := s.IsAdmin(ctx, ws, actor)
 	if err != nil {
 		return nil, err

@@ -81,6 +81,16 @@ used, and whether writers may create their own.
   takes `expand`. Requesting `body.export_view` or `body.styled_view` limits a
   page of results to 25.
 
+## Browser
+
+Custom roles are created, edited and deleted from the space page's **Space
+roles** card, at `POST /wiki/spaces/{space}/roles` with `action=create`,
+`update` or `delete`. The permission checkboxes are the enforced catalogue, so
+a role built in the browser can hold everything a role built through the API
+can, and the edit form offers the two reassignment roles the API takes for
+anonymous and guest holders. System roles are Confluence's own: they are shown
+but not editable.
+
 ## Tests
 
 `internal/confluence/space_roles_states_test.go`
@@ -91,7 +101,6 @@ Tracked in [PLAN.md](../PLAN.md).
 
 - **Role catalogue.** No `export/space`, `archive/page` or
   `restrict_content/space` permissions.
-- **Custom role UI.** Custom roles cannot be edited or deleted in the browser.
 
 ## See also
 

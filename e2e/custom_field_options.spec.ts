@@ -59,11 +59,15 @@ test('site administrators give a select field options and the create form offers
   }
 
   const optionValues = async () => page.locator(`.custom-field-card[data-field-id="${fieldID}"] .context-option-row strong`).allTextContents();
+  // A row names the other options too, in the replacement list its delete
+  // form offers, so a row is found by its own first cell rather than by any
+  // text it contains.
+  const optionRow = (value: string) => page.locator(`.custom-field-card[data-field-id="${fieldID}"] .context-option-row`)
+    .filter({ has: page.locator('span[role="cell"] > strong', { hasText: value }) });
   expect(await optionValues()).toEqual(['Canary', 'Broad']);
 
   // Reordering is reflected in the admin list.
-  await page.locator(`.custom-field-card[data-field-id="${fieldID}"] .context-option-row`)
-    .filter({ hasText: 'Broad' }).getByRole('button', { name: /Move first/ }).click();
+  await optionRow('Broad').getByRole('button', { name: /Move first/ }).click();
   await expect(page.getByRole('status')).toContainText('Option moved.');
   expect(await optionValues()).toEqual(['Broad', 'Canary']);
 
@@ -86,8 +90,7 @@ test('site administrators give a select field options and the create form offers
 
   // A disabled option stays on the work item but leaves the form.
   await page.goto('/settings/custom-fields');
-  await page.locator(`.custom-field-card[data-field-id="${fieldID}"] .context-option-row`)
-    .filter({ hasText: 'Canary' }).getByRole('button', { name: /Disable/ }).click();
+  await optionRow('Canary').getByRole('button', { name: /Disable/ }).click();
   await expect(page.getByRole('status')).toContainText('Option updated.');
 
   await page.goto(`/projects/${projectKey}`);
@@ -102,6 +105,23 @@ test('site administrators give a select field options and the create form offers
   expect(stored.fields[fieldID]).toBeTruthy();
 
   await page.goto('/settings/custom-fields');
+
+  // Reordering runs both ways, not just "move first", and an option the field
+  // no longer needs is deleted here rather than through the API. The work
+  // item holds Broad, so deleting Broad has to move it to another option.
+  await optionRow('Broad').getByRole('button', { name: /Move down/ }).click();
+  expect(await optionValues()).toEqual(['Canary', 'Broad']);
+  await optionRow('Broad').getByRole('button', { name: /Move up/ }).click();
+  expect(await optionValues()).toEqual(['Broad', 'Canary']);
+
+  await optionRow('Broad').locator('summary').click();
+  const removeBroad = optionRow('Broad').locator('form').filter({ has: page.getByRole('button', { name: 'Delete option', exact: true }) });
+  await removeBroad.getByLabel('Replace it on work items with').selectOption({ label: 'Canary' });
+  await removeBroad.getByRole('button', { name: 'Delete option', exact: true }).click();
+  expect(await optionValues()).toEqual(['Canary']);
+  const moved = await (await page.request.get(`/rest/api/3/issue/${issueKey}`, { headers: auth })).json();
+  expect(moved.fields[fieldID].value).toBe('Canary');
+
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.setViewportSize({ width: 1280, height: 720 });

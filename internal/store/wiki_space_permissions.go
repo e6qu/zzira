@@ -117,6 +117,22 @@ func (s *Store) resolveSubject(ctx context.Context, ws, actor, subjectType, iden
 	}
 }
 
+// WikiSpaceAccessIsImplicit reports whether a space still says nothing about
+// who may do what -- no role assignments and no direct grants -- which is the
+// state where every member reaches it. The first role or grant ends that, so a
+// caller that is about to write one can see the transition coming.
+func (s *Store) WikiSpaceAccessIsImplicit(ctx context.Context, ws, actor, spaceKey string) (bool, error) {
+	spaceID, err := s.spaceForAdministration(ctx, ws, actor, spaceKey)
+	if err != nil {
+		return false, err
+	}
+	var implicit bool
+	err = s.Pool.QueryRow(ctx, `SELECT
+		NOT EXISTS(SELECT 1 FROM wiki_space_role_assignments WHERE space_id::text=$1)
+		AND NOT EXISTS(SELECT 1 FROM wiki_space_permission_grants WHERE space_id::text=$1)`, spaceID).Scan(&implicit)
+	return implicit, err
+}
+
 // AddWikiSpacePermission grants one permission in a space.
 func (s *Store) AddWikiSpacePermission(ctx context.Context, ws, actor, spaceKey, subjectType, identifier, key, target string) (WikiSpacePermissionGrant, error) {
 	spaceID, err := s.spaceForAdministration(ctx, ws, actor, spaceKey)
@@ -175,14 +191,18 @@ func (s *Store) RemoveWikiSpacePermission(ctx context.Context, ws, actor, spaceK
 	return err
 }
 
-// WikiSpacePermissionGrants lists a space's direct grants.
+// WikiSpacePermissionGrants lists a space's direct grants. It resolves the
+// space the way adding and removing a grant do, rather than through the
+// ordinary visibility gate: a space that names who may read it hides itself
+// from everyone it did not name, so an administrator who granted the first
+// permission to someone else could write grants they could no longer read.
 func (s *Store) WikiSpacePermissionGrants(ctx context.Context, ws, actor, spaceKey string) ([]WikiSpacePermissionGrant, error) {
-	space, err := s.WikiSpaceByKey(ctx, ws, actor, spaceKey)
+	spaceID, err := s.spaceForAdministration(ctx, ws, actor, spaceKey)
 	if err != nil {
 		return nil, err
 	}
 	rows, err := s.Pool.Query(ctx, `SELECT id::text,subject_type,subject_id,permission
-		FROM wiki_space_permission_grants WHERE space_id::text=$1 ORDER BY id`, space.ID)
+		FROM wiki_space_permission_grants WHERE space_id::text=$1 ORDER BY id`, spaceID)
 	if err != nil {
 		return nil, err
 	}

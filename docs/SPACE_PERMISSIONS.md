@@ -42,6 +42,14 @@ permission check accepts either. Part of
     any of its members is allowed.
   - **Missing page.** A page that does not exist is 404, not `false`.
 
+## Browser
+
+The space page lists a space's direct grants for its administrators, beside
+the roles they complement, and grants or removes one at
+`POST /wiki/spaces/{space}/permissions` (`action=add` with a subject and a
+permission from the catalogue, or `action=remove` with a grant id). Removing
+a subject's `read/space` takes their other grants with it, as the API does.
+
 ## Permissions
 
 Granting and removing need space administration or workspace administration.
@@ -58,8 +66,6 @@ Tracked in [PLAN.md](../PLAN.md).
   `user` or `group`.
 - **Permission check.** It covers pages only, not blog posts, attachments,
   comments or tree content.
-- **Browser.** Direct grants cannot be viewed or edited in the browser; only
-  role assignments can.
 
 ## Tests
 

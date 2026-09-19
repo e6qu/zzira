@@ -31,7 +31,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | Knowledge user authors and discusses a page | 🟡 | `wiki`, `wiki_content_tree`, `wiki_drafts_purge`, `wiki_page_details`, `wiki_page_lifecycle`, `wiki_mentions`, `wiki_watches` | Full editor; moving inline comments with edited passages ([CONFLUENCE_SITE_SURFACES](CONFLUENCE_SITE_SURFACES.md)) |
 | Knowledge team collaborates live | ✅ | `wiki_live_editing`, `wiki_presence` | — |
 | Knowledge user diagrams or models data | 🟡 | `wiki_database`, `wiki_whiteboard` | Direct manipulation, advanced whiteboard objects, rich embeds, exports |
-| Space manager governs knowledge | 🟡 | `wiki_space_tools`, `wiki_page_lifecycle`, `classification_levels` | Space import |
+| Space manager governs knowledge | 🟡 | `wiki_space_admin` (details, custom roles, direct grants), `wiki_space_tools`, `wiki_page_lifecycle`, `classification_levels` | Space import |
 | Site admin manages people, access and Jira settings | 🟡 | `admin`, `people`, `global_permissions`, `identity-providers`, `permission_schemes`, `permission_helper`, `notification_schemes`, `notification_helper`, `notification_preferences`, `notifications`, `issue_security_schemes` | Remaining enterprise identity journeys ([ADMIN](ADMIN.md)) |
 | Site admin manages apps | 🟡 | `apps` | Several Connect module families; Forge compute; workflow modules ([APPS](APPS.md)) |
 
