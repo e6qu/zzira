@@ -1644,18 +1644,30 @@ func serviceFieldIDs(value any) []string {
 // serviceFieldDisplay writes a stored field value for people: options and
 // members by name, and lists joined.
 func serviceFieldDisplay(fieldType string, value any, catalog store.CustomFieldValueCatalog, pickerNames map[string]string) string {
+	// A value is a bare id, and each kind of field draws its ids from its own
+	// sequence: an option id, an account id, a group id and a picker id can
+	// all be "10003". Reading them from whichever catalogue answers first
+	// showed a version picker the value of a select option with the same id,
+	// so each field type reads only the catalogue its ids belong to.
 	name := func(id string) string {
-		if option, ok := catalog.Options[id]; ok {
-			return option.Value
-		}
-		if user, ok := catalog.Users[id]; ok {
-			return user.DisplayName
-		}
-		if group, ok := catalog.Groups[id]; ok {
-			return group.Name
-		}
-		if picked, ok := pickerNames[id]; ok {
-			return picked
+		switch fieldType {
+		case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect:
+			if option, ok := catalog.Options[id]; ok {
+				return option.Value
+			}
+		case models.CustomFieldUser, models.CustomFieldMultiUser:
+			if user, ok := catalog.Users[id]; ok {
+				return user.DisplayName
+			}
+		case models.CustomFieldGroup, models.CustomFieldMultiGroup:
+			if group, ok := catalog.Groups[id]; ok {
+				return group.Name
+			}
+		case models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion,
+			models.CustomFieldTeam, models.CustomFieldAsset:
+			if picked, ok := pickerNames[id]; ok {
+				return picked
+			}
 		}
 		return id
 	}
@@ -1872,7 +1884,11 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 	}
 	decodedFields := map[string]any{}
 	optionIDs, userIDs, groupIDs := []string{}, []string{}, []string{}
-	pickerNames := map[string]string{}
+	// Each picker field keeps its own choices. Option ids, account ids, group
+	// ids and picker ids are separate sequences that collide, so one shared
+	// map of names would answer for the wrong field: a version picker once
+	// showed the value of a select option that happened to share its id.
+	pickerNames := map[string]map[string]string{}
 	for _, field := range configuredFields {
 		if !field.Custom {
 			continue
@@ -1900,9 +1916,11 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Could not render request fields.", http.StatusInternalServerError)
 				return
 			}
+			names := make(map[string]string, len(choices))
 			for _, choice := range choices {
-				pickerNames[choice.ID] = choice.Value
+				names[choice.ID] = choice.Value
 			}
+			pickerNames[field.ID] = names
 		}
 	}
 	fieldCatalog, err := h.Store.LoadCustomFieldValueCatalog(r.Context(), workspaceID, optionIDs, userIDs, groupIDs)
@@ -1913,7 +1931,7 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 	requestFields := make([]serviceRequestFieldValueView, 0)
 	for _, field := range configuredFields {
 		if value, ok := decodedFields[field.ID]; ok {
-			requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: serviceFieldDisplay(field.Type, value, fieldCatalog, pickerNames)})
+			requestFields = append(requestFields, serviceRequestFieldValueView{Name: field.Name, Value: serviceFieldDisplay(field.Type, value, fieldCatalog, pickerNames[field.ID])})
 		}
 	}
 	var assetInventory *models.ServiceAssetInventory

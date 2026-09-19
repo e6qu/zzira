@@ -82,3 +82,38 @@ func TestEncodeServicePortalField(t *testing.T) {
 		}
 	}
 }
+
+// Ids collide across kinds: option 10003, account 10003, group 10003 and
+// version 10003 are four different things. A request page that read them from
+// whichever catalogue answered first showed a version picker the value of a
+// select option with the same id, so each field type reads only its own.
+func TestServiceFieldDisplayReadsOnlyItsOwnCatalogue(t *testing.T) {
+	const shared = "10003"
+	catalog := store.CustomFieldValueCatalog{
+		Options: map[string]models.CustomFieldOption{shared: {ID: shared, Value: "EU"}},
+		Users:   map[string]*models.User{shared: {ID: shared, DisplayName: "Demo User"}},
+		Groups:  map[string]store.SiteGroup{shared: {ID: shared, Name: "Support"}},
+	}
+	pickers := map[string]string{shared: "Portal release 1"}
+	for _, check := range []struct {
+		fieldType string
+		value     any
+		want      string
+	}{
+		{models.CustomFieldSelect, shared, "EU"},
+		{models.CustomFieldUser, shared, "Demo User"},
+		{models.CustomFieldGroup, shared, "Support"},
+		{models.CustomFieldVersion, shared, "Portal release 1"},
+		{models.CustomFieldMultiVersion, []any{shared}, "Portal release 1"},
+		{models.CustomFieldProject, shared, "Portal release 1"},
+		// An id the field's own catalogue does not know stays an id rather
+		// than borrowing a name from another kind.
+		{models.CustomFieldSelect, "99", "99"},
+	} {
+		t.Run(check.fieldType, func(t *testing.T) {
+			if got := serviceFieldDisplay(check.fieldType, check.value, catalog, pickers); got != check.want {
+				t.Fatalf("%s shows %q, want %q", check.fieldType, got, check.want)
+			}
+		})
+	}
+}

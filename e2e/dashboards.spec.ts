@@ -313,6 +313,28 @@ test('activity stream, calendar, road map and bubble chart gadgets follow recent
   await expect(page.getByLabel('Group charts by', { exact: true })).toHaveCount(0);
   await page.goto(`/dashboards/${id}`);
   await page.setViewportSize({ width: 320, height: 740 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  // Reflow asks that the page does not scroll sideways, which is what this
+  // measures: nothing on it can be reached by scrolling right. The month grid
+  // is the exception reflow makes for a table -- it keeps a 420px minimum and
+  // scrolls inside its own labelled, focusable region -- so
+  // documentElement.scrollWidth counts those clipped 420px although the page
+  // itself cannot move, which is why it is not the measure here.
+  const reflow = await page.evaluate(() => {
+    window.scrollTo(500, 0);
+    const scrolled = window.scrollX;
+    window.scrollTo(0, 0);
+    const calendar = document.querySelector('.gadget-calendar-scroll') as HTMLElement | null;
+    return {
+      scrolled,
+      bodyScrollWidth: document.body.scrollWidth,
+      innerWidth,
+      calendarScrolls: !!calendar && calendar.scrollWidth > calendar.clientWidth,
+      calendarFocusable: calendar?.tabIndex === 0,
+    };
+  });
+  expect(reflow.scrolled).toBe(0);
+  expect(reflow.bodyScrollWidth).toBeLessThanOrEqual(reflow.innerWidth);
+  expect(reflow.calendarScrolls).toBe(true);
+  expect(reflow.calendarFocusable).toBe(true);
   expect((await page.request.delete(`/rest/api/3/dashboard/${id}`, { headers: auth })).status()).toBe(204);
 });
