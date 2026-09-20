@@ -204,6 +204,16 @@ type NotificationSchemeEntry struct {
 }
 
 // Issue is the materialized issue. Description is an ADF document stored verbatim.
+// APIToken is one of a person's API tokens as they see it afterwards: the
+// secret itself is shown once, at creation, and only its hash is kept.
+type APIToken struct {
+	ID        string `json:"id"`
+	UserID    string `json:"-"`
+	Label     string `json:"label"`
+	CreatedAt string `json:"createdAt"`
+	ExpiresAt string `json:"expiresAt,omitempty"`
+}
+
 type Issue struct {
 	ID          string          `json:"id"`
 	JiraID      int64           `json:"-"`

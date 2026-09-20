@@ -60,6 +60,13 @@ type profilePageData struct {
 	// notification preferences.
 	NotifyOwnChanges bool
 	Autowatch        bool
+	// APITokens are the signed-in person's own tokens, and NewAPIToken is the
+	// secret of one just created -- shown once, on the response to the
+	// request that made it, and never again.
+	APITokens     []models.APIToken
+	NewAPIToken   string
+	TokenError    string
+	DefaultExpiry string
 }
 
 type profileIdentityView struct {
@@ -368,65 +375,157 @@ func (h *Handler) ProfilePage(w http.ResponseWriter, r *http.Request, accountID 
 	if !ok {
 		return
 	}
+	data, err := h.buildProfileData(r, user, wsID, accountID)
+	if err != nil {
+		if errors.Is(err, errProfileNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_profile", user, wsID, data, "people", "")
+}
+
+// errProfileNotFound is a profile the reader cannot see, or that is not there.
+var errProfileNotFound = errors.New("profile not found")
+
+// buildProfileData reads everything the profile page shows. The signed-in
+// person's own profile carries more -- their preferences, their linked
+// identities and their API tokens -- and only for themselves.
+func (h *Handler) buildProfileData(r *http.Request, user *models.User, wsID, accountID string) (profilePageData, error) {
 	profile, err := h.Store.MemberByID(r.Context(), wsID, accountID)
 	if err != nil {
-		http.NotFound(w, r)
-		return
+		return profilePageData{}, errProfileNotFound
 	}
 	assigned, err := h.Store.IssuesAssignedToUser(r.Context(), wsID, profile.ID, user.ID)
 	if err != nil {
+		return profilePageData{}, err
+	}
+	reported, err := h.Store.IssuesReportedByUser(r.Context(), wsID, profile.ID, user.ID)
+	if err != nil {
+		return profilePageData{}, err
+	}
+	data := profilePageData{Profile: profile, Self: profile.ID == user.ID, Assigned: assigned, Reported: reported, Saved: r.URL.Query().Get("saved")}
+	if !data.Self {
+		return data, nil
+	}
+	if data.NotifyOwnChanges, err = h.Store.UserPreferenceEnabled(r.Context(), wsID, user.ID, store.UserPreferenceNotifyOwnChanges, false); err != nil {
+		return profilePageData{}, err
+	}
+	autowatchDisabled, err := h.Store.UserPreferenceEnabled(r.Context(), wsID, user.ID, store.UserPreferenceAutowatchDisabled, false)
+	if err != nil {
+		return profilePageData{}, err
+	}
+	data.Autowatch = !autowatchDisabled
+	if data.APITokens, err = h.Store.APITokensForUser(r.Context(), user.ID); err != nil {
+		return profilePageData{}, err
+	}
+	// The form opens on a year out, which is the longest a token may live.
+	data.DefaultExpiry = time.Now().AddDate(1, 0, 0).Format("2006-01-02")
+	identities, err := h.Store.OIDCIdentitiesByUser(r.Context(), user.ID)
+	if err != nil {
+		return profilePageData{}, err
+	}
+	byIssuer := make(map[string]store.OIDCIdentity, len(identities))
+	for _, identity := range identities {
+		byIssuer[identity.Issuer] = identity
+	}
+	for _, provider := range h.loginProviders() {
+		identity, connected := byIssuer[provider.Issuer]
+		view := profileIdentityView{
+			ProviderKey: provider.Key, DisplayName: provider.DisplayName, Issuer: provider.Issuer,
+			Subject: identity.Subject, Email: identity.Email, Connected: connected, CanUnlink: connected && len(identities) > 1,
+		}
+		if connected {
+			view.CreatedAt = identity.CreatedAt.UTC().Format("2006-01-02 15:04 UTC")
+		}
+		data.Identities = append(data.Identities, view)
+		delete(byIssuer, provider.Issuer)
+	}
+	for _, identity := range identities {
+		if _, unknown := byIssuer[identity.Issuer]; !unknown {
+			continue
+		}
+		data.Identities = append(data.Identities, profileIdentityView{
+			DisplayName: "External provider", Issuer: identity.Issuer, Subject: identity.Subject, Email: identity.Email,
+			CreatedAt: identity.CreatedAt.UTC().Format("2006-01-02 15:04 UTC"), Connected: true,
+		})
+	}
+	return data, nil
+}
+
+// CreateAPIToken mints one of the signed-in person's own API tokens and
+// answers with the page carrying the secret. It answers rather than redirects
+// because the secret exists once: a redirect would either lose it or carry it
+// in a URL, where it would outlive the response in history and logs.
+func (h *Handler) CreateAPIToken(w http.ResponseWriter, r *http.Request) {
+	user, _, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	var expiresAt *time.Time
+	if value := strings.TrimSpace(r.PostFormValue("expiresOn")); value != "" {
+		parsed, err := time.Parse("2006-01-02", value)
+		if err != nil {
+			h.profileWithTokenError(w, r, user, "An expiry is a date, as YYYY-MM-DD.")
+			return
+		}
+		// The whole of the chosen day belongs to the token.
+		endOfDay := parsed.UTC().Add(24*time.Hour - time.Second)
+		expiresAt = &endOfDay
+	}
+	plain, _, err := h.Store.CreateUserAPIToken(r.Context(), user.ID, r.PostFormValue("label"), expiresAt, authn.NewAPIToken)
+	if err != nil {
+		if errors.Is(err, store.ErrAPITokenValidation) {
+			h.profileWithTokenError(w, r, user, strings.TrimPrefix(err.Error(), store.ErrAPITokenValidation.Error()+": "))
+			return
+		}
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	reported, err := h.Store.IssuesReportedByUser(r.Context(), wsID, profile.ID, user.ID)
+	h.profilePageWith(w, r, user, func(data *profilePageData) { data.NewAPIToken = plain }, http.StatusOK)
+}
+
+// RevokeAPIToken deletes one of the signed-in person's own tokens.
+func (h *Handler) RevokeAPIToken(w http.ResponseWriter, r *http.Request) {
+	user, _, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if err := h.Store.DeleteUserAPIToken(r.Context(), user.ID, r.PathValue("token")); err != nil {
+		if errors.Is(err, store.ErrAPITokenValidation) {
+			h.profileWithTokenError(w, r, user, strings.TrimPrefix(err.Error(), store.ErrAPITokenValidation.Error()+": "))
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	redirectLocal(w, r, "/people/"+url.PathEscape(user.ID)+"?saved=token-revoked#api-tokens")
+}
+
+// profileWithTokenError re-renders the profile carrying what went wrong, so
+// the label and the expiry the person typed are still in front of them.
+func (h *Handler) profileWithTokenError(w http.ResponseWriter, r *http.Request, user *models.User, message string) {
+	h.profilePageWith(w, r, user, func(data *profilePageData) { data.TokenError = message }, http.StatusBadRequest)
+}
+
+// profilePageWith renders the signed-in person's own profile with one field
+// set that only the request being answered knows: the secret just minted, or
+// why a token could not be made.
+func (h *Handler) profilePageWith(w http.ResponseWriter, r *http.Request, user *models.User, adjust func(*profilePageData), status int) {
+	wsID, ok := h.memberWorkspace(r, user)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	data, err := h.buildProfileData(r, user, wsID, user.ID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	data := profilePageData{Profile: profile, Self: profile.ID == user.ID, Assigned: assigned, Reported: reported, Saved: r.URL.Query().Get("saved")}
-	if data.Self {
-		if data.NotifyOwnChanges, err = h.Store.UserPreferenceEnabled(r.Context(), wsID, user.ID, store.UserPreferenceNotifyOwnChanges, false); err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-		autowatchDisabled, err := h.Store.UserPreferenceEnabled(r.Context(), wsID, user.ID, store.UserPreferenceAutowatchDisabled, false)
-		if err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-		data.Autowatch = !autowatchDisabled
-		identities, err := h.Store.OIDCIdentitiesByUser(r.Context(), user.ID)
-		if err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-		byIssuer := make(map[string]store.OIDCIdentity, len(identities))
-		for _, identity := range identities {
-			byIssuer[identity.Issuer] = identity
-		}
-		for _, provider := range h.loginProviders() {
-			identity, connected := byIssuer[provider.Issuer]
-			view := profileIdentityView{
-				ProviderKey: provider.Key, DisplayName: provider.DisplayName, Issuer: provider.Issuer,
-				Subject: identity.Subject, Email: identity.Email, Connected: connected, CanUnlink: connected && len(identities) > 1,
-			}
-			if connected {
-				view.CreatedAt = identity.CreatedAt.UTC().Format("2006-01-02 15:04 UTC")
-			}
-			data.Identities = append(data.Identities, view)
-			delete(byIssuer, provider.Issuer)
-		}
-		for _, identity := range identities {
-			if _, unknown := byIssuer[identity.Issuer]; !unknown {
-				continue
-			}
-			data.Identities = append(data.Identities, profileIdentityView{
-				DisplayName: "External provider", Issuer: identity.Issuer, Subject: identity.Subject, Email: identity.Email,
-				CreatedAt: identity.CreatedAt.UTC().Format("2006-01-02 15:04 UTC"), Connected: true,
-			})
-		}
-	}
-	h.writeWorkspacePage(w, r, "page_profile", user, wsID, data, "people", "")
+	adjust(&data)
+	h.writeWorkspacePageStatus(w, r, "page_profile", user, wsID, data, "people", "", status)
 }
 
 // UpdateNotificationPreferences saves the signed-in person's personal
