@@ -191,7 +191,7 @@ func (h *Handler) boardRoute(w http.ResponseWriter, r *http.Request, parts []str
 	case len(parts) == 2 && parts[1] == "features" && r.Method == http.MethodGet:
 		h.boardFeatures(w, r, board)
 	case len(parts) == 2 && parts[1] == "features" && r.Method == http.MethodPut:
-		jiraError(w, http.StatusBadRequest, "Board features follow the board configuration and cannot be toggled here.")
+		h.boardFeatureToggle(w, r, board, userID)
 	case len(parts) == 2 && parts[1] == "reports" && r.Method == http.MethodGet:
 		h.boardReports(w, r, board)
 	case len(parts) == 2 && parts[1] == "properties":

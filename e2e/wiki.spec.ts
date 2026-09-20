@@ -12,6 +12,13 @@ async function checkWikiAccessibility(page: Page) {
 
 
 test('wiki space, rich page, access, stale edits, child pages, history, trash and restore', async ({ page, context, browser }) => {
+  // Eight journeys in one session -- a space, a rich page, access, stale
+  // edits, children, history, the trash and restore -- and the budget has to
+  // match what that is. Measured at 122.6s against the 120s default, so it
+  // failed on its own length rather than on anything it asserts, and did
+  // exactly that in a full-suite run. service.spec.ts declares its own budget
+  // for the same reason.
+  test.setTimeout(180_000);
   await page.goto('/login');
   await page.fill('#login-email', 'demo@zzira.dev');
   await page.fill('#login-password', 'demo1234');

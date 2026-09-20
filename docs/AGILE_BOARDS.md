@@ -30,7 +30,7 @@ Boards show a project's work in columns. They also carry the board's backlog, sp
 | `GET …/project`, `…/project/full` | Returns the board's project. The full form adds the project type and style. |
 | `GET …/version` | Lists the project's versions, with Jira's `released` filter. |
 | `GET …/epic`, `…/epic/{epicId or none}/issue` | Returns the project's epics and their work items. See [Jira Software](JIRA_SOFTWARE.md#epics). |
-| `GET …/features` | Reports SPRINTS (scrum boards only), BACKLOG (always on) and SWIMLANES (on when a swimlane strategy is set). Each has `toggleLocked: true`. |
+| `GET/PUT …/features` | Reports the board's features, and toggles the two that are configuration. `BACKLOG` is the project's `jsw.classic.backlog` feature, the same one the navigation reads. `SWIMLANES` is the board's grouping: off sets it to none, on restores the grouping it had, or Jira's default of assignee. `SPRINTS` follows the board's type and is `toggleLocked`; asking to toggle it is 400, as is a feature nobody has. |
 | `PUT …/features` | 400: features follow the board's configuration and cannot be toggled. |
 | `GET …/reports` | Lists the reports available for the board type. |
 | `GET …/properties`, `GET/PUT/DELETE …/properties/{key}` | Board properties. A PUT that creates a key returns 201; one that replaces a value returns 200. |
@@ -98,7 +98,6 @@ The default permission scheme grants Schedule issues, Edit issues, Transition is
 ## Gaps
 
 - Swimlanes do not offer Jira's Stories grouping: it needs an immediate parent distinguished from an ancestor epic, and a work item here carries one parent link.
-- Board features cannot be toggled (`PUT …/features`).
 
 Remaining work is tracked in [PLAN.md](../PLAN.md).
 
