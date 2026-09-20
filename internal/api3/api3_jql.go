@@ -91,6 +91,8 @@ var jqlFunctions = []jqlFunctionReference{
 	{Value: "linkedWorkItems()", DisplayName: "linkedWorkItems(workItemKey[, linkTypes...])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
 	{Value: "issueHistory()", DisplayName: "issueHistory()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
 	{Value: "workItemHistory()", DisplayName: "workItemHistory()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
+	{Value: "issuesWithRemoteLinksByGlobalId()", DisplayName: "issuesWithRemoteLinksByGlobalId(globalIds...)", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
+	{Value: "workItemsWithRemoteLinksByGlobalId()", DisplayName: "workItemsWithRemoteLinksByGlobalId(globalIds...)", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
 	{Value: "lastLogin()", DisplayName: "lastLogin()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
 	{Value: "membersOf()", DisplayName: "membersOf(group)", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"USER"}},
 	{Value: "myApproval()", DisplayName: "myApproval()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},

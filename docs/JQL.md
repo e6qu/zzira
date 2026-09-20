@@ -78,7 +78,7 @@ The catalog is `jqlFunctions` in `internal/api3/api3_jql.go`.
 |---|---|
 | Date | `now()`, `startOfDay/Week/Month/Year()`, `endOfDay/Week/Month/Year()`, `currentLogin()`, `lastLogin()` |
 | User | `currentUser()`, `membersOf()` |
-| Work item | `linkedIssues()`/`linkedWorkItems()` (optional link types), `watchedIssues()`/`watchedWorkItems()`, `votedIssues()`/`votedWorkItems()`, `updatedBy()` (optional date range) |
+| Work item | `linkedIssues()`/`linkedWorkItems()` (optional link types), `watchedIssues()`/`watchedWorkItems()`, `votedIssues()`/`votedWorkItems()`, `issueHistory()`/`workItemHistory()` (what you have opened), `issuesWithRemoteLinksByGlobalId()`/`workItemsWithRemoteLinksByGlobalId()` (1 to 100 global ids), `updatedBy()` (optional date range) |
 | Sprint | `openSprints()`, `closedSprints()`, `futureSprints()` |
 | Work type | `standardIssueTypes()`/`standardWorkTypes()`, `subtaskIssueTypes()`/`subtaskWorkTypes()` |
 | Version | `releasedVersions()`, `unreleasedVersions()`, `latestReleasedVersion()`, `earliestUnreleasedVersion()` |
@@ -206,7 +206,6 @@ See [PLAN.md](../PLAN.md).
 
 - JSM fields not searchable: `Organizations`, because a request is not shared
   with an organization here; only a desk is.
-- Functions missing: `issuesWithRemoteLinksByGlobalId()`.
 - `WAS`/`CHANGED` not supported for `resolution` (or components and sprints).
 - `includeArchivedProjects=true` is refused although projects can be
   archived.

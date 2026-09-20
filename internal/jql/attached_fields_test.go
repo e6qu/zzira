@@ -199,3 +199,21 @@ func TestViewedFields(t *testing.T) {
 		t.Fatalf("issueHistory where = %q", history.Where)
 	}
 }
+
+// Work another system names: the global id of a remote link finds it.
+func TestRemoteLinkFunction(t *testing.T) {
+	compiled := compileJQL(t, `key IN issuesWithRemoteLinksByGlobalId("system-1", "system-2")`)
+	if !strings.Contains(compiled.Where, "FROM remote_issue_links remote_link") {
+		t.Fatalf("where = %q", compiled.Where)
+	}
+	if len(compiled.Args) != 2 || compiled.Args[0] != "system-1" || compiled.Args[1] != "system-2" {
+		t.Fatalf("args = %#v", compiled.Args)
+	}
+	parsed, err := Parse(`key IN issuesWithRemoteLinksByGlobalId()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := Compile(parsed, "usr_me", DefaultResolver()); c.Err == nil || !strings.Contains(c.Err.Error(), "between 1 and 100") {
+		t.Fatalf("err = %v", c.Err)
+	}
+}

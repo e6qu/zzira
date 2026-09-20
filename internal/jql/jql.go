@@ -1411,7 +1411,8 @@ func (c *compiler) clause(cl Clause) string {
 	}
 	if (cl.Field == "issue" || cl.Field == "key" || cl.Field == "id") && containsJQLFunction(cl.Values,
 		"linkedIssues", "linkedWorkItems", "watchedIssues", "watchedWorkItems", "votedIssues", "votedWorkItems",
-		"issueHistory", "workItemHistory", "updatedBy") {
+		"issueHistory", "workItemHistory", "issuesWithRemoteLinksByGlobalId", "workItemsWithRemoteLinksByGlobalId",
+		"updatedBy") {
 		return c.issueFunctionClause(cl)
 	}
 	if cl.Field == "project" && (cl.Op == "=" || cl.Op == "!=" || cl.Op == "in" || cl.Op == "notin") && !containsAnyFunction(cl.Values) {
@@ -1931,6 +1932,27 @@ func (c *compiler) labelsClause(cl Clause) string {
 	return ""
 }
 
+// remoteLinkMatch matches the work items carrying a remote link with one of
+// the global ids named, which is how Jira finds work by what another system
+// calls it.
+func (c *compiler) remoteLinkMatch(name string, args []string) string {
+	if len(args) == 0 || len(args) > 100 {
+		c.err = &SyntaxError{0, name + "() takes between 1 and 100 global ids"}
+		return ""
+	}
+	placeholders := make([]string, 0, len(args))
+	for _, id := range args {
+		trimmed := strings.Trim(strings.TrimSpace(id), `"'`)
+		if trimmed == "" {
+			c.err = &SyntaxError{0, name + "() global ids cannot be empty"}
+			return ""
+		}
+		placeholders = append(placeholders, c.arg(trimmed))
+	}
+	return "EXISTS (SELECT 1 FROM remote_issue_links remote_link WHERE remote_link.issue_id=i.id AND remote_link.global_id IN (" +
+		strings.Join(placeholders, ",") + "))"
+}
+
 // maxFilterDepth bounds how many saved filters one query may lead through.
 const maxFilterDepth = 10
 
@@ -2380,6 +2402,8 @@ func (c *compiler) issueFunctionClause(cl Clause) string {
 			return ""
 		}
 		match = "EXISTS (SELECT 1 FROM issue_votes voted WHERE voted.issue_id=i.id AND voted.user_id=" + c.arg(c.user) + ")"
+	case "issueswithremotelinksbyglobalid", "workitemswithremotelinksbyglobalid":
+		match = c.remoteLinkMatch(name, args)
 	case "issuehistory", "workitemhistory":
 		if len(args) != 0 {
 			c.err = &SyntaxError{0, name + "() does not accept arguments"}
