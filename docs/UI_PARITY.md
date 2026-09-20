@@ -26,7 +26,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | Admin designs and publishes a workflow | 🟡 | `directories` (workflow editor, statuses, workflow schemes, transition screens), `resolution` (a transition screen that asks for the resolution) | Workflow scheme administration is incomplete |
 | Admin automates work | 🟡 | `automation` | Much of the trigger, condition and action catalog ([AUTOMATION](AUTOMATION.md)) |
 | Service customer requests help | 🟡 | `service`, `service_assets` | Assets-backed form behavior such as AQL filters |
-| Service agent works a queue | 🟡 | `service`, `service_assets` | Queues support only part of JQL |
+| Service agent works a queue | 🟡 | `service`, `service_assets` | A queue is written in the site's own JQL, which is missing only JSM's `Organizations` ([JQL](JQL.md#gaps)) |
 | Service manager runs a service | 🟡 | `service`, `service_assets` | Public Assets import and API |
 | Admin starts a service project | 🟡 | `service` | The rest of the service project lifecycle |
 | Knowledge user authors and discusses a page | 🟡 | `wiki`, `wiki_content_tree`, `wiki_drafts_purge`, `wiki_page_details`, `wiki_page_lifecycle`, `wiki_mentions`, `wiki_watches` | Full editor; moving inline comments with edited passages ([CONFLUENCE_SITE_SURFACES](CONFLUENCE_SITE_SURFACES.md)) |

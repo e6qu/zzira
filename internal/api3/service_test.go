@@ -649,6 +649,20 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A queue is written in the site's JQL, not in a subset of it: the
+	// fields that ask about what is attached to a request work here too.
+	attachedQueue, err := handler.Commands.CreateServiceQueue(ctx, actorID, workspaceID, serviceDeskID, "Everything I follow",
+		`text ~ "checkout" AND attachments IS EMPTY AND "request-channel-type" IS NOT EMPTY ORDER BY created ASC`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, attachedRequests, err := st.ServiceQueueRequests(ctx, workspaceID, actorID, serviceDeskID, attachedQueue.ID)
+	if err != nil || !slices.ContainsFunc(attachedRequests, func(request *models.ServiceRequest) bool { return request.Issue.ID == issue.ID }) {
+		t.Fatalf("queue over attached fields = %+v, %v", attachedRequests, err)
+	}
+	if err := handler.Commands.DeleteServiceQueue(ctx, actorID, workspaceID, serviceDeskID, attachedQueue.ID); err != nil {
+		t.Fatal(err)
+	}
 	_, customRequests, err := st.ServiceQueueRequests(ctx, workspaceID, actorID, serviceDeskID, customQueue.ID)
 	if err != nil || !slices.ContainsFunc(customRequests, func(request *models.ServiceRequest) bool { return request.Issue.ID == issue.ID }) {
 		t.Fatalf("custom queue requests = %+v, %v", customRequests, err)

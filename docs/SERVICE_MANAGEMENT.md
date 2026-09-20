@@ -469,7 +469,10 @@ See [PLAN.md](../PLAN.md).
 - Customizable customer notification email templates.
 - Knowledge base ranking and article analytics.
 - Incident review templates.
-- JQL beyond the ZZIRA subset ([JQL.md](JQL.md)).
+- `Organizations` as a JQL field, which needs a request to be shared with an
+  organization rather than only a desk ([JQL.md](JQL.md#gaps)). Everything
+  else a queue, an SLA goal or an automation rule may write is the site's
+  own JQL.
 
 ## See also
 
