@@ -908,6 +908,17 @@ type FieldResolver struct {
 	// SLAFields are the lower-cased names of the site's SLAs, which the SLA
 	// functions search.
 	SLAFields map[string]bool
+	// FilterJQL resolves a saved filter a query names -- by id or by name --
+	// to the JQL it holds, for the person searching. It answers false for a
+	// filter that does not exist or that they may not see, which are the
+	// same answer on purpose.
+	FilterJQL func(userID, nameOrID string) (string, bool)
+}
+
+// WithFilterJQL gives a resolver the saved filters a query may name.
+func WithFilterJQL(res FieldResolver, lookup func(userID, nameOrID string) (string, bool)) FieldResolver {
+	res.FilterJQL = lookup
+	return res
 }
 
 // WithSLAFields adds the names of a site's SLAs to the fields SLA functions
@@ -1083,6 +1094,12 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 	return res
 }
 
+// CurrentUserPlaceholder stands for the person searching inside a column
+// expression. A field that asks about them -- what they have opened, what
+// they follow -- is theirs alone, so the expression carries the reader
+// rather than being the same for everyone.
+const CurrentUserPlaceholder = "{{currentUser}}"
+
 func DefaultResolver() FieldResolver {
 	return FieldResolver{
 		// Every service desk has Jira's two built-in SLAs.
@@ -1125,6 +1142,8 @@ func DefaultResolver() FieldResolver {
 			"hierarchylevel": "COALESCE(ito.hierarchy_level, it.hierarchy_level)",
 			"level":          "(SELECT level_entry->>'name' FROM security_schemes level_scheme, jsonb_array_elements(level_scheme.levels) level_entry WHERE level_scheme.workspace_id=pr.workspace_id AND level_entry->>'id'=i.security_level_id LIMIT 1)",
 			"category":       "(SELECT project_category.name FROM project_categories project_category WHERE project_category.id=pr.category_id)",
+			// When the person searching last opened this work item.
+			"lastviewed": "(SELECT issue_view.viewed_at FROM issue_views issue_view WHERE issue_view.issue_id=i.id AND issue_view.user_id=" + CurrentUserPlaceholder + ")",
 			// The channel a service request came in on, which only a request
 			// has at all.
 			"requestchanneltype": "(SELECT service_request.channel FROM service_requests service_request WHERE service_request.issue_id=i.id)",
@@ -1136,13 +1155,14 @@ func DefaultResolver() FieldResolver {
 			"reporter": "r.display_name", "project": "pr.key", "parent": "parent.key", "resolution": "COALESCE(reso.position, res.position)",
 			"due": `i.due_date::timestamptz`, "resolutiondate": "i.resolved_at",
 			"statuscategorychangeddate": "i.status_category_changed_at",
+			"lastviewed":                "(SELECT issue_view.viewed_at FROM issue_views issue_view WHERE issue_view.issue_id=i.id AND issue_view.user_id=" + CurrentUserPlaceholder + ")",
 			"originalestimate":          "i.original_estimate_seconds", "remainingestimate": "i.remaining_estimate_seconds",
 			"timespent":      "(SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id)",
 			"workratio":      "CASE WHEN i.original_estimate_seconds > 0 THEN (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id) * 100 / i.original_estimate_seconds END",
 			"votes":          "(SELECT count(*) FROM issue_votes vote_count WHERE vote_count.issue_id=i.id)",
 			"hierarchylevel": "COALESCE(ito.hierarchy_level, it.hierarchy_level)",
 		},
-		DateFields:     map[string]bool{"updated": true, "created": true, "due": true, "resolutiondate": true, "statuscategorychangeddate": true},
+		DateFields:     map[string]bool{"updated": true, "created": true, "due": true, "resolutiondate": true, "statuscategorychangeddate": true, "lastviewed": true},
 		DurationFields: map[string]bool{"originalestimate": true, "remainingestimate": true, "timespent": true},
 		NumberFields:   map[string]bool{"workratio": true, "votes": true, "hierarchylevel": true},
 	}
@@ -1209,7 +1229,7 @@ func compileQuery(q *Query, currentUserID string, res FieldResolver, paramOffset
 			if requested.Desc {
 				dir = "DESC"
 			}
-			orderParts = append(orderParts, col+" "+dir)
+			orderParts = append(orderParts, c.forCurrentUser(col)+" "+dir)
 		}
 	}
 	// A stable final key prevents duplicate or skipped rows when requested sort
@@ -1230,6 +1250,20 @@ type compiler struct {
 	// lenient turns a failing clause into a warning and FALSE.
 	lenient  bool
 	warnings []string
+	// filters is the chain of saved filters being compiled, so a filter
+	// that names itself, directly or through others, is refused rather than
+	// followed for ever.
+	filters []string
+}
+
+// forCurrentUser binds the person searching into a column expression that
+// asks about them. The placeholder becomes an ordinary parameter, numbered
+// where it is used, so the expression carries no identity of its own.
+func (c *compiler) forCurrentUser(col string) string {
+	if !strings.Contains(col, CurrentUserPlaceholder) {
+		return col
+	}
+	return strings.ReplaceAll(col, CurrentUserPlaceholder, c.arg(c.user))
 }
 
 // terminal compiles one clause. In a lenient compile a clause that fails is
@@ -1351,6 +1385,8 @@ func (c *compiler) clause(cl Clause) string {
 		return c.attachmentsClause(cl)
 	case "issuelinktype":
 		return c.issueLinkTypeClause(cl)
+	case "filter", "request", "savedfilter", "searchrequest":
+		return c.savedFilterClause(cl)
 	}
 	if field, ok := c.res.CustomValueFields[cl.Field]; ok {
 		return c.customValueClause(field, cl)
@@ -1374,7 +1410,8 @@ func (c *compiler) clause(cl Clause) string {
 		return c.projectFunctionClause(cl)
 	}
 	if (cl.Field == "issue" || cl.Field == "key" || cl.Field == "id") && containsJQLFunction(cl.Values,
-		"linkedIssues", "linkedWorkItems", "watchedIssues", "watchedWorkItems", "votedIssues", "votedWorkItems", "updatedBy") {
+		"linkedIssues", "linkedWorkItems", "watchedIssues", "watchedWorkItems", "votedIssues", "votedWorkItems",
+		"issueHistory", "workItemHistory", "updatedBy") {
 		return c.issueFunctionClause(cl)
 	}
 	if cl.Field == "project" && (cl.Op == "=" || cl.Op == "!=" || cl.Op == "in" || cl.Op == "notin") && !containsAnyFunction(cl.Values) {
@@ -1388,6 +1425,7 @@ func (c *compiler) clause(cl Clause) string {
 		c.err = &SyntaxError{0, "field does not exist or is not searchable: " + cl.Field}
 		return ""
 	}
+	col = c.forCurrentUser(col)
 	if containsJQLFunction(cl.Values, "currentLogin", "lastLogin", "now", "startOfDay", "endOfDay", "startOfWeek", "endOfWeek", "startOfMonth", "endOfMonth", "startOfYear", "endOfYear") {
 		if !c.res.DateFields[cl.Field] {
 			c.err = &SyntaxError{0, "date functions require a date field"}
@@ -1893,6 +1931,60 @@ func (c *compiler) labelsClause(cl Clause) string {
 	return ""
 }
 
+// maxFilterDepth bounds how many saved filters one query may lead through.
+const maxFilterDepth = 10
+
+// savedFilterClause matches the work a saved filter matches, which is how
+// Jira's filter field searches: the filter's own query is compiled in place.
+func (c *compiler) savedFilterClause(cl Clause) string {
+	if c.res.FilterJQL == nil {
+		c.err = &SyntaxError{0, "saved filters are not searchable here"}
+		return ""
+	}
+	switch cl.Op {
+	case "=", "!=", "in", "notin":
+	default:
+		c.err = &SyntaxError{0, "filter supports =, !=, IN and NOT IN"}
+		return ""
+	}
+	if len(c.filters) >= maxFilterDepth {
+		c.err = &SyntaxError{0, "a filter leads through too many other filters"}
+		return ""
+	}
+	matches := make([]string, 0, len(cl.Values))
+	for _, value := range cl.Values {
+		named := strings.Trim(strings.TrimSpace(value), `"'`)
+		for _, seen := range c.filters {
+			if strings.EqualFold(seen, named) {
+				c.err = &SyntaxError{0, "filter " + strconv.Quote(named) + " leads back to itself"}
+				return ""
+			}
+		}
+		text, ok := c.res.FilterJQL(c.user, named)
+		if !ok {
+			c.err = &SyntaxError{0, "filter " + strconv.Quote(named) + " does not exist or you do not have permission to see it"}
+			return ""
+		}
+		parsed, parseErr := Parse(text)
+		if parseErr != nil {
+			c.err = &SyntaxError{0, "filter " + strconv.Quote(named) + " holds a query that no longer parses"}
+			return ""
+		}
+		c.filters = append(c.filters, named)
+		sql := c.node(parsed.Root)
+		c.filters = c.filters[:len(c.filters)-1]
+		if c.err != nil {
+			return ""
+		}
+		matches = append(matches, "("+sql+")")
+	}
+	match := "(" + strings.Join(matches, " OR ") + ")"
+	if cl.Op == "!=" || cl.Op == "notin" {
+		return "(NOT " + match + ")"
+	}
+	return match
+}
+
 // freeTextClause searches the text of a work item the way Jira's text field
 // does: its own text and the text of its comments, with ~ and !~ alone.
 func (c *compiler) freeTextClause(cl Clause) string {
@@ -2288,6 +2380,14 @@ func (c *compiler) issueFunctionClause(cl Clause) string {
 			return ""
 		}
 		match = "EXISTS (SELECT 1 FROM issue_votes voted WHERE voted.issue_id=i.id AND voted.user_id=" + c.arg(c.user) + ")"
+	case "issuehistory", "workitemhistory":
+		if len(args) != 0 {
+			c.err = &SyntaxError{0, name + "() does not accept arguments"}
+			return ""
+		}
+		// What the person searching has opened, which is what Jira's
+		// issueHistory() means by recently viewed.
+		match = "EXISTS (SELECT 1 FROM issue_views viewed WHERE viewed.issue_id=i.id AND viewed.user_id=" + c.arg(c.user) + ")"
 	case "updatedby":
 		match = c.updatedByMatch(args)
 	default:

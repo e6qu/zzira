@@ -105,3 +105,97 @@ func TestVotesAndHierarchyLevelOrder(t *testing.T) {
 		}
 	}
 }
+
+// A saved filter is a query a query may name: it is compiled where it is
+// named, it may not name itself, and one that cannot be read does not exist.
+func TestSavedFilterClause(t *testing.T) {
+	saved := map[string]string{
+		"open work":  `status != Done`,
+		"mine":       `assignee = currentUser() AND filter = "open work"`,
+		"circular":   `filter = "circular"`,
+		"indirect a": `filter = "indirect b"`,
+		"indirect b": `filter = "indirect a"`,
+		"broken":     `status IN (`,
+	}
+	resolver := WithFilterJQL(DefaultResolver(), func(userID, nameOrID string) (string, bool) {
+		text, ok := saved[strings.ToLower(nameOrID)]
+		return text, ok
+	})
+	compile := func(query string) Compiled {
+		t.Helper()
+		parsed, err := Parse(query)
+		if err != nil {
+			t.Fatalf("parse %q: %v", query, err)
+		}
+		return Compile(parsed, "usr_me", resolver)
+	}
+
+	compiled := compile(`filter = "open work"`)
+	if compiled.Err != nil || !strings.Contains(compiled.Where, "st.name") {
+		t.Fatalf("where = %q, err = %v", compiled.Where, compiled.Err)
+	}
+	if len(compiled.Args) != 1 || compiled.Args[0] != "Done" {
+		t.Fatalf("args = %#v", compiled.Args)
+	}
+
+	// A filter that names another is compiled through it, with the searching
+	// person's own currentUser().
+	nested := compile(`filter = mine`)
+	if nested.Err != nil || !strings.Contains(nested.Where, "i.assignee_id") || !strings.Contains(nested.Where, "st.name") {
+		t.Fatalf("nested where = %q, err = %v", nested.Where, nested.Err)
+	}
+	if len(nested.Args) != 2 || nested.Args[0] != "usr_me" || nested.Args[1] != "Done" {
+		t.Fatalf("nested args = %#v", nested.Args)
+	}
+
+	// Aliases, negation and lists.
+	if c := compile(`savedFilter IN ("open work", mine)`); c.Err != nil || !strings.Contains(c.Where, " OR ") {
+		t.Fatalf("list where = %q, err = %v", c.Where, c.Err)
+	}
+	if c := compile(`filter != "open work"`); c.Err == nil && !strings.HasPrefix(c.Where, "(NOT ") {
+		t.Fatalf("negated where = %q", c.Where)
+	}
+
+	for query, want := range map[string]string{
+		`filter = circular`:       "leads back to itself",
+		`filter = "indirect a"`:   "leads back to itself",
+		`filter = "not a filter"`: "does not exist or you do not have permission",
+		`filter = broken`:         "no longer parses",
+		`filter ~ mine`:           "filter supports",
+	} {
+		if c := compile(query); c.Err == nil || !strings.Contains(c.Err.Error(), want) {
+			t.Fatalf("%q: err = %v, want %q", query, c.Err, want)
+		}
+	}
+
+	// Without a lookup -- a compile that has no site behind it -- the field
+	// says so rather than matching everything.
+	parsed, err := Parse(`filter = mine`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := Compile(parsed, "usr_me", DefaultResolver()); c.Err == nil {
+		t.Fatal("a filter compiled with no filters behind it")
+	}
+}
+
+// What the person searching has opened: the date they last opened a work
+// item, and the list of what they have opened at all.
+func TestViewedFields(t *testing.T) {
+	compiled := compileJQL(t, `lastViewed >= -7d ORDER BY lastViewed DESC`)
+	if !strings.Contains(compiled.Where, "FROM issue_views issue_view") || !strings.Contains(compiled.Where, "issue_view.user_id=$1") {
+		t.Fatalf("where = %q", compiled.Where)
+	}
+	if !strings.Contains(compiled.OrderSQL, "issue_view.user_id=$3") {
+		t.Fatalf("order = %q, args = %#v", compiled.OrderSQL, compiled.Args)
+	}
+	// The reader is an ordinary parameter, numbered where it is used: once in
+	// the clause, once in the ordering.
+	if len(compiled.Args) != 3 || compiled.Args[0] != "usr_me" || compiled.Args[2] != "usr_me" {
+		t.Fatalf("args = %#v", compiled.Args)
+	}
+	history := compileJQL(t, `key IN issueHistory()`)
+	if !strings.Contains(history.Where, "FROM issue_views viewed") {
+		t.Fatalf("issueHistory where = %q", history.Where)
+	}
+}

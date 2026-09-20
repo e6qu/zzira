@@ -39,11 +39,17 @@ status.
   `remainingEstimate`/`timeEstimate`, `timeSpent`, `workRatio`, `approvals`,
   `text`, `comment`, `watcher(s)`, `voter(s)`, `votes`, `attachments`,
   `issueLinkType`, `level`, `category`, `hierarchyLevel`,
-  `statusCategoryChangedDate`,
+  `statusCategoryChangedDate`, `lastViewed`, `filter` (and its aliases
+  `request`, `savedFilter` and `searchRequest`),
   `"Request participants"`, `request-channel-type`, service SLA fields,
   typed custom fields (`cf[N]`, id or name), app field aliases and indexed
   entity properties. `issueKey` and `type` are Jira's aliases for `key` and
   `issuetype`.
+- A saved filter is a query a query may name: `filter = "Open work"` matches
+  what that filter matches, by name or by either of its ids, and the filter's
+  own query is compiled where it is named. A filter the searcher may not see
+  is refused the way one that does not exist is, a filter that leads back to
+  itself is refused rather than followed, and a chain may lead through ten.
 - Fields that are things attached to the work rather than values on it ask
   what Jira lets them ask: `text` and `comment` take `~` and `!~` alone --
   `text` searches the work item's own text and its comments -- `attachments`
@@ -198,10 +204,9 @@ advanced (`?mode=advanced`) modes and saves queries as
 
 See [PLAN.md](../PLAN.md).
 
-- System fields not searchable: `lastViewed` and `filter`.
 - JSM fields not searchable: `Organizations`, because a request is not shared
   with an organization here; only a desk is.
-- Functions missing: `issueHistory()`, `issuesWithRemoteLinksByGlobalId()`.
+- Functions missing: `issuesWithRemoteLinksByGlobalId()`.
 - `WAS`/`CHANGED` not supported for `resolution` (or components and sprints).
 - `includeArchivedProjects=true` is refused although projects can be
   archived.

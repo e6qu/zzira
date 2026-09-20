@@ -48,6 +48,7 @@ func TestSearchByAttachedFields(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		for _, sql := range []string{
+			`DELETE FROM filters WHERE workspace_id=$1`,
 			`DELETE FROM attachments WHERE workspace_id=$1`,
 			`DELETE FROM issue_links WHERE workspace_id=$1`,
 			`DELETE FROM issues WHERE workspace_id=$1`,
@@ -176,6 +177,20 @@ func TestSearchByAttachedFields(t *testing.T) {
 	if keys := keysFor(`comment !~ "Shipped on ` + stamp + `"`); len(keys) != 1 || keys[0] != other {
 		t.Fatalf("comment !~ matched %v", keys)
 	}
+
+	// A saved filter is a query this query may name, and one the searcher
+	// cannot see is refused the way one that does not exist is.
+	var saved struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(call(http.MethodPost, "/rest/api/3/filter",
+		`{"name":"Voted work `+stamp+`","jql":"votes > 0"}`, http.StatusOK)), &saved); err != nil {
+		t.Fatal(err)
+	}
+	only(`filter = "Voted work `+stamp+`"`, subject)
+	only(`savedFilter = `+saved.ID, subject)
+	only(`filter != "Voted work `+stamp+`" AND project = `+key, other)
+	call(http.MethodGet, "/rest/api/3/search?jql="+url.QueryEscape(`filter = "No such filter `+stamp+`"`), "", http.StatusBadRequest)
 
 	// The status category's date moves when the category does, and stays
 	// where it is when the status moves inside one.

@@ -1020,6 +1020,13 @@ func (h *Handler) serveIssue(w http.ResponseWriter, r *http.Request, user *model
 		http.NotFound(w, r)
 		return
 	}
+	// Opening a work item is what puts it in your history, which the issue
+	// picker offers and lastViewed and issueHistory() search. The REST read
+	// asks for this with updateHistory=true; a person reading the page is
+	// saying the same thing by being here.
+	if err := h.Store.RecordIssueView(r.Context(), wsID, user.ID, view.Issue.ID); err != nil {
+		log.Printf("record issue view %s: %s", view.Issue.Key, strconv.Quote(err.Error()))
+	}
 	if isHX(r) {
 		writeFragment(w, "issue_view", view)
 		return

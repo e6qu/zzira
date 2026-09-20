@@ -77,5 +77,10 @@ func (s *Store) JQLResolver(ctx context.Context, workspaceID string) (jql.FieldR
 	for _, metric := range metrics {
 		slaNames = append(slaNames, metric.Name)
 	}
-	return jql.WithSLAFields(jql.WithEntityProperties(jql.WithCustomFields(jql.DefaultResolver(), fields), indexes), slaNames), nil
+	resolver := jql.WithSLAFields(jql.WithEntityProperties(jql.WithCustomFields(jql.DefaultResolver(), fields), indexes), slaNames)
+	// A query may name a saved filter, which is read when the query is
+	// compiled and only for the person compiling it.
+	return jql.WithFilterJQL(resolver, func(userID, nameOrID string) (string, bool) {
+		return s.FilterJQLForSearch(ctx, workspaceID, userID, nameOrID)
+	}), nil
 }

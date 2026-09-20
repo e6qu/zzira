@@ -139,9 +139,10 @@ but nothing shows or uses it.
 
 ## 5. JQL and filters
 
-- Fields: `lastViewed`, `filter`, and JSM's `Organizations`, which needs a
-  request to be shared with one.
-- Functions: `issueHistory()`, `issuesWithRemoteLinksByGlobalId()`.
+- Fields: JSM's `Organizations`, which needs a request to be shared with one.
+- `fields.lastViewed` on a work item read, which needs the reader threaded
+  through the bean.
+- Functions: `issuesWithRemoteLinksByGlobalId()`.
 - `WAS`/`CHANGED` on `resolution`; `includeArchivedProjects`; historical
   `versionedRepresentations`.
 - Unknown values (`status = Nope`) return Jira's error instead of matching nothing.

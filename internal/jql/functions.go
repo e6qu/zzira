@@ -14,7 +14,8 @@ func init() {
 		"approved", "approver", "breached", "cascadeOption", "closedSprints", "completed",
 		"componentsLeadByUser", "currentLogin", "currentUser", "earliestUnreleasedVersion",
 		"endOfDay", "endOfMonth", "endOfWeek", "endOfYear", "everBreached", "futureSprints",
-		"lastLogin", "latestReleasedVersion", "linkedIssues", "linkedWorkItems", "membersOf",
+		"issueHistory", "lastLogin", "latestReleasedVersion", "linkedIssues", "linkedWorkItems",
+		"membersOf",
 		"myApproval", "myPending", "myPendingApproval", "now", "openSprints", "paused",
 		"pending", "pendingApprovalBy", "pendingBy", "projectsLeadByUser",
 		"projectsWhereUserHasPermission", "projectsWhereUserHasRole", "releasedVersions",
@@ -22,7 +23,7 @@ func init() {
 		"spacesWhereUserHasRole", "standardIssueTypes", "standardWorkTypes", "startOfDay",
 		"startOfMonth", "startOfWeek", "startOfYear", "subtaskIssueTypes", "subtaskWorkTypes",
 		"unreleasedVersions", "updatedBy", "votedIssues", "votedWorkItems", "watchedIssues",
-		"watchedWorkItems", "withinCalendarHours",
+		"watchedWorkItems", "withinCalendarHours", "workItemHistory",
 	} {
 		builtInFunctions[strings.ToLower(name)] = true
 	}
