@@ -233,6 +233,9 @@ type Issue struct {
 	DueDate string `json:"duedate,omitempty"`
 	// ArchivedAt is when the issue was archived, empty while it is not.
 	ArchivedAt string `json:"-"`
+	// StatusCategoryChangedAt is when the status last moved to a status of
+	// another category, which is what Jira dates and searches by.
+	StatusCategoryChangedAt string `json:"-"`
 	// CreatedAt is when the issue was created.
 	CreatedAt string   `json:"-"`
 	Assignee  *User    `json:"assignee"`

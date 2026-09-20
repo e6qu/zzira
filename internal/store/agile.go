@@ -1299,7 +1299,7 @@ func (s *Store) NotificationsPageByUser(ctx context.Context, workspaceID, userID
 	}
 	// A notification about content the reader can no longer see is not
 	// theirs to read: its message names the content.
-	readable := " AND " + notificationSubjectReadable("n.entity_type", "n.entity_id", "$2")
+	readable := " AND " + notificationSubjectReadable("n.entity_type", "n.entity_id")
 	var total int
 	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications n WHERE n.workspace_id=$1 AND n.user_id=$2`+unreadClause+readable,
 		workspaceID, userID).Scan(&total); err != nil {

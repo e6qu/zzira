@@ -162,6 +162,9 @@ test('wiki space, rich page, access, stale edits, child pages, history, trash an
   await expect(page.getByRole('region', { name: 'Page properties' })).toContainText('production');
   await checkWikiAccessibility(page);
   const pageURL = page.url().split('#')[0];
+  // Writing the page already watched it; the button stops and starts that.
+  await expect(page.getByRole('button', { name: 'Stop watching page', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Stop watching page', exact: true }).click();
   await page.getByRole('button', { name: 'Watch page', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop watching page', exact: true })).toBeVisible();
   const memberContext = await browser.newContext({ baseURL: new URL(pageURL).origin });

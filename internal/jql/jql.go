@@ -632,6 +632,8 @@ func canonicalField(field string) string {
 		return "due"
 	case "resolved":
 		return "resolutiondate"
+	case "statuscategorychangedate":
+		return "statuscategorychangeddate"
 	case "issuekey":
 		return "key"
 	case "type":
@@ -1086,29 +1088,30 @@ func DefaultResolver() FieldResolver {
 		// Every service desk has Jira's two built-in SLAs.
 		SLAFields: map[string]bool{"time to first response": true, "time to resolution": true},
 		Columns: map[string]string{
-			"key":            "i.key",
-			"issue":          "i.key",
-			"id":             "i.jira_id",
-			"summary":        "i.summary",
-			"description":    "i.description::text",
-			"status":         "st.name",
-			"statuscategory": "st.category",
-			"project":        "pr.key",
-			"assignee":       "i.assignee_id",
-			"reporter":       "i.reporter_id",
-			"creator":        "i.reporter_id",
-			"priority":       "COALESCE(pro.name, pr2.name)",
-			"issuetype":      "COALESCE(ito.name, it.name)",
-			"updated":        "i.updated_at",
-			"created":        "i.created_at",
-			"labels":         "i.labels",
-			"parent":         "parent.key",
-			"resolution":     "COALESCE(reso.name, res.name)",
-			"resolutiondate": "i.resolved_at",
-			"due":            `i.due_date::timestamptz`,
-			"environment":    `i.fields->>'environment'`,
-			"component":      `i.fields->>'component'`,
-			"sprint":         `i.fields->>'sprint'`,
+			"key":                       "i.key",
+			"issue":                     "i.key",
+			"id":                        "i.jira_id",
+			"summary":                   "i.summary",
+			"description":               "i.description::text",
+			"status":                    "st.name",
+			"statuscategory":            "st.category",
+			"project":                   "pr.key",
+			"assignee":                  "i.assignee_id",
+			"reporter":                  "i.reporter_id",
+			"creator":                   "i.reporter_id",
+			"priority":                  "COALESCE(pro.name, pr2.name)",
+			"issuetype":                 "COALESCE(ito.name, it.name)",
+			"updated":                   "i.updated_at",
+			"created":                   "i.created_at",
+			"labels":                    "i.labels",
+			"parent":                    "parent.key",
+			"resolution":                "COALESCE(reso.name, res.name)",
+			"resolutiondate":            "i.resolved_at",
+			"statuscategorychangeddate": "i.status_category_changed_at",
+			"due":                       `i.due_date::timestamptz`,
+			"environment":               `i.fields->>'environment'`,
+			"component":                 `i.fields->>'component'`,
+			"sprint":                    `i.fields->>'sprint'`,
 			// Time tracking, in seconds; work ratio is time spent as a
 			// percentage of the original estimate.
 			"originalestimate":  "i.original_estimate_seconds",
@@ -1132,13 +1135,14 @@ func DefaultResolver() FieldResolver {
 			"status": "st.name", "priority": "COALESCE(pro.position, pr2.position)", "assignee": "a.display_name", "issuetype": "COALESCE(ito.name, it.name)",
 			"reporter": "r.display_name", "project": "pr.key", "parent": "parent.key", "resolution": "COALESCE(reso.position, res.position)",
 			"due": `i.due_date::timestamptz`, "resolutiondate": "i.resolved_at",
-			"originalestimate": "i.original_estimate_seconds", "remainingestimate": "i.remaining_estimate_seconds",
+			"statuscategorychangeddate": "i.status_category_changed_at",
+			"originalestimate":          "i.original_estimate_seconds", "remainingestimate": "i.remaining_estimate_seconds",
 			"timespent":      "(SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id)",
 			"workratio":      "CASE WHEN i.original_estimate_seconds > 0 THEN (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id) * 100 / i.original_estimate_seconds END",
 			"votes":          "(SELECT count(*) FROM issue_votes vote_count WHERE vote_count.issue_id=i.id)",
 			"hierarchylevel": "COALESCE(ito.hierarchy_level, it.hierarchy_level)",
 		},
-		DateFields:     map[string]bool{"updated": true, "created": true, "due": true, "resolutiondate": true},
+		DateFields:     map[string]bool{"updated": true, "created": true, "due": true, "resolutiondate": true, "statuscategorychangeddate": true},
 		DurationFields: map[string]bool{"originalestimate": true, "remainingestimate": true, "timespent": true},
 		NumberFields:   map[string]bool{"workratio": true, "votes": true, "hierarchylevel": true},
 	}

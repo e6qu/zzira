@@ -176,4 +176,72 @@ func TestSearchByAttachedFields(t *testing.T) {
 	if keys := keysFor(`comment !~ "Shipped on ` + stamp + `"`); len(keys) != 1 || keys[0] != other {
 		t.Fatalf("comment !~ matched %v", keys)
 	}
+
+	// The status category's date moves when the category does, and stays
+	// where it is when the status moves inside one.
+	categoryDateOf := func(key string) string {
+		t.Helper()
+		var issue struct {
+			Fields map[string]any `json:"fields"`
+		}
+		if err := json.Unmarshal([]byte(call(http.MethodGet, "/rest/api/3/issue/"+key, "", http.StatusOK)), &issue); err != nil {
+			t.Fatal(err)
+		}
+		date, _ := issue.Fields["statuscategorychangedate"].(string)
+		if date == "" {
+			t.Fatalf("%s carries no statuscategorychangedate: %v", key, issue.Fields)
+		}
+		return date
+	}
+	// Both dates would otherwise fall in the same second, so the work item
+	// is put a day back before it is moved.
+	exec(`UPDATE issues SET status_category_changed_at = now() - interval '1 day' WHERE workspace_id=$1 AND key=$2`, ws, subject)
+	atCreation := categoryDateOf(subject)
+	var available struct {
+		Transitions []struct {
+			ID string `json:"id"`
+			To struct {
+				StatusCategory struct {
+					Key string `json:"key"`
+				} `json:"statusCategory"`
+			} `json:"to"`
+		} `json:"transitions"`
+	}
+	if err := json.Unmarshal([]byte(call(http.MethodGet, "/rest/api/3/issue/"+subject+"/transitions", "", http.StatusOK)), &available); err != nil {
+		t.Fatal(err)
+	}
+	moved := ""
+	for _, transition := range available.Transitions {
+		if transition.To.StatusCategory.Key != "new" {
+			moved = transition.ID
+			break
+		}
+	}
+	if moved == "" {
+		t.Fatalf("no transition leaves the first category: %+v", available.Transitions)
+	}
+	call(http.MethodPost, "/rest/api/3/issue/"+subject+"/transitions", `{"transition":{"id":"`+moved+`"}}`, http.StatusNoContent)
+	crossed := categoryDateOf(subject)
+	if crossed == atCreation {
+		t.Fatalf("crossing a category left the date at %s", crossed)
+	}
+	// Moving on to another status of the same category leaves it where it is.
+	var sameCategory string
+	if err := json.Unmarshal([]byte(call(http.MethodGet, "/rest/api/3/issue/"+subject+"/transitions", "", http.StatusOK)), &available); err != nil {
+		t.Fatal(err)
+	}
+	for _, transition := range available.Transitions {
+		if transition.To.StatusCategory.Key == "indeterminate" {
+			sameCategory = transition.ID
+		}
+	}
+	if sameCategory != "" {
+		call(http.MethodPost, "/rest/api/3/issue/"+subject+"/transitions", `{"transition":{"id":"`+sameCategory+`"}}`, http.StatusNoContent)
+		if after := categoryDateOf(subject); after != crossed {
+			t.Fatalf("a move inside one category moved the date from %s to %s", crossed, after)
+		}
+	}
+	if keys := keysFor(`statusCategoryChangedDate >= -1m AND key = ` + subject); len(keys) != 1 {
+		t.Fatalf("searching by the category date matched %v", keys)
+	}
 }

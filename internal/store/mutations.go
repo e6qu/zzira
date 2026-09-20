@@ -224,6 +224,8 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 			return nil, nil, fmt.Errorf("unknown status %q", *up.StatusID)
 		}
 		diff["status"] = diffItem("status", current.Status.ID, current.Status.Name, *up.StatusID, newName)
+		// The date of the category change is the database's to keep, so
+		// every path that moves a status agrees (migration 252).
 		sets = append(sets, "status_id = "+arg(*up.StatusID))
 		// An issue is resolved when it reaches a done status and unresolved when
 		// it leaves one, which is what Jira's default workflows do; the site's

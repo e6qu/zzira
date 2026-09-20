@@ -159,7 +159,7 @@ test('a transition screen asks how work was resolved, and the field is editable'
     headers: { 'Content-Type': 'application/json' },
     data: { transition: { id: finishID } },
   });
-  expect(refused.status()).toBe(400);
+  expect(refused.status()).toBe(403);
   expect(await refused.text()).toContain('permission to transition');
   await accessible(deniedPage);
   await denied.close();

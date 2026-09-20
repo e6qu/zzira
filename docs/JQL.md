@@ -39,6 +39,7 @@ status.
   `remainingEstimate`/`timeEstimate`, `timeSpent`, `workRatio`, `approvals`,
   `text`, `comment`, `watcher(s)`, `voter(s)`, `votes`, `attachments`,
   `issueLinkType`, `level`, `category`, `hierarchyLevel`,
+  `statusCategoryChangedDate`,
   `"Request participants"`, `request-channel-type`, service SLA fields,
   typed custom fields (`cf[N]`, id or name), app field aliases and indexed
   entity properties. `issueKey` and `type` are Jira's aliases for `key` and
@@ -197,8 +198,7 @@ advanced (`?mode=advanced`) modes and saves queries as
 
 See [PLAN.md](../PLAN.md).
 
-- System fields not searchable: `lastViewed`, `filter` and
-  `statusCategoryChangedDate`.
+- System fields not searchable: `lastViewed` and `filter`.
 - JSM fields not searchable: `Organizations`, because a request is not shared
   with an organization here; only a desk is.
 - Functions missing: `issueHistory()`, `issuesWithRemoteLinksByGlobalId()`.

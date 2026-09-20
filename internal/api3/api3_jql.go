@@ -64,6 +64,7 @@ var jqlSystemFields = []jqlFieldReference{
 	{Value: "sprint", DisplayName: "Sprint", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"SPRINT"}},
 	{Value: "status", DisplayName: "Status", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not", "was", "was in", "was not", "was not in", "changed"}, Types: []string{"STATUS"}},
 	{Value: "statusCategory", DisplayName: "Status category", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in"}, Types: []string{"STATUS_CATEGORY"}},
+	{Value: "statusCategoryChangedDate", DisplayName: "Status category changed", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", ">", ">=", "<", "<=", "is", "is not"}, Types: []string{"DATE"}},
 	{Value: "summary", DisplayName: "Summary", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"~", "!~", "=", "!=", "is", "is not", "changed"}, Types: []string{"TEXT"}},
 	{Value: "text", DisplayName: "Text", Auto: "false", Orderable: "false", Searchable: "true", Operators: []string{"~", "!~"}, Types: []string{"TEXT"}},
 	{Value: "updated", DisplayName: "Updated", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", ">", ">=", "<", "<=", "is", "is not"}, Types: []string{"DATE"}},

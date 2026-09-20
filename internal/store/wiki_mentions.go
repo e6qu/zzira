@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
-	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/wikimarkup"
@@ -47,34 +45,17 @@ func wikiBlogPostReadableExpr(idExpr string) string {
 }
 
 // notificationSubjectReadable is whether the person a notification belongs to
-// can still see what it is about. Losing access to a page takes back what
-// its notifications said about it -- the title is in the message -- so an
-// inbox and a replica must both stop showing one. Anything this does not
-// know how to check is left alone.
-func notificationSubjectReadable(entityTypeExpr, entityIDExpr, userParam string) string {
-	predicate := `(CASE ` + entityTypeExpr + `
+// can still see what it is about, asked of the site in $1 and the reader in
+// $2. Losing access to a page takes back what its notifications said about
+// it -- the title is in the message -- so an inbox and a replica must both
+// stop showing one. Anything this does not know how to check is left alone.
+func notificationSubjectReadable(entityTypeExpr, entityIDExpr string) string {
+	return `(CASE ` + entityTypeExpr + `
 		WHEN 'wiki_page' THEN ` + wikiPageReadableExpr(entityIDExpr) + `
 		WHEN 'wiki_blogpost' THEN ` + wikiBlogPostReadableExpr(entityIDExpr) + `
 		WHEN 'wiki_content' THEN ` + wikiCustomContentReadableExpr(entityIDExpr) + `
 		ELSE TRUE END)`
-	return forWikiUserParam(predicate, userParam)
 }
-
-// forWikiUserParam moves a wiki predicate from the $2 it is written with to
-// the placeholder a query holds the reader in. A predicate that grew a $2x
-// placeholder would be rewritten wrongly and silently, so it stops here
-// instead.
-func forWikiUserParam(sql, userParam string) string {
-	if userParam == "$2" {
-		return sql
-	}
-	if wikiTwoDigitParameter.MatchString(sql) {
-		panic("wiki predicate uses a placeholder beginning with $2 and cannot be renumbered")
-	}
-	return strings.ReplaceAll(sql, "$2", userParam)
-}
-
-var wikiTwoDigitParameter = regexp.MustCompile(`\$2\d`)
 
 // insertWikiNotification puts one Confluence notification in someone's inbox
 // and marks it to be emailed.

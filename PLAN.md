@@ -139,8 +139,8 @@ but nothing shows or uses it.
 
 ## 5. JQL and filters
 
-- Fields: `lastViewed`, `filter`, `statusCategoryChangedDate`, and JSM's
-  `Organizations`, which needs a request to be shared with one.
+- Fields: `lastViewed`, `filter`, and JSM's `Organizations`, which needs a
+  request to be shared with one.
 - Functions: `issueHistory()`, `issuesWithRemoteLinksByGlobalId()`.
 - `WAS`/`CHANGED` on `resolution`; `includeArchivedProjects`; historical
   `versionedRepresentations`.

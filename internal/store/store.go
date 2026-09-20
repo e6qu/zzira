@@ -774,7 +774,7 @@ SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.descri
 	       i.updated_seq, i.updated_at,
 	       it.jira_id, it.hierarchy_level, pr.jira_id, COALESCE(pro.status_color, pr.status_color), COALESCE(pro.icon_url, pr.icon_url),
 	       res.id, res.jira_id, COALESCE(reso.name, res.name), COALESCE(reso.description, res.description), i.resolved_at,
-	       i.created_at, i.archived_at,
+	       i.created_at, i.archived_at, i.status_category_changed_at,
 	       i.original_estimate_seconds, i.remaining_estimate_seconds,
 	       (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id),
 	       (SELECT sum(t.original_estimate_seconds) FROM issues t WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask)),
@@ -811,6 +811,7 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 	var resolvedAt *time.Time
 	var createdAt time.Time
 	var archivedAt *time.Time
+	var statusCategoryChangedAt time.Time
 	var dueDate *string
 	err := row.Scan(&i.ID, &i.JiraID, &i.WorkspaceID, &i.ProjectID, &i.Key, &i.Summary, &i.Description,
 		&i.Status.ID, &i.Status.Name, &i.Status.Category, &i.Status.JiraID,
@@ -824,7 +825,7 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 		&i.UpdatedSeq, &updatedAt,
 		&i.IssueType.JiraID, &i.IssueType.HierarchyLevel, &priorityJiraID, &priorityColor, &priorityIcon,
 		&resolutionID, &resolutionJiraID, &resolutionName, &resolutionDescription, &resolvedAt,
-		&createdAt, &archivedAt,
+		&createdAt, &archivedAt, &statusCategoryChangedAt,
 		&i.OriginalEstimateSeconds, &i.RemainingEstimateSeconds, &i.TimeSpentSeconds,
 		&i.AggregateOriginalEstimateSeconds, &i.AggregateRemainingEstimateSeconds, &i.AggregateTimeSpentSeconds, &dueDate)
 	if err != nil {
@@ -834,6 +835,7 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 		i.DueDate = *dueDate
 	}
 	i.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+	i.StatusCategoryChangedAt = statusCategoryChangedAt.UTC().Format(time.RFC3339)
 	if archivedAt != nil {
 		i.ArchivedAt = archivedAt.UTC().Format(time.RFC3339)
 	}
@@ -1240,7 +1242,7 @@ func (s *Store) withoutUnreadableNotifications(ctx context.Context, workspaceID,
 			continue
 		}
 		var visible bool
-		query := `SELECT ` + notificationSubjectReadable("$3", "$4", "$2")
+		query := `SELECT ` + notificationSubjectReadable("$3", "$4")
 		if err := s.Pool.QueryRow(ctx, query, workspaceID, userID, named.entityType, named.entityID).Scan(&visible); err != nil {
 			return nil, err
 		}

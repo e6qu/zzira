@@ -1429,6 +1429,9 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 	if i.Priority != nil {
 		fields["priority"] = h.priorityBean(*i.Priority)
 	}
+	if i.StatusCategoryChangedAt != "" {
+		fields["statuscategorychangedate"] = i.StatusCategoryChangedAt
+	}
 	// Jira always carries both fields: null and absent until the issue is resolved.
 	fields["resolution"] = nil
 	fields["resolutiondate"] = nil
