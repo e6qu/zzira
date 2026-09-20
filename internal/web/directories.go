@@ -63,10 +63,16 @@ type profilePageData struct {
 	// APITokens are the signed-in person's own tokens, and NewAPIToken is the
 	// secret of one just created -- shown once, on the response to the
 	// request that made it, and never again.
-	APITokens     []models.APIToken
-	NewAPIToken   string
-	TokenError    string
+	APITokens   []models.APIToken
+	NewAPIToken string
+	TokenError  string
+	// TokenNotice is what happened that is neither a new token nor an error:
+	// a reloaded creation.
+	TokenNotice   string
 	DefaultExpiry string
+	// TokenRequestID identifies this rendering of the create form, so the
+	// POST it makes is created once however many times it arrives.
+	TokenRequestID string
 }
 
 type profileIdentityView struct {
@@ -423,6 +429,7 @@ func (h *Handler) buildProfileData(r *http.Request, user *models.User, wsID, acc
 	}
 	// The form opens on a year out, which is the longest a token may live.
 	data.DefaultExpiry = time.Now().AddDate(1, 0, 0).Format("2006-01-02")
+	data.TokenRequestID = store.NewID("tkreq")
 	identities, err := h.Store.OIDCIdentitiesByUser(r.Context(), user.ID)
 	if err != nil {
 		return profilePageData{}, err
@@ -472,16 +479,25 @@ func (h *Handler) CreateAPIToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// The whole of the chosen day belongs to the token.
-		endOfDay := parsed.UTC().Add(24*time.Hour - time.Second)
-		expiresAt = &endOfDay
+		last := time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 23, 59, 59, 0, time.UTC)
+		expiresAt = &last
 	}
-	plain, _, err := h.Store.CreateUserAPIToken(r.Context(), user.ID, r.PostFormValue("label"), expiresAt, authn.NewAPIToken)
+	plain, _, err := h.Store.CreateUserAPIToken(r.Context(), user.ID, r.PostFormValue("label"),
+		r.PostFormValue("requestId"), expiresAt, authn.NewAPIToken)
 	if err != nil {
-		if errors.Is(err, store.ErrAPITokenValidation) {
+		switch {
+		case errors.Is(err, store.ErrAPITokenAlreadyCreated):
+			// The page that made the token was reloaded. Nothing new is
+			// minted, and the secret cannot be shown again -- only its hash
+			// was kept -- so the page says so rather than pretending.
+			h.profilePageWith(w, r, user, func(data *profilePageData) {
+				data.TokenNotice = "That token was already created, and its secret was shown once. Revoke it and create another if it was not copied."
+			}, http.StatusOK)
+		case errors.Is(err, store.ErrAPITokenValidation):
 			h.profileWithTokenError(w, r, user, strings.TrimPrefix(err.Error(), store.ErrAPITokenValidation.Error()+": "))
-			return
+		default:
+			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	h.profilePageWith(w, r, user, func(data *profilePageData) { data.NewAPIToken = plain }, http.StatusOK)
