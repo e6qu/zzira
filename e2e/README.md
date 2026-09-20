@@ -4,10 +4,11 @@ These browser specs prove the persona journeys listed in [docs/UI_PARITY.md](../
 
 ## Run
 
-Start from a freshly migrated and seeded database. The server embeds its templates and static files, so rebuild it after any UI change.
+Start from a freshly migrated and seeded database: `make reset` is that database, and running the whole suite against one a previous run left behind produces failures that belong to the leftovers rather than to the code. The server embeds its templates and static files, so rebuild it after any UI change.
 
 ```sh
 make build                     # server and wasm worker (bin/, web/static/)
+make reset                     # empty, migrated and seeded, as CI starts
 make dev                       # Postgres on :5433, migrate, seed, server on :8080
 cd e2e
 npm ci
