@@ -56,9 +56,10 @@ A mention is Confluence's user link in storage format:
 - **One item per change.** Someone who matches several watches gets one item.
   Someone who is also mentioned in the change gets only the mention.
 - **Visibility.** Watchers who cannot see the changed content or comment are
-  not notified, and one who loses access afterwards stops seeing the items
-  they were already sent: a notification names its content, so the inbox and
-  the offline replica both drop it once that content stops being readable.
+  not notified, and one who loses access afterwards stops being told: a
+  notification names its content, so the inbox hides the items it already
+  holds about content that is no longer readable, and the sync stream stops
+  carrying them, including on a replica built from scratch.
 - **Autowatch.** Writing a page or blog post, or commenting on one, watches
   it. A draft is watched when it is published, since there is nothing to
   watch before that, and a comment on an attachment or on custom content

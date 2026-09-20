@@ -1512,6 +1512,12 @@ func (h *Handler) serviceRequestSLA(w http.ResponseWriter, r *http.Request, work
 }
 
 func (h *Handler) availableServiceTransitions(r *http.Request, workspaceID, actorID string, request *models.ServiceRequest) ([]map[string]any, error) {
+	// A request moves through the platform's Transition issues permission,
+	// the same as any other work item.
+	allowed, err := h.hasProjectPermission(r.Context(), workspaceID, actorID, request.Issue.ProjectID, request.Issue.ID, "TRANSITION_ISSUES")
+	if err != nil || !allowed {
+		return []map[string]any{}, err
+	}
 	wf, err := h.Store.WorkflowForProjectAndIssueType(r.Context(), request.Issue.ProjectID, request.Issue.IssueType.ID)
 	if err != nil {
 		return nil, err

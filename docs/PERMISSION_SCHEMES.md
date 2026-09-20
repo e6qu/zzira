@@ -53,7 +53,7 @@ Malformed ids, unknown expansions, invalid holders, duplicate grants or scheme n
   | Create | Create issues; plus Assign issues for an assignee, Modify reporter for another reporter, Set issue security for a level, Schedule issues for a due date, Resolve issues for fix versions |
   | Edit fields | Edit issues; plus Set issue security for the security level, Schedule issues for the due date, Resolve issues for fix versions and the [resolution](ISSUE_METADATA.md#on-work-items) |
   | Assign | Assign issues; the assignee needs Assignable user |
-  | Transition | Transition issues; plus Resolve issues when the transition sets a resolution, and Assign issues when it reassigns |
+  | Transition | Transition issues; plus Resolve issues when the transition sets a resolution, and Assign issues when it reassigns. Someone without it is offered none: not on the work item page, not on a service request, and not by `GET /issue/{key}/transitions` |
   | Board column moves | Schedule issues for the rank, and a workflow transition into the column's status, with everything that transition needs |
   | Rank, sprint and backlog moves | Schedule issues; sprint and backlog moves also Edit issues |
   | Sprints | Manage sprints in the board's project |

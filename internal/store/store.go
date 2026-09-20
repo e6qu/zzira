@@ -1166,10 +1166,6 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		      ELSE $3
 		    END = $3
 			  )
-			  -- A notification names what it is about, so it stops reaching a
-			  -- replica once that content stops being readable there.
-			  AND (a.entity_type <> $4 OR `+notificationSubjectReadable(
-		"a.payload->'notification'->>'entityType'", "a.payload->'notification'->>'entityId'", "$3")+`)
 			  AND (
 			    a.entity_type NOT IN ('issue','comment','attachment','worklog','watcher','vote','sprint_issue','issue_link')
 			    OR (
@@ -1192,7 +1188,86 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		}
 		out = append(out, a)
 	}
-	return out, to, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, since, err
+	}
+	// A notification names the content it is about, so it leaves the replica
+	// once that content stops being readable. It is asked here, once for each
+	// content a page mentions, rather than inside the scan above: that filter
+	// is already the largest predicate in the product, and this way a page
+	// pays for the question only when it carries notifications.
+	kept, err := s.withoutUnreadableNotifications(ctx, workspaceID, userID, out)
+	if err != nil {
+		return nil, since, err
+	}
+	return kept, to, nil
+}
+
+// withoutUnreadableNotifications drops the notification actions whose subject
+// the reader can no longer see.
+func (s *Store) withoutUnreadableNotifications(ctx context.Context, workspaceID, userID string, actions []models.Action) ([]models.Action, error) {
+	type subject struct{ entityType, entityID string }
+	subjectOf := func(a models.Action) (subject, bool) {
+		if a.EntityType != models.EntityNotification {
+			return subject{}, false
+		}
+		var payload struct {
+			Notification struct {
+				EntityType string `json:"entityType"`
+				EntityID   string `json:"entityId"`
+			} `json:"notification"`
+		}
+		if json.Unmarshal(a.Payload, &payload) != nil {
+			return subject{}, false
+		}
+		named := subject{entityType: payload.Notification.EntityType, entityID: payload.Notification.EntityID}
+		if named.entityID == "" {
+			return subject{}, false
+		}
+		switch named.entityType {
+		case "wiki_page", "wiki_blogpost", "wiki_content":
+			return named, true
+		}
+		return subject{}, false
+	}
+	readable := map[subject]bool{}
+	for _, action := range actions {
+		named, checkable := subjectOf(action)
+		if !checkable {
+			continue
+		}
+		if _, asked := readable[named]; asked {
+			continue
+		}
+		var visible bool
+		query := `SELECT ` + notificationSubjectReadable("$3", "$4", "$2")
+		if err := s.Pool.QueryRow(ctx, query, workspaceID, userID, named.entityType, named.entityID).Scan(&visible); err != nil {
+			return nil, err
+		}
+		readable[named] = visible
+	}
+	if len(readable) == 0 {
+		return actions, nil
+	}
+	kept := make([]models.Action, 0, len(actions))
+	for _, action := range actions {
+		if named, checkable := subjectOf(action); checkable && !readable[named] {
+			continue
+		}
+		kept = append(kept, action)
+	}
+	return kept, nil
+}
+
+// AnalyzeForPlanner refreshes the planner's statistics. A database that was
+// just migrated or seeded has none for the tables now full, and the planner
+// reads an empty table as one row: the sync page, whose filter is the largest
+// predicate in the product, then plans as if nothing existed and takes
+// seconds instead of milliseconds. Autovacuum gets there eventually; a
+// database handed straight to a client cannot wait for it.
+func (s *Store) AnalyzeForPlanner(ctx context.Context) error {
+	_, err := s.Pool.Exec(ctx, "ANALYZE")
+	return err
 }
 
 func DSNFromEnv() string {

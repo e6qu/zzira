@@ -33,6 +33,14 @@ func wikiPageReadableExpr(idExpr string) string {
 	WHERE s.workspace_id=$1 AND ` + wikiSpaceVisible + ` AND ` + wikiPageVisible + ` AND p.id::text=` + idExpr + `)`
 }
 
+// wikiCustomContentReadableExpr is the same question for custom content,
+// which a comment notification can also lead to.
+func wikiCustomContentReadableExpr(idExpr string) string {
+	return `EXISTS(SELECT 1 FROM wiki_content c JOIN wiki_spaces s ON s.id=c.space_id
+	LEFT JOIN wiki_pages p ON p.id=c.root_page_id
+	WHERE s.workspace_id=$1 AND c.type='custom' AND c.status='current' AND ` + wikiContentVisibleFor("custom") + ` AND c.id::text=` + idExpr + `)`
+}
+
 func wikiBlogPostReadableExpr(idExpr string) string {
 	return `EXISTS(SELECT 1 FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id
 	WHERE s.workspace_id=$1 AND ` + wikiSpaceVisible + ` AND ` + wikiBlogPostVisible + ` AND b.id::text=` + idExpr + `)`
@@ -47,6 +55,7 @@ func notificationSubjectReadable(entityTypeExpr, entityIDExpr, userParam string)
 	predicate := `(CASE ` + entityTypeExpr + `
 		WHEN 'wiki_page' THEN ` + wikiPageReadableExpr(entityIDExpr) + `
 		WHEN 'wiki_blogpost' THEN ` + wikiBlogPostReadableExpr(entityIDExpr) + `
+		WHEN 'wiki_content' THEN ` + wikiCustomContentReadableExpr(entityIDExpr) + `
 		ELSE TRUE END)`
 	return forWikiUserParam(predicate, userParam)
 }

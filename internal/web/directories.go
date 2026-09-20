@@ -435,7 +435,10 @@ func (h *Handler) buildProfileData(r *http.Request, user *models.User, wsID, acc
 		return profilePageData{}, err
 	}
 	// The form opens on a year out, which is the longest a token may live.
-	data.DefaultExpiry = time.Now().AddDate(1, 0, 0).Format("2006-01-02")
+	// A day is UTC here, as it is where the ceiling is checked and where the
+	// chosen day is turned into an instant; a local day would offer a date
+	// the server refuses whenever the two calendars disagree.
+	data.DefaultExpiry = time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
 	data.TokenRequestID = store.NewID("tkreq")
 	identities, err := h.Store.OIDCIdentitiesByUser(r.Context(), user.ID)
 	if err != nil {

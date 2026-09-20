@@ -1701,6 +1701,16 @@ func (h *Handler) serviceRequestForPage(r *http.Request, workspaceID, userID, is
 }
 
 func (h *Handler) servicePageTransitions(r *http.Request, workspaceID, actorID string, request *models.ServiceRequest) ([]serviceTransitionView, error) {
+	// Moving a request is the platform's Transition issues permission, as it
+	// is for any other work item, so a request shows none to someone the
+	// server would refuse.
+	canTransition, err := h.Store.HasProjectPermission(r.Context(), workspaceID, actorID, request.Issue.ProjectID, request.Issue.ID, "TRANSITION_ISSUES")
+	if err != nil {
+		return nil, err
+	}
+	if !canTransition {
+		return []serviceTransitionView{}, nil
+	}
 	wf, err := h.Store.WorkflowForProjectAndIssueType(r.Context(), request.Issue.ProjectID, request.Issue.IssueType.ID)
 	if err != nil {
 		return nil, err

@@ -509,16 +509,25 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	for _, field := range editView.CustomFields {
 		customByID[field.ID] = field
 	}
-	for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
-		message, _, _ := t.ScreenReminder()
-		screenFields := t.ScreenFields()
-		asked := []models.CustomFieldView{}
-		for _, id := range screenFields {
-			if field, ok := customByID[id]; ok {
-				asked = append(asked, field)
+	// A transition is offered only to someone who may move the work, as the
+	// REST resource offers them: a control the server would refuse is not a
+	// control.
+	canTransition, err := h.Store.HasProjectPermission(r.Context(), wsID, user.ID, issue.ProjectID, issue.ID, "TRANSITION_ISSUES")
+	if err != nil {
+		return nil, err
+	}
+	if canTransition {
+		for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
+			message, _, _ := t.ScreenReminder()
+			screenFields := t.ScreenFields()
+			asked := []models.CustomFieldView{}
+			for _, id := range screenFields {
+				if field, ok := customByID[id]; ok {
+					asked = append(asked, field)
+				}
 			}
+			transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: screenFields, ScreenCustomFields: asked, ScreenMessage: message})
 		}
-		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: screenFields, ScreenCustomFields: asked, ScreenMessage: message})
 	}
 	// Resolution is offered to people who may resolve work, as Jira ties the
 	// field to the Resolve issues permission.

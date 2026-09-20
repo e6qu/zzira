@@ -12,7 +12,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | Contributor finds work | ✅ | `v2`, `filters`, `directories` | — |
 | Contributor creates and triages work | ✅ | `create`, `v1`, `v3`, `triage`, `issue_mentions`, `custom_field_options` | — |
 | Contributor changes many work items at once | 🟡 | `navigator_bulk` (one field across a selection, watch, unwatch), `v2` (delete, move, transition) | One field per edit; work type and status only through bulk move and transition ([BULK_ISSUES](BULK_ISSUES.md#gaps)) |
-| Contributor records how work was resolved | 🟡 | `resolution` (transition screen, work item page, REST) | No denied-user or accessibility pass over the transition screen |
+| Contributor records how work was resolved | ✅ | `resolution` (transition screen, work item page, REST, a reader who may not move the work, accessibility) | — |
 | Contributor plans and runs a sprint | ✅ | `backlog`, `board_columns`, `board_swimlanes`, `v4`, `projects` | — |
 | Contributor works offline | 🟡 | `v0`, `v5`, `revocation`, `session-isolation` | Only work items are available offline; other entities and richer edits need a connection |
 | Contributor follows code through release | 🟡 | `directories` (development information), `software`, `releases` | Cross-project releases; release gates; environment promotion ([RELEASES](RELEASES.md#gaps)) |
@@ -22,7 +22,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | Engineering manager reviews delivery | 🟡 | `releases` (DORA metrics), `report_subscriptions` | Choosing which environments and incidents count toward DORA metrics ([REPORTS](REPORTS.md#gaps)) |
 | Manager builds an operating dashboard | ✅ | `dashboards`, `dashboard_reports`, `dashboard_subscriptions`, `v6` | Forge gadgets ([DASHBOARDS](DASHBOARDS.md#gaps)) |
 | Admin shapes the work item model | 🟡 | `issue_metadata` (work types and their schemes, priorities, resolutions), `custom_field_contexts`, `custom_field_options`, `field_configurations`, `screens`, `screen_schemes` | Per-language field translations ([ISSUE_METADATA](ISSUE_METADATA.md#gaps)) |
-| Admin structures work above the epic | 🟡 | `hierarchy` (add a level, move a work type onto it, parent an epic under it) | Boards, backlogs, plans and reports stop at the epic level; no `hierarchyLevel` in JQL ([ISSUE_METADATA](ISSUE_METADATA.md#work-type-hierarchy)) |
+| Admin structures work above the epic | 🟡 | `hierarchy` (add a level, move a work type onto it, parent an epic under it) | Boards, backlogs, plans and reports stop at the epic level ([ISSUE_METADATA](ISSUE_METADATA.md#work-type-hierarchy)) |
 | Admin designs and publishes a workflow | 🟡 | `directories` (workflow editor, statuses, workflow schemes, transition screens), `resolution` (a transition screen that asks for the resolution) | Workflow scheme administration is incomplete |
 | Admin automates work | 🟡 | `automation` | Much of the trigger, condition and action catalog ([AUTOMATION](AUTOMATION.md)) |
 | Service customer requests help | 🟡 | `service`, `service_assets` | Assets-backed form behavior such as AQL filters |

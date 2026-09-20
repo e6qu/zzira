@@ -75,7 +75,12 @@ func main() {
 	if err := store.Migrate(ctx, st.Pool); err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
+	// The one-shot modes leave tables the planner has never looked at, so
+	// each one hands over a database that can be planned for.
 	if *mode == "migrate" {
+		if err := st.AnalyzeForPlanner(ctx); err != nil {
+			log.Fatalf("analyze: %v", err)
+		}
 		fmt.Println("migrations applied")
 		return
 	}
@@ -83,11 +88,17 @@ func main() {
 		if err := applyDemoScenario(ctx, st, *scenario, *workspace, os.Getenv); err != nil {
 			log.Fatalf("demo: %v", err)
 		}
+		if err := st.AnalyzeForPlanner(ctx); err != nil {
+			log.Fatalf("analyze: %v", err)
+		}
 		return
 	}
 	if *mode == "seed" {
 		if err := seedUsers(ctx, st); err != nil {
 			log.Fatalf("seed: %v", err)
+		}
+		if err := st.AnalyzeForPlanner(ctx); err != nil {
+			log.Fatalf("analyze: %v", err)
 		}
 		return
 	}
