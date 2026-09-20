@@ -38,12 +38,23 @@ func TestSelectedBoardFiltersDeduplicatesAndBoundsInput(t *testing.T) {
 	}
 }
 
-func TestBoardConfigurationFormParsesParallelQuickFilterRows(t *testing.T) {
+func TestBoardConfigurationFormParsesColumnsAndQuickFilterRows(t *testing.T) {
 	form := url.Values{
 		"swimlanes":              {"assignee"},
 		"cardField":              {"priority", "labels"},
-		"limit_todo":             {"5"},
-		"limit_done":             {"0"},
+		"filterJQL":              {"project = ZZ"},
+		"estimationField":        {"customfield_10001"},
+		"columnKey":              {"c0", "c1", "c2"},
+		"columnName":             {"To Do", "Working", "Gone"},
+		"columnLimit":            {"0", "5", "0"},
+		"deleteColumn":           {"c2"},
+		"newColumnName":          {"Waiting"},
+		"statusID":               {"todo", "doing", "review", "done", "cancelled"},
+		"statusColumn_todo":      {"c0"},
+		"statusColumn_doing":     {"c1"},
+		"statusColumn_review":    {"c1"},
+		"statusColumn_done":      {"new"},
+		"statusColumn_cancelled": {"c2"},
 		"quickFilterID":          {"existing", "", "remove-me"},
 		"quickFilterName":        {"Open", "Mine", "Removed"},
 		"quickFilterJQL":         {"status != Done", "assignee = currentUser()", "status = Done"},
@@ -52,7 +63,7 @@ func TestBoardConfigurationFormParsesParallelQuickFilterRows(t *testing.T) {
 	}
 	request := httptest.NewRequest("POST", "/board/brd/settings", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	board := &models.Board{ColumnStatusIDs: []string{"todo", "done"}}
+	board := &models.Board{Columns: []models.BoardColumn{{Name: "To Do", StatusIDs: []string{"todo"}}}}
 
 	input, err := boardConfigurationForm(request, board)
 	if err != nil {
@@ -61,8 +72,19 @@ func TestBoardConfigurationFormParsesParallelQuickFilterRows(t *testing.T) {
 	if input.SwimlaneStrategy != "assignee" || !reflect.DeepEqual(input.CardFields, []string{"priority", "labels"}) {
 		t.Fatalf("layout input = %+v", input)
 	}
-	if input.ColumnLimits["todo"] != 5 || input.ColumnLimits["done"] != 0 {
-		t.Fatalf("limits = %#v", input.ColumnLimits)
+	if input.FilterJQL != "project = ZZ" || input.EstimationFieldID != "customfield_10001" {
+		t.Fatalf("scope input = %+v", input)
+	}
+	// The deleted column goes, the new one is added last, and a column keeps
+	// every status that named it -- while the status that named the deleted
+	// column leaves the board rather than following it.
+	want := []models.BoardColumn{
+		{Name: "To Do", StatusIDs: []string{"todo"}},
+		{Name: "Working", StatusIDs: []string{"doing", "review"}, Limit: 5},
+		{Name: "Waiting", StatusIDs: []string{"done"}},
+	}
+	if !reflect.DeepEqual(input.Columns, want) {
+		t.Fatalf("columns = %#v", input.Columns)
 	}
 	if len(input.QuickFilters) != 2 || input.QuickFilters[0].ID != "existing" || input.QuickFilters[1].Name != "Mine" {
 		t.Fatalf("quick filters = %+v", input.QuickFilters)
@@ -70,9 +92,10 @@ func TestBoardConfigurationFormParsesParallelQuickFilterRows(t *testing.T) {
 }
 
 func TestBoardConfigurationFormRejectsMalformedRowsAndLimits(t *testing.T) {
-	board := &models.Board{ColumnStatusIDs: []string{"todo"}}
+	board := &models.Board{Columns: []models.BoardColumn{{Name: "To Do", StatusIDs: []string{"todo"}}}}
 	for _, encoded := range []string{
-		"swimlanes=none&limit_todo=1.5",
+		"swimlanes=none&columnKey=c0&columnName=To+Do&columnLimit=1.5",
+		"swimlanes=none&columnKey=c0&columnName=To+Do",
 		"swimlanes=none&quickFilterID=one&quickFilterName=One",
 	} {
 		request := httptest.NewRequest("POST", "/board/brd/settings", strings.NewReader(encoded))

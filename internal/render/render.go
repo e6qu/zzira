@@ -27,6 +27,17 @@ func init() {
 	funcs := template.FuncMap{
 		"site": siteLook,
 		"dec":  func(value int) int { return value - 1 },
+		"inc":  func(value int) int { return value + 1 },
+		// hasString reports whether a list holds a value, which a template
+		// cannot ask on its own.
+		"hasString": func(list []string, value string) bool {
+			for _, item := range list {
+				if item == value {
+					return true
+				}
+			}
+			return false
+		},
 		"wikiHTML": func(storage string) (template.HTML, error) {
 			value, err := wikimarkup.Render(storage)
 			return template.HTML(value), err // #nosec G203 -- strict tag/attribute validation and escaping in wikimarkup.

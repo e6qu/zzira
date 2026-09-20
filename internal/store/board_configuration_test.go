@@ -20,7 +20,11 @@ func TestNormalizeBoardConfiguration(t *testing.T) {
 		},
 		SwimlaneStrategy: "assignee",
 		CardFields:       []string{"labels", "priority"},
-		ColumnLimits:     map[string]int{"todo": 4, "done": 0},
+		Columns: []models.BoardColumn{
+			{Name: " To Do ", StatusIDs: []string{"todo"}, Limit: 4},
+			{Name: "Done", StatusIDs: []string{"done"}},
+		},
+		FilterJQL: " project = ZZ ",
 	}
 	normalized, err := normalizeBoardConfiguration(input, []string{"todo", "done"}, nil)
 	if err != nil {
@@ -35,23 +39,54 @@ func TestNormalizeBoardConfiguration(t *testing.T) {
 	if !reflect.DeepEqual(normalized.CardFields, []string{"labels", "priority"}) {
 		t.Fatalf("card fields = %#v", normalized.CardFields)
 	}
-	if !reflect.DeepEqual(normalized.ColumnLimits, map[string]int{"todo": 4}) {
-		t.Fatalf("column limits = %#v", normalized.ColumnLimits)
+	wantColumns := []models.BoardColumn{
+		{Name: "To Do", StatusIDs: []string{"todo"}, Limit: 4},
+		{Name: "Done", StatusIDs: []string{"done"}},
+	}
+	if !reflect.DeepEqual(normalized.Columns, wantColumns) {
+		t.Fatalf("columns = %#v", normalized.Columns)
+	}
+	if normalized.FilterJQL != "project = ZZ" {
+		t.Fatalf("filter = %q", normalized.FilterJQL)
 	}
 }
 
 func TestNormalizeBoardConfigurationRejectsInvalidInput(t *testing.T) {
+	// A valid configuration apart from the one thing each case breaks.
+	valid := func(update func(*BoardConfigurationUpdate)) BoardConfigurationUpdate {
+		input := BoardConfigurationUpdate{
+			SwimlaneStrategy: "none",
+			Columns:          []models.BoardColumn{{Name: "To Do", StatusIDs: []string{"todo"}}},
+			FilterJQL:        "project = ZZ",
+		}
+		update(&input)
+		return input
+	}
 	tests := []struct {
 		name  string
 		input BoardConfigurationUpdate
 	}{
-		{"swimlanes", BoardConfigurationUpdate{SwimlaneStrategy: "epic"}},
-		{"duplicate quick filter", BoardConfigurationUpdate{SwimlaneStrategy: "none", QuickFilters: []models.BoardQuickFilter{{ID: "same", Name: "One", JQL: "status = Done"}, {ID: "same", Name: "Two", JQL: "status = Done"}}}},
-		{"invalid JQL", BoardConfigurationUpdate{SwimlaneStrategy: "none", QuickFilters: []models.BoardQuickFilter{{ID: "bad", Name: "Bad", JQL: "status ="}}}},
-		{"unknown card field", BoardConfigurationUpdate{SwimlaneStrategy: "none", CardFields: []string{"story_points"}}},
-		{"duplicate card field", BoardConfigurationUpdate{SwimlaneStrategy: "none", CardFields: []string{"labels", "labels"}}},
-		{"unknown column", BoardConfigurationUpdate{SwimlaneStrategy: "none", ColumnLimits: map[string]int{"missing": 2}}},
-		{"negative limit", BoardConfigurationUpdate{SwimlaneStrategy: "none", ColumnLimits: map[string]int{"todo": -1}}},
+		{"swimlanes", valid(func(i *BoardConfigurationUpdate) { i.SwimlaneStrategy = "epic" })},
+		{"duplicate quick filter", valid(func(i *BoardConfigurationUpdate) {
+			i.QuickFilters = []models.BoardQuickFilter{{ID: "same", Name: "One", JQL: "status = Done"}, {ID: "same", Name: "Two", JQL: "status = Done"}}
+		})},
+		{"invalid JQL", valid(func(i *BoardConfigurationUpdate) {
+			i.QuickFilters = []models.BoardQuickFilter{{ID: "bad", Name: "Bad", JQL: "status ="}}
+		})},
+		{"unknown card field", valid(func(i *BoardConfigurationUpdate) { i.CardFields = []string{"story_points"} })},
+		{"duplicate card field", valid(func(i *BoardConfigurationUpdate) { i.CardFields = []string{"labels", "labels"} })},
+		{"unknown status", valid(func(i *BoardConfigurationUpdate) {
+			i.Columns = []models.BoardColumn{{Name: "To Do", StatusIDs: []string{"missing"}}}
+		})},
+		{"status in two columns", valid(func(i *BoardConfigurationUpdate) {
+			i.Columns = []models.BoardColumn{{Name: "One", StatusIDs: []string{"todo"}}, {Name: "Two", StatusIDs: []string{"todo"}}}
+		})},
+		{"no columns", valid(func(i *BoardConfigurationUpdate) { i.Columns = nil })},
+		{"unnamed column", valid(func(i *BoardConfigurationUpdate) {
+			i.Columns = []models.BoardColumn{{Name: "  ", StatusIDs: []string{"todo"}}}
+		})},
+		{"negative limit", valid(func(i *BoardConfigurationUpdate) { i.Columns[0].Limit = -1 })},
+		{"invalid filter", valid(func(i *BoardConfigurationUpdate) { i.FilterJQL = "project =" })},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -107,7 +142,8 @@ func TestBoardConfigurationPersistsAndEmitsAction(t *testing.T) {
 	}
 	restore := BoardConfigurationUpdate{
 		QuickFilters: original.QuickFilters, SwimlaneStrategy: original.SwimlaneStrategy,
-		CardFields: original.CardFields, ColumnLimits: original.ColumnLimits,
+		CardFields: original.CardFields, Columns: original.Columns,
+		FilterJQL: original.FilterJQL, EstimationFieldID: original.EstimationFieldID,
 	}
 	t.Cleanup(func() {
 		if _, _, err := st.UpdateBoardConfiguration(ctx, "test-cleanup", "ws_default", original.ID, restore); err != nil {
@@ -115,11 +151,16 @@ func TestBoardConfigurationPersistsAndEmitsAction(t *testing.T) {
 		}
 	})
 
+	// Two statuses share one column, which is what a column is for.
 	input := BoardConfigurationUpdate{
 		QuickFilters:     []models.BoardQuickFilter{{ID: "medium", Name: "Medium priority", JQL: "priority = Medium"}},
 		SwimlaneStrategy: "assignee",
 		CardFields:       []string{"assignee", "labels"},
-		ColumnLimits:     map[string]int{"st_inprogress": 3},
+		Columns: []models.BoardColumn{
+			{Name: "To Do", StatusIDs: []string{"st_todo"}},
+			{Name: "Under way", StatusIDs: []string{"st_inprogress", "st_done"}, Limit: 3},
+		},
+		FilterJQL: original.FilterJQL,
 	}
 	updated, action, err := st.UpdateBoardConfiguration(ctx, "test-actor", "ws_default", original.ID, input)
 	if err != nil {
@@ -128,14 +169,20 @@ func TestBoardConfigurationPersistsAndEmitsAction(t *testing.T) {
 	if action.EntityType != models.EntityBoard || action.EntityID != original.ID || action.Op != models.OpUpsert {
 		t.Fatalf("action = %+v", action)
 	}
-	if updated.SwimlaneStrategy != "assignee" || updated.ColumnLimits["st_inprogress"] != 3 {
+	if updated.SwimlaneStrategy != "assignee" || len(updated.Columns) != 2 || updated.Columns[1].Limit != 3 {
 		t.Fatalf("updated board = %+v", updated)
+	}
+	if !reflect.DeepEqual(updated.StatusIDs(), []string{"st_todo", "st_inprogress", "st_done"}) {
+		t.Fatalf("board statuses = %#v", updated.StatusIDs())
+	}
+	if updated.ColumnOfStatus("st_done") != 1 || updated.ColumnOfStatus("missing") != -1 {
+		t.Fatalf("column of status = %d", updated.ColumnOfStatus("st_done"))
 	}
 	loaded, err := st.BoardByID(ctx, original.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(loaded.QuickFilters, updated.QuickFilters) || !reflect.DeepEqual(loaded.CardFields, updated.CardFields) || !reflect.DeepEqual(loaded.ColumnLimits, updated.ColumnLimits) {
+	if !reflect.DeepEqual(loaded.QuickFilters, updated.QuickFilters) || !reflect.DeepEqual(loaded.CardFields, updated.CardFields) || !reflect.DeepEqual(loaded.Columns, updated.Columns) {
 		t.Fatalf("loaded board configuration = %+v, want %+v", loaded, updated)
 	}
 }

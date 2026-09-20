@@ -163,7 +163,7 @@ func (h *Handler) boardRoute(w http.ResponseWriter, r *http.Request, parts []str
 	case len(parts) == 1 && r.Method == http.MethodDelete:
 		h.deleteBoard(w, r, wsID, userID, board)
 	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodGet:
-		h.agileIssueSearch(w, r, wsID, userID, boardIssueScope, []any{board.ProjectID, board.ColumnStatusIDs, board.Type}, "")
+		h.agileIssueSearch(w, r, wsID, userID, boardIssueScope, []any{board.ProjectID, board.StatusIDs(), board.Type}, "")
 	case len(parts) == 2 && parts[1] == "issue" && r.Method == http.MethodPost:
 		h.moveIssuesToBoard(w, r, wsID, userID, board)
 	case len(parts) == 2 && parts[1] == "backlog" && r.Method == http.MethodGet:
@@ -204,22 +204,23 @@ func (h *Handler) boardRoute(w http.ResponseWriter, r *http.Request, parts []str
 }
 
 func (h *Handler) boardConfiguration(w http.ResponseWriter, r *http.Request, board *models.Board) {
-	columns := make([]map[string]any, 0, len(board.ColumnStatusIDs))
+	columns := make([]map[string]any, 0, len(board.Columns))
 	constraintType := "none"
-	for _, statusID := range board.ColumnStatusIDs {
-		status, err := h.Store.StatusByIDForProject(r.Context(), statusID, board.ProjectID)
-		if err != nil {
-			jiraError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-		column := map[string]any{
-			"name": status.Name,
-			"statuses": []map[string]any{{
+	for _, boardColumn := range board.Columns {
+		statuses := make([]map[string]any, 0, len(boardColumn.StatusIDs))
+		for _, statusID := range boardColumn.StatusIDs {
+			status, err := h.Store.StatusByIDForProject(r.Context(), statusID, board.ProjectID)
+			if err != nil {
+				jiraError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			statuses = append(statuses, map[string]any{
 				"id": strconv.FormatInt(status.JiraID, 10), "self": h.BaseURL + "/rest/api/3/status/" + strconv.FormatInt(status.JiraID, 10),
-			}},
+			})
 		}
-		if limit := board.ColumnLimits[statusID]; limit > 0 {
-			column["max"] = limit
+		column := map[string]any{"name": boardColumn.Name, "statuses": statuses}
+		if boardColumn.Limit > 0 {
+			column["max"] = boardColumn.Limit
 			constraintType = "issueCount"
 		}
 		columns = append(columns, column)
