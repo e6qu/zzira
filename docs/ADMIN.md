@@ -52,6 +52,21 @@ Site administrators use `/admin`. Other users do not see the navigation item and
 
 Every user, group, membership, role, domain, policy and product-plan change writes an organization audit event in the same transaction.
 
+**API tokens** are made by the person who uses them, on their own profile: a
+label saying what it is for, an expiry within a year (the form opens on a year
+out, and an empty date means none), and the secret shown once, in the response
+to the request that made it. Only the token's hash is kept, so a secret that
+was not copied is revoked and replaced rather than recovered. A token signs in
+as its owner over HTTP Basic -- the email address as the user, the token as the
+password -- and is revoked from the same card. One person holds at most 20.
+
+Because the secret exists once, the page renders it rather than redirecting:
+a redirect would either lose it or carry it in a URL, where it would outlive
+the response in browser history and access logs. A reload therefore replays
+the request, so the form carries the id of the creation it makes; a second
+arrival of that id creates nothing and the page says the token was already
+made.
+
 **Suspension and removal** revoke the account's sessions and API tokens when it has no other active directory. On reconnect, the affected browser checks access before replaying its outbox, purges its private replica and page cache, and goes to the signed-out page.
 
 ## Organizations REST API
@@ -133,7 +148,6 @@ Tracked in [PLAN.md](../PLAN.md).
 - Authentication policies: enforced SSO, two-step verification, password requirements, session duration, and policy assignment to users.
 - Account claiming from verified domains (managed vs unmanaged accounts), and domain ownership checks across organizations.
 - The Atlassian user management API (`/users/{account_id}/manage/...`: profile, email, lifecycle, API tokens).
-- Self-service API token creation and revocation; tokens are created only by the server's seed mode.
 - Organization API keys distinct from user API tokens.
 - Data security policies (app access rules, public links, export controls).
 - Data residency placement; policies are recorded but not applied.

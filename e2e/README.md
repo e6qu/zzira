@@ -43,7 +43,7 @@ CI (`.github/workflows/ci.yml`) runs the whole suite against a server configured
 | Work items and search | `create`, `v1`, `v2`, `v3`, `triage`, `resolution`, `filters`, `issue_mentions`, `people` |
 | Jira Software | `backlog`, `board_columns`, `v4`, `projects`, `software`, `timeline`, `plans_view`, `plans_teams`, `releases` |
 | Reports and dashboards | `reports_flow`, `reports_progress`, `report_subscriptions`, `dashboards`, `dashboard_reports`, `dashboard_subscriptions`, `v6` |
-| Administration | `admin`, `global_permissions`, `issue_metadata`, `hierarchy`, `project_roles`, `permission_schemes`, `permission_helper`, `notification_schemes`, `notification_helper`, `notification_preferences`, `notifications`, `issue_security_schemes`, `screens`, `screen_schemes`, `field_configurations`, `custom_field_contexts`, `custom_field_options`, `classification_levels` |
+| Administration | `admin`, `api_tokens`, `global_permissions`, `issue_metadata`, `hierarchy`, `project_roles`, `permission_schemes`, `permission_helper`, `notification_schemes`, `notification_helper`, `notification_preferences`, `notifications`, `issue_security_schemes`, `screens`, `screen_schemes`, `field_configurations`, `custom_field_contexts`, `custom_field_options`, `classification_levels` |
 | Automation and apps | `automation`, `apps` |
 | Service Management | `service`, `service_assets` |
 | Confluence | `wiki`, `wiki_content_tree`, `wiki_database`, `wiki_drafts_purge`, `wiki_live_editing`, `wiki_mentions`, `wiki_page_details`, `wiki_page_lifecycle`, `wiki_presence`, `wiki_space_admin`, `wiki_space_tools`, `wiki_watches`, `wiki_whiteboard` |

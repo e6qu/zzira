@@ -167,7 +167,6 @@ profile edit, suspend, restore and remove.
 - Managed accounts claimed through verified domains; domain ownership exclusive
   across organizations; `claimStatus` derived, not constant.
 - User management API (`/users/{id}/manage/...`).
-- Self-service API tokens on the profile page, with expiry and revocation.
 - Organization API keys for the admin API.
 - Data security policies; data residency placement (or an explicit boundary).
 - Several sites per organization on one server.
