@@ -155,11 +155,13 @@ test('a transition screen asks how work was resolved, and the field is editable'
   // -- so refusing it is the permission speaking, not a bad id.
   const offered = await page.request.get(`/rest/api/3/issue/${issueKey}/transitions`, { headers: { Authorization: apiAuthHeader() } });
   const finishID = (await offered.json()).transitions.find((transition: { name: string }) => transition.name === 'Finish').id as string;
+  // The session's own request, same-origin as the page it came from, so
+  // what answers is the permission rather than the cross-origin guard.
   const refused = await deniedPage.request.post(`/rest/api/3/issue/${issueKey}/transitions`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: { Origin: new URL(deniedPage.url()).origin, 'Content-Type': 'application/json' },
     data: { transition: { id: finishID } },
   });
-  expect(refused.status()).toBe(403);
+  expect(refused.status()).toBe(400);
   expect(await refused.text()).toContain('permission to transition');
   await accessible(deniedPage);
   await denied.close();
