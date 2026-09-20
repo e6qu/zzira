@@ -39,6 +39,10 @@ type BoardConfigurationUpdate struct {
 	// Columns are the board's columns in order, with the statuses each one
 	// gathers and its work-in-progress limit.
 	Columns []models.BoardColumn
+	// Swimlanes are the named queries a board that groups by query uses, in
+	// order. They are kept whichever strategy is chosen, so switching away
+	// from queries and back does not lose them.
+	Swimlanes []models.BoardSwimlane
 	// FilterJQL and EstimationFieldID are the board's scope and its estimate,
 	// both of which Jira lets a board administrator change after the board
 	// exists. An empty EstimationFieldID means work items are counted.
@@ -118,7 +122,7 @@ func (s *Store) RankBetween(ctx context.Context, workspaceID, projectID, statusI
 
 const boardJoin = `
 SELECT b.id, b.project_id, p.key, p.name, p.workspace_id, b.name, b.type, b.board_columns, b.filter_jql,
-       b.quick_filters, b.swimlane_strategy, b.card_fields, b.jira_id, b.filter_jira_id,
+       b.quick_filters, b.swimlane_strategy, b.swimlanes, b.card_fields, b.jira_id, b.filter_jira_id,
        COALESCE(b.estimation_field_id,''), COALESCE(ef.name,''), COALESCE(b.source_filter_id,''), COALESCE(sf.jira_id,0), p.project_type_key
 FROM boards b JOIN projects p ON p.id=b.project_id AND p.lifecycle_state='ACTIVE'
 LEFT JOIN custom_fields ef ON ef.id=b.estimation_field_id
@@ -127,9 +131,9 @@ LEFT JOIN filters sf ON sf.id=b.source_filter_id
 
 func scanBoard(row pgx.Row) (*models.Board, error) {
 	b := &models.Board{}
-	var quickFilters, columns []byte
+	var quickFilters, columns, swimlanes []byte
 	err := row.Scan(&b.ID, &b.ProjectID, &b.ProjectKey, &b.ProjectName, &b.WorkspaceID, &b.Name, &b.Type, &columns, &b.FilterJQL,
-		&quickFilters, &b.SwimlaneStrategy, &b.CardFields, &b.JiraID, &b.FilterJiraID,
+		&quickFilters, &b.SwimlaneStrategy, &swimlanes, &b.CardFields, &b.JiraID, &b.FilterJiraID,
 		&b.EstimationFieldID, &b.EstimationFieldName, &b.SourceFilterID, &b.SourceFilterJiraID, &b.ProjectTypeKey)
 	if err != nil {
 		return b, err
@@ -139,6 +143,9 @@ func scanBoard(row pgx.Row) (*models.Board, error) {
 	}
 	if err := json.Unmarshal(columns, &b.Columns); err != nil {
 		return b, fmt.Errorf("decode board columns: %w", err)
+	}
+	if err := json.Unmarshal(swimlanes, &b.Swimlanes); err != nil {
+		return b, fmt.Errorf("decode board swimlanes: %w", err)
 	}
 	return b, err
 }
@@ -287,9 +294,53 @@ func validBoardFilterID(id string) bool {
 // project offers: every column status must be one of them, no status may
 // stand in two columns, and a board must keep at least one column or it would
 // show nothing.
+// boardSwimlaneStrategies are the groupings a board offers. Jira also groups
+// by stories, which needs an immediate parent distinguished from an ancestor
+// epic; this product's work items carry one parent link, so that grouping is
+// not offered rather than approximated.
+var boardSwimlaneStrategies = map[string]bool{
+	"none": true, "assignee": true, "epic": true, "project": true, "query": true,
+}
+
 func normalizeBoardConfiguration(input BoardConfigurationUpdate, availableStatuses []string, validate func(*jql.Query) error) (BoardConfigurationUpdate, error) {
-	if input.SwimlaneStrategy != "none" && input.SwimlaneStrategy != "assignee" {
-		return input, fmt.Errorf("%w: swimlanes must be none or assignee", ErrBoardValidation)
+	if !boardSwimlaneStrategies[input.SwimlaneStrategy] {
+		return input, fmt.Errorf("%w: swimlanes group by none, assignee, epic, project or query", ErrBoardValidation)
+	}
+	if len(input.Swimlanes) > 20 {
+		return input, fmt.Errorf("%w: boards support at most 20 swimlane queries", ErrBoardValidation)
+	}
+	lanes := make([]models.BoardSwimlane, 0, len(input.Swimlanes))
+	for index := range input.Swimlanes {
+		lane := input.Swimlanes[index]
+		lane.Name = strings.TrimSpace(lane.Name)
+		lane.JQL = strings.TrimSpace(lane.JQL)
+		if lane.Name == "" && lane.JQL == "" {
+			continue
+		}
+		if lane.Name == "" || utf8.RuneCountInString(lane.Name) > 64 {
+			return input, fmt.Errorf("%w: swimlane names are required and cannot exceed 64 characters", ErrBoardValidation)
+		}
+		if lane.JQL == "" || utf8.RuneCountInString(lane.JQL) > 2000 {
+			return input, fmt.Errorf("%w: swimlane JQL is required and cannot exceed 2000 characters", ErrBoardValidation)
+		}
+		query, err := jql.Parse(lane.JQL)
+		if err != nil {
+			return input, fmt.Errorf("%w: %s: %v", ErrBoardValidation, lane.Name, err)
+		}
+		if validate != nil {
+			if err := validate(query); err != nil {
+				return input, fmt.Errorf("%w: %s: %v", ErrBoardValidation, lane.Name, err)
+			}
+		} else if err := jql.Compile(query, "validation-user", jql.DefaultResolver()).Err; err != nil {
+			return input, fmt.Errorf("%w: %s: %v", ErrBoardValidation, lane.Name, err)
+		}
+		lane.Position = len(lanes)
+		lanes = append(lanes, lane)
+	}
+	input.Swimlanes = lanes
+	// A board cannot group by a query it does not have.
+	if input.SwimlaneStrategy == "query" && len(input.Swimlanes) == 0 {
+		return input, fmt.Errorf("%w: grouping by query needs at least one swimlane query", ErrBoardValidation)
 	}
 	if len(input.QuickFilters) > 20 {
 		return input, fmt.Errorf("%w: boards support at most 20 quick filters", ErrBoardValidation)
@@ -467,6 +518,10 @@ func (s *Store) UpdateBoardConfiguration(ctx context.Context, actorID, workspace
 	if err != nil {
 		return nil, nil, err
 	}
+	swimlanes, err := json.Marshal(input.Swimlanes)
+	if err != nil {
+		return nil, nil, err
+	}
 	// An empty estimation field means the board counts work items, which is
 	// how a scrum board without a chosen field already behaved.
 	var estimation any
@@ -483,13 +538,14 @@ func (s *Store) UpdateBoardConfiguration(ctx context.Context, actorID, workspace
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE boards
-		SET quick_filters=$2, swimlane_strategy=$3, card_fields=$4, board_columns=$5, filter_jql=$6, estimation_field_id=$7
+		SET quick_filters=$2, swimlane_strategy=$3, card_fields=$4, board_columns=$5, filter_jql=$6, estimation_field_id=$7, swimlanes=$8
 		WHERE id=$1`, boardID, quickFilters, input.SwimlaneStrategy, input.CardFields, columns,
-		input.FilterJQL, estimation); err != nil {
+		input.FilterJQL, estimation, swimlanes); err != nil {
 		return nil, nil, err
 	}
 	board.QuickFilters = input.QuickFilters
 	board.SwimlaneStrategy = input.SwimlaneStrategy
+	board.Swimlanes = input.Swimlanes
 	board.CardFields = input.CardFields
 	board.Columns = input.Columns
 	board.FilterJQL = input.FilterJQL
@@ -1921,4 +1977,131 @@ func (s *Store) AssignSecurityScheme(ctx context.Context, projectID, schemeID st
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// BoardSwimlaneMembership decides which of a board's named lanes each of its
+// work items stands in: the first lane whose query matches takes it, the way
+// Jira's query swimlanes work. A work item no lane matches is absent from the
+// map, and the board shows it in the lane for everything else.
+func (s *Store) BoardSwimlaneMembership(ctx context.Context, board *models.Board, userID string) (map[string]int, error) {
+	membership := map[string]int{}
+	if len(board.Swimlanes) == 0 {
+		return membership, nil
+	}
+	resolver, err := s.JQLResolver(ctx, board.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	for index, lane := range board.Swimlanes {
+		query, err := jql.Parse(lane.JQL)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s: %v", ErrBoardValidation, lane.Name, err)
+		}
+		if err := s.ExpandAppJQL(ctx, board.WorkspaceID, query); err != nil {
+			return nil, err
+		}
+		compiled := jql.CompileAt(query, userID, resolver, 3)
+		if compiled.Err != nil {
+			return nil, fmt.Errorf("%w: %s: %v", ErrBoardValidation, lane.Name, compiled.Err)
+		}
+		args := []any{board.ProjectID, userID}
+		args = append(args, compiled.Args...)
+		rows, err := s.Pool.Query(ctx, `SELECT i.id`+issueJoinTables()+`
+			WHERE i.project_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` AND (`+compiled.Where+`)`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var issueID string
+			if err := rows.Scan(&issueID); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			// First match wins, so a later lane never takes work an earlier
+			// one already claimed.
+			if _, taken := membership[issueID]; !taken {
+				membership[issueID] = index
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	return membership, nil
+}
+
+// BoardLaneAncestor is the work item a lane is named after.
+type BoardLaneAncestor struct {
+	ID      string
+	Key     string
+	Summary string
+}
+
+// BoardEpicLanes resolves, for each work item id given, the epic it belongs
+// to: the nearest ancestor whose work type sits at or above the epic level.
+// A work item with no such ancestor is absent from the map and stands in the
+// board's lane for work under no epic.
+func (s *Store) BoardEpicLanes(ctx context.Context, workspaceID string, issueIDs []string) (map[string]BoardLaneAncestor, error) {
+	lanes := map[string]BoardLaneAncestor{}
+	if len(issueIDs) == 0 {
+		return lanes, nil
+	}
+	// The walk is bounded: a hierarchy deeper than this is a loop, and a loop
+	// would otherwise be followed for ever.
+	const maxDepth = 8
+	pending := make(map[string]string, len(issueIDs)) // work item -> ancestor being examined
+	for _, id := range issueIDs {
+		pending[id] = id
+	}
+	for depth := 0; depth < maxDepth && len(pending) > 0; depth++ {
+		examine := make([]string, 0, len(pending))
+		for _, ancestor := range pending {
+			examine = append(examine, ancestor)
+		}
+		rows, err := s.Pool.Query(ctx, `SELECT i.id, i.key, i.summary, COALESCE(i.parent_id,''), it.hierarchy_level
+			FROM issues i
+			JOIN issue_types it ON it.id = i.issuetype_id
+			WHERE i.workspace_id=$1 AND i.id = ANY($2)`, workspaceID, examine)
+		if err != nil {
+			return nil, err
+		}
+		type row struct {
+			key, summary, parentID string
+			level                  int
+		}
+		seen := map[string]row{}
+		for rows.Next() {
+			var id string
+			var found row
+			if err := rows.Scan(&id, &found.key, &found.summary, &found.parentID, &found.level); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			seen[id] = found
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		next := map[string]string{}
+		for issueID, ancestorID := range pending {
+			found, ok := seen[ancestorID]
+			if !ok {
+				continue
+			}
+			// The work item itself is never its own lane: the walk starts at
+			// it so its own level is read, and only an ancestor can be the
+			// epic above it.
+			if found.level >= EpicHierarchyLevel && ancestorID != issueID {
+				lanes[issueID] = BoardLaneAncestor{ID: ancestorID, Key: found.key, Summary: found.summary}
+				continue
+			}
+			if found.parentID != "" {
+				next[issueID] = found.parentID
+			}
+		}
+		pending = next
+	}
+	return lanes, nil
 }

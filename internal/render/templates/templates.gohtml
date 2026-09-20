@@ -21,7 +21,7 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=42">
+<link rel="stylesheet" href="/static/css/workspace.css?v=43">
 <link rel="preload" href="/static/zzira-worker.wasm?v=4" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
@@ -689,7 +689,7 @@
     {{if .Data.Saved}}<div class="success-banner" role="status">Board settings saved.</div>{{end}}
     <form method="post" action="/board/{{.Data.Board.ID}}/settings" class="board-settings-form" data-board-settings>
       <section class="surface-card board-setting-section" aria-labelledby="board-view-heading"><div><span class="eyebrow">Layout</span><h2 id="board-view-heading">Board view</h2><p>Group work into horizontal lanes and choose up to three supporting fields for every card.</p></div><div class="board-setting-controls">
-        <label><span>Swimlanes</span><select name="swimlanes"><option value="none"{{if eq .Data.Board.SwimlaneStrategy "none"}} selected{{end}}>No swimlanes</option><option value="assignee"{{if eq .Data.Board.SwimlaneStrategy "assignee"}} selected{{end}}>Group by assignee</option></select></label>
+        <div class="board-setting-field"><label for="board-swimlanes">Swimlanes</label><select id="board-swimlanes" name="swimlanes">{{range .Data.SwimlaneChoices}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></div>
         <fieldset class="board-card-field-picker"><legend>Card fields</legend><label><input type="checkbox" name="cardField" value="priority"{{if .Data.ShowPriority}} checked{{end}}> Priority</label><label><input type="checkbox" name="cardField" value="assignee"{{if .Data.ShowAssignee}} checked{{end}}> Assignee</label><label><input type="checkbox" name="cardField" value="labels"{{if .Data.ShowLabels}} checked{{end}}> Labels</label></fieldset>
       </div></section>
       <section class="surface-card board-setting-section board-column-settings" aria-labelledby="board-columns-heading"><div><span class="eyebrow">Flow</span><h2 id="board-columns-heading">Columns</h2><p>Name each column, say which statuses stand in it, and cap the work it carries. A status can stand in one column only, and a status in none is not on the board.</p></div>
@@ -709,6 +709,7 @@
         <label><span>Board filter (JQL)</span><input name="filterJQL" value="{{.Data.Board.FilterJQL}}" maxlength="2000"><small>Empty shows every work item in the project</small></label>
         <div class="board-setting-field"><label for="board-estimate">Estimate</label><select id="board-estimate" name="estimationField"><option value="">Count work items</option>{{range .Data.EstimationFields}}<option value="{{.ID}}"{{if eq .ID $.Data.Board.EstimationFieldID}} selected{{end}}>{{.Name}}</option>{{end}}</select></div>
       </div></section>
+      <section class="surface-card board-setting-section board-swimlane-settings" aria-labelledby="board-swimlanes-heading"><div><span class="eyebrow">Focus</span><h2 id="board-swimlanes-heading">Swimlane queries</h2><p>Lanes for a board that groups by query. The first lane whose query matches a work item takes it, and whatever no lane matches stands in a lane of its own at the bottom.</p></div><div class="board-swimlane-rows">{{range $index, $lane := .Data.Board.Swimlanes}}<fieldset class="board-swimlane-row"><legend>Lane {{inc $index}}</legend><label><span>Name</span><input name="swimlaneName" value="{{$lane.Name}}" maxlength="64"></label><label><span>JQL</span><input name="swimlaneJQL" value="{{$lane.JQL}}" maxlength="2000"></label><label class="board-swimlane-delete"><input type="checkbox" name="deleteSwimlane" value="{{$index}}"> Delete this lane</label></fieldset>{{end}}<fieldset class="board-swimlane-row"><legend>Add a lane</legend><label><span>Name</span><input name="swimlaneName" value="" maxlength="64"></label><label><span>JQL</span><input name="swimlaneJQL" value="" maxlength="2000"><small>Leave both empty to add none</small></label></fieldset></div></section>
       <section class="surface-card board-setting-section board-quick-filter-settings" aria-labelledby="board-filters-heading"><div><span class="eyebrow">Focus</span><h2 id="board-filters-heading">Quick filters</h2><p>Give the whole team reusable JQL buttons for the questions they ask during planning.</p></div><div data-quick-filter-list>{{range .Data.Board.QuickFilters}}{{template "board_quick_filter_row" .}}{{end}}{{template "board_quick_filter_row" .Data.EmptyFilter}}</div><button type="button" class="btn" data-add-quick-filter>Add quick filter</button><template data-quick-filter-template>{{template "board_quick_filter_row" .Data.EmptyFilter}}</template></section>
       <div class="board-settings-actions"><a class="btn" href="/board/{{.Data.Board.ID}}">Cancel</a><button class="btn btn-primary" type="submit">Save board settings</button></div>
     </form>

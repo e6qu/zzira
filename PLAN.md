@@ -130,7 +130,7 @@ but nothing shows or uses it.
 
 ## 4. Boards, reports and DORA
 
-- Boards: swimlanes by query, epic, project and stories; `PUT …/features`.
+- Boards: the Stories swimlane; `PUT …/features`.
 - Reports: release burndown, epic burndown, user and version workload, time
   tracking, single-level group-by, deployment frequency, cycle time.
 - DORA: configurable mappings (which environments, pipelines and incident types

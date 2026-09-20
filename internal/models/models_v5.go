@@ -12,6 +12,17 @@ const (
 	EntityServiceRequest = "service_request"
 )
 
+// BoardSwimlane is one lane of a board that groups by query: a name and the
+// JQL that decides which work items stand in it. The first lane whose query
+// matches a work item takes it, and what no lane matches stands in a last
+// lane of its own.
+type BoardSwimlane struct {
+	Name string `json:"name"`
+	JQL  string `json:"jql"`
+	// Position is the lane's place in the board's order, from zero.
+	Position int `json:"-"`
+}
+
 // BoardColumn is one column of a board: a name and the statuses whose work
 // items stand in it. Jira maps several statuses to one column -- a work item
 // in any of them belongs to that column -- and this product mapped exactly
@@ -35,6 +46,7 @@ type Board struct {
 	FilterJQL        string             `json:"filterJql"`
 	QuickFilters     []BoardQuickFilter `json:"quickFilters,omitempty"`
 	SwimlaneStrategy string             `json:"swimlaneStrategy"`
+	Swimlanes        []BoardSwimlane    `json:"swimlanes,omitempty"`
 	CardFields       []string           `json:"cardFields,omitempty"`
 	// JiraID and FilterJiraID are the board and board filter ids clients see.
 	JiraID       int64 `json:"-"`

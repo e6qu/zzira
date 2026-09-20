@@ -63,6 +63,13 @@ The board, backlog and sprint issue reads take Jira's parameters:
 
 **Columns.** A column is a name and the statuses that stand in it, in order. Several statuses may share a column -- work in any of them appears there, ranked as one list -- and a status stands in at most one column, which the settings page enforces by asking each status once which column it belongs to. A status in no column is not on the board: its work items are out of the board's scope until a column takes them. A column's WIP limit counts the work in every status it gathers. Each board keeps at least one column.
 
+**Swimlanes.** A board groups its work by nothing, by assignee, by epic, by project, or by named queries, chosen in board settings.
+
+- **Epic** puts a work item in the lane of the nearest ancestor whose work type sits at or above the epic level, walking the parent chain; what has no such ancestor stands in *Work under no epic*.
+- **Project** groups by the work item's project, which a board whose filter spans several projects shows apart.
+- **Queries** are named JQL lanes kept with the board, in order. The first lane whose query matches a work item takes it, and whatever no lane matches stands in *Everything else* at the bottom. A board grouped this way keeps at least one query.
+- The queries are kept whichever grouping is in force, so choosing another and coming back does not lose them.
+
 **Filter and estimate.** A board administrator changes the board's filter (JQL, empty for every work item in the project) and its estimate (a number field, or counting work items) after the board exists, which is what Jira's board settings do.
 
 **Moving a card between columns.** A drag or keyboard move that changes column is a real workflow transition, not a status write. A card dropped on a column takes the first of that column's statuses. The board tries each transition out of the card's current status whose destination is that status, in workflow order, and keeps the first that runs. Conditions, validators, post-functions and history therefore apply exactly as on the work item page.
@@ -90,7 +97,7 @@ The default permission scheme grants Schedule issues, Edit issues, Transition is
 
 ## Gaps
 
-- Swimlanes support only `none` and `assignee`; Jira also offers epics, stories, queries and projects.
+- Swimlanes do not offer Jira's Stories grouping: it needs an immediate parent distinguished from an ancestor epic, and a work item here carries one parent link.
 - Board features cannot be toggled (`PUT …/features`).
 
 Remaining work is tracked in [PLAN.md](../PLAN.md).
