@@ -294,17 +294,17 @@ func validBoardFilterID(id string) bool {
 // project offers: every column status must be one of them, no status may
 // stand in two columns, and a board must keep at least one column or it would
 // show nothing.
-// boardSwimlaneStrategies are the groupings a board offers. Jira also groups
-// by stories, which needs an immediate parent distinguished from an ancestor
-// epic; this product's work items carry one parent link, so that grouping is
-// not offered rather than approximated.
+// boardSwimlaneStrategies are the groupings a board offers. A work item
+// carries one parent link, but its work type carries the hierarchy level that
+// says what that parent is, so a story is told from the epic above it by the
+// level rather than by a second link.
 var boardSwimlaneStrategies = map[string]bool{
-	"none": true, "assignee": true, "epic": true, "project": true, "query": true,
+	"none": true, "assignee": true, "epic": true, "stories": true, "project": true, "query": true,
 }
 
 func normalizeBoardConfiguration(input BoardConfigurationUpdate, availableStatuses []string, validate func(*jql.Query) error) (BoardConfigurationUpdate, error) {
 	if !boardSwimlaneStrategies[input.SwimlaneStrategy] {
-		return input, fmt.Errorf("%w: swimlanes group by none, assignee, epic, project or query", ErrBoardValidation)
+		return input, fmt.Errorf("%w: swimlanes group by none, assignee, epic, stories, project or query", ErrBoardValidation)
 	}
 	if len(input.Swimlanes) > 20 {
 		return input, fmt.Errorf("%w: boards support at most 20 swimlane queries", ErrBoardValidation)
@@ -2043,6 +2043,29 @@ type BoardLaneAncestor struct {
 // A work item with no such ancestor is absent from the map and stands in the
 // board's lane for work under no epic.
 func (s *Store) BoardEpicLanes(ctx context.Context, workspaceID string, issueIDs []string) (map[string]BoardLaneAncestor, error) {
+	return s.boardAncestorLanes(ctx, workspaceID, issueIDs, func(level int, self bool) bool {
+		// A work item is never its own lane here: the walk starts at it so
+		// its own level is read, and only an ancestor can be the epic above
+		// it.
+		return level >= EpicHierarchyLevel && !self
+	})
+}
+
+// BoardStoryLanes resolves, for each work item id given, the story its lane is
+// named after: the nearest work item at the base level, which for a sub-task
+// is the work item it belongs to and for a story is the story itself. Work
+// above the base level -- an epic the board shows -- has no such lane and
+// stands in the board's catch-all, as it does in Jira.
+func (s *Store) BoardStoryLanes(ctx context.Context, workspaceID string, issueIDs []string) (map[string]BoardLaneAncestor, error) {
+	return s.boardAncestorLanes(ctx, workspaceID, issueIDs, func(level int, self bool) bool {
+		return level == BaseHierarchyLevel
+	})
+}
+
+// boardAncestorLanes walks every work item up its parent chain and names it
+// after the first work item the grouping accepts. The walk is shared so one
+// grouping cannot resolve a hierarchy differently from another.
+func (s *Store) boardAncestorLanes(ctx context.Context, workspaceID string, issueIDs []string, accept func(level int, self bool) bool) (map[string]BoardLaneAncestor, error) {
 	lanes := map[string]BoardLaneAncestor{}
 	if len(issueIDs) == 0 {
 		return lanes, nil
@@ -2090,10 +2113,7 @@ func (s *Store) BoardEpicLanes(ctx context.Context, workspaceID string, issueIDs
 			if !ok {
 				continue
 			}
-			// The work item itself is never its own lane: the walk starts at
-			// it so its own level is read, and only an ancestor can be the
-			// epic above it.
-			if found.level >= EpicHierarchyLevel && ancestorID != issueID {
+			if accept(found.level, ancestorID == issueID) {
 				lanes[issueID] = BoardLaneAncestor{ID: ancestorID, Key: found.key, Summary: found.summary}
 				continue
 			}

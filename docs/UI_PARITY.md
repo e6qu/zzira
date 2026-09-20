@@ -13,7 +13,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | Contributor creates and triages work | ✅ | `create`, `v1`, `v3`, `triage`, `issue_mentions`, `custom_field_options` | — |
 | Contributor changes many work items at once | 🟡 | `navigator_bulk` (one field across a selection, watch, unwatch), `v2` (delete, move, transition) | One field per edit; work type and status only through bulk move and transition ([BULK_ISSUES](BULK_ISSUES.md#gaps)) |
 | Contributor records how work was resolved | 🟡 | `resolution` (transition screen, work item page, REST) | No denied-user or accessibility pass over the transition screen |
-| Contributor plans and runs a sprint | ✅ | `backlog`, `board_columns`, `board_swimlanes`, `v4`, `projects` | Jira's Stories swimlane ([AGILE_BOARDS](AGILE_BOARDS.md#gaps)) |
+| Contributor plans and runs a sprint | ✅ | `backlog`, `board_columns`, `board_swimlanes`, `v4`, `projects` | — |
 | Contributor works offline | 🟡 | `v0`, `v5`, `revocation`, `session-isolation` | Only work items are available offline; other entities and richer edits need a connection |
 | Contributor follows code through release | 🟡 | `directories` (development information), `software`, `releases` | Cross-project releases; release gates; environment promotion ([RELEASES](RELEASES.md#gaps)) |
 | Manager configures a project | 🟡 | `projects`, `project_roles`, `permission_schemes`, `notification_schemes`, `issue_security_schemes` | Project templates and delegated administration do not cover every setting |

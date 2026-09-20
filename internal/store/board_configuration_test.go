@@ -55,7 +55,7 @@ func TestNormalizeBoardConfiguration(t *testing.T) {
 // needs. A blank row is how the page adds a lane, so it is dropped rather
 // than refused.
 func TestNormalizeBoardConfigurationAcceptsEverySwimlaneGrouping(t *testing.T) {
-	for _, strategy := range []string{"none", "assignee", "epic", "project"} {
+	for _, strategy := range []string{"none", "assignee", "epic", "stories", "project"} {
 		input := BoardConfigurationUpdate{
 			SwimlaneStrategy: strategy,
 			Columns:          []models.BoardColumn{{Name: "To Do", StatusIDs: []string{"todo"}}},
