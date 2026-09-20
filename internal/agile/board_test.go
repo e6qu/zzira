@@ -89,6 +89,24 @@ func TestBoardContract(t *testing.T) {
 		}
 		return out
 	}
+	sendJSON := func(method, path, body string, want int) map[string]any {
+		t.Helper()
+		request := httptest.NewRequest(method, path, strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		request.SetBasicAuth(actor+"@example.test", actor)
+		response := httptest.NewRecorder()
+		h.ServeHTTP(response, request)
+		if response.Code != want {
+			t.Fatalf("%s %s: got %d want %d: %s", method, path, response.Code, want, response.Body.String())
+		}
+		out := map[string]any{}
+		if len(response.Body.Bytes()) > 0 && response.Body.Bytes()[0] == '{' {
+			if err = json.Unmarshal(response.Body.Bytes(), &out); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return out
+	}
 	agile := "/rest/agile/1.0/board/" + board.ID
 	software := "/rest/software/1.0/board/" + board.ID
 
@@ -123,11 +141,66 @@ func TestBoardContract(t *testing.T) {
 	call(http.MethodGet, agile+"/epic/none/issue", http.StatusOK)
 	call(http.MethodGet, agile+"/epic/10001/issue", http.StatusNotFound)
 
-	// Features and reports follow the board's own configuration.
+	// Features and reports follow the board's own configuration, and the two
+	// that are configuration rather than board type are toggled through it.
+	featureState := func(body map[string]any, name string) string {
+		t.Helper()
+		listed, _ := body["features"].([]any)
+		for _, entry := range listed {
+			feature, _ := entry.(map[string]any)
+			if feature["boardFeature"] == name {
+				return fmt.Sprint(feature["state"])
+			}
+		}
+		t.Fatalf("no %s feature in %v", name, body)
+		return ""
+	}
 	features := call(http.MethodGet, agile+"/features", http.StatusOK)
 	if _, ok := features["features"]; !ok {
 		t.Fatal(features)
 	}
+	if featureState(features, "BACKLOG") != "ENABLED" || featureState(features, "SWIMLANES") != "DISABLED" {
+		t.Fatal(features)
+	}
+
+	// Swimlanes on means the board groups by something; Jira's default is by
+	// assignee, and the board's own configuration says so afterwards.
+	toggled := sendJSON(http.MethodPut, agile+"/features", `{"boardFeature":"SWIMLANES","enabling":true}`, http.StatusOK)
+	if featureState(toggled, "SWIMLANES") != "ENABLED" {
+		t.Fatal(toggled)
+	}
+	if grouped, err := st.BoardByIDInWorkspace(ctx, workspaceID, board.ID); err != nil {
+		t.Fatal(err)
+	} else if grouped.SwimlaneStrategy != "assignee" {
+		t.Fatalf("swimlane strategy = %q", grouped.SwimlaneStrategy)
+	}
+	off := sendJSON(http.MethodPut, agile+"/features", `{"boardFeature":"SWIMLANES","enabling":false}`, http.StatusOK)
+	if featureState(off, "SWIMLANES") != "DISABLED" {
+		t.Fatal(off)
+	}
+
+	// The backlog is the project's feature, and the board reports what the
+	// navigation reads.
+	hidden := sendJSON(http.MethodPut, agile+"/features", `{"boardFeature":"BACKLOG","enabling":false}`, http.StatusOK)
+	if featureState(hidden, "BACKLOG") != "DISABLED" {
+		t.Fatal(hidden)
+	}
+	projectFeatures, err := st.ProjectFeatures(ctx, workspaceID, project.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, feature := range projectFeatures {
+		if feature.Key == "jsw.classic.backlog" && feature.State != "DISABLED" {
+			t.Fatalf("the project's backlog feature = %q", feature.State)
+		}
+	}
+	sendJSON(http.MethodPut, agile+"/features", `{"boardFeature":"BACKLOG","enabling":true}`, http.StatusOK)
+
+	// Sprints follow the board's type, and this endpoint says so rather than
+	// pretending to change it. So does a feature nobody has.
+	sendJSON(http.MethodPut, agile+"/features", `{"boardFeature":"SPRINTS","enabling":false}`, http.StatusBadRequest)
+	sendJSON(http.MethodPut, agile+"/features", `{"boardFeature":"TELEPATHY","enabling":true}`, http.StatusBadRequest)
+	sendJSON(http.MethodPut, agile+"/features", `{"boardFeature":"BACKLOG"}`, http.StatusBadRequest)
 	call(http.MethodPut, agile+"/features", http.StatusBadRequest)
 	reports := call(http.MethodGet, agile+"/reports", http.StatusOK)
 	if _, ok := reports["reports"]; !ok {

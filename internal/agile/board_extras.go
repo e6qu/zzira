@@ -2,11 +2,13 @@ package agile
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -71,14 +73,116 @@ func (h *Handler) boardSprintIssues(w http.ResponseWriter, r *http.Request, boar
 	h.agileIssueSearch(w, r, board.WorkspaceID, userID, boardSprintScope, []any{sprint.ID, board.ProjectID}, sprintOrder)
 }
 
-// boardFeatures reports the board features Jira toggles. ZZIRA models the
-// board's own configuration instead, so each feature reports its real state and
-// is not togglable through this endpoint.
+// boardFeatures reports the board features Jira toggles. Each one reads the
+// configuration that actually decides it -- the board's type, its project's
+// backlog feature, its swimlane grouping -- rather than a second copy of the
+// same fact kept for this endpoint.
 func (h *Handler) boardFeatures(w http.ResponseWriter, r *http.Request, board *models.Board) {
-	features := []map[string]any{
+	features, err := h.boardFeatureList(r, board)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"features": features})
+}
+
+// boardFeatureList is the shape both the read and the toggle answer with.
+func (h *Handler) boardFeatureList(r *http.Request, board *models.Board) ([]map[string]any, error) {
+	backlog := true
+	// A software project's backlog is a project feature, and the navigation
+	// already hides the backlog when it is off; the board reports the same
+	// state rather than claiming its own.
+	if features, err := h.Store.ProjectFeatures(r.Context(), board.WorkspaceID, board.ProjectID); err == nil {
+		for _, feature := range features {
+			if feature.Key == "jsw.classic.backlog" {
+				backlog = feature.State == "ENABLED"
+			}
+		}
+	} else if !errors.Is(err, store.ErrProjectFeatureWrongType) {
+		return nil, err
+	}
+	return []map[string]any{
+		// A board's sprints follow its type, which this endpoint does not
+		// change, so it is locked here as it is on a company-managed board.
 		{"boardFeature": "SPRINTS", "boardId": board.JiraID, "state": featureState(board.Type == "scrum"), "toggleLocked": true},
-		{"boardFeature": "BACKLOG", "boardId": board.JiraID, "state": featureState(true), "toggleLocked": true},
-		{"boardFeature": "SWIMLANES", "boardId": board.JiraID, "state": featureState(board.SwimlaneStrategy != "none"), "toggleLocked": true},
+		{"boardFeature": "BACKLOG", "boardId": board.JiraID, "state": featureState(backlog), "toggleLocked": false},
+		{"boardFeature": "SWIMLANES", "boardId": board.JiraID, "state": featureState(board.SwimlaneStrategy != "none"), "toggleLocked": false},
+	}, nil
+}
+
+// boardFeatureToggle turns a board feature on or off, through the setting
+// that decides it: the project's backlog feature, or the board's swimlane
+// grouping. Turning swimlanes on restores Jira's default grouping, by
+// assignee, because a board with swimlanes on and no grouping is neither.
+func (h *Handler) boardFeatureToggle(w http.ResponseWriter, r *http.Request, board *models.Board, userID string) {
+	var input struct {
+		BoardID  int64  `json:"boardId"`
+		Feature  string `json:"boardFeature"`
+		Enabling *bool  `json:"enabling"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&input); err != nil {
+		jiraError(w, http.StatusBadRequest, "The request body is not valid JSON.")
+		return
+	}
+	if input.Enabling == nil {
+		jiraError(w, http.StatusBadRequest, "enabling is required.")
+		return
+	}
+	enabling := *input.Enabling
+	switch strings.ToUpper(strings.TrimSpace(input.Feature)) {
+	case "BACKLOG":
+		state := "DISABLED"
+		if enabling {
+			state = "ENABLED"
+		}
+		if _, err := h.Store.SetProjectFeature(r.Context(), board.WorkspaceID, userID, board.ProjectID, "jsw.classic.backlog", state); err != nil {
+			switch {
+			case errors.Is(err, store.ErrProjectFeatureWrongType):
+				jiraError(w, http.StatusBadRequest, "Only a software project's board carries the backlog feature.")
+			case errors.Is(err, store.ErrProjectPermission):
+				jiraError(w, http.StatusForbidden, "Toggling a board feature needs project administration.")
+			default:
+				jiraError(w, http.StatusInternalServerError, "internal error")
+			}
+			return
+		}
+	case "SWIMLANES":
+		strategy := "none"
+		if enabling {
+			strategy = "assignee"
+			if board.SwimlaneStrategy != "none" {
+				strategy = board.SwimlaneStrategy
+			}
+		}
+		update := store.BoardConfigurationUpdate{
+			QuickFilters: board.QuickFilters, SwimlaneStrategy: strategy, CardFields: board.CardFields,
+			Columns: board.Columns, Swimlanes: board.Swimlanes, FilterJQL: board.FilterJQL,
+			EstimationFieldID: board.EstimationFieldID,
+		}
+		updated, _, err := h.Store.UpdateBoardConfiguration(r.Context(), userID, board.WorkspaceID, board.ID, update)
+		if err != nil {
+			switch {
+			case errors.Is(err, store.ErrBoardValidation):
+				jiraError(w, http.StatusBadRequest, err.Error())
+			case errors.Is(err, store.ErrProjectPermission):
+				jiraError(w, http.StatusForbidden, "Toggling a board feature needs board administration.")
+			default:
+				jiraError(w, http.StatusInternalServerError, "internal error")
+			}
+			return
+		}
+		board = updated
+	case "SPRINTS":
+		jiraError(w, http.StatusBadRequest, "Sprints follow the board's type, which this endpoint does not change.")
+		return
+	default:
+		jiraError(w, http.StatusBadRequest, "Unknown board feature.")
+		return
+	}
+	features, err := h.boardFeatureList(r, board)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"features": features})
 }
