@@ -51,6 +51,43 @@ func TestNormalizeBoardConfiguration(t *testing.T) {
 	}
 }
 
+// The groupings a board offers, and the named queries the query grouping
+// needs. A blank row is how the page adds a lane, so it is dropped rather
+// than refused.
+func TestNormalizeBoardConfigurationAcceptsEverySwimlaneGrouping(t *testing.T) {
+	for _, strategy := range []string{"none", "assignee", "epic", "project"} {
+		input := BoardConfigurationUpdate{
+			SwimlaneStrategy: strategy,
+			Columns:          []models.BoardColumn{{Name: "To Do", StatusIDs: []string{"todo"}}},
+			FilterJQL:        "project = ZZ",
+		}
+		if _, err := normalizeBoardConfiguration(input, []string{"todo"}, nil); err != nil {
+			t.Fatalf("%s: %v", strategy, err)
+		}
+	}
+	input := BoardConfigurationUpdate{
+		SwimlaneStrategy: "query",
+		Columns:          []models.BoardColumn{{Name: "To Do", StatusIDs: []string{"todo"}}},
+		FilterJQL:        "project = ZZ",
+		Swimlanes: []models.BoardSwimlane{
+			{Name: " Urgent ", JQL: " priority = High "},
+			{Name: "", JQL: ""},
+			{Name: "Mine", JQL: "assignee = currentUser()"},
+		},
+	}
+	normalized, err := normalizeBoardConfiguration(input, []string{"todo"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []models.BoardSwimlane{
+		{Name: "Urgent", JQL: "priority = High", Position: 0},
+		{Name: "Mine", JQL: "assignee = currentUser()", Position: 1},
+	}
+	if !reflect.DeepEqual(normalized.Swimlanes, want) {
+		t.Fatalf("swimlanes = %#v", normalized.Swimlanes)
+	}
+}
+
 func TestNormalizeBoardConfigurationRejectsInvalidInput(t *testing.T) {
 	// A valid configuration apart from the one thing each case breaks.
 	valid := func(update func(*BoardConfigurationUpdate)) BoardConfigurationUpdate {
@@ -66,7 +103,17 @@ func TestNormalizeBoardConfigurationRejectsInvalidInput(t *testing.T) {
 		name  string
 		input BoardConfigurationUpdate
 	}{
-		{"swimlanes", valid(func(i *BoardConfigurationUpdate) { i.SwimlaneStrategy = "epic" })},
+		{"swimlanes", valid(func(i *BoardConfigurationUpdate) { i.SwimlaneStrategy = "sideways" })},
+		{"grouping by query with no queries", valid(func(i *BoardConfigurationUpdate) { i.SwimlaneStrategy = "query" })},
+		{"unnamed swimlane", valid(func(i *BoardConfigurationUpdate) {
+			i.Swimlanes = []models.BoardSwimlane{{Name: "  ", JQL: "priority = High"}}
+		})},
+		{"swimlane without a query", valid(func(i *BoardConfigurationUpdate) {
+			i.Swimlanes = []models.BoardSwimlane{{Name: "Urgent"}}
+		})},
+		{"swimlane with invalid JQL", valid(func(i *BoardConfigurationUpdate) {
+			i.Swimlanes = []models.BoardSwimlane{{Name: "Urgent", JQL: "priority ="}}
+		})},
 		{"duplicate quick filter", valid(func(i *BoardConfigurationUpdate) {
 			i.QuickFilters = []models.BoardQuickFilter{{ID: "same", Name: "One", JQL: "status = Done"}, {ID: "same", Name: "Two", JQL: "status = Done"}}
 		})},

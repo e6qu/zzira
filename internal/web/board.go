@@ -98,6 +98,18 @@ type boardSettingsData struct {
 	Statuses         []models.Status
 	UnmappedStatuses []models.Status
 	EstimationFields []*models.CustomField
+	// SwimlaneChoices are the groupings the board offers, with the one in
+	// force marked.
+	SwimlaneChoices []boardSwimlaneChoice
+	// EmptySwimlane is the blank row the page adds a named query with.
+	EmptySwimlane models.BoardSwimlane
+}
+
+// boardSwimlaneChoice is one grouping on the settings page.
+type boardSwimlaneChoice struct {
+	Value    string
+	Label    string
+	Selected bool
 }
 
 func boardPageURL(boardID string, selectedFilters []string, assignee string) string {
@@ -188,7 +200,7 @@ func (h *Handler) buildBoardView(r *http.Request, user *models.User, wsID string
 	data := boardViewData{
 		Board: board, Members: members, SelectedFilters: selected, SelectedAssignee: assignee,
 		ClearFiltersURL: boardPageURL(board.ID, nil, ""), HasFilters: len(selected) > 0 || assignee != "",
-		HasSwimlanes: board.SwimlaneStrategy == "assignee", Admin: admin,
+		HasSwimlanes: board.SwimlaneStrategy != "none", Admin: admin,
 	}
 	// A column counts the work in every status it gathers, and takes its
 	// category from the first of them, which is what colours the header.
@@ -235,30 +247,124 @@ func (h *Handler) buildBoardView(r *http.Request, user *models.User, wsID string
 		id, name string
 		issues   map[string][]*models.Issue
 	}
+	// A lane is a group of the board's work and a name for it. Which grouping
+	// is in force is the board's own setting; every one of them lands here as
+	// the same shape, so the rendering below does not know which it is.
 	lanes := []laneIssues{}
-	if board.SwimlaneStrategy == "assignee" {
-		byAssignee := map[string]map[string][]*models.Issue{}
+	group := func(laneOf func(*models.Issue) (id string, name string, ok bool), order []string, names map[string]string, lastName string) {
+		grouped := map[string]map[string][]*models.Issue{}
+		laneNames := map[string]string{}
+		seen := []string{}
 		for _, statusID := range board.StatusIDs() {
 			for _, issue := range columns[statusID] {
-				laneID := "unassigned"
-				if issue.Assignee != nil {
-					laneID = issue.Assignee.ID
+				laneID, laneName, ok := laneOf(issue)
+				if !ok {
+					laneID, laneName = "", lastName
 				}
-				if byAssignee[laneID] == nil {
-					byAssignee[laneID] = map[string][]*models.Issue{}
+				if grouped[laneID] == nil {
+					grouped[laneID] = map[string][]*models.Issue{}
+					laneNames[laneID] = laneName
+					seen = append(seen, laneID)
 				}
-				byAssignee[laneID][statusID] = append(byAssignee[laneID][statusID], issue)
+				grouped[laneID][statusID] = append(grouped[laneID][statusID], issue)
 			}
 		}
+		// The board's own order comes first where there is one -- members,
+		// named queries -- and whatever it does not name follows in the order
+		// the work put it there, so a lane is never dropped.
+		emitted := map[string]bool{}
+		emit := func(laneID string) {
+			if emitted[laneID] {
+				return
+			}
+			issues, ok := grouped[laneID]
+			if !ok {
+				return
+			}
+			emitted[laneID] = true
+			name := laneNames[laneID]
+			if given, ok := names[laneID]; ok && given != "" {
+				name = given
+			}
+			lanes = append(lanes, laneIssues{id: laneID, name: name, issues: issues})
+		}
+		for _, laneID := range order {
+			emit(laneID)
+		}
+		for _, laneID := range seen {
+			if laneID != "" {
+				emit(laneID)
+			}
+		}
+		// The catch-all is last, as it is in Jira.
+		emit("")
+	}
+	switch board.SwimlaneStrategy {
+	case "assignee":
+		order := make([]string, 0, len(members))
+		names := make(map[string]string, len(members))
 		for _, member := range members {
-			if issues := byAssignee[member.ID]; issues != nil {
-				lanes = append(lanes, laneIssues{id: member.ID, name: member.DisplayName, issues: issues})
+			order = append(order, member.ID)
+			names[member.ID] = member.DisplayName
+		}
+		group(func(issue *models.Issue) (string, string, bool) {
+			if issue.Assignee == nil {
+				return "", "", false
+			}
+			return issue.Assignee.ID, issue.Assignee.DisplayName, true
+		}, order, names, "Unassigned")
+	case "epic":
+		ids := make([]string, 0)
+		for _, statusID := range board.StatusIDs() {
+			for _, issue := range columns[statusID] {
+				ids = append(ids, issue.ID)
 			}
 		}
-		if issues := byAssignee["unassigned"]; issues != nil {
-			lanes = append(lanes, laneIssues{id: "unassigned", name: "Unassigned", issues: issues})
+		epics, err := h.Store.BoardEpicLanes(r.Context(), board.WorkspaceID, ids)
+		if err != nil {
+			return boardViewData{}, err
 		}
-	} else {
+		group(func(issue *models.Issue) (string, string, bool) {
+			epic, ok := epics[issue.ID]
+			if !ok {
+				return "", "", false
+			}
+			return epic.ID, epic.Key + " " + epic.Summary, true
+		}, nil, nil, "Work under no epic")
+	case "project":
+		group(func(issue *models.Issue) (string, string, bool) {
+			if issue.ProjectID == "" {
+				return "", "", false
+			}
+			name := issue.ProjectID
+			// A key is what a reader recognises a project by, and every work
+			// item carries its own.
+			if key, _, found := strings.Cut(issue.Key, "-"); found {
+				name = key
+			}
+			return issue.ProjectID, name, true
+		}, nil, nil, "No project")
+	case "query":
+		membership, err := h.Store.BoardSwimlaneMembership(r.Context(), board, user.ID)
+		if err != nil {
+			return boardViewData{}, err
+		}
+		order := make([]string, 0, len(board.Swimlanes))
+		names := make(map[string]string, len(board.Swimlanes))
+		for index, lane := range board.Swimlanes {
+			laneID := strconv.Itoa(index)
+			order = append(order, laneID)
+			names[laneID] = lane.Name
+		}
+		group(func(issue *models.Issue) (string, string, bool) {
+			index, ok := membership[issue.ID]
+			if !ok {
+				return "", "", false
+			}
+			laneID := strconv.Itoa(index)
+			return laneID, names[laneID], true
+		}, order, names, "Everything else")
+	default:
 		lanes = append(lanes, laneIssues{id: "all", name: "All work", issues: columns})
 	}
 	for _, lane := range lanes {
@@ -304,7 +410,7 @@ func (h *Handler) BoardPage(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	admin, err := h.Store.IsAdmin(r.Context(), wsID, user.ID)
 	if err != nil {
-		log.Print("board: role lookup failed")
+		log.Print("board: role lookup failed: ", strconv.Quote(err.Error()))
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -338,7 +444,7 @@ func (h *Handler) BoardFragment(w http.ResponseWriter, r *http.Request, id strin
 		return
 	}
 	if err != nil {
-		log.Print("board: fragment build failed")
+		log.Print("board: fragment build failed: ", strconv.Quote(err.Error()))
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -404,6 +510,17 @@ func (h *Handler) boardSettingsData(r *http.Request, board *models.Board, messag
 		if !placed[status.ID] {
 			data.UnmappedStatuses = append(data.UnmappedStatuses, status)
 		}
+	}
+	for _, choice := range []struct{ value, label string }{
+		{"none", "No swimlanes"},
+		{"assignee", "Group by assignee"},
+		{"epic", "Group by epic"},
+		{"project", "Group by project"},
+		{"query", "Group by the queries below"},
+	} {
+		data.SwimlaneChoices = append(data.SwimlaneChoices, boardSwimlaneChoice{
+			Value: choice.value, Label: choice.label, Selected: board.SwimlaneStrategy == choice.value,
+		})
 	}
 	// A scrum board estimates with a number field, so those are the choices.
 	fields, err := h.Store.CustomFieldsForWorkspace(r.Context(), board.WorkspaceID)
@@ -481,7 +598,7 @@ func redirectBoardSettings(w http.ResponseWriter, r *http.Request, boardID strin
 		}
 		target += "?error=" + url.QueryEscape(message)
 	case err != nil:
-		log.Print("board administrators: update failed")
+		log.Print("board administrators: update failed: ", strconv.Quote(err.Error()))
 		target += "?error=" + url.QueryEscape("The board administrators could not be changed.")
 	default:
 		target += "?saved=1"
@@ -496,7 +613,7 @@ func (h *Handler) BoardSettingsPage(w http.ResponseWriter, r *http.Request, boar
 	}
 	data, err := h.boardSettingsData(r, board, "")
 	if err != nil {
-		log.Print("board settings: build failed")
+		log.Print("board settings: build failed: ", strconv.Quote(err.Error()))
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -510,6 +627,23 @@ func boardConfigurationForm(r *http.Request, board *models.Board) (store.BoardCo
 	input := store.BoardConfigurationUpdate{
 		SwimlaneStrategy: r.PostFormValue("swimlanes"), CardFields: r.PostForm["cardField"],
 		FilterJQL: r.PostFormValue("filterJQL"), EstimationFieldID: r.PostFormValue("estimationField"),
+	}
+	// The named queries a board groups by, kept whichever grouping is in
+	// force so choosing another and coming back does not lose them.
+	laneNames := r.PostForm["swimlaneName"]
+	laneQueries := r.PostForm["swimlaneJQL"]
+	if len(laneNames) != len(laneQueries) {
+		return input, boardFilterError("swimlane fields are incomplete")
+	}
+	deletedLanes := map[string]bool{}
+	for _, index := range r.PostForm["deleteSwimlane"] {
+		deletedLanes[index] = true
+	}
+	for index := range laneNames {
+		if deletedLanes[strconv.Itoa(index)] {
+			continue
+		}
+		input.Swimlanes = append(input.Swimlanes, models.BoardSwimlane{Name: laneNames[index], JQL: laneQueries[index]})
 	}
 	// The columns arrive as parallel lists in display order -- a key, a name
 	// and a limit each -- and every status names the column it stands in.
@@ -585,7 +719,17 @@ func (h *Handler) UpdateBoardSettings(w http.ResponseWriter, r *http.Request, bo
 	}
 	input, err := boardConfigurationForm(r, board)
 	if err == nil {
-		board, err = h.Commands.UpdateBoardConfiguration(r.Context(), user.ID, wsID, boardID, input)
+		// The board the page came from is kept until the save succeeds. A
+		// refused configuration answers no board, and assigning that over
+		// this one left the rejection path rendering a nil board: every
+		// refusal the store made -- an unknown card field, unparseable
+		// swimlane JQL -- crashed the handler instead of coming back with
+		// the message.
+		updated, updateErr := h.Commands.UpdateBoardConfiguration(r.Context(), user.ID, wsID, boardID, input)
+		if updateErr == nil {
+			board = updated
+		}
+		err = updateErr
 	}
 	if errors.Is(err, store.ErrBoardValidation) {
 		// The page comes back holding what was typed, so nothing is retyped
@@ -599,6 +743,7 @@ func (h *Handler) UpdateBoardSettings(w http.ResponseWriter, r *http.Request, bo
 		if input.FilterJQL != "" {
 			board.FilterJQL = input.FilterJQL
 		}
+		board.Swimlanes = input.Swimlanes
 		data, dataErr := h.boardSettingsData(r, board, strings.TrimPrefix(err.Error(), store.ErrBoardValidation.Error()+": "))
 		if dataErr != nil {
 			log.Print("board settings: validation response failed")
@@ -609,7 +754,7 @@ func (h *Handler) UpdateBoardSettings(w http.ResponseWriter, r *http.Request, bo
 		return
 	}
 	if err != nil {
-		log.Print("board settings: update failed")
+		log.Print("board settings: update failed: ", strconv.Quote(err.Error()))
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
