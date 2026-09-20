@@ -142,7 +142,7 @@ but nothing shows or uses it.
 - Fields: JSM's `Organizations`, which needs a request to be shared with one.
 - `fields.lastViewed` on a work item read, which needs the reader threaded
   through the bean.
-- `includeArchivedProjects`; historical `versionedRepresentations`.
+- Historical `versionedRepresentations`.
 - Unknown values (`status = Nope`) return Jira's error instead of matching nothing.
 - Filters: subscriptions by any viewer with permission, group subscriptions,
   `MANAGE_GROUP_FILTER_SUBSCRIPTIONS`, opt-in for empty results,

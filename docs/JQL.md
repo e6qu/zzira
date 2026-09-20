@@ -208,8 +208,6 @@ See [PLAN.md](../PLAN.md).
 
 - JSM fields not searchable: `Organizations`, because a request is not shared
   with an organization here; only a desk is.
-- `includeArchivedProjects=true` is refused although projects can be
-  archived.
 - `versionedRepresentations` carry only the current value, not field history.
 - No value validation: a clause naming a status, project or other value that
   does not exist matches nothing instead of reporting Jira's "The value 'X'

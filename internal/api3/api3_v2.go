@@ -929,10 +929,6 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusBadRequest, "A maximum of 50 issue IDs can be reconciled.")
 		return
 	}
-	if req.IncludeArchivedProjects {
-		jiraError(w, http.StatusBadRequest, "Searching work items in archived projects is not supported.")
-		return
-	}
 	options := searchOptions{Fields: req.Fields, Expand: []string{req.Expand}, Properties: req.Properties, FieldsByKeys: req.FieldsByKeys, FailFast: req.FailFast}
 	if e := validateSearchOptions(&options); e != nil {
 		writeJerr(w, e)
@@ -979,7 +975,8 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cursor.SnapshotID == "" {
-		cursor.SnapshotID, err = h.Store.CreateSearchSnapshot(r.Context(), wsID, userID, cursor.QueryHash, c, time.Unix(cursor.ExpiresAt, 0))
+		cursor.SnapshotID, err = h.Store.CreateSearchSnapshot(r.Context(), wsID, userID, cursor.QueryHash, c, time.Unix(cursor.ExpiresAt, 0),
+			store.SearchSnapshotOptions{IncludeArchivedProjects: req.IncludeArchivedProjects})
 		if err != nil {
 			log.Printf("api3: create search snapshot: %v", err)
 			jiraError(w, http.StatusInternalServerError, "Could not create search snapshot.")

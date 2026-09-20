@@ -48,6 +48,7 @@ func TestSearchByAttachedFields(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		for _, sql := range []string{
+			`DELETE FROM jira_search_snapshots WHERE workspace_id=$1`,
 			`DELETE FROM filters WHERE workspace_id=$1`,
 			`DELETE FROM attachments WHERE workspace_id=$1`,
 			`DELETE FROM issue_links WHERE workspace_id=$1`,
@@ -191,6 +192,36 @@ func TestSearchByAttachedFields(t *testing.T) {
 	only(`savedFilter = `+saved.ID, subject)
 	only(`filter != "Voted work `+stamp+`" AND project = `+key, other)
 	call(http.MethodGet, "/rest/api/3/search?jql="+url.QueryEscape(`filter = "No such filter `+stamp+`"`), "", http.StatusBadRequest)
+
+	// Archiving the project takes its work out of search, and Jira's
+	// enhanced search can ask for it back.
+	enhanced := func(body string) []string {
+		t.Helper()
+		var page struct {
+			Issues []struct {
+				Key string `json:"key"`
+			} `json:"issues"`
+		}
+		if err := json.Unmarshal([]byte(call(http.MethodPost, "/rest/api/3/search/jql", body, http.StatusOK)), &page); err != nil {
+			t.Fatal(err)
+		}
+		keys := make([]string, 0, len(page.Issues))
+		for _, issue := range page.Issues {
+			keys = append(keys, issue.Key)
+		}
+		return keys
+	}
+	if keys := enhanced(`{"jql":"project = ` + key + `"}`); len(keys) != 2 {
+		t.Fatalf("enhanced search matched %v before archiving", keys)
+	}
+	call(http.MethodPost, "/rest/api/3/project/"+key+"/archive", "", http.StatusNoContent)
+	if keys := enhanced(`{"jql":"project = ` + key + `"}`); len(keys) != 0 {
+		t.Fatalf("an archived project's work stayed in search: %v", keys)
+	}
+	if keys := enhanced(`{"jql":"project = ` + key + `","includeArchivedProjects":true}`); len(keys) != 2 {
+		t.Fatalf("includeArchivedProjects did not bring the work back: %v", keys)
+	}
+	call(http.MethodPost, "/rest/api/3/project/"+key+"/restore", "", http.StatusOK)
 
 	// The status category's date moves when the category does, and stays
 	// where it is when the status moves inside one.
