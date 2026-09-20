@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/authn"
@@ -108,34 +109,37 @@ type projectIssuesData struct {
 	Projects        []*models.Project
 	IssueTypes      []models.IssueType
 	BulkTransitions []models.WorkflowTransition
-	BoardID         string
-	Issues          []*models.Issue
-	Selected        *models.Issue
-	Statuses        []models.Status
-	Members         []*models.User
-	Filters         []*models.Filter
-	ActiveFilter    string
-	Chips           []navigatorChip
-	SaveJQL         string
-	Mode            string
-	JQL             string
-	Text            string
-	Status          string
-	Assignee        string
-	Sort            string
-	Direction       string
-	Total           int
-	ResultStart     int
-	ResultEnd       int
-	Page            int
-	PageCount       int
-	PreviousURL     string
-	NextURL         string
-	BasicURL        string
-	AdvancedURL     string
-	SortURLs        map[string]string
-	JQLError        string
-	CanBulk         bool
+	// BulkPriorities are the priorities a bulk edit can set, which are the
+	// project's own.
+	BulkPriorities []models.Priority
+	BoardID        string
+	Issues         []*models.Issue
+	Selected       *models.Issue
+	Statuses       []models.Status
+	Members        []*models.User
+	Filters        []*models.Filter
+	ActiveFilter   string
+	Chips          []navigatorChip
+	SaveJQL        string
+	Mode           string
+	JQL            string
+	Text           string
+	Status         string
+	Assignee       string
+	Sort           string
+	Direction      string
+	Total          int
+	ResultStart    int
+	ResultEnd      int
+	Page           int
+	PageCount      int
+	PreviousURL    string
+	NextURL        string
+	BasicURL       string
+	AdvancedURL    string
+	SortURLs       map[string]string
+	JQLError       string
+	CanBulk        bool
 }
 
 type bulkIssueTaskData struct {
@@ -1625,6 +1629,10 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		if data.BulkPriorities, err = h.Store.PrioritiesForProject(r.Context(), wsID, project.ID); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	}
 	h.writeWorkspacePage(w, r, "page_project", user, wsID, data, "issues", project.ID)
 }
@@ -1694,23 +1702,11 @@ func (h *Handler) SubmitBulkIssueDelete(w http.ResponseWriter, r *http.Request, 
 		http.NotFound(w, r)
 		return
 	}
-	selected := r.Form["issue"]
-	if len(selected) < 1 || len(selected) > 1000 {
-		http.Error(w, "select between 1 and 1,000 work items", http.StatusBadRequest)
+	issues, ok := h.bulkSelection(w, r, user, workspaceID, project.ID)
+	if !ok {
 		return
 	}
-	seen := make(map[string]bool, len(selected))
-	items := make([]store.BulkIssueTaskItem, 0, len(selected))
-	for _, idOrKey := range selected {
-		issue, lookupErr := h.issueForUser(r, user, workspaceID, idOrKey)
-		if lookupErr != nil || issue.ProjectID != project.ID || seen[issue.ID] {
-			http.Error(w, "the selection contains an invalid or inaccessible work item", http.StatusBadRequest)
-			return
-		}
-		seen[issue.ID] = true
-		items = append(items, store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID})
-	}
-	task, err := h.Store.EnqueueBulkDeleteTask(r.Context(), workspaceID, user.ID, items, r.FormValue("sendNotification") == "true")
+	task, err := h.Store.EnqueueBulkDeleteTask(r.Context(), workspaceID, user.ID, bulkTaskItems(issues), r.FormValue("sendNotification") == "true")
 	if errors.Is(err, store.ErrBulkTaskLimit) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -1758,20 +1754,12 @@ func (h *Handler) SubmitBulkIssueMove(w http.ResponseWriter, r *http.Request, pr
 		http.Error(w, "a destination parent is required only for sub-task work types", http.StatusBadRequest)
 		return
 	}
-	selected := r.Form["issue"]
-	if len(selected) < 1 || len(selected) > 1000 {
-		http.Error(w, "select between 1 and 1,000 work items", http.StatusBadRequest)
+	selection, ok := h.bulkSelection(w, r, user, workspaceID, sourceProject.ID)
+	if !ok {
 		return
 	}
-	seen := map[string]bool{}
-	items := make([]store.BulkIssueMoveTaskItem, 0, len(selected))
-	for _, idOrKey := range selected {
-		issue, lookupErr := h.issueForUser(r, user, workspaceID, idOrKey)
-		if lookupErr != nil || issue.ProjectID != sourceProject.ID || seen[issue.ID] {
-			http.Error(w, "the selection contains an invalid or inaccessible work item", http.StatusBadRequest)
-			return
-		}
-		seen[issue.ID] = true
+	items := make([]store.BulkIssueMoveTaskItem, 0, len(selection))
+	for _, issue := range selection {
 		items = append(items, store.BulkIssueMoveTaskItem{
 			BulkIssueTaskItem: store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID},
 			ProjectID:         destination.ID, IssueTypeID: issueType.ID, ParentID: parentID, InferStatusDefaults: true,
@@ -1803,21 +1791,13 @@ func (h *Handler) SubmitBulkIssueTransition(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	transitionID := strings.TrimSpace(r.FormValue("transition"))
-	selected := r.Form["issue"]
-	if transitionID == "" || len(selected) < 1 || len(selected) > 1000 {
-		http.Error(w, "select between 1 and 1,000 work items and a transition", http.StatusBadRequest)
+	if transitionID == "" {
+		http.Error(w, "choose a transition", http.StatusBadRequest)
 		return
 	}
-	seen := map[string]bool{}
-	issues := make([]*models.Issue, 0, len(selected))
-	for _, idOrKey := range selected {
-		issue, lookupErr := h.issueForUser(r, user, workspaceID, idOrKey)
-		if lookupErr != nil || issue.ProjectID != project.ID || seen[issue.ID] {
-			http.Error(w, "the selection contains an invalid or inaccessible work item", http.StatusBadRequest)
-			return
-		}
-		seen[issue.ID] = true
-		issues = append(issues, issue)
+	issues, ok := h.bulkSelection(w, r, user, workspaceID, project.ID)
+	if !ok {
+		return
 	}
 	common, err := h.commonBulkTransitions(r.Context(), workspaceID, user.ID, issues)
 	if err != nil {
@@ -1840,6 +1820,168 @@ func (h *Handler) SubmitBulkIssueTransition(w http.ResponseWriter, r *http.Reque
 		items = append(items, store.BulkIssueTransitionTaskItem{BulkIssueTaskItem: store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID}, TransitionID: transitionID})
 	}
 	task, err := h.Store.EnqueueBulkTransitionTask(r.Context(), workspaceID, user.ID, items, r.FormValue("sendNotification") == "true")
+	if errors.Is(err, store.ErrBulkTaskLimit) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"/bulk/"+url.PathEscape(task.WireID()), http.StatusSeeOther)
+}
+
+// bulkSelection resolves the work items a navigator form selected, holding
+// them to Jira's bounds and to the reader's own access. Every bulk submission
+// starts here, so one selection cannot behave differently from another. The
+// caller has already reported anything else its own form is missing, so the
+// bound reported here is the selection's alone.
+func (h *Handler) bulkSelection(w http.ResponseWriter, r *http.Request, user *models.User, workspaceID, projectID string) ([]*models.Issue, bool) {
+	selected := r.Form["issue"]
+	if len(selected) < 1 || len(selected) > 1000 {
+		http.Error(w, "select between 1 and 1,000 work items", http.StatusBadRequest)
+		return nil, false
+	}
+	seen := make(map[string]bool, len(selected))
+	issues := make([]*models.Issue, 0, len(selected))
+	for _, idOrKey := range selected {
+		issue, lookupErr := h.issueForUser(r, user, workspaceID, idOrKey)
+		if lookupErr != nil || issue.ProjectID != projectID || seen[issue.ID] {
+			http.Error(w, "the selection contains an invalid or inaccessible work item", http.StatusBadRequest)
+			return nil, false
+		}
+		seen[issue.ID] = true
+		issues = append(issues, issue)
+	}
+	return issues, true
+}
+
+// bulkTaskItems names a selection the way a durable bulk task records it.
+func bulkTaskItems(issues []*models.Issue) []store.BulkIssueTaskItem {
+	items := make([]store.BulkIssueTaskItem, 0, len(issues))
+	for _, issue := range issues {
+		items = append(items, store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID})
+	}
+	return items
+}
+
+// SubmitBulkIssueEdit sets one field across the selection, through the same
+// durable task Jira's bulk edit endpoint queues. The navigator offers the
+// fields a reader can set on every work item without a screen: the assignee,
+// the priority, the due date and labels.
+func (h *Handler) SubmitBulkIssueEdit(w http.ResponseWriter, r *http.Request, projectKey string) {
+	if !parseForm(w, r) {
+		return
+	}
+	user, workspaceID, ok := h.requireBulkChange(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByKey(r.Context(), workspaceID, projectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	issues, ok := h.bulkSelection(w, r, user, workspaceID, project.ID)
+	if !ok {
+		return
+	}
+	operation, err := bulkEditOperation(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	task, err := h.Store.EnqueueBulkEditTask(r.Context(), workspaceID, user.ID, store.BulkIssueEditTaskPayload{
+		Issues: bulkTaskItems(issues), Operations: []store.BulkIssueEditOperation{operation},
+		SendBulkNotification: r.FormValue("sendNotification") == "true",
+	})
+	if errors.Is(err, store.ErrBulkTaskLimit) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"/bulk/"+url.PathEscape(task.WireID()), http.StatusSeeOther)
+}
+
+// bulkEditOperation reads the one field the navigator's form sets. Clearing a
+// field is saying nothing in its box, which is how the single-item edit
+// clears one too.
+func bulkEditOperation(r *http.Request) (store.BulkIssueEditOperation, error) {
+	field := r.FormValue("field")
+	// Each field has its own box, so the form can carry them all and the
+	// chosen one is read. One box named "value" for every field would submit
+	// them all and the server would take whichever came first.
+	value := strings.TrimSpace(r.FormValue(map[string]string{
+		"assignee": "valueAssignee", "priority": "valuePriority",
+		"duedate": "valueDueDate", "labels": "valueLabels",
+	}[field]))
+	encode := func(v any) json.RawMessage {
+		encoded, _ := json.Marshal(v)
+		return encoded
+	}
+	switch field {
+	case "assignee":
+		if value == "" {
+			return store.BulkIssueEditOperation{FieldID: "assignee", Action: "SET", Value: encode(nil)}, nil
+		}
+		return store.BulkIssueEditOperation{FieldID: "assignee", Action: "SET", Value: encode(map[string]string{"accountId": value})}, nil
+	case "priority":
+		if value == "" {
+			return store.BulkIssueEditOperation{}, fmt.Errorf("choose a priority")
+		}
+		return store.BulkIssueEditOperation{FieldID: "priority", Action: "SET", Value: encode(map[string]string{"id": value})}, nil
+	case "duedate":
+		if value == "" {
+			return store.BulkIssueEditOperation{FieldID: "duedate", Action: "SET", Value: encode(nil)}, nil
+		}
+		if _, err := time.Parse("2006-01-02", value); err != nil {
+			return store.BulkIssueEditOperation{}, fmt.Errorf("a due date is a date, as YYYY-MM-DD")
+		}
+		return store.BulkIssueEditOperation{FieldID: "duedate", Action: "SET", Value: encode(value)}, nil
+	case "labels":
+		labels := []string{}
+		for _, label := range strings.Split(value, ",") {
+			if trimmed := strings.TrimSpace(label); trimmed != "" {
+				labels = append(labels, trimmed)
+			}
+		}
+		if len(labels) == 0 {
+			return store.BulkIssueEditOperation{}, fmt.Errorf("name at least one label")
+		}
+		action := "ADD"
+		if r.FormValue("labelAction") == "remove" {
+			action = "REMOVE"
+		}
+		return store.BulkIssueEditOperation{FieldID: "labels", Action: action, Value: encode(labels)}, nil
+	}
+	return store.BulkIssueEditOperation{}, fmt.Errorf("choose a field to change")
+}
+
+// SubmitBulkIssueWatch starts watching, or stops watching, every work item in
+// the selection as the reader themselves.
+func (h *Handler) SubmitBulkIssueWatch(w http.ResponseWriter, r *http.Request, projectKey string, watch bool) {
+	if !parseForm(w, r) {
+		return
+	}
+	// Watching is not a change to the work item, so it asks for no more than
+	// being able to see it -- as the single-item watch does.
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByKey(r.Context(), workspaceID, projectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	issues, ok := h.bulkSelection(w, r, user, workspaceID, project.ID)
+	if !ok {
+		return
+	}
+	task, err := h.Store.EnqueueBulkWatchTask(r.Context(), workspaceID, user.ID, bulkTaskItems(issues), watch)
 	if errors.Is(err, store.ErrBulkTaskLimit) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return

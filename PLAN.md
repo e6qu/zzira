@@ -86,8 +86,8 @@ Each numbered item is one or more substantial PRs.
   project default, organization default; org admins only.
 
 **Platform odds and ends.**
-- Bulk edit of `issueType` and `status`; bulk edit, watch and unwatch in the
-  navigator.
+- Bulk edit of `issueType` and `status`; more than one field per navigator
+  bulk edit.
 - Worklogs: `started`, real `updated`/`updateAuthor`, `issueId`, `self` with the
   work item; list paging and `startedAfter`/`startedBefore`/`expand=properties`;
   worklog visibility.
