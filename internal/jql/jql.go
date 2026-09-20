@@ -1831,6 +1831,7 @@ func (c *compiler) historyClause(cl HistoryClause) string {
 		"priority": "priority", "parent": "parent", "labels": "labels",
 		"summary": "summary", "description": "description", "security": "security",
 		"fixversion": "fixVersions", "affectedversion": "versions",
+		"resolution": "resolution",
 	}
 	key, ok := keys[cl.Field]
 	if !ok {
@@ -1869,7 +1870,7 @@ func (c *compiler) historyClause(cl HistoryClause) string {
 	if current, present := c.res.Columns[cl.Field]; present && len(cl.Predicates) == 0 {
 		currentMatches := make([]string, 0, len(cl.Values))
 		for _, value := range cl.Values {
-			currentMatches = append(currentMatches, "lower(COALESCE("+current+"::text,''))=lower("+c.arg(c.fieldValue(cl.Field, value))+"::text)")
+			currentMatches = append(currentMatches, "lower(COALESCE("+current+"::text,''))=lower("+c.arg(c.historyValue(cl.Field, value))+"::text)")
 		}
 		exists = "(" + exists + " OR " + strings.Join(currentMatches, " OR ") + ")"
 	}
@@ -1879,10 +1880,21 @@ func (c *compiler) historyClause(cl HistoryClause) string {
 	return exists
 }
 
+// historyValue is a value as history compares it: an empty resolution is
+// recorded, and compared, as the empty string rather than as the absence a
+// current-value clause reads Unresolved to mean.
+func (c *compiler) historyValue(field, value string) any {
+	compared := c.fieldValue(field, value)
+	if compared == nil && (field == "resolution" || field == "security") {
+		return ""
+	}
+	return compared
+}
+
 func (c *compiler) historyValueMatch(key, side string, values []string) string {
 	parts := make([]string, 0, len(values))
 	for _, value := range values {
-		placeholder := c.arg(c.fieldValue(key, value))
+		placeholder := c.arg(c.historyValue(key, value))
 		var columns []string
 		switch side {
 		case "from":

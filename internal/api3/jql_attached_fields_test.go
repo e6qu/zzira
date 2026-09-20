@@ -236,6 +236,10 @@ func TestSearchByAttachedFields(t *testing.T) {
 		t.Fatalf("no transition leaves the first category: %+v", available.Transitions)
 	}
 	call(http.MethodPost, "/rest/api/3/issue/"+subject+"/transitions", `{"transition":{"id":"`+moved+`"}}`, http.StatusNoContent)
+	// The resolution's own history, which Jira searches and this did not.
+	if keys := keysFor(`resolution WAS Unresolved AND project = ` + key); len(keys) != 2 {
+		t.Fatalf("resolution WAS Unresolved matched %v", keys)
+	}
 	crossed := categoryDateOf(subject)
 	if crossed == atCreation {
 		t.Fatalf("crossing a category left the date at %s", crossed)

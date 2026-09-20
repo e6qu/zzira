@@ -62,8 +62,10 @@ status.
 - History: `WAS`, `WAS IN`, `WAS NOT`, `WAS NOT IN` and `CHANGED` with `FROM`,
   `TO`, `BY`, `BEFORE`, `AFTER` and `DURING`, for `status`, `assignee`,
   `reporter`, `priority`, `parent`, `labels`, `summary`, `description`,
-  `fixVersion` and `affectedVersion`. History reads the `actions` log and
-  compares both stored IDs and display names.
+  `fixVersion`, `affectedVersion` and `resolution`, which is every field
+  Jira's own history search covers. History reads the `actions` log and
+  compares both stored IDs and display names; `resolution WAS Unresolved`
+  matches having had no resolution, which the log records as an empty value.
 - Dates: Jira date literals, relative values (`-5d`) and date functions with
   increments (`startOfMonth(-1M)`, `startOfMonth(-1)`). Relative dates resolve
   once per compilation in UTC.
@@ -206,7 +208,6 @@ See [PLAN.md](../PLAN.md).
 
 - JSM fields not searchable: `Organizations`, because a request is not shared
   with an organization here; only a desk is.
-- `WAS`/`CHANGED` not supported for `resolution` (or components and sprints).
 - `includeArchivedProjects=true` is refused although projects can be
   archived.
 - `versionedRepresentations` carry only the current value, not field history.
