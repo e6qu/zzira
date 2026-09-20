@@ -632,6 +632,18 @@ func canonicalField(field string) string {
 		return "due"
 	case "resolved":
 		return "resolutiondate"
+	case "issuekey":
+		return "key"
+	case "type":
+		return "issuetype"
+	case "timeoriginalestimate":
+		return "originalestimate"
+	case "timeestimate":
+		return "remainingestimate"
+	case "watchers":
+		return "watcher"
+	case "voters":
+		return "voter"
 	default:
 		// cf[10000] names a custom field by its number.
 		lower := strings.ToLower(field)
@@ -1099,6 +1111,13 @@ func DefaultResolver() FieldResolver {
 			"remainingestimate": "i.remaining_estimate_seconds",
 			"timespent":         "(SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id)",
 			"workratio":         "CASE WHEN i.original_estimate_seconds > 0 THEN (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id) * 100 / i.original_estimate_seconds END",
+			// How many people voted, what level of the work type hierarchy
+			// the work item sits on, the security level it carries and the
+			// category of its project.
+			"votes":          "(SELECT count(*) FROM issue_votes vote_count WHERE vote_count.issue_id=i.id)",
+			"hierarchylevel": "COALESCE(ito.hierarchy_level, it.hierarchy_level)",
+			"level":          "(SELECT level_entry->>'name' FROM security_schemes level_scheme, jsonb_array_elements(level_scheme.levels) level_entry WHERE level_scheme.workspace_id=pr.workspace_id AND level_entry->>'id'=i.security_level_id LIMIT 1)",
+			"category":       "(SELECT project_category.name FROM project_categories project_category WHERE project_category.id=pr.category_id)",
 		},
 		TextColumns: []string{"i.summary", "i.description::text"},
 		DefaultOrder: map[string]string{
@@ -1107,12 +1126,14 @@ func DefaultResolver() FieldResolver {
 			"reporter": "r.display_name", "project": "pr.key", "parent": "parent.key", "resolution": "COALESCE(reso.position, res.position)",
 			"due": `i.due_date::timestamptz`, "resolutiondate": "i.resolved_at",
 			"originalestimate": "i.original_estimate_seconds", "remainingestimate": "i.remaining_estimate_seconds",
-			"timespent": "(SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id)",
-			"workratio": "CASE WHEN i.original_estimate_seconds > 0 THEN (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id) * 100 / i.original_estimate_seconds END",
+			"timespent":      "(SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id)",
+			"workratio":      "CASE WHEN i.original_estimate_seconds > 0 THEN (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id) * 100 / i.original_estimate_seconds END",
+			"votes":          "(SELECT count(*) FROM issue_votes vote_count WHERE vote_count.issue_id=i.id)",
+			"hierarchylevel": "COALESCE(ito.hierarchy_level, it.hierarchy_level)",
 		},
 		DateFields:     map[string]bool{"updated": true, "created": true, "due": true, "resolutiondate": true},
 		DurationFields: map[string]bool{"originalestimate": true, "remainingestimate": true, "timespent": true},
-		NumberFields:   map[string]bool{"workratio": true},
+		NumberFields:   map[string]bool{"workratio": true, "votes": true, "hierarchylevel": true},
 	}
 }
 
@@ -1245,10 +1266,15 @@ func (c *compiler) node(n Node) string {
 		if t.Value == "" {
 			return "TRUE" // empty query matches all
 		}
-		likes := make([]string, 0, len(c.res.TextColumns))
+		// A bare term is Jira's text field written without naming it, so it
+		// looks where that field looks: the work item's own text and the
+		// text of its comments.
+		term := c.arg("%" + t.Value + "%")
+		likes := make([]string, 0, len(c.res.TextColumns)+1)
 		for _, col := range c.res.TextColumns {
-			likes = append(likes, col+" ILIKE "+c.arg("%"+t.Value+"%"))
+			likes = append(likes, col+" ILIKE "+term)
 		}
+		likes = append(likes, commentTextMatch(term))
 		return "(" + strings.Join(likes, " OR ") + ")"
 	case Clause:
 		return c.terminal(func() string { return c.clause(t) })
@@ -1295,6 +1321,23 @@ func (c *compiler) clause(cl Clause) string {
 	}
 	if cl.Field == "labels" {
 		return c.labelsClause(cl)
+	}
+	// Fields that are not values on the work item but things attached to it:
+	// its text, its comments, the people watching or voting, its attachments
+	// and the links it takes part in.
+	switch cl.Field {
+	case "text":
+		return c.freeTextClause(cl)
+	case "comment":
+		return c.commentClause(cl)
+	case "watcher":
+		return c.userSetClause(cl, "watchers", "watcher_row")
+	case "voter":
+		return c.userSetClause(cl, "issue_votes", "voter_row")
+	case "attachments":
+		return c.attachmentsClause(cl)
+	case "issuelinktype":
+		return c.issueLinkTypeClause(cl)
 	}
 	if field, ok := c.res.CustomValueFields[cl.Field]; ok {
 		return c.customValueClause(field, cl)
@@ -1835,6 +1878,124 @@ func (c *compiler) labelsClause(cl Clause) string {
 	}
 	c.err = &SyntaxError{0, "unsupported operator " + cl.Op}
 	return ""
+}
+
+// freeTextClause searches the text of a work item the way Jira's text field
+// does: its own text and the text of its comments, with ~ and !~ alone.
+func (c *compiler) freeTextClause(cl Clause) string {
+	if cl.Op != "~" && cl.Op != "!~" {
+		c.err = &SyntaxError{0, "text supports only ~ and !~"}
+		return ""
+	}
+	term := c.arg("%" + cl.Values[0] + "%")
+	parts := make([]string, 0, len(c.res.TextColumns)+1)
+	for _, col := range c.res.TextColumns {
+		parts = append(parts, col+" ILIKE "+term)
+	}
+	parts = append(parts, commentTextMatch(term))
+	match := "(" + strings.Join(parts, " OR ") + ")"
+	if cl.Op == "!~" {
+		return "(NOT " + match + ")"
+	}
+	return match
+}
+
+// commentTextMatch is one work item's comments holding a phrase.
+func commentTextMatch(term string) string {
+	return "EXISTS (SELECT 1 FROM comments comment_row WHERE comment_row.issue_id=i.id AND comment_row.body::text ILIKE " + term + ")"
+}
+
+// commentClause searches only the comments, as Jira's comment field does.
+func (c *compiler) commentClause(cl Clause) string {
+	if cl.Op != "~" && cl.Op != "!~" {
+		c.err = &SyntaxError{0, "comment supports only ~ and !~"}
+		return ""
+	}
+	match := commentTextMatch(c.arg("%" + cl.Values[0] + "%"))
+	if cl.Op == "!~" {
+		return "(NOT " + match + ")"
+	}
+	return match
+}
+
+// userSetClause matches the people attached to a work item rather than named
+// on it -- who watches it, who voted for it -- which is how Jira's watcher
+// and voter fields search.
+func (c *compiler) userSetClause(cl Clause, table, alias string) string {
+	any := "EXISTS (SELECT 1 FROM " + table + " " + alias + " WHERE " + alias + ".issue_id=i.id)"
+	switch cl.Op {
+	case "empty":
+		return "(NOT " + any + ")"
+	case "notempty":
+		return any
+	case "=", "!=", "in", "notin":
+	default:
+		c.err = &SyntaxError{0, cl.Field + " supports =, !=, IN, NOT IN, IS EMPTY and IS NOT EMPTY"}
+		return ""
+	}
+	matches := make([]string, 0, len(cl.Values))
+	for _, value := range cl.Values {
+		user := value
+		if name, args, ok := splitFunction(value); ok {
+			if !strings.EqualFold(name, "currentUser") || len(args) != 0 {
+				c.err = &SyntaxError{0, "unsupported function " + name + "() for " + cl.Field}
+				return ""
+			}
+			user = c.user
+		}
+		matches = append(matches, "EXISTS (SELECT 1 FROM "+table+" "+alias+" WHERE "+alias+".issue_id=i.id AND "+alias+".user_id="+c.arg(user)+")")
+	}
+	match := "(" + strings.Join(matches, " OR ") + ")"
+	if cl.Op == "!=" || cl.Op == "notin" {
+		return "(NOT " + match + ")"
+	}
+	return match
+}
+
+// attachmentsClause answers whether a work item has files, which is all Jira
+// asks of the attachments field.
+func (c *compiler) attachmentsClause(cl Clause) string {
+	any := "EXISTS (SELECT 1 FROM attachments attachment_row WHERE attachment_row.issue_id=i.id)"
+	switch cl.Op {
+	case "empty":
+		return "(NOT " + any + ")"
+	case "notempty":
+		return any
+	}
+	c.err = &SyntaxError{0, "attachments supports only IS EMPTY and IS NOT EMPTY"}
+	return ""
+}
+
+// issueLinkTypeClause matches work items taking part in a link of a named
+// type, by the type's name or by either direction's wording.
+func (c *compiler) issueLinkTypeClause(cl Clause) string {
+	any := "EXISTS (SELECT 1 FROM issue_links link_row WHERE link_row.inward_id=i.id OR link_row.outward_id=i.id)"
+	switch cl.Op {
+	case "empty":
+		return "(NOT " + any + ")"
+	case "notempty":
+		return any
+	case "=", "!=", "in", "notin":
+	default:
+		c.err = &SyntaxError{0, "issueLinkType supports =, !=, IN, NOT IN, IS EMPTY and IS NOT EMPTY"}
+		return ""
+	}
+	matches := make([]string, 0, len(cl.Values))
+	for _, value := range cl.Values {
+		if _, _, ok := splitFunction(value); ok {
+			c.err = &SyntaxError{0, "issueLinkType takes link type names, not functions"}
+			return ""
+		}
+		name := c.arg(value)
+		matches = append(matches, "EXISTS (SELECT 1 FROM issue_links link_row JOIN issue_link_types link_type ON link_type.id=link_row.link_type_id"+
+			" WHERE (link_row.inward_id=i.id OR link_row.outward_id=i.id)"+
+			" AND (lower(link_type.name)=lower("+name+") OR lower(link_type.inward)=lower("+name+") OR lower(link_type.outward)=lower("+name+")))")
+	}
+	match := "(" + strings.Join(matches, " OR ") + ")"
+	if cl.Op == "!=" || cl.Op == "notin" {
+		return "(" + any + " AND NOT " + match + ")"
+	}
+	return match
 }
 
 func (c *compiler) componentClause(cl Clause) string {

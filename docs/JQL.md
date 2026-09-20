@@ -25,7 +25,9 @@ status.
 
 ## Language
 
-- `AND`, `OR`, `NOT`, parentheses and bare-text search.
+- `AND`, `OR`, `NOT`, parentheses and bare-text search. A bare term is the
+  `text` field written without naming it, so it searches the work item's own
+  text and the text of its comments.
 - Operators `=`, `!=`, `~`, `!~`, `>`, `>=`, `<`, `<=`, `IN`, `NOT IN`,
   `IS EMPTY`, `IS NOT EMPTY`.
 - Fields: `key`/`issue`/`workItem`, `id`, `summary`, `description`,
@@ -33,9 +35,19 @@ status.
   `statusCategory`, `priority`, `assignee`, `reporter`, `creator`, `labels`,
   `fixVersion`, `affectedVersion`, `component(s)`, `sprint`, `parent`,
   `resolution`, `resolved`/`resolutionDate`, `created`, `updated`,
-  `due`/`dueDate`, `originalEstimate`, `remainingEstimate`, `timeSpent`,
-  `workRatio`, `approvals`, service SLA fields, typed custom fields (`cf[N]`,
-  id or name), app field aliases and indexed entity properties.
+  `due`/`dueDate`, `originalEstimate`/`timeOriginalEstimate`,
+  `remainingEstimate`/`timeEstimate`, `timeSpent`, `workRatio`, `approvals`,
+  `text`, `comment`, `watcher(s)`, `voter(s)`, `votes`, `attachments`,
+  `issueLinkType`, `level`, `category`, `hierarchyLevel`, service SLA fields,
+  typed custom fields (`cf[N]`, id or name), app field aliases and indexed
+  entity properties. `issueKey` and `type` are Jira's aliases for `key` and
+  `issuetype`.
+- Fields that are things attached to the work rather than values on it ask
+  what Jira lets them ask: `text` and `comment` take `~` and `!~` alone --
+  `text` searches the work item's own text and its comments -- `attachments`
+  takes only `IS EMPTY` and `IS NOT EMPTY`, and `watcher`, `voter` and
+  `issueLinkType` take the equality and list operators. `issueLinkType`
+  matches a link type by its name or by either direction's wording.
 - Project clauses match key (any case), numeric ID or name.
 - Multi-value fields (labels, components, versions, current and past sprints)
   follow Jira's empty-field behavior for negated comparisons.
@@ -184,11 +196,8 @@ advanced (`?mode=advanced`) modes and saves queries as
 
 See [PLAN.md](../PLAN.md).
 
-- System fields not searchable: `text`, `comment`, `watcher`/`watchers`,
-  `voter`/`votes`, `attachments`, `level` (security level), `lastViewed`,
-  `issueLinkType`, `category`, `filter`, `statusCategoryChangedDate`,
-  `hierarchyLevel`, and the aliases `issuekey`, `type`, `timeoriginalestimate`
-  and `timeestimate`.
+- System fields not searchable: `lastViewed`, `filter` and
+  `statusCategoryChangedDate`.
 - JSM fields not searchable: `Request participants`, `Organizations`,
   `request-channel-type`.
 - Functions missing: `issueHistory()`, `issuesWithRemoteLinksByGlobalId()`.

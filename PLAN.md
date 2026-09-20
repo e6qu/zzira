@@ -139,11 +139,8 @@ but nothing shows or uses it.
 
 ## 5. JQL and filters
 
-- Fields: `text`, `comment`, `watcher(s)`, `voter`/`votes`, `attachments`,
-  `level`, `lastViewed`, `issueLinkType`, `category`, `filter`,
-  `statusCategoryChangedDate`, `hierarchyLevel`, `Request participants`,
-  `Organizations`, `request-channel-type`.
-- Aliases: `issuekey`, `type`, `timeoriginalestimate`, `timeestimate`.
+- Fields: `lastViewed`, `filter`, `statusCategoryChangedDate`,
+  `Request participants`, `Organizations`, `request-channel-type`.
 - Functions: `issueHistory()`, `issuesWithRemoteLinksByGlobalId()`.
 - `WAS`/`CHANGED` on `resolution`; `includeArchivedProjects`; historical
   `versionedRepresentations`.
