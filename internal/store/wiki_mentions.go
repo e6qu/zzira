@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/wikimarkup"
@@ -16,13 +18,54 @@ import (
 // notifies nobody.
 
 // These check whether $2 can see a page, blog post or comment ($3).
-var wikiPageReadableBy = `SELECT EXISTS(SELECT 1 FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id
-	WHERE s.workspace_id=$1 AND ` + wikiSpaceVisible + ` AND ` + wikiPageVisible + ` AND p.id::text=$3)`
+var wikiPageReadableBy = `SELECT ` + wikiPageReadableExpr("$3")
 
-var wikiBlogPostReadableBy = `SELECT EXISTS(SELECT 1 FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id
-	WHERE s.workspace_id=$1 AND ` + wikiSpaceVisible + ` AND ` + wikiBlogPostVisible + ` AND b.id::text=$3)`
+var wikiBlogPostReadableBy = `SELECT ` + wikiBlogPostReadableExpr("$3")
 
 var wikiCommentReadableBy = `SELECT EXISTS(` + wikiCommentReadable + `)`
+
+// wikiPageReadableExpr and wikiBlogPostReadableExpr are the same questions
+// asked of an id a query already has in hand rather than of a parameter, so
+// a place that reads content alongside something else -- an inbox, a sync
+// stream -- asks exactly what a read asks.
+func wikiPageReadableExpr(idExpr string) string {
+	return `EXISTS(SELECT 1 FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id
+	WHERE s.workspace_id=$1 AND ` + wikiSpaceVisible + ` AND ` + wikiPageVisible + ` AND p.id::text=` + idExpr + `)`
+}
+
+func wikiBlogPostReadableExpr(idExpr string) string {
+	return `EXISTS(SELECT 1 FROM wiki_blog_posts b JOIN wiki_spaces s ON s.id=b.space_id
+	WHERE s.workspace_id=$1 AND ` + wikiSpaceVisible + ` AND ` + wikiBlogPostVisible + ` AND b.id::text=` + idExpr + `)`
+}
+
+// notificationSubjectReadable is whether the person a notification belongs to
+// can still see what it is about. Losing access to a page takes back what
+// its notifications said about it -- the title is in the message -- so an
+// inbox and a replica must both stop showing one. Anything this does not
+// know how to check is left alone.
+func notificationSubjectReadable(entityTypeExpr, entityIDExpr, userParam string) string {
+	predicate := `(CASE ` + entityTypeExpr + `
+		WHEN 'wiki_page' THEN ` + wikiPageReadableExpr(entityIDExpr) + `
+		WHEN 'wiki_blogpost' THEN ` + wikiBlogPostReadableExpr(entityIDExpr) + `
+		ELSE TRUE END)`
+	return forWikiUserParam(predicate, userParam)
+}
+
+// forWikiUserParam moves a wiki predicate from the $2 it is written with to
+// the placeholder a query holds the reader in. A predicate that grew a $2x
+// placeholder would be rewritten wrongly and silently, so it stops here
+// instead.
+func forWikiUserParam(sql, userParam string) string {
+	if userParam == "$2" {
+		return sql
+	}
+	if wikiTwoDigitParameter.MatchString(sql) {
+		panic("wiki predicate uses a placeholder beginning with $2 and cannot be renumbered")
+	}
+	return strings.ReplaceAll(sql, "$2", userParam)
+}
+
+var wikiTwoDigitParameter = regexp.MustCompile(`\$2\d`)
 
 // insertWikiNotification puts one Confluence notification in someone's inbox
 // and marks it to be emailed.

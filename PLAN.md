@@ -238,8 +238,8 @@ links, the Assets portal field, and the workspace discovery endpoints.
 - CQL: relevance and stemming; whiteboards, databases, folders, Smart Links and
   custom content; `space.title`, `space.category`, content properties; a search
   page.
-- Notifications: autowatch, per-user email settings and digests, likes, Share,
-  watcher notifications for move, delete, archive and new attachments.
+- Notifications: per-user email settings and digests, likes, Share, watcher
+  notifications for move, delete, archive and new attachments.
 - Users and groups: `expand` on user reads, `user/bulk` paging, full CQL user
   search; `invite-by-email` sends mail.
 - Audit: site operations write records; `sysAdmin`/`superAdmin` derived; audit

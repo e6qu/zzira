@@ -56,10 +56,12 @@ type profilePageData struct {
 	Reported   []*models.Issue
 	Identities []profileIdentityView
 	Saved      string
-	// NotifyOwnChanges and Autowatch are the signed-in person's own
-	// notification preferences.
+	// NotifyOwnChanges, Autowatch and WikiAutowatch are the signed-in
+	// person's own notification preferences. Confluence keeps its own
+	// autowatch setting, so this product does too.
 	NotifyOwnChanges bool
 	Autowatch        bool
+	WikiAutowatch    bool
 	// APITokens are the signed-in person's own tokens, and NewAPIToken is the
 	// secret of one just created -- shown once, on the response to the
 	// request that made it, and never again.
@@ -424,6 +426,11 @@ func (h *Handler) buildProfileData(r *http.Request, user *models.User, wsID, acc
 		return profilePageData{}, err
 	}
 	data.Autowatch = !autowatchDisabled
+	wikiAutowatchDisabled, err := h.Store.UserPreferenceEnabled(r.Context(), wsID, user.ID, store.UserPreferenceWikiAutowatchDisabled, false)
+	if err != nil {
+		return profilePageData{}, err
+	}
+	data.WikiAutowatch = !wikiAutowatchDisabled
 	if data.APITokens, err = h.Store.APITokensForUser(r.Context(), user.ID); err != nil {
 		return profilePageData{}, err
 	}
@@ -545,16 +552,18 @@ func (h *Handler) profilePageWith(w http.ResponseWriter, r *http.Request, user *
 }
 
 // UpdateNotificationPreferences saves the signed-in person's personal
-// notification settings: whether their own changes notify them and whether
-// work they create or comment on is watched automatically.
+// notification settings: whether their own changes notify them, and whether
+// work items and wiki content they create or comment on are watched
+// automatically.
 func (h *Handler) UpdateNotificationPreferences(w http.ResponseWriter, r *http.Request) {
 	user, wsID, ok := h.pageContext(w, r)
 	if !ok {
 		return
 	}
 	ownChanges, autowatch := r.PostFormValue("ownChanges"), r.PostFormValue("autowatch")
-	if (ownChanges != "true" && ownChanges != "false") || (autowatch != "enabled" && autowatch != "disabled") {
-		http.Error(w, "choose a setting for your own changes and for autowatch", http.StatusBadRequest)
+	wikiAutowatch := r.PostFormValue("wikiAutowatch")
+	if (ownChanges != "true" && ownChanges != "false") || (autowatch != "enabled" && autowatch != "disabled") || (wikiAutowatch != "enabled" && wikiAutowatch != "disabled") {
+		http.Error(w, "choose a setting for your own changes and for both autowatch settings", http.StatusBadRequest)
 		return
 	}
 	if err := h.Store.SetUserPreference(r.Context(), wsID, user.ID, store.UserPreferenceNotifyOwnChanges, ownChanges); err != nil {
@@ -562,6 +571,10 @@ func (h *Handler) UpdateNotificationPreferences(w http.ResponseWriter, r *http.R
 		return
 	}
 	if err := h.Store.SetUserPreference(r.Context(), wsID, user.ID, store.UserPreferenceAutowatchDisabled, strconv.FormatBool(autowatch == "disabled")); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := h.Store.SetUserPreference(r.Context(), wsID, user.ID, store.UserPreferenceWikiAutowatchDisabled, strconv.FormatBool(wikiAutowatch == "disabled")); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

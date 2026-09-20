@@ -1297,8 +1297,11 @@ func (s *Store) NotificationsPageByUser(ctx context.Context, workspaceID, userID
 	if unreadOnly {
 		unreadClause = " AND n.read_at IS NULL"
 	}
+	// A notification about content the reader can no longer see is not
+	// theirs to read: its message names the content.
+	readable := " AND " + notificationSubjectReadable("n.entity_type", "n.entity_id", "$2")
 	var total int
-	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications n WHERE n.workspace_id=$1 AND n.user_id=$2`+unreadClause,
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM notifications n WHERE n.workspace_id=$1 AND n.user_id=$2`+unreadClause+readable,
 		workspaceID, userID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
@@ -1308,7 +1311,7 @@ func (s *Store) NotificationsPageByUser(ctx context.Context, workspaceID, userID
 		       n.read_at IS NOT NULL,
 		       COALESCE(to_char(n.read_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), '')
 		FROM notifications n LEFT JOIN users u ON u.id = n.actor_id
-		WHERE n.workspace_id=$1 AND n.user_id=$2`+unreadClause+`
+		WHERE n.workspace_id=$1 AND n.user_id=$2`+unreadClause+readable+`
 		ORDER BY n.created_at DESC, n.id DESC LIMIT $3 OFFSET $4`, workspaceID, userID, maxResults, startAt)
 	if err != nil {
 		return nil, 0, err

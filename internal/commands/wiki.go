@@ -204,7 +204,21 @@ func (s *Service) SaveWikiPage(ctx context.Context, ws, actor string, p models.W
 	if len(p.Version.Message) > 2000 {
 		return nil, fmt.Errorf("%w: version message must be at most 2000 bytes", store.ErrWikiValidation)
 	}
-	return s.Store.SaveWikiPage(ctx, ws, actor, p)
+	saved, err := s.Store.SaveWikiPage(ctx, ws, actor, p)
+	if err != nil {
+		return nil, err
+	}
+	return saved, s.autowatchWikiContent(ctx, ws, actor, saved.ID, saved.Status)
+}
+
+// autowatchWikiContent follows what the writer just wrote, as Confluence does
+// for a page or blog post someone creates, edits or comments on. A draft is
+// not watchable until it is published, so there is nothing to follow yet.
+func (s *Service) autowatchWikiContent(ctx context.Context, ws, actor, contentID, status string) error {
+	if status != "current" {
+		return nil
+	}
+	return s.Store.AutowatchWikiContent(ctx, ws, actor, contentID)
 }
 
 // MoveWikiPage, ArchiveWikiPages and RestoreWikiPage are the page tree's
@@ -306,7 +320,11 @@ func (s *Service) SaveWikiBlogPost(ctx context.Context, ws, actor string, post m
 			return nil, fmt.Errorf("%w: createdAt must be an RFC 3339 timestamp", store.ErrWikiValidation)
 		}
 	}
-	return s.Store.SaveWikiBlogPost(ctx, ws, actor, post)
+	saved, err := s.Store.SaveWikiBlogPost(ctx, ws, actor, post)
+	if err != nil {
+		return nil, err
+	}
+	return saved, s.autowatchWikiContent(ctx, ws, actor, saved.ID, saved.Status)
 }
 
 func (s *Service) PurgeWikiBlogPost(ctx context.Context, ws, actor, id string) error {
@@ -376,7 +394,25 @@ func (s *Service) CreateWikiFooterComment(ctx context.Context, ws, actor string,
 	if targets != 1 {
 		return nil, fmt.Errorf("%w: choose exactly one of pageId, blogPostId, attachmentId, customContentId, or parentCommentId", store.ErrWikiValidation)
 	}
-	return s.Store.CreateWikiFooterComment(ctx, ws, actor, comment)
+	created, err := s.Store.CreateWikiFooterComment(ctx, ws, actor, comment)
+	if err != nil {
+		return nil, err
+	}
+	return created, s.autowatchWikiComment(ctx, ws, actor, created)
+}
+
+// autowatchWikiComment follows the page or blog post a comment was left on.
+// A comment on an attachment or on custom content has no page of its own to
+// watch, and Confluence's own watch API says the same.
+func (s *Service) autowatchWikiComment(ctx context.Context, ws, actor string, comment *models.WikiFooterComment) error {
+	target := comment.PageID
+	if target == "" {
+		target = comment.BlogPostID
+	}
+	if target == "" {
+		return nil
+	}
+	return s.Store.AutowatchWikiContent(ctx, ws, actor, target)
 }
 
 func (s *Service) UpdateWikiFooterComment(ctx context.Context, ws, actor string, comment models.WikiFooterComment) (*models.WikiFooterComment, error) {
@@ -410,7 +446,11 @@ func (s *Service) CreateWikiInlineComment(ctx context.Context, ws, actor string,
 			return nil, fmt.Errorf("%w: valid inline text selection metadata is required", store.ErrWikiValidation)
 		}
 	}
-	return s.Store.CreateWikiInlineComment(ctx, ws, actor, comment)
+	created, err := s.Store.CreateWikiInlineComment(ctx, ws, actor, comment)
+	if err != nil {
+		return nil, err
+	}
+	return created, s.autowatchWikiComment(ctx, ws, actor, created)
 }
 
 func (s *Service) UpdateWikiInlineComment(ctx context.Context, ws, actor string, comment models.WikiFooterComment, resolved *bool) (*models.WikiFooterComment, error) {

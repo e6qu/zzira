@@ -1166,6 +1166,10 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		      ELSE $3
 		    END = $3
 			  )
+			  -- A notification names what it is about, so it stops reaching a
+			  -- replica once that content stops being readable there.
+			  AND (a.entity_type <> $4 OR `+notificationSubjectReadable(
+		"a.payload->'notification'->>'entityType'", "a.payload->'notification'->>'entityId'", "$3")+`)
 			  AND (
 			    a.entity_type NOT IN ('issue','comment','attachment','worklog','watcher','vote','sprint_issue','issue_link')
 			    OR (
