@@ -64,9 +64,24 @@ per-item results. Part of the [Jira platform](JIRA_PLATFORM.md); see
   `multipleSelectFields`, `cascadingSelectFields`, `singleGroupPickerFields`,
   `multipleGroupPickerFields`, `singleVersionPickerFields`,
   `multipleVersionPickerFields`, `multiselectComponents`, `labelsFields`,
-  `colorFields`, `urlFields`, `priority`, `originalEstimateField` and
-  `timeTrackingField`. Each item goes through the ordinary update command
-  (validation, history, notifications, security, SLA reconciliation).
+  `colorFields`, `urlFields`, `priority`, `originalEstimateField`,
+  `timeTrackingField`, `issueType` and `status`. Each item goes through the
+  ordinary update command (validation, history, notifications, security, SLA
+  reconciliation).
+  - `issueType` and `status` are not values on a screen, so they are not on
+    the editable-field list; the ids a client names them by are resolved at
+    submission, and a status must name the same status in every project the
+    selection reaches.
+  - An item's type changes the way a move within its own project does: the
+    same status mapping, required fields and Move issues permission, and it
+    fires the Issue moved event.
+  - An item's status is reached by running the transition that leads there,
+    so conditions, validators and post-functions apply. A work item whose
+    workflow offers no such transition from where it stands fails and says
+    so, as does one that could only get there through a transition screen.
+  - Within one item the type is applied first, then the fields, then the
+    status, so the item ends where the edit asked rather than where its new
+    type's workflow put it.
 - **Notifications.** Delete, move, transition and edit accept
   `sendBulkNotification` (default true). In-app notifications still fire per
   event; email is collapsed into one bulk change email per recipient when the
@@ -112,8 +127,6 @@ without Bulk change. Progress is shown at
 
 See [PLAN.md](../PLAN.md).
 
-- `editedFieldsInput.issueType` and `status` are refused (pointing to bulk
-  move and bulk transition) instead of being edited in place.
 - The navigator's bulk edit sets one field at a time, and only the four it
   offers; the REST endpoint takes any number of them.
 

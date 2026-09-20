@@ -55,10 +55,8 @@ func (s *Service) ExecuteBulkIssueTask(ctx context.Context, task store.APITask) 
 			}
 			if !visible {
 				invalid++
-			} else if update, updateErr := bulkIssueUpdate(issue, task.SubmittedBy, payload.Operations); updateErr != nil {
-				failed[strconv.FormatInt(item.JiraID, 10)] = []string{updateErr.Error()}
-			} else if _, _, updateErr = s.UpdateIssue(ctx, update); updateErr != nil {
-				failed[strconv.FormatInt(item.JiraID, 10)] = []string{updateErr.Error()}
+			} else if editErr := s.applyBulkEdit(ctx, task, issue, item, payload.Operations); editErr != nil {
+				failed[strconv.FormatInt(item.JiraID, 10)] = []string{editErr.Error()}
 			} else {
 				processed = append(processed, item.JiraID)
 			}
@@ -80,6 +78,104 @@ func (s *Service) ExecuteBulkIssueTask(ctx context.Context, task store.APITask) 
 		return err
 	}
 	return s.Store.CompleteAPITask(ctx, task, fmt.Sprintf("Processed %d of %d issues.", len(processed), len(payload.Issues)), result)
+}
+
+// applyBulkEdit changes one work item the way a bulk edit asks. The type comes
+// first because it decides which workflow and which fields the work item then
+// has, the fields follow, and the status last so the work item ends where the
+// edit asked for rather than where its new type's workflow started it.
+func (s *Service) applyBulkEdit(ctx context.Context, task store.APITask, issue *models.Issue, item store.BulkIssueTaskItem, operations []store.BulkIssueEditOperation) error {
+	fields := make([]store.BulkIssueEditOperation, 0, len(operations))
+	issueTypeID, statusID := "", ""
+	for _, operation := range operations {
+		switch operation.FieldID {
+		case "issuetype":
+			value, err := bulkStringValue(operation.Value)
+			if err != nil {
+				return fmt.Errorf("issuetype: %w", err)
+			}
+			issueTypeID = value
+		case "status":
+			value, err := bulkStringValue(operation.Value)
+			if err != nil {
+				return fmt.Errorf("status: %w", err)
+			}
+			statusID = value
+		default:
+			fields = append(fields, operation)
+		}
+	}
+	if issueTypeID != "" && issueTypeID != issue.IssueType.ID {
+		// Changing the type re-homes the work item exactly as a move within
+		// its own project does: the same status mapping, the same required
+		// fields, the same permission.
+		move := store.BulkIssueMoveTaskItem{
+			BulkIssueTaskItem: item, ProjectID: issue.ProjectID, IssueTypeID: issueTypeID,
+			InferStatusDefaults: true, InferClassificationDefaults: true, InferFieldDefaults: true,
+		}
+		if _, err := s.bulkMoveIssue(ctx, task, issue, move); err != nil {
+			return fmt.Errorf("issuetype: %w", err)
+		}
+		reloaded, err := s.Store.IssueByIDOrKey(ctx, task.WorkspaceID, issue.ID)
+		if err != nil {
+			return err
+		}
+		issue = reloaded
+	}
+	if len(fields) > 0 {
+		update, err := bulkIssueUpdate(issue, task.SubmittedBy, fields)
+		if err != nil {
+			return err
+		}
+		if _, _, err := s.UpdateIssue(ctx, update); err != nil {
+			return err
+		}
+	}
+	if statusID == "" {
+		return nil
+	}
+	return s.bulkEditStatus(ctx, task, issue.ID, statusID)
+}
+
+// bulkEditStatus runs the transition that leads to the status a bulk edit
+// asks for. A status is reached through the work item's workflow, so one whose
+// workflow offers no way there from where it stands fails and says so, rather
+// than being written past its own workflow.
+func (s *Service) bulkEditStatus(ctx context.Context, task store.APITask, issueID, statusID string) error {
+	issue, err := s.Store.IssueByIDOrKey(ctx, task.WorkspaceID, issueID)
+	if err != nil {
+		return err
+	}
+	if issue.Status.ID == statusID {
+		return nil
+	}
+	wf, err := s.Store.WorkflowForProjectAndIssueType(ctx, issue.ProjectID, issue.IssueType.ID)
+	if err != nil {
+		return err
+	}
+	evaluation, err := s.Store.IssueWorkflowEvaluation(ctx, task.WorkspaceID, task.SubmittedBy, issue)
+	if err != nil {
+		return err
+	}
+	evaluation.IsAPI = true
+	screened := false
+	for _, transition := range wf.AvailableFor(issue.Status.ID, evaluation) {
+		if transition.To != statusID {
+			continue
+		}
+		// A transition with a screen asks for values a bulk edit has no way
+		// to supply, so it is not taken silently.
+		if len(transition.ScreenFields()) > 0 {
+			screened = true
+			continue
+		}
+		_, _, err := s.TransitionIssueWithUpdateFromAPI(ctx, task.SubmittedBy, task.WorkspaceID, issue.ID, transition.ID, store.IssueUpdate{TaskID: task.ID})
+		return err
+	}
+	if screened {
+		return fmt.Errorf("status: reaching status %s asks for a transition screen, which a bulk edit cannot fill", statusID)
+	}
+	return fmt.Errorf("status: no transition from %s leads to status %s", issue.Status.Name, statusID)
 }
 
 // finishBulkNotifications sends the bulk change emails a task gathered when

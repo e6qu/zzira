@@ -3,8 +3,33 @@ package store
 import (
 	"context"
 
+	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/workflow"
 )
+
+// IssueWorkflowEvaluation builds the context a workflow's conditions and
+// validators read for one work item: what the work item holds now, and the
+// history -- statuses, approvals, transitions, and the statuses of the work
+// above and below it -- that a rule may ask about. Every caller that decides
+// which transitions are available reads the same context, so a transition
+// cannot be offered in one surface and withheld in another.
+func (s *Store) IssueWorkflowEvaluation(ctx context.Context, workspaceID, actorID string, issue *models.Issue) (workflow.EvaluationContext, error) {
+	evaluation := workflow.ContextForIssue(actorID, issue)
+	var err error
+	if evaluation.StatusHistory, err = s.IssueStatusHistory(ctx, workspaceID, issue.ID); err != nil {
+		return evaluation, err
+	}
+	if evaluation.Approvals, err = s.IssueApprovalDecisions(ctx, issue.ID); err != nil {
+		return evaluation, err
+	}
+	if evaluation.Transitions, err = s.IssueTransitionHistory(ctx, workspaceID, issue.ID); err != nil {
+		return evaluation, err
+	}
+	if evaluation.ParentStatus, evaluation.ChildStatuses, err = s.IssueHierarchyStatuses(ctx, workspaceID, issue.ID); err != nil {
+		return evaluation, err
+	}
+	return evaluation, nil
+}
 
 // IssueStatusHistory returns statuses departed by real status changes, oldest
 // first. It derives history from the immutable sync log used by changelog.

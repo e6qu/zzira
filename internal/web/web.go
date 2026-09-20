@@ -24,7 +24,6 @@ import (
 	"github.com/e6qu/zzira/internal/render"
 	"github.com/e6qu/zzira/internal/secretbox"
 	"github.com/e6qu/zzira/internal/store"
-	"github.com/e6qu/zzira/internal/workflow"
 )
 
 type Handler struct {
@@ -495,20 +494,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		return nil, err
 	}
 	var transitions []models.WorkflowTransition
-	evaluation := workflow.ContextForIssue(user.ID, issue)
-	evaluation.StatusHistory, err = h.Store.IssueStatusHistory(r.Context(), wsID, issue.ID)
-	if err != nil {
-		return nil, err
-	}
-	evaluation.Approvals, err = h.Store.IssueApprovalDecisions(r.Context(), issue.ID)
-	if err != nil {
-		return nil, err
-	}
-	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), wsID, issue.ID)
-	if err != nil {
-		return nil, err
-	}
-	evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(r.Context(), wsID, issue.ID)
+	evaluation, err := h.Store.IssueWorkflowEvaluation(r.Context(), wsID, user.ID, issue)
 	if err != nil {
 		return nil, err
 	}
@@ -1644,20 +1630,7 @@ func (h *Handler) commonBulkTransitions(ctx context.Context, workspaceID, userID
 		if err != nil {
 			return nil, err
 		}
-		evaluation := workflow.ContextForIssue(userID, issue)
-		evaluation.StatusHistory, err = h.Store.IssueStatusHistory(ctx, workspaceID, issue.ID)
-		if err != nil {
-			return nil, err
-		}
-		evaluation.Approvals, err = h.Store.IssueApprovalDecisions(ctx, issue.ID)
-		if err != nil {
-			return nil, err
-		}
-		evaluation.Transitions, err = h.Store.IssueTransitionHistory(ctx, workspaceID, issue.ID)
-		if err != nil {
-			return nil, err
-		}
-		evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(ctx, workspaceID, issue.ID)
+		evaluation, err := h.Store.IssueWorkflowEvaluation(ctx, workspaceID, userID, issue)
 		if err != nil {
 			return nil, err
 		}

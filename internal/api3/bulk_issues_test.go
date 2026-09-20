@@ -312,3 +312,153 @@ func TestBulkWatchOperationsUseDurableTaskQueue(t *testing.T) {
 		t.Fatal(limit.Body.String())
 	}
 }
+
+// Jira's bulk edit names the work type and the status among the fields it
+// edits. The type re-homes the work item the way a move within its project
+// does, and the status runs the transition that leads there; a status no
+// transition reaches fails that work item and says so.
+func TestBulkEditChangesWorkTypeAndStatus(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := store.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(st.Close)
+	if err := store.Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+	workspaceID, adminID := store.NewID("ws"), store.NewID("usr")
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := st.Pool.Exec(ctx, query, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec(`INSERT INTO workspaces(id,slug,name) VALUES($1,$1,'Bulk type and status')`, workspaceID)
+	exec(`INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$2,'test','Bulk editor')`, adminID, adminID+"@example.test")
+	exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'admin')`, workspaceID, adminID)
+	exec(`INSERT INTO api_tokens(id,user_id,token_hash) VALUES($1,$1,$2)`, adminID, store.HashToken(adminID))
+	t.Cleanup(func() {
+		exec(`DELETE FROM api_tasks WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM issues WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM boards WHERE project_id IN (SELECT id FROM projects WHERE workspace_id=$1)`, workspaceID)
+		exec(`DELETE FROM projects WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM actions WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM workspaces WHERE id=$1`, workspaceID)
+		exec(`DELETE FROM api_tokens WHERE user_id=$1`, adminID)
+		exec(`DELETE FROM users WHERE id=$1`, adminID)
+	})
+	handler := &Handler{Store: st, Commands: &commands.Service{Store: st}, WorkspaceSlug: workspaceID, BaseURL: "https://zzira.test"}
+	call := func(method, path, body string, want int) *httptest.ResponseRecorder {
+		t.Helper()
+		request := httptest.NewRequest(method, path, strings.NewReader(body))
+		request.SetBasicAuth(adminID+"@example.test", adminID)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != want {
+			t.Fatalf("%s %s: %d want %d: %s", method, path, response.Code, want, response.Body.String())
+		}
+		return response
+	}
+	call("POST", "/rest/api/3/project", `{"key":"TYPE","name":"Bulk types","projectTypeKey":"software","leadAccountId":"`+adminID+`"}`, 201)
+	issueKeys := make([]string, 0, 2)
+	for _, summary := range []string{"Type change one", "Type change two"} {
+		created := call("POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"TYPE"},"summary":"`+summary+`","issuetype":{"name":"Task"}}}`, 201)
+		var issue struct {
+			Key string `json:"key"`
+		}
+		if err := json.Unmarshal(created.Body.Bytes(), &issue); err != nil || issue.Key == "" {
+			t.Fatalf("created issue: %v %s", err, created.Body.String())
+		}
+		issueKeys = append(issueKeys, issue.Key)
+	}
+	var siteTypes []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(call("GET", "/rest/api/3/issuetype", "", 200).Body.Bytes(), &siteTypes); err != nil {
+		t.Fatal(err)
+	}
+	bugTypeID := ""
+	for _, issueType := range siteTypes {
+		if issueType.Name == "Bug" {
+			bugTypeID = issueType.ID
+		}
+	}
+	if bugTypeID == "" {
+		t.Fatalf("no Bug work type among %+v", siteTypes)
+	}
+	// A status the work item's workflow can actually reach from where it is.
+	var transitionList struct {
+		Transitions []struct {
+			To struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"to"`
+		} `json:"transitions"`
+	}
+	available := call("GET", "/rest/api/3/issue/"+issueKeys[0]+"/transitions", "", 200)
+	if err := json.Unmarshal(available.Body.Bytes(), &transitionList); err != nil || len(transitionList.Transitions) == 0 {
+		t.Fatalf("transitions: %v %s", err, available.Body.String())
+	}
+	targetStatusID := transitionList.Transitions[0].To.ID
+
+	runner := &store.APITaskRunner{Store: st, BulkIssueExecutor: handler.Commands}
+	drain := func(body string) string {
+		t.Helper()
+		submitted := call("POST", "/rest/api/3/bulk/issues/fields", body, 201)
+		var submission struct {
+			TaskID string `json:"taskId"`
+		}
+		if err := json.Unmarshal(submitted.Body.Bytes(), &submission); err != nil || submission.TaskID == "" {
+			t.Fatalf("submission: %v %s", err, submitted.Body.String())
+		}
+		if err := runner.DrainOnce(ctx, workspaceID); err != nil {
+			t.Fatal(err)
+		}
+		return call("GET", "/rest/api/3/bulk/queue/"+submission.TaskID, "", 200).Body.String()
+	}
+
+	progress := drain(fmt.Sprintf(`{"selectedIssueIdsOrKeys":["%s"],"selectedActions":["issuetype","status"],"editedFieldsInput":{"issueType":{"issueTypeId":"%s"},"status":{"statusId":"%s"}},"sendBulkNotification":false}`,
+		strings.Join(issueKeys, `","`), bugTypeID, targetStatusID))
+	if !strings.Contains(progress, `"status":"COMPLETE"`) || strings.Contains(progress, `"failedAccessibleIssues"`) {
+		t.Fatal(progress)
+	}
+	for _, key := range issueKeys {
+		updated := call("GET", "/rest/api/3/issue/"+key, "", 200).Body.String()
+		if !strings.Contains(updated, `"name":"Bug"`) || !strings.Contains(updated, `"status":{"id":"`+targetStatusID+`"`) {
+			t.Fatalf("%s did not change type and status: %s", key, updated)
+		}
+	}
+
+	// A status of the project that no transition reaches is the work item's
+	// failure, not the task's: the task completes and names what could not be
+	// done. A status that is not the project's at all is refused outright.
+	var projectID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM projects WHERE workspace_id=$1 AND key='TYPE'`, workspaceID).Scan(&projectID); err != nil {
+		t.Fatal(err)
+	}
+	var strandedStatuses []struct {
+		ID string `json:"id"`
+	}
+	stranded := call("POST", "/rest/api/3/statuses", `{"scope":{"type":"PROJECT","project":{"id":"`+projectID+`"}},"statuses":[{"name":"Off the workflow","statusCategory":"IN_PROGRESS"}]}`, 200)
+	if err := json.Unmarshal(stranded.Body.Bytes(), &strandedStatuses); err != nil || len(strandedStatuses) != 1 {
+		t.Fatalf("stranded status: %v %s", err, stranded.Body.String())
+	}
+	failed := drain(fmt.Sprintf(`{"selectedIssueIdsOrKeys":["%s"],"selectedActions":["status"],"editedFieldsInput":{"status":{"statusId":"%s"}},"sendBulkNotification":false}`,
+		strings.Join(issueKeys, `","`), strandedStatuses[0].ID))
+	if !strings.Contains(failed, `"failedAccessibleIssues"`) || !strings.Contains(failed, "no transition from") {
+		t.Fatal(failed)
+	}
+	call("POST", "/rest/api/3/bulk/issues/fields", fmt.Sprintf(`{"selectedIssueIdsOrKeys":["%s"],"selectedActions":["status"],"editedFieldsInput":{"status":{"statusId":"sts_not_in_this_site"}}}`,
+		strings.Join(issueKeys, `","`)), 400)
+
+	// The two are still fields of the edit: naming one and sending the other
+	// is refused before anything is queued.
+	call("POST", "/rest/api/3/bulk/issues/fields", `{"selectedIssueIdsOrKeys":["`+issueKeys[0]+`"],"selectedActions":["status"],"editedFieldsInput":{"issueType":{"issueTypeId":"`+bugTypeID+`"}}}`, 400)
+}
