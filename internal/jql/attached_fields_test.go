@@ -39,6 +39,10 @@ func TestAttachedFieldsCompile(t *testing.T) {
 		{query: `hierarchyLevel >= 1`, contains: []string{"hierarchy_level"}, args: []any{int64(1)}},
 		{query: `level = Managers`, contains: []string{"security_schemes level_scheme"}, args: []any{"Managers"}},
 		{query: `category = Delivery`, contains: []string{"project_categories project_category"}, args: []any{"Delivery"}},
+		// Jira Service Management's own fields, named as its documentation
+		// names them.
+		{query: `"Request participants" = usr_ana`, contains: []string{"FROM service_request_participants participant_row", "participant_row.request_issue_id=i.id"}, args: []any{"usr_ana"}},
+		{query: `"request-channel-type" = portal`, contains: []string{"FROM service_requests service_request"}, args: []any{"portal"}},
 		// The aliases Jira's own documentation uses.
 		{query: `issuekey = ZZ-1`, contains: []string{"i.key ="}, args: []any{"ZZ-1"}},
 		{query: `type = Bug`, contains: []string{"ito.name, it.name"}, args: []any{"Bug"}},

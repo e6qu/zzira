@@ -88,6 +88,10 @@ its space.
 
 Tracked in [PLAN.md](../PLAN.md).
 
+- **Withdrawing what was already sent.** A replica that already holds a
+  notification about content the reader has since lost access to keeps it
+  until that replica is rebuilt: the sync stream stops carrying the item,
+  but nothing retracts it the way a work item's tombstone does.
 - **Email preferences.** No per-user Confluence email settings, no daily or
   weekly digest, and no "notify me about my own actions" option.
 - **Likes and shares.** Likes do not notify the author. There is no

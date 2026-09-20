@@ -644,6 +644,10 @@ func canonicalField(field string) string {
 		return "watcher"
 	case "voters":
 		return "voter"
+	case "request participants", "request-participants":
+		return "requestparticipants"
+	case "request channel type", "request-channel-type":
+		return "requestchanneltype"
 	default:
 		// cf[10000] names a custom field by its number.
 		lower := strings.ToLower(field)
@@ -1118,6 +1122,9 @@ func DefaultResolver() FieldResolver {
 			"hierarchylevel": "COALESCE(ito.hierarchy_level, it.hierarchy_level)",
 			"level":          "(SELECT level_entry->>'name' FROM security_schemes level_scheme, jsonb_array_elements(level_scheme.levels) level_entry WHERE level_scheme.workspace_id=pr.workspace_id AND level_entry->>'id'=i.security_level_id LIMIT 1)",
 			"category":       "(SELECT project_category.name FROM project_categories project_category WHERE project_category.id=pr.category_id)",
+			// The channel a service request came in on, which only a request
+			// has at all.
+			"requestchanneltype": "(SELECT service_request.channel FROM service_requests service_request WHERE service_request.issue_id=i.id)",
 		},
 		TextColumns: []string{"i.summary", "i.description::text"},
 		DefaultOrder: map[string]string{
@@ -1331,9 +1338,11 @@ func (c *compiler) clause(cl Clause) string {
 	case "comment":
 		return c.commentClause(cl)
 	case "watcher":
-		return c.userSetClause(cl, "watchers", "watcher_row")
+		return c.userSetClause(cl, "watchers", "watcher_row", "issue_id")
 	case "voter":
-		return c.userSetClause(cl, "issue_votes", "voter_row")
+		return c.userSetClause(cl, "issue_votes", "voter_row", "issue_id")
+	case "requestparticipants":
+		return c.userSetClause(cl, "service_request_participants", "participant_row", "request_issue_id")
 	case "attachments":
 		return c.attachmentsClause(cl)
 	case "issuelinktype":
@@ -1921,8 +1930,8 @@ func (c *compiler) commentClause(cl Clause) string {
 // userSetClause matches the people attached to a work item rather than named
 // on it -- who watches it, who voted for it -- which is how Jira's watcher
 // and voter fields search.
-func (c *compiler) userSetClause(cl Clause, table, alias string) string {
-	any := "EXISTS (SELECT 1 FROM " + table + " " + alias + " WHERE " + alias + ".issue_id=i.id)"
+func (c *compiler) userSetClause(cl Clause, table, alias, issueColumn string) string {
+	any := "EXISTS (SELECT 1 FROM " + table + " " + alias + " WHERE " + alias + "." + issueColumn + "=i.id)"
 	switch cl.Op {
 	case "empty":
 		return "(NOT " + any + ")"
@@ -1943,7 +1952,7 @@ func (c *compiler) userSetClause(cl Clause, table, alias string) string {
 			}
 			user = c.user
 		}
-		matches = append(matches, "EXISTS (SELECT 1 FROM "+table+" "+alias+" WHERE "+alias+".issue_id=i.id AND "+alias+".user_id="+c.arg(user)+")")
+		matches = append(matches, "EXISTS (SELECT 1 FROM "+table+" "+alias+" WHERE "+alias+"."+issueColumn+"=i.id AND "+alias+".user_id="+c.arg(user)+")")
 	}
 	match := "(" + strings.Join(matches, " OR ") + ")"
 	if cl.Op == "!=" || cl.Op == "notin" {

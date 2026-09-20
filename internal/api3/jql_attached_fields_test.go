@@ -163,6 +163,10 @@ func TestSearchByAttachedFields(t *testing.T) {
 	both(`hierarchyLevel = 0`)
 	both(`category = "Delivery ` + stamp + `"`)
 	both(`level IS EMPTY`)
+	// Neither work item is a service request, so the fields a request has
+	// answer for them as absent rather than failing.
+	both(`"Request participants" IS EMPTY`)
+	both(`request-channel-type IS EMPTY`)
 	if keys := keysFor(`project = ` + key + ` ORDER BY votes DESC`); len(keys) != 2 || keys[0] != subject {
 		t.Fatalf("order by votes = %v, want the voted work item first", keys)
 	}

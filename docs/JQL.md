@@ -38,7 +38,8 @@ status.
   `due`/`dueDate`, `originalEstimate`/`timeOriginalEstimate`,
   `remainingEstimate`/`timeEstimate`, `timeSpent`, `workRatio`, `approvals`,
   `text`, `comment`, `watcher(s)`, `voter(s)`, `votes`, `attachments`,
-  `issueLinkType`, `level`, `category`, `hierarchyLevel`, service SLA fields,
+  `issueLinkType`, `level`, `category`, `hierarchyLevel`,
+  `"Request participants"`, `request-channel-type`, service SLA fields,
   typed custom fields (`cf[N]`, id or name), app field aliases and indexed
   entity properties. `issueKey` and `type` are Jira's aliases for `key` and
   `issuetype`.
@@ -198,8 +199,8 @@ See [PLAN.md](../PLAN.md).
 
 - System fields not searchable: `lastViewed`, `filter` and
   `statusCategoryChangedDate`.
-- JSM fields not searchable: `Request participants`, `Organizations`,
-  `request-channel-type`.
+- JSM fields not searchable: `Organizations`, because a request is not shared
+  with an organization here; only a desk is.
 - Functions missing: `issueHistory()`, `issuesWithRemoteLinksByGlobalId()`.
 - `WAS`/`CHANGED` not supported for `resolution` (or components and sprints).
 - `includeArchivedProjects=true` is refused although projects can be

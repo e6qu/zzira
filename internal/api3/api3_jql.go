@@ -57,6 +57,8 @@ var jqlSystemFields = []jqlFieldReference{
 	{Value: "priority", DisplayName: "Priority", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not", "was", "changed"}, Types: []string{"PRIORITY"}},
 	{Value: "project", DisplayName: "Project", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in"}, Types: []string{"PROJECT"}},
 	{Value: "reporter", DisplayName: "Reporter", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"USER"}},
+	{Value: "Request participants", DisplayName: "Request participants", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"USER"}},
+	{Value: "request-channel-type", DisplayName: "Request channel type", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"STRING"}},
 	{Value: "resolution", DisplayName: "Resolution", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"RESOLUTION"}},
 	{Value: "resolutionDate", DisplayName: "Resolved", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", ">", ">=", "<", "<=", "is", "is not"}, Types: []string{"DATE"}},
 	{Value: "sprint", DisplayName: "Sprint", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"SPRINT"}},
