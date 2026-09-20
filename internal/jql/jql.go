@@ -1880,12 +1880,12 @@ func (c *compiler) historyClause(cl HistoryClause) string {
 	return exists
 }
 
-// historyValue is a value as history compares it: an empty resolution is
-// recorded, and compared, as the empty string rather than as the absence a
-// current-value clause reads Unresolved to mean.
+// historyValue is a value as history compares it. Unresolved is the only
+// value a clause reads as the absence of one, and the log records that
+// absence as an empty value rather than as nothing at all.
 func (c *compiler) historyValue(field, value string) any {
 	compared := c.fieldValue(field, value)
-	if compared == nil && (field == "resolution" || field == "security") {
+	if compared == nil {
 		return ""
 	}
 	return compared
