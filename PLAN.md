@@ -181,8 +181,9 @@ condition catalog, and 14 action types including web requests and page creation.
   rotation).
 - Usage limits: per-site monthly execution quota, usage page, global vs
   single-project rule accounting, over-limit behavior.
-- Confluence actions beyond create page. Triggers for pages created, updated,
-  commented and labelled, and for blog posts, are done.
+- Confluence actions beyond creating, commenting on and labelling a page.
+  Triggers for pages created, updated, commented and labelled, and for blog
+  posts, are done.
 - Branches: for-each on a smart value's list, over the work a rule created,
   related work items at any level. JQL branches are done.
 - Web request custom bodies and headers, the manual trigger with its questions

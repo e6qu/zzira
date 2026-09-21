@@ -191,11 +191,15 @@ values. Most actions set a desired state, so a replayed action does nothing.
 | `jira.issue.link` | `linkTypeId`, `issueKey` | The named item takes the inward side. Existing links and self-links count as done; a key from another site fails |
 | `jira.issue.email` | `recipient` (`assignee`, `reporter`, `watchers`), `body` | Plain text through the mail outbox. Subject is key and summary. Skips people without an address and deactivated accounts |
 | `jira.issue.outgoing-webhook` | `method` (GET, POST, PUT, DELETE), `url`, optional `body` and `headers` | Sends the request. A rule that writes a `body` sends that, with smart values rendered, whatever the method; otherwise POST and PUT carry the work item in Jira format (or `{}`). `headers` is a name-to-value map, rendered the same way, and sets what it names -- `Host` and `Content-Length` belong to the connection and are refused, as is a name HTTP does not allow. Response is `{{webResponse}}` / `{{webResponse.status}}` (64 KiB kept). Non-2xx fails; private-network hosts are refused; 20 s timeout |
+| `confluence.page.comment` | `comment`, optional `pageId` | Comments on the page as the actor. The page is the one named, else the page the run is about; a rule with neither fails rather than guessing. Text is escaped into storage format |
+| `confluence.page.label` | `label`, optional `pageId` and `prefix` (default `global`) | Attaches a label as the actor. A label the page already carries counts as done |
 | `confluence.page.create` | `spaceKey`, optional `title` | Creates a page as the actor (fails without view and create rights). Default title is the key and summary; the page names the rule and the work item |
 | `jira.create.variable` | `variableName`, `variableValue` | Names a value for the rest of the rule, read as `{{variableName}}`. The value is rendered before it is stored, so a variable can be built from other smart values. A name is a letter then letters, digits, `_` or `-`, at most 64, and cannot be one of the smart values a rule already has (`issue`, `triggerIssue`, `initiator`, `rule`, `now`, `webResponse`, `webhookData`, `userInputs`, `version`, `sprint`, `deletedIssue`). Setting one again replaces it. At most 50 per run, 32,768 characters each. Changes nothing about the work, so a rule whose only action is this one reports no action |
 
-`jira.issue.create`, `jira.issue.outgoing-webhook`, `jira.create.variable` and
-`confluence.page.create` run without a work item. The others need one.
+`jira.issue.create`, `jira.issue.outgoing-webhook`, `jira.create.variable`,
+`confluence.page.create`, `confluence.page.comment` and `confluence.page.label`
+run without a work item. The others need one. (Until now `confluence.page.create`
+was refused without one, which is not what this said.)
 
 ## Branches
 
@@ -277,8 +281,8 @@ invoked a manual rule. Unknown values render empty. Rendered text is limited to
 See [PLAN.md](../PLAN.md).
 - Connections: stored, returned and redacted by the API, but no action uses
   them.
-- Confluence actions beyond creating a page, and triggers for spaces,
-  attachments and custom content.
+- Confluence actions beyond creating, commenting on and labelling a page, and
+  triggers for spaces, attachments and custom content.
 - Usage limits: no monthly execution quota or per-rule usage tracking.
 - The rest of Jira's trigger, condition, action and branch catalog, including
   for-each branches over a smart value's list, and branching over the work a
