@@ -82,13 +82,35 @@ func nextLegacySubscriptionRun(expression string, location *time.Location, after
 	return candidate.UTC(), nil
 }
 
-func (s *Store) SaveFilterSubscription(ctx context.Context, workspaceID, userID, filterID, expression, timezone string, recipients []string) (*models.FilterSubscription, error) {
-	filter, err := s.FilterByID(ctx, workspaceID, userID, filterID)
-	if err != nil {
+// FilterSubscriptionInput is one subscription as its owner describes it: when
+// it runs, who it reaches, and whether an empty result is worth an email.
+type FilterSubscriptionInput struct {
+	Expression string
+	Timezone   string
+	Recipients []string
+	// GroupID subscribes a group instead of a list of people, which needs the
+	// Manage group filter subscriptions global permission.
+	GroupID        string
+	EmailWhenEmpty bool
+}
+
+func (s *Store) SaveFilterSubscription(ctx context.Context, workspaceID, userID, filterID string, input FilterSubscriptionInput) (*models.FilterSubscription, error) {
+	expression, timezone, recipients := input.Expression, input.Timezone, input.Recipients
+	// Anyone who can see a filter can subscribe to it, as Jira allows; the
+	// read above is what decides whether they can see it.
+	if _, err := s.FilterByID(ctx, workspaceID, userID, filterID); err != nil {
 		return nil, err
 	}
-	if filter.OwnerID != userID {
-		return nil, ErrFilterPermission
+	groupID := strings.TrimSpace(input.GroupID)
+	if groupID != "" {
+		allowed, err := s.HasGlobalPermission(ctx, workspaceID, userID, "MANAGE_GROUP_FILTER_SUBSCRIPTIONS")
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			return nil, fmt.Errorf("%w: subscribing a group needs the Manage group filter subscriptions permission", ErrFilterPermission)
+		}
+		recipients = nil
 	}
 	next, err := nextSubscriptionRun(expression, timezone, time.Now())
 	if err != nil {
@@ -119,13 +141,27 @@ func (s *Store) SaveFilterSubscription(ctx context.Context, workspaceID, userID,
 	if valid != len(clean) {
 		return nil, fmt.Errorf("%w: every recipient must be an active workspace member", ErrFilterValidation)
 	}
+	if groupID != "" {
+		var known bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(
+			SELECT 1 FROM groups g JOIN directories d ON d.id=g.directory_id JOIN sites si ON si.organization_id=d.organization_id
+			WHERE si.workspace_id=$1 AND g.id::text=$2)`, workspaceID, groupID).Scan(&known); err != nil {
+			return nil, err
+		}
+		if !known {
+			return nil, fmt.Errorf("%w: that group does not exist", ErrFilterValidation)
+		}
+	}
 	encoded, _ := json.Marshal(clean)
-	subscription := &models.FilterSubscription{FilterID: filterID, UserID: userID, CronExpression: expression, Timezone: timezone, Recipients: clean, Enabled: true, NextRunAt: next.Format(time.RFC3339)}
+	subscription := &models.FilterSubscription{
+		FilterID: filterID, UserID: userID, CronExpression: expression, Timezone: timezone, Recipients: clean,
+		GroupID: groupID, EmailWhenEmpty: input.EmailWhenEmpty, Enabled: true, NextRunAt: next.Format(time.RFC3339),
+	}
 	err = tx.QueryRow(ctx, `
-		INSERT INTO filter_subscriptions(filter_id,user_id,cron_expression,timezone,recipients,enabled,next_run_at)
-		VALUES($1,$2,$3,$4,$5,true,$6)
-		ON CONFLICT(filter_id,user_id,cron_expression) DO UPDATE SET timezone=EXCLUDED.timezone,recipients=EXCLUDED.recipients,enabled=true,next_run_at=EXCLUDED.next_run_at,last_error=''
-		RETURNING id`, filterID, userID, expression, timezone, encoded, next).Scan(&subscription.ID)
+		INSERT INTO filter_subscriptions(filter_id,user_id,cron_expression,timezone,recipients,group_id,email_when_empty,enabled,next_run_at)
+		VALUES($1,$2,$3,$4,$5,NULLIF($6,'')::uuid,$7,true,$8)
+		ON CONFLICT(filter_id,user_id,cron_expression,COALESCE(group_id::text,'')) DO UPDATE SET timezone=EXCLUDED.timezone,recipients=EXCLUDED.recipients,email_when_empty=EXCLUDED.email_when_empty,enabled=true,next_run_at=EXCLUDED.next_run_at,last_error=''
+		RETURNING id`, filterID, userID, expression, timezone, encoded, groupID, input.EmailWhenEmpty, next).Scan(&subscription.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +180,9 @@ func (s *Store) DeleteFilterSubscription(ctx context.Context, workspaceID, userI
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	result, err := tx.Exec(ctx, `DELETE FROM filter_subscriptions fs USING filters f WHERE fs.id=$1 AND fs.filter_id=$2 AND fs.user_id=$3 AND f.id=fs.filter_id AND f.workspace_id=$4 AND f.owner_id=$3`, subscriptionID, filterID, userID, workspaceID)
+	// A subscription is its subscriber's to remove, whoever owns the filter:
+	// fs.user_id already keeps one person out of another's schedule.
+	result, err := tx.Exec(ctx, `DELETE FROM filter_subscriptions fs USING filters f WHERE fs.id=$1 AND fs.filter_id=$2 AND fs.user_id=$3 AND f.id=fs.filter_id AND f.workspace_id=$4`, subscriptionID, filterID, userID, workspaceID)
 	if err != nil {
 		return err
 	}
@@ -166,7 +204,9 @@ func (s *Store) loadFilterSubscriptions(ctx context.Context, filters []*models.F
 		ids, byID[filter.ID] = append(ids, filter.ID), filter
 		filter.Subscriptions = []models.FilterSubscription{}
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT id,filter_id,user_id,cron_expression,timezone,recipients,enabled,COALESCE(to_char(next_run_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),COALESCE(to_char(last_run_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),last_error,last_result_count FROM filter_subscriptions WHERE filter_id=ANY($1::text[]) AND user_id=$2 ORDER BY id`, ids, userID)
+	rows, err := s.Pool.Query(ctx, `SELECT fs.id,fs.filter_id,fs.user_id,fs.cron_expression,fs.timezone,fs.recipients,fs.enabled,COALESCE(to_char(fs.next_run_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),COALESCE(to_char(fs.last_run_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),fs.last_error,fs.last_result_count,COALESCE(fs.group_id::text,''),COALESCE(g.name,''),fs.email_when_empty
+		FROM filter_subscriptions fs LEFT JOIN groups g ON g.id=fs.group_id
+		WHERE fs.filter_id=ANY($1::text[]) AND fs.user_id=$2 ORDER BY fs.id`, ids, userID)
 	if err != nil {
 		return err
 	}
@@ -174,7 +214,7 @@ func (s *Store) loadFilterSubscriptions(ctx context.Context, filters []*models.F
 	for rows.Next() {
 		var subscription models.FilterSubscription
 		var raw []byte
-		if err := rows.Scan(&subscription.ID, &subscription.FilterID, &subscription.UserID, &subscription.CronExpression, &subscription.Timezone, &raw, &subscription.Enabled, &subscription.NextRunAt, &subscription.LastRunAt, &subscription.LastError, &subscription.LastResultCount); err != nil {
+		if err := rows.Scan(&subscription.ID, &subscription.FilterID, &subscription.UserID, &subscription.CronExpression, &subscription.Timezone, &raw, &subscription.Enabled, &subscription.NextRunAt, &subscription.LastRunAt, &subscription.LastError, &subscription.LastResultCount, &subscription.GroupID, &subscription.GroupName, &subscription.EmailWhenEmpty); err != nil {
 			return err
 		}
 		if err := json.Unmarshal(raw, &subscription.Recipients); err != nil {
@@ -244,7 +284,11 @@ type claimedFilterSubscription struct {
 	RunID, SubscriptionID                          int64
 	WorkspaceID, FilterID, FilterName, JQL, UserID string
 	Recipients                                     []string
-	ScheduledFor                                   time.Time
+	// GroupID is the group this subscription emails, and EmailWhenEmpty
+	// whether a filter that matches nothing is still worth sending.
+	GroupID        string
+	EmailWhenEmpty bool
+	ScheduledFor   time.Time
 }
 
 func (r *FilterSubscriptionRunner) now() time.Time {
@@ -319,7 +363,7 @@ func (r *FilterSubscriptionRunner) enqueueDue(ctx context.Context, workspaceID s
 func (r *FilterSubscriptionRunner) claim(ctx context.Context, workspaceID string) (*claimedFilterSubscription, error) {
 	run := &claimedFilterSubscription{}
 	var raw []byte
-	err := r.Store.Pool.QueryRow(ctx, `WITH candidate AS (SELECT fr.id FROM filter_subscription_runs fr JOIN filter_subscriptions fs ON fs.id=fr.subscription_id JOIN filters f ON f.id=fs.filter_id WHERE f.workspace_id=$1 AND fs.enabled AND fr.attempts<8 AND ((fr.state IN ('PENDING','FAILED') AND fr.available_at<=$2) OR (fr.state='RUNNING' AND fr.claimed_at<$2-interval '5 minutes')) ORDER BY fr.scheduled_for,fr.id FOR UPDATE OF fr SKIP LOCKED LIMIT 1), claimed AS (UPDATE filter_subscription_runs fr SET state='RUNNING',attempts=attempts+1,claimed_at=$2 FROM candidate WHERE fr.id=candidate.id RETURNING fr.*) SELECT c.id,c.subscription_id,c.scheduled_for,f.workspace_id,f.id,f.name,f.jql,fs.user_id,fs.recipients FROM claimed c JOIN filter_subscriptions fs ON fs.id=c.subscription_id JOIN filters f ON f.id=fs.filter_id`, workspaceID, r.now()).Scan(&run.RunID, &run.SubscriptionID, &run.ScheduledFor, &run.WorkspaceID, &run.FilterID, &run.FilterName, &run.JQL, &run.UserID, &raw)
+	err := r.Store.Pool.QueryRow(ctx, `WITH candidate AS (SELECT fr.id FROM filter_subscription_runs fr JOIN filter_subscriptions fs ON fs.id=fr.subscription_id JOIN filters f ON f.id=fs.filter_id WHERE f.workspace_id=$1 AND fs.enabled AND fr.attempts<8 AND ((fr.state IN ('PENDING','FAILED') AND fr.available_at<=$2) OR (fr.state='RUNNING' AND fr.claimed_at<$2-interval '5 minutes')) ORDER BY fr.scheduled_for,fr.id FOR UPDATE OF fr SKIP LOCKED LIMIT 1), claimed AS (UPDATE filter_subscription_runs fr SET state='RUNNING',attempts=attempts+1,claimed_at=$2 FROM candidate WHERE fr.id=candidate.id RETURNING fr.*) SELECT c.id,c.subscription_id,c.scheduled_for,f.workspace_id,f.id,f.name,f.jql,fs.user_id,fs.recipients,COALESCE(fs.group_id::text,''),fs.email_when_empty FROM claimed c JOIN filter_subscriptions fs ON fs.id=c.subscription_id JOIN filters f ON f.id=fs.filter_id`, workspaceID, r.now()).Scan(&run.RunID, &run.SubscriptionID, &run.ScheduledFor, &run.WorkspaceID, &run.FilterID, &run.FilterName, &run.JQL, &run.UserID, &raw, &run.GroupID, &run.EmailWhenEmpty)
 	if err == nil {
 		err = json.Unmarshal(raw, &run.Recipients)
 	}
@@ -369,9 +413,26 @@ func (r *FilterSubscriptionRunner) execute(ctx context.Context, run *claimedFilt
 	if err != nil {
 		return 0, err
 	}
+	// Jira does not email a filter that matched nothing unless it was told to.
+	if total == 0 && !run.EmailWhenEmpty {
+		return 0, nil
+	}
 	recipients := run.Recipients
+	if run.GroupID != "" {
+		// A group subscription reaches the group's active members, read when
+		// the mail is sent rather than when it was scheduled.
+		members, memberErr := r.Store.groupSubscriptionRecipients(ctx, run.WorkspaceID, run.GroupID)
+		if memberErr != nil {
+			return total, memberErr
+		}
+		recipients = members
+	}
 	if len(recipients) == 0 {
 		recipients = []string{run.UserID}
+	}
+	if run.GroupID != "" && len(recipients) == 1 && recipients[0] == run.UserID {
+		// An empty group is not a reason to email its owner instead.
+		return total, nil
 	}
 	lines := []string{fmt.Sprintf("%d work items match %s.", total, run.FilterName), ""}
 	for _, issue := range issues {
@@ -405,4 +466,26 @@ func (r *FilterSubscriptionRunner) finish(ctx context.Context, run *claimedFilte
 	}
 	_, err := r.Store.Pool.Exec(ctx, `WITH finished AS (UPDATE filter_subscription_runs SET state=$2,completed_at=$3::timestamptz,result_count=$4,error=$5,available_at=CASE WHEN $2='FAILED' THEN $3::timestamptz+make_interval(secs=>LEAST(3600,power(2,attempts)::int*5)) ELSE available_at END WHERE id=$1 AND state='RUNNING' RETURNING subscription_id) UPDATE filter_subscriptions fs SET last_run_at=$3::timestamptz,last_result_count=$4,last_error=$5 FROM finished WHERE fs.id=finished.subscription_id`, run.RunID, state, r.now(), count, message)
 	return err
+}
+
+// groupSubscriptionRecipients lists the active workspace members of a group a
+// filter subscription emails.
+func (s *Store) groupSubscriptionRecipients(ctx context.Context, workspaceID, groupID string) ([]string, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT u.id FROM group_members gm
+		JOIN users u ON u.id=gm.user_id AND u.active
+		JOIN memberships m ON m.user_id=u.id AND m.workspace_id=$1
+		WHERE gm.group_id::text=$2 ORDER BY u.id`, workspaceID, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	members := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		members = append(members, id)
+	}
+	return members, rows.Err()
 }

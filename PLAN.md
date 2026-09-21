@@ -143,9 +143,8 @@ but nothing shows or uses it.
 - `fields.lastViewed` on a work item read, which needs the reader threaded
   through the bean.
 - Historical `versionedRepresentations`.
-- Filters: subscriptions by any viewer with permission, group subscriptions,
-  `MANAGE_GROUP_FILTER_SUBSCRIPTIONS`, opt-in for empty results,
-  `CREATE_SHARED_OBJECTS` on sharing.
+- Filters: a richer subscription schedule builder than two presets and a cron
+  expression.
 
 ## 6. Enterprise identity
 

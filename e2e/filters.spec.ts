@@ -110,3 +110,67 @@ test('saved filter owner manages access, columns, favorites, and ownership', asy
   await expect(page.getByRole('status')).toContainText('Filter deleted.');
   await expect(page.locator(`#filter-${filterID}`)).toHaveCount(0);
 });
+
+// Jira lets anyone who can see a filter subscribe to it, sends a group's
+// members the result when the subscription names one, and leaves an empty
+// result unsent unless it was asked for.
+test('a viewer subscribes to a filter, and an administrator subscribes a group', async ({ page, browser, request }) => {
+  const marker = Date.now();
+  const name = `Shared review ${marker}`;
+  const created = await request.post('/rest/api/3/filter', {
+    headers: { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' },
+    data: { name, jql: 'project = ZZ ORDER BY created DESC', sharePermissions: [{ type: 'authenticated' }] },
+  });
+  expect(created.status(), await created.text()).toBe(200);
+  const filterID = (await created.json()).id as string;
+
+  // A colleague who does not own the filter can still be emailed it.
+  const colleague = await browser.newContext();
+  const ana = await colleague.newPage();
+  await ana.goto('/login');
+  await ana.fill('input[name=email]', 'ana@zzira.dev');
+  await ana.fill('input[name=password]', 'ana12345');
+  await ana.click('button[type=submit]');
+  await ana.goto('/filters');
+  let card = ana.locator(`#filter-${filterID}`);
+  await expect(card).toContainText(name);
+  await card.getByText('Email results', { exact: true }).click();
+  await card.locator(`#filter-schedule-${filterID}`).selectOption('0 8 * * *');
+  await card.getByRole('button', { name: 'Schedule email' }).click();
+  await expect(ana.getByRole('status')).toContainText('Filter email scheduled.');
+  // A subscriber who owns nothing can still stop their own email.
+  card = ana.locator(`#filter-${filterID}`);
+  await card.getByText('Email results', { exact: true }).click();
+  await expect(card).toContainText('Every day at 08:00 in UTC');
+  // A group is a site administrator's to subscribe, so the viewer is not
+  // offered one.
+  await expect(card.locator(`#filter-group-${filterID}`)).toHaveCount(0);
+  await card.getByRole('button', { name: 'Remove schedule' }).click();
+  await expect(ana.getByRole('status')).toContainText('Filter email schedule removed.');
+  await colleague.close();
+
+  // The owner, who administers the site, can send it to a group instead.
+  const groupName = `filter-watchers-${marker}`;
+  const group = await request.post('/rest/api/3/group', {
+    headers: { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' },
+    data: { name: groupName },
+  });
+  expect(group.status(), await group.text()).toBe(201);
+  await login(page);
+  await page.goto('/filters');
+  card = page.locator(`#filter-${filterID}`);
+  await card.getByText('Email results', { exact: true }).click();
+  await card.locator(`#filter-schedule-${filterID}`).selectOption('0 8 * * *');
+  await card.locator(`#filter-group-${filterID}`).selectOption({ label: groupName });
+  await card.getByLabel('Email even when nothing matches').check();
+  await card.getByRole('button', { name: 'Schedule email' }).click();
+  await expect(page.getByRole('status')).toContainText('Filter email scheduled.');
+  card = page.locator(`#filter-${filterID}`);
+  await card.getByText('Email results', { exact: true }).click();
+  await expect(card).toContainText('Every day at 08:00 in UTC');
+
+  await card.getByRole('button', { name: 'Remove schedule' }).click();
+  await expect(page.getByRole('status')).toContainText('Filter email schedule removed.');
+  expect((await request.delete(`/rest/api/3/filter/${filterID}`, { headers: { Authorization: apiAuthHeader() } })).status()).toBe(204);
+  expect((await request.delete(`/rest/api/3/group?groupId=${(await group.json()).groupId}`, { headers: { Authorization: apiAuthHeader() } })).status()).toBeLessThan(400);
+});

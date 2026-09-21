@@ -675,6 +675,17 @@ func (s *Store) AddFilterPermission(ctx context.Context, workspaceID, userID, id
 	if owner != userID {
 		return nil, ErrFilterPermission
 	}
+	// Sharing a filter with anyone else is what Jira's Create shared objects
+	// permission governs; a private filter needs nothing.
+	if input.Type != "" && !strings.EqualFold(input.Type, "user") {
+		allowed, permissionErr := globalPermissionForUser(ctx, tx, workspaceID, userID, "CREATE_SHARED_OBJECTS")
+		if permissionErr != nil {
+			return nil, permissionErr
+		}
+		if !allowed {
+			return nil, fmt.Errorf("%w: sharing needs the Create shared objects permission", ErrFilterPermission)
+		}
+	}
 	permission, err := addFilterPermission(ctx, tx, workspaceID, id, input)
 	if err != nil {
 		return nil, err

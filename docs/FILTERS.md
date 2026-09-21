@@ -39,12 +39,21 @@ All 19 Jira Cloud filter and filter-sharing operations under
   permissions.
 - **Audit.** Create, update, delete, share changes and owner transfer write
   organization audit events without the JQL.
-- **Subscriptions.** Owners schedule email results daily, weekly (Monday) or
-  on a cron expression, in an IANA time zone, to up to 50 active workspace
-  members. A runner claims due runs (recovering stale claims), evaluates the
+- **Subscriptions.** Anyone who can see a filter schedules email results from
+  it -- daily, weekly (Monday) or on a cron expression, in an IANA time zone --
+  to up to 50 active workspace members, and stops their own schedule whoever
+  owns the filter. A subscription can name a group instead of people, which
+  needs the **Manage group filter subscriptions** global permission and reaches
+  the group's active members as they are when the mail is sent. A filter that
+  matches nothing is not emailed unless the subscription asked for it, as in
+  Jira. A runner claims due runs (recovering stale claims), evaluates the
   JQL with each recipient's permissions, deduplicates per recipient through
   the outbox, retries delivery, and records result counts and errors. Emails
   link directly to work items.
+
+- **Sharing.** Sharing a filter with anyone beyond the people it names needs
+  the **Create shared objects** global permission, which every workspace grants
+  its product users until an administrator takes it away.
 
 ## UI
 
@@ -64,14 +73,8 @@ All 19 Jira Cloud filter and filter-sharing operations under
 
 See [PLAN.md](../PLAN.md).
 
-- Only the owner can subscribe; Jira lets anyone who can view a filter
-  subscribe.
-- Subscriptions cannot target a group, and the **Manage group filter
-  subscriptions** global permission is defined but not enforced.
-- Empty results are always emailed; Jira's "email this filter even if there
-  are no work items" option (off by default) is missing.
-- The **Create shared objects** global permission is not checked when
-  sharing.
+- A subscription's schedule is a cron expression or one of two presets; Jira
+  offers a richer schedule builder.
 
 ## See also
 
