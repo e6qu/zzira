@@ -72,6 +72,8 @@ saving is turned off; change such rules through the API.
 | `jira.issue.field.changed` | `fields` (1–20, e.g. `summary`, `priority`, `assignee`, `labels`), optional `jql` | Any listed field changes |
 | `jira.issue.event.trigger:commented` | optional `jql` | A comment is added |
 | `jira.issue.event.trigger:linked` | optional `jql` | A link is added; one run, for the outward work item |
+| `jira.issue.event.trigger:assigned` | optional `jql` | The assignee changes, including to nobody |
+| `jira.issue.attachment.added` | optional `jql` | An attachment is added, for the work item it was added to |
 | `jira.webhook.trigger` | `issuesFromWebhook` | `POST /pro/hooks/{token}` |
 | `jira.manual.trigger.issue.action` | `inputPrompts` (`displayName`, `inputType`, `required`, `variableName`) | Invoked through the API |
 
@@ -211,8 +213,7 @@ See [PLAN.md](../PLAN.md).
 - Connections: stored, returned and redacted by the API, but no action uses
   them.
 - Usage limits: no monthly execution quota or per-rule usage tracking.
-- Confluence triggers, such as page created or page published. Only the
-  create-page action exists.
+- Triggers for work deleted or moved, versions, sprints and Confluence.
 - The rest of Jira's trigger, condition, action and branch catalog, including
   JQL branches, for-each branches, lookup/create variables and custom web
   request bodies and headers.

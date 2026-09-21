@@ -643,6 +643,8 @@ var EventTriggers = map[string]string{
 	"jira.issue.field.changed":              "field_changed",
 	"jira.issue.event.trigger:commented":    "commented",
 	"jira.issue.event.trigger:linked":       "linked",
+	"jira.issue.event.trigger:assigned":     "assigned",
+	"jira.issue.attachment.added":           "attachment_added",
 }
 
 // eventTriggerValue is what an event trigger narrows its events to: work

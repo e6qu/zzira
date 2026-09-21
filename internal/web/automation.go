@@ -60,6 +60,7 @@ var (
 		{"jira.jql.scheduled", "Scheduled"}, {"jira.issue.event.trigger:created", "Work item created"},
 		{"jira.issue.event.trigger:transitioned", "Work item transitioned"}, {"jira.issue.field.changed", "Field value changed"},
 		{"jira.issue.event.trigger:commented", "Work item commented"}, {"jira.issue.event.trigger:linked", "Work item linked"},
+		{"jira.issue.event.trigger:assigned", "Work item assigned"}, {"jira.issue.attachment.added", "Attachment added"},
 		{automation.WebhookTriggerType, "Incoming webhook"},
 	}
 	automationActionTypes = []automationOption{
@@ -438,7 +439,8 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 			return nil, fmt.Errorf("schedule must be a cron expression or an interval between 1 minute and 30 days")
 		}
 		triggerValue = map[string]any{"intervalMinutes": interval, "timezone": timezone, "jql": query}
-	case "jira.issue.event.trigger:created", "jira.issue.event.trigger:commented", "jira.issue.event.trigger:linked":
+	case "jira.issue.event.trigger:created", "jira.issue.event.trigger:commented", "jira.issue.event.trigger:linked",
+		"jira.issue.event.trigger:assigned", "jira.issue.attachment.added":
 		triggerValue = map[string]any{"jql": query}
 	case "jira.issue.event.trigger:transitioned":
 		triggerValue = map[string]any{"jql": query, "fromStatusIds": nonEmpty(r.PostFormValue("from_status")), "toStatusIds": nonEmpty(r.PostFormValue("to_status"))}
