@@ -72,6 +72,11 @@ func (r *Runner) renderSmartValues(ctx context.Context, run *claimedRun, issue *
 		if value, ok := values[name]; ok {
 			return value
 		}
+		// What the rule named itself. A create variable action cannot be
+		// called after a built-in, so this never shadows one.
+		if value, ok := run.Variables[name]; ok {
+			return value
+		}
 		if run.WebResponse != nil {
 			switch name {
 			case "webResponse", "webResponse.body":
@@ -179,10 +184,16 @@ func (r *Runner) condition(ctx context.Context, run *claimedRun, issue *models.I
 		if err := jsonUnmarshal(raw, &value); err != nil || strings.TrimSpace(value.RelatedType) == "" {
 			return false, errors.New("related work items condition requires value.relatedType")
 		}
+		if value.RelatedType == "jql" {
+			// A query is not related work: asking whether anything matches
+			// one is what a JQL condition is for, and reading the same jql as
+			// both the search and the filter would say nothing.
+			return false, errors.New("a related work items condition takes sub-tasks, parent or linked; use a JQL condition to ask what a query matches")
+		}
 		// The branch resolver already finds a work item's related work, and a
 		// condition is handed the same run and work item, so it asks the same
 		// question without traversing links again.
-		related, err := r.relatedIssues(ctx, run, issue, item)
+		related, err := r.branchIssues(ctx, run, issue, item)
 		if err != nil {
 			return false, err
 		}

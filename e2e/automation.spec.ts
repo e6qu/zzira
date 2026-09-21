@@ -1009,3 +1009,86 @@ test('admin writes a rule to run by hand and runs it from a work item', async ({
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
 });
+
+// A rule can name a value of its own and read it back later, and branch over
+// whatever a query matches rather than only over work related to the trigger.
+test('admin writes a rule that names a value and branches over a query', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const label = `late${stamp}`;
+  const raise = async (summary: string, labels: string[] = []) => {
+    const created = await page.request.post('/rest/api/3/issue', {
+      headers, data: { fields: { project: { key: 'ZZ' }, summary, issuetype: { name: 'Task' }, labels } },
+    });
+    expect(created.status()).toBe(201);
+    return (await created.json()).key as string;
+  };
+  const trigger = await raise(`Variable rule work ${stamp}`);
+  const first = await raise(`Late one ${stamp}`, [label]);
+  const second = await raise(`Late two ${stamp}`, [label]);
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E variables ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('jira.manual.trigger.issue.action');
+  // The rule names where it is running, comments with it, and then branches
+  // over work the trigger never named.
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.create.variable');
+  // The value inputs offer a datalist, so they are comboboxes, not textboxes.
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(`note-{{issue.key}}-${stamp}`);
+  await page.locator('.automation-action-more summary').first().click();
+  await page.getByLabel('Variable name').first().fill('release_note');
+  await page.locator('.automation-action-empty').first().getByLabel('Additional action').selectOption('jira.issue.comment');
+  await page.locator('.automation-action-empty').first().getByRole('combobox', { name: 'Value', exact: true }).fill('Noted as {{release_note}}');
+  await page.getByLabel('Related work items').selectOption('jql');
+  await page.getByLabel('Branch JQL').fill(`labels = ${label}`);
+  // The branch names the variable again, for the work item it is running for.
+  await page.locator('.automation-action-empty').last().getByLabel('Additional branch action').selectOption('jira.create.variable');
+  await page.locator('.automation-action-empty').last().getByRole('combobox', { name: 'Branch value', exact: true }).fill('{{issue.key}}-inside');
+  await page.locator('.automation-action-empty').last().getByLabel('Branch variable name').fill('release_note');
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  // The editor shows the rule it saved: the variable, its name, and the query.
+  await expect(page.getByRole('note')).toHaveCount(0);
+  await expect(page.getByLabel('Variable name').first()).toHaveValue('release_note');
+  await expect(page.getByLabel('Related work items')).toHaveValue('jql');
+  await expect(page.getByLabel('Branch JQL')).toHaveValue(`labels = ${label}`);
+  // Saving leaves a blank branch row, which is where the label goes: it reads
+  // the variable the branch named a moment ago.
+  await page.locator('.automation-action-empty').last().getByLabel('Additional branch action').selectOption('jira.issue.add-label');
+  await page.locator('.automation-action-empty').last().getByRole('combobox', { name: 'Branch value', exact: true }).fill('{{release_note}}-branched');
+  await page.getByRole('button', { name: 'Save rule' }).click();
+  await page.goto(ruleURL);
+  await expect(page.getByRole('note')).toHaveCount(0);
+  await expect(page.locator('[name=branch_action_type]').first()).toHaveValue('jira.create.variable');
+
+  // Run it, and what it named reaches the comment and the branch.
+  await page.goto(`/browse/${trigger}`);
+  await page.locator('.issue-automation > summary').click();
+  await page.locator('.issue-automation-rules').getByRole('button', { name: `Run ${name}` }).click();
+  await expect.poll(async () => {
+    const comments = await (await page.request.get(`/rest/api/3/issue/${trigger}/comment`, { headers })).json();
+    return JSON.stringify(comments.comments.map((item: any) => item.body));
+  }, { timeout: 15_000 }).toContain(`Noted as note-${trigger}-${stamp}`);
+  // The branch ran for the work its query matched, and each work item saw its
+  // own value: the variable was named again inside the branch.
+  const labelsOf = async (key: string) => {
+    const issue = await (await page.request.get(`/rest/api/3/issue/${key}?fields=labels`, { headers })).json();
+    return (issue.fields?.labels ?? []) as string[];
+  };
+  await expect.poll(() => labelsOf(first), { timeout: 15_000 }).toContain(`${first}-inside-branched`);
+  await expect.poll(() => labelsOf(second), { timeout: 15_000 }).toContain(`${second}-inside-branched`);
+  // Each work item saw what the branch named for it, not what the one before
+  // it named, and the rule's own value outside the branch is untouched.
+  expect(await labelsOf(first)).not.toContain(`${second}-inside-branched`);
+
+  await page.goto(ruleURL);
+  await expect(page.locator('.automation-audit tbody')).toContainText('SUCCESS');
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});
