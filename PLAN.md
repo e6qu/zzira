@@ -129,7 +129,7 @@ but nothing shows or uses it.
 
 ## 4. Boards, reports and DORA
 
-- Reports: release burndown, epic burndown, deployment frequency, cycle time.
+- Reports: deployment frequency and cycle time as pages of their own.
 - DORA: configurable mappings (which environments, pipelines and incident types
   count) and excluded periods.
 - Dashboards: layout and favourites over REST, inline gadget item properties,

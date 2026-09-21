@@ -43,7 +43,7 @@ func (h *Handler) reportActions(r *http.Request, workspaceID string, user *model
 	return actions, err
 }
 
-var reportPath = regexp.MustCompile(`^/(projects/[A-Za-z0-9_-]{1,64}/reports/(dora|sprint|velocity|cumulative-flow|control-chart|epic|version|created-vs-resolved|resolution-time|user-workload|version-workload|time-tracking|group-by)|service/agent/[A-Za-z0-9_.:-]{1,128}/reports)$`)
+var reportPath = regexp.MustCompile(`^/(projects/[A-Za-z0-9_-]{1,64}/reports/(dora|sprint|velocity|cumulative-flow|control-chart|epic|version|created-vs-resolved|resolution-time|user-workload|version-workload|time-tracking|group-by|epic-burndown|release-burndown)|service/agent/[A-Za-z0-9_.:-]{1,128}/reports)$`)
 
 var errNotAReport = errors.New("not a report")
 

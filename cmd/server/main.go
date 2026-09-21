@@ -494,6 +494,8 @@ func main() {
 	mux.HandleFunc("GET /projects/{key}/reports/version", webHandler.VersionReport)
 	mux.HandleFunc("GET /projects/{key}/reports/created-vs-resolved", webHandler.CreatedVsResolvedReport)
 	mux.HandleFunc("GET /projects/{key}/reports/resolution-time", webHandler.ResolutionTimeReport)
+	mux.HandleFunc("GET /projects/{key}/reports/epic-burndown", webHandler.EpicBurndownReport)
+	mux.HandleFunc("GET /projects/{key}/reports/release-burndown", webHandler.ReleaseBurndownReport)
 	mux.HandleFunc("GET /projects/{key}/reports/user-workload", webHandler.UserWorkloadReport)
 	mux.HandleFunc("GET /projects/{key}/reports/version-workload", webHandler.VersionWorkloadReport)
 	mux.HandleFunc("GET /projects/{key}/reports/time-tracking", webHandler.TimeTrackingReport)

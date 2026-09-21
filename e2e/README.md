@@ -43,7 +43,7 @@ CI (`.github/workflows/ci.yml`) runs the whole suite against a server configured
 | Sign-in, shell, offline | `v0`, `identity-providers`, `session-isolation`, `revocation`, `v5`, `directories` |
 | Work items and search | `create`, `v1`, `v2`, `v3`, `triage`, `resolution`, `filters`, `issue_mentions`, `navigator_bulk`, `people` |
 | Jira Software | `backlog`, `board_columns`, `board_swimlanes`, `v4`, `projects`, `software`, `timeline`, `plans_view`, `plans_teams`, `releases` |
-| Reports and dashboards | `reports_flow`, `reports_progress`, `reports_workload`, `report_subscriptions`, `dashboards`, `dashboard_reports`, `dashboard_subscriptions`, `v6` |
+| Reports and dashboards | `reports_flow`, `reports_progress`, `reports_burndown`, `reports_workload`, `report_subscriptions`, `dashboards`, `dashboard_reports`, `dashboard_subscriptions`, `v6` |
 | Administration | `admin`, `api_tokens`, `global_permissions`, `issue_metadata`, `hierarchy`, `project_roles`, `permission_schemes`, `permission_helper`, `notification_schemes`, `notification_helper`, `notification_preferences`, `notifications`, `issue_security_schemes`, `screens`, `screen_schemes`, `field_configurations`, `custom_field_contexts`, `custom_field_options`, `classification_levels` |
 | Automation and apps | `automation`, `apps` |
 | Service Management | `service`, `service_assets` |

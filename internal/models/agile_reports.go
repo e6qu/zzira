@@ -64,6 +64,30 @@ type VelocityReport struct {
 	Sprints   []VelocitySprint
 }
 
+// BurndownSprint is one sprint in an epic or release burndown: what the
+// work looked like when the sprint ended.
+type BurndownSprint struct {
+	Sprint Sprint
+	// Added is the estimate of work that entered the scope during the
+	// sprint, Completed the estimate of what was finished in it, and
+	// Remaining what was left unfinished when it ended.
+	Added     float64
+	Completed float64
+	Remaining float64
+}
+
+// BurndownReport is Jira's epic burndown and release burndown: the scope
+// burning down sprint by sprint, with the scope changes that moved it.
+type BurndownReport struct {
+	Statistic string
+	Sprints   []BurndownSprint
+	// Remaining is where the work stands now, after the last sprint.
+	Remaining float64
+	// Unestimated is how much of the work carries no estimate, because a
+	// burndown that ignores it would read as progress.
+	Unestimated int
+}
+
 // FlowColumn is one board column in the cumulative flow diagram.
 type FlowColumn struct {
 	StatusID string

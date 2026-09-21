@@ -14,6 +14,8 @@ Project reports chart delivery, sprint, flow and issue-analysis data. They count
 | Control chart | `/projects/{key}/reports/control-chart` | software | Any board; 14, 30 (default) or 90 days |
 | Epic report | `/projects/{key}/reports/epic` | software | An epic and a board |
 | Version report | `/projects/{key}/reports/version` | software | An unarchived version and a board |
+| Epic burndown | `/projects/{key}/reports/epic-burndown` | software | An epic and a board with started sprints |
+| Release burndown | `/projects/{key}/reports/release-burndown` | software | An unarchived version and a board with started sprints |
 | Created vs. resolved | `/projects/{key}/reports/created-vs-resolved` | all | 7, 30 (default) or 90 days; `cumulative=true` shows running totals |
 | Resolution time | `/projects/{key}/reports/resolution-time` | all | 7, 30 (default) or 90 days |
 | User workload | `/projects/{key}/reports/user-workload` | all | Unresolved work in the project |
@@ -42,6 +44,8 @@ A report draws only from data that already exists, so a site being filled for a 
 | Cumulative flow diagram | A board whose columns carry statuses, and work its filter shows. Work with no recorded status change counts in its current status from the day it was created. |
 | Control chart | Work that moved into an in-progress status and then into a done status, with the done move inside the window. Work created straight into a done status never has a cycle time. |
 | Epic report | A board, plus an epic with child work items. Sub-tasks are not counted. |
+| Epic burndown | A board with sprints that have started, and an epic with child work items. Each bar is one sprint: what it finished, and what arrived in the epic while it ran. |
+| Release burndown | The same, of the work whose fix version is the one chosen. |
 | User workload | Work in the project that nobody has resolved. The time each person holds is the sum of the remaining estimates, so work without one counts as a work item and adds no time; the summary says how many carry an estimate. |
 | Version workload | The same, of the work whose fix version is the one chosen. It is grouped twice: by the person holding it and by what kind of work it is. |
 | Time tracking | Unresolved work with an original estimate, a remaining estimate or logged time. Accuracy is the original estimate less what the work has cost and what it has left, so it is negative when the work has run over. |
@@ -215,7 +219,7 @@ Service project agents and managers see, for the requests the desk received in t
 
 - The DORA mapping cannot be configured. You cannot choose which environments, pipelines or incident types count; production is fixed as environment type `production`.
 - DORA has no excluded-period calendars.
-- Several Jira reports are not built: release burndown, epic burndown, deployment frequency and cycle time.
+- Deployment frequency and cycle time have no page of their own; the DORA report carries deployment frequency as a number and the control chart carries cycle time as a distribution.
 
 Remaining work is tracked in [PLAN.md](../PLAN.md).
 
