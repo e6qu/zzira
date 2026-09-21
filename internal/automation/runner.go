@@ -1003,6 +1003,10 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 		var value struct {
 			Method string `json:"method"`
 			URL    string `json:"url"`
+			// Body and Headers are what the receiver asked for: a rule that
+			// writes them sends them instead of the site's own body.
+			Body    string            `json:"body"`
+			Headers map[string]string `json:"headers"`
 		}
 		if err := json.Unmarshal(valueRaw, &value); err != nil || strings.TrimSpace(value.URL) == "" {
 			return false, errors.New("web request action requires value.url")
@@ -1011,7 +1015,18 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 		if err != nil {
 			return false, err
 		}
-		return r.sendWebRequest(ctx, run, issue, value.Method, address)
+		extras := webRequestExtras{Headers: map[string]string{}}
+		if extras.Body, err = render(value.Body); err != nil {
+			return false, err
+		}
+		for name, header := range value.Headers {
+			rendered, headerErr := render(header)
+			if headerErr != nil {
+				return false, headerErr
+			}
+			extras.Headers[name] = rendered
+		}
+		return r.sendWebRequest(ctx, run, issue, value.Method, address, extras)
 	case "jira.issue.comment":
 		var value struct {
 			Comment string `json:"comment"`

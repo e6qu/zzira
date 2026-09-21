@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +33,52 @@ type automationActionView struct {
 	// ProjectID is where a create action raises its work, when the rule says
 	// so rather than taking the triggering work item's project.
 	ProjectID string
+	// Body and Headers are what a web request sends besides its address:
+	// the body the receiver asked for, and the headers it is read with, one
+	// "Name: value" to a line.
+	Body    string
+	Headers string
+}
+
+// automationFormHeaders reads the headers a web request is sent with, one
+// "Name: value" to a line, as the editor takes them.
+func automationFormHeaders(lines string) (map[string]string, error) {
+	headers := map[string]string{}
+	for _, line := range strings.Split(lines, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		name, value, found := strings.Cut(line, ":")
+		name = strings.TrimSpace(name)
+		if !found || name == "" {
+			return nil, fmt.Errorf("a request header is written as Name: value, not %q", line)
+		}
+		headers[name] = strings.TrimSpace(value)
+	}
+	return headers, nil
+}
+
+// automationHeaderLines writes a saved action's headers back as the editor
+// shows them, in a settled order so the same rule reads the same way twice.
+func automationHeaderLines(raw json.RawMessage) string {
+	var value struct {
+		Headers map[string]string `json:"headers"`
+	}
+	automationComponentValue(raw, &value)
+	if len(value.Headers) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(value.Headers))
+	for name := range value.Headers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	lines := make([]string, 0, len(names))
+	for _, name := range names {
+		lines = append(lines, name+": "+value.Headers[name])
+	}
+	return strings.Join(lines, "\n")
 }
 
 // automationOption is a choice in the rule editor.
@@ -484,7 +531,8 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	actionComponents, err := automationFormActions(r.PostForm["action_type"], r.PostForm["action_value"], r.PostForm["action_project"])
+	actionComponents, err := automationFormActions(r.PostForm["action_type"], r.PostForm["action_value"], r.PostForm["action_project"],
+		r.PostForm["action_body"], r.PostForm["action_headers"])
 	if err != nil {
 		return nil, err
 	}
@@ -500,7 +548,7 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 		if err != nil {
 			return nil, err
 		}
-		branchActions, err := automationFormActions(r.PostForm["branch_action_type"], r.PostForm["branch_action_value"], nil)
+		branchActions, err := automationFormActions(r.PostForm["branch_action_type"], r.PostForm["branch_action_value"], nil, nil, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -586,8 +634,14 @@ func automationFormConditions(fields, operators, values []string) ([]map[string]
 // automationFormActions reads the rule's actions. projects is the project
 // each create action raises its work in, which matters when the trigger
 // brings no work item to take one from; it is empty for every other action.
-func automationFormActions(types, values, projects []string) ([]map[string]any, error) {
+func automationFormActions(types, values, projects, bodies, headerLines []string) ([]map[string]any, error) {
 	components := []map[string]any{}
+	at := func(list []string, index int) string {
+		if index < len(list) {
+			return strings.TrimSpace(list[index])
+		}
+		return ""
+	}
 	for index, actionType := range types {
 		actionType = strings.TrimSpace(actionType)
 		if actionType == "" {
@@ -635,9 +689,19 @@ func automationFormActions(types, values, projects []string) ([]map[string]any, 
 		// A web request names its method in the action, as a link names its
 		// link type, and carries the address it is sent to.
 		if method := strings.TrimPrefix(actionType, automation.WebRequestActionType+":"); method != actionType && strings.TrimSpace(method) != "" {
+			request := map[string]any{"method": method, "url": value}
+			if body := at(bodies, index); body != "" {
+				request["body"] = body
+			}
+			headers, err := automationFormHeaders(at(headerLines, index))
+			if err != nil {
+				return nil, err
+			}
+			if len(headers) > 0 {
+				request["headers"] = headers
+			}
 			components = append(components, map[string]any{
-				"component": "ACTION", "schemaVersion": 1, "type": automation.WebRequestActionType,
-				"value": map[string]string{"method": method, "url": value},
+				"component": "ACTION", "schemaVersion": 1, "type": automation.WebRequestActionType, "value": request,
 			})
 			continue
 		}
@@ -873,6 +937,8 @@ func automationActionViews(components []automationComponentJSON) []automationAct
 			view.ProjectID = fields["projectId"]
 		case automation.WebRequestActionType:
 			view.Type, view.Value = automation.WebRequestActionType+":"+fields["method"], fields["url"]
+			view.Body = fields["body"]
+			view.Headers = automationHeaderLines(component.Value)
 		}
 		actions = append(actions, view)
 	}

@@ -168,7 +168,7 @@ values. Most actions set a desired state, so a replayed action does nothing.
 | `jira.issue.create` | `issueTypeId`, `summary`, optional `projectId` | Creates with a type from the project's scheme, not a sub-task type. The project is the one named, else the triggering work item's, else the single project the rule is scoped to; without any of those the action fails rather than the run. The same type and summary already existing counts as done |
 | `jira.issue.link` | `linkTypeId`, `issueKey` | The named item takes the inward side. Existing links and self-links count as done; a key from another site fails |
 | `jira.issue.email` | `recipient` (`assignee`, `reporter`, `watchers`), `body` | Plain text through the mail outbox. Subject is key and summary. Skips people without an address and deactivated accounts |
-| `jira.issue.outgoing-webhook` | `method` (GET, POST, PUT, DELETE), `url` | Sends the request; POST and PUT carry the work item in Jira format (or `{}`). Response is `{{webResponse}}` / `{{webResponse.status}}` (64 KiB kept). Non-2xx fails; private-network hosts are refused; 20 s timeout |
+| `jira.issue.outgoing-webhook` | `method` (GET, POST, PUT, DELETE), `url`, optional `body` and `headers` | Sends the request. A rule that writes a `body` sends that, with smart values rendered, whatever the method; otherwise POST and PUT carry the work item in Jira format (or `{}`). `headers` is a name-to-value map, rendered the same way, and sets what it names -- `Host` and `Content-Length` belong to the connection and are refused, as is a name HTTP does not allow. Response is `{{webResponse}}` / `{{webResponse.status}}` (64 KiB kept). Non-2xx fails; private-network hosts are refused; 20 s timeout |
 | `confluence.page.create` | `spaceKey`, optional `title` | Creates a page as the actor (fails without view and create rights). Default title is the key and summary; the page names the rule and the work item |
 
 `jira.issue.create`, `jira.issue.outgoing-webhook` and
@@ -237,8 +237,7 @@ See [PLAN.md](../PLAN.md).
 - Usage limits: no monthly execution quota or per-rule usage tracking.
 - Triggers for Confluence content.
 - The rest of Jira's trigger, condition, action and branch catalog, including
-  JQL branches, for-each branches, lookup/create variables and custom web
-  request bodies and headers.
+  JQL branches, for-each branches and lookup/create variables.
 - A manual-trigger editor in the UI.
 
 ## See also

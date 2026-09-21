@@ -143,3 +143,99 @@ func TestWebRequestFailuresAreRecorded(t *testing.T) {
 		t.Fatalf("detail = %q, want the answered status", detail)
 	}
 }
+
+// A rule that writes its own body and headers sends those, rather than the
+// site's own picture of the work item.
+func TestWebRequestSendsTheRuleOwnBodyAndHeaders(t *testing.T) {
+	fx := newAutomationFixture(t)
+	allowLocalWebRequests(t)
+
+	type received struct {
+		body, contentType, token string
+	}
+	got := make(chan received, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		got <- received{body: string(body), contentType: r.Header.Get("Content-Type"), token: r.Header.Get("X-Release-Token")}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+
+	projectID := store.NewID("prj")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id,lead_account_id) VALUES($1,$2,'WEBB','Bodies','wf_default',$3)`, projectID, fx.ws, fx.admin); err != nil {
+		t.Fatal(err)
+	}
+	issue, _, err := fx.store.CreateIssue(fx.ctx, fx.admin, projectID, "release candidate",
+		json.RawMessage(`{"type":"doc","version":1,"content":[]}`), "st_todo", "it_task", "pr_medium", "", nil, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	base := "/gateway/api/automation/public/jira/" + fx.cloudID + "/rest/v1/rule"
+	body := map[string]any{"rule": map[string]any{
+		"actor": map[string]string{"actor": fx.admin, "type": "ACCOUNT_ID"}, "name": "Announce", "state": "ENABLED",
+		"components": []map[string]any{{"component": "ACTION", "type": WebRequestActionType, "value": map[string]any{
+			"method": "POST", "url": server.URL + "/announce",
+			"body":    `{"shipped":"{{issue.key}}"}`,
+			"headers": map[string]string{"Content-Type": "application/vnd.release+json", "X-Release-Token": "tok-{{issue.key}}"},
+		}}},
+		"trigger": map[string]any{"component": "TRIGGER", "type": WebhookTriggerType, "schemaVersion": 1,
+			"value": map[string]any{"jql": "", "issuesFromWebhook": true}},
+	}, "connections": []any{}}
+	created := fx.call(fx.admin, http.MethodPost, base, body, http.StatusCreated)
+	uuid, _ := created["ruleUuid"].(string)
+	rule, err := fx.service.Rule(fx.ctx, fx.ws, uuid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.service.TriggerWebhook(fx.ctx, rule.WebhookToken, "", json.RawMessage(`{"issues":["`+issue.Key+`"]}`)); err != nil {
+		t.Fatal(err)
+	}
+	runner := &Runner{Service: fx.service}
+	if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case call := <-got:
+		if call.body != `{"shipped":"`+issue.Key+`"}` {
+			t.Fatalf("the rule sent %s", call.body)
+		}
+		if call.contentType != "application/vnd.release+json" || call.token != "tok-"+issue.Key {
+			t.Fatalf("headers: %q and %q", call.contentType, call.token)
+		}
+	default:
+		t.Fatal("the rule sent no web request")
+	}
+
+	// A header a rule may not set says so, and nothing is sent.
+	refused := map[string]any{"rule": map[string]any{
+		"actor": map[string]string{"actor": fx.admin, "type": "ACCOUNT_ID"}, "name": "Bad header", "state": "ENABLED",
+		"components": []map[string]any{{"component": "ACTION", "type": WebRequestActionType, "value": map[string]any{
+			"method": "POST", "url": server.URL + "/announce", "headers": map[string]string{"Host": "elsewhere.example"},
+		}}},
+		"trigger": map[string]any{"component": "TRIGGER", "type": WebhookTriggerType, "schemaVersion": 1,
+			"value": map[string]any{"jql": "", "issuesFromWebhook": true}},
+	}, "connections": []any{}}
+	createdBad := fx.call(fx.admin, http.MethodPost, base, refused, http.StatusCreated)
+	badUUID, _ := createdBad["ruleUuid"].(string)
+	badRule, err := fx.service.Rule(fx.ctx, fx.ws, badUUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.service.TriggerWebhook(fx.ctx, badRule.WebhookToken, "", json.RawMessage(`{"issues":["`+issue.Key+`"]}`)); err != nil {
+		t.Fatal(err)
+	}
+	// The run fails, which the worker reports rather than swallowing.
+	if err := runner.DrainOnce(fx.ctx, fx.ws); err == nil || !strings.Contains(err.Error(), "Host") {
+		t.Fatalf("draining a rule that sets Host: %v", err)
+	}
+	runs, err := fx.service.Runs(fx.ctx, fx.ws, badUUID, 5)
+	if err != nil || len(runs) != 1 || runs[0].State == "SUCCESS" {
+		t.Fatalf("a rule setting Host ran: %+v, %v", runs, err)
+	}
+	select {
+	case call := <-got:
+		t.Fatalf("the refused rule sent %s", call.body)
+	default:
+	}
+}

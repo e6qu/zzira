@@ -273,6 +273,10 @@ test('admin builds a rule that sends a web request', async ({ page }) => {
   await page.getByLabel('JQL query').fill(`key = ${fixtureKey}`);
   await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.outgoing-webhook:POST');
   await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('http://127.0.0.1:9/hook');
+  // The receiver asked for its own shape, which the rule writes.
+  await page.locator('.automation-action-more summary').first().click();
+  await page.getByLabel('Request body').first().fill('{"shipped": "{{issue.key}}"}');
+  await page.getByLabel('Request headers').first().fill('Content-Type: application/vnd.release+json\nX-Release-Token: tok');
   await accessible(page);
   await page.getByRole('button', { name: 'Create rule' }).click();
   await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
@@ -281,6 +285,8 @@ test('admin builds a rule that sends a web request', async ({ page }) => {
   // The editor shows the saved action rather than turning saving off.
   await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue('jira.issue.outgoing-webhook:POST');
   await expect(page.getByRole('combobox', { name: 'Value', exact: true }).first()).toHaveValue('http://127.0.0.1:9/hook');
+  await expect(page.getByLabel('Request body').first()).toHaveValue('{"shipped": "{{issue.key}}"}');
+  await expect(page.getByLabel('Request headers').first()).toHaveValue('Content-Type: application/vnd.release+json\nX-Release-Token: tok');
 
   // The rule runs the action, and an address on a private network is refused
   // rather than reaching the site's own network.
@@ -902,13 +908,16 @@ test('admin builds a rule that runs when a version is released', async ({ page }
   await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('jira.version.event.trigger:released');
   await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.create:it_task');
   await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('Write release notes for {{version.name}}');
-  await page.getByRole('combobox', { name: 'Project for created work', exact: true }).first().selectOption(projectID);
+  await page.locator('.automation-action-more summary').first().click();
+  await page.getByLabel('Project for created work').first().selectOption(projectID);
   await accessible(page);
   await page.getByRole('button', { name: 'Create rule' }).click();
   await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
   const ruleURL = page.url();
   await expect(page.getByRole('combobox', { name: 'Trigger', exact: true })).toHaveValue('jira.version.event.trigger:released');
-  await expect(page.getByRole('combobox', { name: 'Project for created work', exact: true }).first()).toHaveValue(projectID);
+  // A rule that names a project keeps the fold open, so the choice is there
+  // to read without hunting for it.
+  await expect(page.getByLabel('Project for created work').first()).toHaveValue(projectID);
   await page.goto('/settings/automation');
   await expect(page.getByRole('article').filter({ hasText: name })).toContainText('Version released');
 
