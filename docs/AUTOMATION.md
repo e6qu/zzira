@@ -86,6 +86,11 @@ saving is turned off; change such rules through the API.
 | `jira.issue.event.trigger:deleted` | none | A work item is deleted; the run has no work item and reads `{{deletedIssue.*}}` |
 | `jira.version.event.trigger:created`, `:updated`, `:released` | none | A version is created, changed, or released; the run has no work item and reads `{{version.*}}` |
 | `jira.sprint.event.trigger:started`, `:completed` | none | A sprint starts or completes; the run has no work item and reads `{{sprint.*}}` |
+| `confluence.page.created` | none | A page is published in the wiki; the run has no work item and reads `{{page.*}}` |
+| `confluence.page.updated` | none | A published page is written again; `{{page.version.number}}` says which version |
+| `confluence.page.commented` | none | A comment is added to a page, footer or inline; the run reads `{{comment.*}}` |
+| `confluence.page.labelled` | none | A label is attached to a page; the run reads `{{label.name}}` |
+| `confluence.blogpost.created` | none | A blog post is published; the run reads `{{blogPost.*}}` |
 | `jira.manual.trigger.issue.action` | `inputPrompts` (`displayName`, `inputType`, `required`, `variableName`) | Somebody runs it from a work item, through the API or **Run automation**; the answers are `{{userInputs.*}}` |
 
 **Scheduling.** Fixed intervals measure elapsed time, so they ignore
@@ -98,6 +103,14 @@ or as a top-level `cronExpression`, and runs in the rule's timezone.
 - Local times skipped by a daylight-saving change do not fire.
 - A missed time runs once.
 - Disabling a rule clears its next run time.
+
+**Wiki content.** A rule a page starts runs as its actor and reads the page as
+its actor: a page in a space the actor may not read starts nothing at all, so
+neither its title nor its body reaches a rule's actions. A draft is not a page
+yet and a trashed one is not a change, so neither starts anything; only the
+first comment on a page is a comment (editing one is not), and only attaching a
+label is labelling. A label or a comment on an attachment, a blog post or
+custom content is not a page event.
 
 **Events with no work item.** A deletion, a version and a sprint do not happen
 to a work item a rule can read: the deleted one is gone, and the others are not
@@ -218,6 +231,11 @@ An event with no work item carries what it happened to:
 `{{version.name}}`, `{{version.released}}`, `{{sprint.name}}`,
 `{{sprint.goal}}`, `{{sprint.state}}`, and any other path into them.
 
+A wiki event carries the content it happened to: `{{page.title}}`,
+`{{page.id}}`, `{{page.spaceId}}`, `{{page.version.number}}`,
+`{{blogPost.title}}`, `{{comment.body.value}}`, `{{label.name}}`, and any other
+path into them.
+
 A rule's own variables are read by the name the create variable action gave
 them: `{{release_note}}`.
 
@@ -257,8 +275,9 @@ invoked a manual rule. Unknown values render empty. Rendered text is limited to
 See [PLAN.md](../PLAN.md).
 - Connections: stored, returned and redacted by the API, but no action uses
   them.
+- Confluence actions beyond creating a page, and triggers for spaces,
+  attachments and custom content.
 - Usage limits: no monthly execution quota or per-rule usage tracking.
-- Triggers for Confluence content.
 - The rest of Jira's trigger, condition, action and branch catalog, including
   for-each branches over a smart value's list, and branching over the work a
   rule created.

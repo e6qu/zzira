@@ -67,6 +67,7 @@ func (r *Runner) enqueueEvents(ctx context.Context, workspaceID string) error {
 		    OR (a.entity_type='issue' AND a.op IN ('upsert','delete'))
 		    OR (a.entity_type IN ('version','sprint') AND a.op='upsert')
 		    OR (a.entity_type='sprint_issue' AND a.op IN ('upsert','delete'))
+		    OR (a.entity_type IN ('wiki_page','wiki_blogpost','wiki_footer_comment','wiki_inline_comment','wiki_label') AND a.op='upsert')
 		  )
 		ORDER BY a.seq LIMIT $3`, workspaceID, last, eventBatch)
 	if err != nil {
@@ -109,7 +110,8 @@ func (r *Runner) enqueueEvents(ctx context.Context, workspaceID string) error {
 			}
 			// An event that happened to something other than a work item
 			// carries what it happened to, because the rule cannot read it
-			// back: the version, the sprint, or the work item that is gone.
+			// back: the version, the sprint, the page, or the work item that
+			// is gone.
 			var data any
 			if SubjectlessEvents[event] {
 				data = triggerData(event, action)
@@ -181,6 +183,11 @@ func (r *Runner) eventRules(ctx context.Context, workspaceID string) ([]eventRul
 // actionEvent reads the work item event an action records: created, updated
 // (with its changes) or commented, and the work item it happened to.
 func actionEvent(action loggedAction) (string, string, map[string]models.ChangeItem) {
+	if event := wikiActionEvent(action); event != "" {
+		// Nothing in the wiki is a work item, so the run has none to act on
+		// and carries what happened instead.
+		return event, "", nil
+	}
 	switch action.EntityType {
 	case models.EntityIssue:
 		if action.Op == models.OpDelete {
@@ -272,6 +279,11 @@ func (rule eventRule) matches(event string, diff map[string]models.ChangeItem, a
 	if action.CausedBy != nil && (*action.CausedBy == rule.UUID || !rule.AllowOtherRules) {
 		return false
 	}
+	if WikiEvents[rule.Event] {
+		// What happens in the wiki is read as itself: there is no work item
+		// whose fields could have changed.
+		return event == rule.Event
+	}
 	switch rule.Event {
 	case "created", "commented", "linked", "attachment_added", "deleted",
 		"version_created", "version_updated", "version_released",
@@ -322,6 +334,9 @@ type versionActionPayload struct {
 // triggerData is what a rule reads about an event whose subject it cannot
 // load: the version, the sprint, or the work item that has gone.
 func triggerData(event string, action loggedAction) json.RawMessage {
+	if WikiEvents[event] {
+		return wikiTriggerData(event, action)
+	}
 	switch {
 	case event == "deleted":
 		var payload models.DeletePayload

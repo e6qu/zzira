@@ -1092,3 +1092,59 @@ test('admin writes a rule that names a value and branches over a query', async (
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
 });
+
+// The wiki starts rules too: a page written asks for the work it describes.
+test('admin builds a rule that runs when a page is written in the wiki', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const spaceKey = `WEV${String(stamp).slice(-6)}`;
+  await page.goto('/wiki');
+  await page.locator('.wiki-create-space > summary').click();
+  await page.getByLabel('Space name').fill(`Page rules ${stamp}`);
+  await page.getByLabel('Space key').fill(spaceKey);
+  await page.getByRole('button', { name: 'Create space', exact: true }).click();
+  await expect(page).toHaveURL(/\/wiki\/spaces\/\d+$/);
+  const spaceURL = page.url();
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E page trigger ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('confluence.page.created');
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.create:it_task');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(`Review {{page.title}}`);
+  await page.locator('.automation-action-more summary').first().click();
+  const projectID = String((await (await page.request.get('/rest/api/3/project/ZZ', { headers })).json()).id);
+  await page.getByLabel('Project for created work').first().selectOption(projectID);
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  await expect(page.getByRole('note')).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Trigger', exact: true })).toHaveValue('confluence.page.created');
+  await page.goto('/settings/automation');
+  await expect(page.getByRole('article').filter({ hasText: name })).toContainText('Page created');
+
+  // Writing the page is what starts it.
+  const title = `Release checklist ${stamp}`;
+  await page.goto(spaceURL);
+  await page.getByRole('link', { name: 'Create page', exact: true }).click();
+  await page.getByLabel('Page title').fill(title);
+  await page.getByRole('textbox', { name: 'Page content' }).fill('What to check before a release.');
+  await page.getByRole('button', { name: 'Save page', exact: true }).click();
+  await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
+
+  await expect.poll(async () => {
+    const found = await (await page.request.get(`/rest/api/3/search/jql?fields=summary&jql=${encodeURIComponent(`project = ZZ AND summary ~ "${title}"`)}`, { headers })).json();
+    return (found.issues ?? []).map((issue: any) => issue.fields?.summary ?? '').join(' | ');
+  }, { timeout: 20_000 }).toContain(`Review ${title}`);
+
+  await expect.poll(async () => {
+    await page.goto(ruleURL);
+    return await page.locator('.automation-audit tbody').innerText();
+  }, { timeout: 15_000 }).toContain('SUCCESS');
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});
