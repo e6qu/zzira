@@ -1126,6 +1126,33 @@
 </body></html>
 {{end}}
 
+{{define "page_password_forgot"}}
+<!doctype html>
+<html lang="en">
+<head><title>Forgotten password · {{(site $).Title}}</title>{{template "head" .}}</head>
+<body class="login-body">
+  <main class="login-card" aria-labelledby="password-forgot-title">
+    <span class="logo-mark" aria-hidden="true">Z</span>
+    <h1 id="password-forgot-title">Forgotten password</h1>
+    {{if .Unavailable}}
+    <p role="alert">This site cannot send email, so a sign-in link comes from an administrator. Ask one for a link to set your password.</p>
+    <a class="btn btn-secondary btn-block" href="/login">Back to sign in</a>
+    {{else if .Sent}}
+    <p role="status">If that address has an account here, a link to set a password is on its way to it. The link works once and expires in a day.</p>
+    <a class="btn btn-secondary btn-block" href="/login">Back to sign in</a>
+    {{else}}
+    <p>Enter your email address and we will send a link to set a new password.</p>
+    <form method="post" action="/password/forgot">
+      <label for="password-forgot-email">Email</label>
+      <input id="password-forgot-email" name="email" type="email" autocomplete="email" required autofocus>
+      <button class="btn btn-primary btn-block" type="submit">Send a sign-in link</button>
+    </form>
+    <p><a href="/login">Back to sign in</a></p>
+    {{end}}
+  </main>
+</body></html>
+{{end}}
+
 {{define "page_password_link"}}
 <!doctype html>
 <html lang="en">
@@ -1174,6 +1201,7 @@
       {{if .Notice}}<p class="alert success" role="status">{{.Notice}}</p>{{end}}{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
       <button type="submit" class="btn btn-primary btn-block">Log in</button>
     </form>
+    <p class="login-help"><a href="/password/forgot">Forgotten your password?</a></p>
     {{else}}
     <p class="login-intro">This site is signed in to through its identity provider. It accepts no password.</p>
     {{end}}

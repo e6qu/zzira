@@ -162,8 +162,6 @@ restore and remove.
   policy covers named people rather than a group.
 - Two-step verification is an authenticator app alone: no WebAuthn, no
   passkeys, and the key is shown as text rather than a QR image.
-- A forgotten password is replaced through a sign-in link an administrator
-  issues; there is no self-service page for one.
 - Managed accounts claimed through verified domains; domain ownership exclusive
   across organizations; `claimStatus` derived, not constant.
 - User management API (`/users/{id}/manage/...`).

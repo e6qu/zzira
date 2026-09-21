@@ -82,6 +82,14 @@ through a link ends every session that account had, because whoever set it is
 the only one who should now be signed in. A person under a policy that enforces
 single sign-on has no password to set, and the page says so.
 
+Someone who has forgotten their password asks for a link themselves at
+`/password/forgot`, linked from the sign-in page. The answer is the same
+whatever address is typed, so the page does not say who has an account here,
+and one account is sent at most one link every five minutes. A site that
+cannot send email -- no SMTP, or no `ZZIRA_EXTERNAL_URL` to write into the
+link -- says so and sends the person to an administrator instead of pretending
+a message is on its way.
+
 Anyone signed in changes their own password on their profile, under
 **Password**: the current password, then the new one twice. The new password
 meets the rule their authentication policy applies (at least 8 characters, or
@@ -231,7 +239,6 @@ Tracked in [PLAN.md](../PLAN.md).
 - SCIM provisions people and groups ([SCIM.md](SCIM.md)); product access is not provisioned with them, and a provider authenticates as an organization administrator rather than with a directory-scoped key.
 - Authentication policies enforce single sign-on, two-step verification, session duration and the shortest password; password expiry and the rest of Atlassian's password strength rules are missing, and a policy covers people one at a time rather than a whole group.
 - Two-step verification shows its key as text and a setup link rather than a QR image, and the authenticator app is the only second factor: no WebAuthn, no passkeys, no SMS.
-- A person who has forgotten their password asks an administrator for a sign-in link; there is no self-service "forgot password" page, which would need SMTP to be configured.
 - Account claiming from verified domains (managed vs unmanaged accounts), and domain ownership checks across organizations.
 - The Atlassian user management API (`/users/{account_id}/manage/...`: profile, email, lifecycle, API tokens).
 - Organization API keys distinct from user API tokens.
@@ -245,6 +252,7 @@ Tracked in [PLAN.md](../PLAN.md).
 - `internal/admin/authentication_policies_test.go`: settings validation, membership moving with the person, the default policy, a disabled policy enforcing nothing, and what sign-in and a password change do under each.
 - `internal/authn/totp_test.go`: the RFC 6238 vectors, the steps either side of now, and what is not a code.
 - `internal/authn/two_step_test.go`: the challenge a password earns, the code and recovery code that answer it, the guessing it cuts off, and turning it off.
+- `internal/web/forgot_password_test.go`: the link a forgotten password asks for, the same answer for an address with no account, the cooldown, and a site that cannot send email.
 - `internal/authn/password_test.go`: changing a password, the rules that refuse one, the sessions a change ends, and the sign-in link's single use and expiry.
 - `e2e/password.spec.ts`: an invited person reached by a sign-in link, setting a password, replacing it from their profile, and the session that ends with it.
 - `e2e/two_step.spec.ts`: enrolling an authenticator app, the code at sign-in, a recovery code used once, and turning it off.

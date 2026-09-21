@@ -129,3 +129,14 @@ func (s *Store) UsePasswordLink(ctx context.Context, tokenHash, passwordHash str
 	}
 	return userID, tx.Commit(ctx)
 }
+
+// RecentPasswordLink says whether this person was sent a sign-in link a
+// moment ago, which is how a form anyone can post is kept from filling a
+// mailbox.
+func (s *Store) RecentPasswordLink(ctx context.Context, userID string, within time.Duration) (bool, error) {
+	var recent bool
+	err := s.Pool.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM password_setup_links
+		WHERE user_id=$1 AND used_at IS NULL AND created_at>now()-$2::interval)`, userID, within.String()).Scan(&recent)
+	return recent, err
+}

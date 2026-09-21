@@ -45,6 +45,17 @@ test('an invited person sets their own password and later replaces it', async ({
   expect(link).toContain('/password/set?token=');
   await accessible(page);
 
+  // Someone who has forgotten theirs is told where a link comes from, which
+  // on a site with no SMTP is an administrator rather than an email.
+  const forgetful = await browser.newContext();
+  const forgetfulPage = await forgetful.newPage();
+  await forgetfulPage.goto('/login');
+  await forgetfulPage.getByRole('link', { name: 'Forgotten your password?' }).click();
+  await expect(forgetfulPage).toHaveURL('/password/forgot');
+  await expect(forgetfulPage.getByRole('alert')).toContainText('Ask one for a link to set your password');
+  await accessible(forgetfulPage);
+  await forgetful.close();
+
   // The person opens it and sets a password. The rule is on the page before
   // they type one, and a password under it is refused.
   const newcomer = await browser.newContext();
