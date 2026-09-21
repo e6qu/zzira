@@ -41,4 +41,7 @@ type DORAReport struct {
 	// ExcludedPeriods is how many stretches of days the project leaves out,
 	// so the report says that some delivery was not counted.
 	ExcludedPeriods int
+	// IncidentJQL is what the project counts as an incident, or "" when its
+	// service desk's own incident requests are what counts.
+	IncidentJQL string
 }

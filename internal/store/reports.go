@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
 )
 
@@ -29,6 +31,7 @@ func (s *Store) DORAReport(ctx context.Context, workspaceID, projectID, userID s
 	report := models.DORAReport{
 		WindowDays: days, Since: since.Format("2006-01-02"), Until: until.Format("2006-01-02"),
 		EnvironmentTypes: settings.EnvironmentTypes, Pipelines: len(settings.PipelineIDs), ExcludedPeriods: len(excluded),
+		IncidentJQL: settings.IncidentJQL,
 	}
 	// A day inside an excluded period is not delivery: its deployments and the
 	// incidents opened in it are left out, as a code freeze is in Jira.
@@ -137,7 +140,7 @@ func (s *Store) DORAReport(ctx context.Context, workspaceID, projectID, userID s
 	report.LeadTimeSamples = len(leads)
 	report.LeadTimeSeconds = medianSeconds(leads)
 	report.LeadTimeDisplay = reportDuration(report.LeadTimeSeconds, report.LeadTimeSamples)
-	recoveries, err := s.doraRecoveryTimes(ctx, workspaceID, projectID, userID, since, until)
+	recoveries, err := s.doraRecoveryTimes(ctx, workspaceID, projectID, userID, since, until, settings)
 	if err != nil {
 		return models.DORAReport{}, err
 	}
@@ -219,17 +222,40 @@ func (s *Store) doraLeadTimes(ctx context.Context, workspaceID, projectID, userI
 	return values, rows.Err()
 }
 
-func (s *Store) doraRecoveryTimes(ctx context.Context, workspaceID, projectID, userID string, since, until time.Time) ([]int64, error) {
+func (s *Store) doraRecoveryTimes(ctx context.Context, workspaceID, projectID, userID string, since, until time.Time, settings DORASettings) ([]int64, error) {
+	// A project that says what an incident is counts the work its query
+	// answers; one that does not counts the service desk's own incident
+	// requests, which is how every other incident reader here knows one.
+	args := []any{workspaceID, projectID, userID, since, until}
+	incidentSource := `JOIN service_request_operations operation ON operation.request_issue_id=i.id AND operation.kind='incident'`
+	incidentWhere := "TRUE"
+	if query := strings.TrimSpace(settings.IncidentJQL); query != "" {
+		parsed, err := jql.Parse(query)
+		if err != nil {
+			return nil, err
+		}
+		resolver, err := s.JQLResolver(ctx, workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		compiled := jql.CompileAt(parsed, userID, resolver, len(args)+1)
+		if compiled.Err != nil {
+			return nil, compiled.Err
+		}
+		args = append(args, compiled.Args...)
+		incidentSource, incidentWhere = "", compiled.Where
+		if strings.TrimSpace(incidentWhere) == "" {
+			incidentWhere = "TRUE"
+		}
+	}
 	rows, err := s.Pool.Query(ctx, `
 		WITH incidents AS (
 		  SELECT i.id,MIN(created.created_at) AS opened_at
-		  FROM issues i
+		  `+issueJoinTables()+`
 		  JOIN actions created ON created.workspace_id=i.workspace_id AND created.entity_type='issue' AND created.entity_id=i.id AND created.op='upsert'
-		  -- An incident is a Jira Service Management incident request, which
-		  -- is how every other incident reader here knows one; a label anyone
-		  -- can add or remove is not.
-		  JOIN service_request_operations operation ON operation.request_issue_id=i.id AND operation.kind='incident'
+		  `+incidentSource+`
 		  WHERE i.workspace_id=$1 AND i.project_id=$2
+		    AND (`+incidentWhere+`)
 		    AND `+VisibleIssuePredicate("i", "$3")+`
 		  GROUP BY i.id
 		), counted AS (
@@ -248,7 +274,7 @@ func (s *Store) doraRecoveryTimes(ctx context.Context, workspaceID, projectID, u
 		    AND change.created_at >= $4 AND change.created_at < $5
 		  GROUP BY incident.id,incident.opened_at
 		)
-		SELECT EXTRACT(EPOCH FROM (recovered_at-opened_at))::bigint FROM recovered WHERE recovered_at >= opened_at`, workspaceID, projectID, userID, since, until)
+		SELECT EXTRACT(EPOCH FROM (recovered_at-opened_at))::bigint FROM recovered WHERE recovered_at >= opened_at`, args...)
 	if err != nil {
 		return nil, err
 	}

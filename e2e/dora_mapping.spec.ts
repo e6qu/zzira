@@ -96,6 +96,40 @@ test('a project chooses which environments and pipelines its DORA metrics count'
   await expect(page.getByRole('alert')).toContainText('choose at least one environment');
   await expect(page.getByRole('region', { name: 'DORA summary' }).locator('.dora-metric').first().locator('strong')).toHaveText('1');
 
+  // What counts as an incident: a project without a service desk names its
+  // own, and time to restore then reads that work.
+  const incident = await (await page.request.post('/rest/api/3/issue', {
+    headers: auth, data: { fields: { project: { key }, summary: `Outage ${stamp}`, issuetype: { name: 'Bug' } } },
+  })).json();
+  const restore = () => page.getByRole('region', { name: 'DORA summary' }).locator('.dora-metric').last().locator('strong');
+  await expect(restore()).toHaveText('No data');
+
+  const incidents = page.locator('#dora-mapping form').filter({ has: page.getByRole('button', { name: 'Save what counts' }) });
+  await incidents.getByLabel('Incidents (JQL)').fill('issuetype = Nope');
+  await incidents.getByRole('button', { name: 'Save what counts' }).click();
+  await expect(page.getByRole('alert')).toContainText("does not exist for the field 'issuetype'");
+
+  await page.locator('#dora-mapping form').filter({ has: page.getByRole('button', { name: 'Save what counts' }) })
+    .getByLabel('Incidents (JQL)').fill('issuetype = Bug');
+  await page.locator('#dora-mapping form').filter({ has: page.getByRole('button', { name: 'Save what counts' }) })
+    .getByRole('button', { name: 'Save what counts' }).click();
+  await expect(page.getByRole('status')).toContainText('Delivery mapping saved');
+  await expect(page.locator('#dora-mapping')).toContainText('issuetype = Bug');
+  // Still nothing to measure until the incident is over.
+  await expect(restore()).toHaveText('No data');
+
+  const transitions = (await (await page.request.get(`/rest/api/3/issue/${incident.key}/transitions`, { headers: auth })).json()).transitions as Array<{ id: string; to: { statusCategory: { key: string } } }>;
+  const done = transitions.find(candidate => candidate.to.statusCategory.key === 'done')!;
+  expect((await page.request.post(`/rest/api/3/issue/${incident.key}/transitions`, {
+    headers: auth, data: { transition: { id: done.id } },
+  })).status()).toBe(204);
+  // An incident is over when it is given a resolution, however it gets one.
+  expect((await page.request.put(`/rest/api/3/issue/${incident.key}`, {
+    headers: auth, data: { fields: { resolution: { name: 'Done' } } },
+  })).status()).toBe(204);
+  await page.reload();
+  await expect(restore()).not.toHaveText('No data');
+
   // A day inside an excluded period is not delivery.
   const deployed = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const exclusion = page.locator('#dora-mapping form').filter({ has: page.getByRole('button', { name: 'Exclude these days' }) });

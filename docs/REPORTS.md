@@ -83,7 +83,14 @@ Builds, deployments and commits arrive through the [Jira Software DevOps APIs](J
 | Deployment frequency | Number of successful production deployments, plus a weekly rate (`count × 7 ÷ window days`) |
 | Lead time for changes | Median, over the commits linked to those deployments, of the time from the commit to the earliest successful production deployment at or after it that shares one of its work items |
 | Change failure rate | Failed and rolled-back production deployments divided by all successful, failed and rolled-back production deployments |
-| Time to restore service | Median time from an incident's creation to the first change that gave it a resolution |
+| Time to restore service | Median time from an incident's creation to the first change that gave it a resolution, over the work the project counts as incidents |
+
+**What counts as an incident.** Time to restore reads the incident requests a
+project's service desk raises. A project that raises incidents some other way
+gives a JQL query on the report instead, and the measure reads the work that
+query answers; the query is compiled when it is saved, so a query that names a
+status or type the site does not have is refused there rather than silently
+measuring nothing.
 
 **Excluded periods.** A project's administrators can leave stretches of days
 out of these numbers -- a code freeze, a shutdown, a drill -- on the report
@@ -240,7 +247,6 @@ Service project agents and managers see, for the requests the desk received in t
 
 ## Gaps
 
-- DORA counts the incidents Jira Service Management raises; which work items count as incidents cannot be configured.
 
 Remaining work is tracked in [PLAN.md](../PLAN.md).
 
