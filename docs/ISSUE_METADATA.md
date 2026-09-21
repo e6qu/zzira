@@ -22,7 +22,12 @@ A site's levels run Subtask (`-1`), Base (`0`), Epic (`1`) and any named levels 
 - **Parent:** a work item's parent is a work item exactly one level above it — a task under an epic, an epic under the level above it. Anything else is `Given parent work item does not belong to appropriate hierarchy.` (`internal/commands/commands_v1.go`, `hierarchyParent`). The parent may be in any project. The create form and the work item view offer only the work items of the level above (`ParentOptions`).
 - **Sub-tasks are the exception:** a sub-task's parent is any work item of a non-sub-task type in the sub-task's own project. Sub-tasks are refused entirely while the site switches them off ([JIRA_SITE_CONFIGURATION.md](JIRA_SITE_CONFIGURATION.md)).
 - **REST:** `POST /rest/api/3/issuetype` creates standard types at level 0 and subtask types at −1, as Jira's API does; higher levels are set in the settings page. `GET /rest/api/3/project/{projectId}/hierarchy` reports the site's levels with their names ([JIRA_PLATFORM.md](JIRA_PLATFORM.md#site-and-project-reads)).
-- Boards and backlogs use the epic level. Epic behavior is in [JIRA_SOFTWARE.md](JIRA_SOFTWARE.md).
+- **Rollups:** a project's roadmap (`/projects/{key}/timeline`) and a plan's
+  work both nest through every level the site has -- an initiative carries its
+  epics, an epic its work items -- and each row is indented by how deep it
+  sits. A parent whose level is not above its child's is not nested, so a
+  mis-typed hierarchy cannot make a cycle.
+- Boards and backlogs use the epic level, as Jira's do. Epic behavior is in [JIRA_SOFTWARE.md](JIRA_SOFTWARE.md).
 
 ## Work types
 

@@ -29,16 +29,18 @@ func (s *Store) siteDateFieldID(ctx context.Context, workspaceID, name string) (
 	return id, err
 }
 
-// ProjectTimeline lists the project's epics in rank order with the child work
-// under each, limited to work the user can browse.
+// ProjectTimeline lists the project's work above the story level in rank
+// order, each under whatever is above it, with the story-level work under the
+// lowest of them -- so a site with levels above the epic reads its roadmap
+// through all of them. Everything is limited to work the user can browse.
 func (s *Store) ProjectTimeline(ctx context.Context, workspaceID, userID, projectID string) (models.ProjectTimeline, error) {
 	fieldID, err := s.StartDateFieldID(ctx, workspaceID)
 	if err != nil {
 		return models.ProjectTimeline{}, err
 	}
 	timeline := models.ProjectTimeline{StartFieldID: fieldID, Epics: []models.TimelineItem{}}
-	epics, err := s.EpicsInProjects(ctx, workspaceID, userID, []string{projectID})
-	if err != nil || len(epics) == 0 {
+	parents, err := s.ParentWorkInProjects(ctx, workspaceID, userID, []string{projectID})
+	if err != nil || len(parents) == 0 {
 		return timeline, err
 	}
 	item := func(issue *models.Issue) models.TimelineItem {
@@ -48,9 +50,11 @@ func (s *Store) ProjectTimeline(ctx context.Context, workspaceID, userID, projec
 		}
 		return scheduled
 	}
-	epicIDs := make([]string, 0, len(epics))
-	for _, epic := range epics {
-		epicIDs = append(epicIDs, epic.ID)
+	epicIDs := make([]string, 0, len(parents))
+	for _, parent := range parents {
+		if parent.IssueType.HierarchyLevel == 1 {
+			epicIDs = append(epicIDs, parent.ID)
+		}
 	}
 	work, err := s.EpicChildren(ctx, workspaceID, userID, epicIDs)
 	if err != nil {
@@ -62,10 +66,36 @@ func (s *Store) ProjectTimeline(ctx context.Context, workspaceID, userID, projec
 			children[child.Parent.ID] = append(children[child.Parent.ID], item(child))
 		}
 	}
-	for _, epic := range epics {
-		scheduled := item(epic)
-		scheduled.Children = children[epic.ID]
-		timeline.Epics = append(timeline.Epics, scheduled)
+	// The parents arrive deepest level first, so a level is finished before
+	// the level above it reads its children.
+	built := map[string]models.TimelineItem{}
+	order := make([]string, 0, len(parents))
+	for index := len(parents) - 1; index >= 0; index-- {
+		issue := parents[index]
+		scheduled := item(issue)
+		scheduled.Children = append(scheduled.Children, children[issue.ID]...)
+		built[issue.ID] = scheduled
+		order = append(order, issue.ID)
+	}
+	placed := map[string]bool{}
+	for _, id := range order {
+		scheduled := built[id]
+		parent := scheduled.Issue.Parent
+		if parent == nil {
+			continue
+		}
+		above, ok := built[parent.ID]
+		if !ok || above.Issue.IssueType.HierarchyLevel <= scheduled.Issue.IssueType.HierarchyLevel {
+			continue
+		}
+		above.Children = append(above.Children, scheduled)
+		built[parent.ID] = above
+		placed[id] = true
+	}
+	for _, parent := range parents {
+		if !placed[parent.ID] {
+			timeline.Epics = append(timeline.Epics, built[parent.ID])
+		}
 	}
 	return timeline, nil
 }

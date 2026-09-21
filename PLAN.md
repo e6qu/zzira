@@ -63,10 +63,10 @@ Each numbered item is one or more substantial PRs.
 
 ## 1. Work item model
 
-**Hierarchy rollups.** Levels above epic exist ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#work-type-hierarchy)). What remains:
-- Plans, roadmaps and reports roll up through every level.
-- Boards and backlogs still treat the epic level as the top.
-- `hierarchyLevel` in JQL (see [JQL and filters](#5-jql-and-filters)).
+**Hierarchy rollups.** Levels above epic exist ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#work-type-hierarchy)), and plans, roadmaps and `hierarchyLevel` in JQL read through all of them. What remains:
+- Reports still summarise an epic and its children, not a level above it.
+- Boards and backlogs treat the epic level as the top, as Jira's do; a board
+  above the epic level would be ours, not Jira's.
 
 **Metadata and configuration UI.**
 - Per-language translations for work types, priorities, resolutions and

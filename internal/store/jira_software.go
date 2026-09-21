@@ -86,6 +86,28 @@ func (s *Store) EpicsInProjects(ctx context.Context, workspaceID, userID string,
 	return issues, rows.Err()
 }
 
+// ParentWorkInProjects lists the work above the story level a user can
+// browse: epics and everything an administrator put above them, deepest level
+// first so a nesting pass meets a parent before its child.
+func (s *Store) ParentWorkInProjects(ctx context.Context, workspaceID, userID string, projectIDs []string) ([]*models.Issue, error) {
+	rows, err := s.Pool.Query(ctx, searchSelect+" "+searchJoin+`
+		WHERE i.workspace_id=$1 AND i.project_id=ANY($2) AND COALESCE(ito.hierarchy_level,it.hierarchy_level)>=1 AND `+VisibleIssuePredicate("i", "$3")+`
+		ORDER BY COALESCE(ito.hierarchy_level,it.hierarchy_level) DESC, i.rank, i.key`, workspaceID, projectIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	issues := []*models.Issue{}
+	for rows.Next() {
+		issue, err := scanIssue(rows)
+		if err != nil {
+			return nil, err
+		}
+		issues = append(issues, issue)
+	}
+	return issues, rows.Err()
+}
+
 // unlinkEpicChildren clears the parent of an epic's standard issues, recording
 // each change so replicas follow.
 func unlinkEpicChildren(ctx context.Context, tx pgx.Tx, actorID, workspaceID, epicID string) error {

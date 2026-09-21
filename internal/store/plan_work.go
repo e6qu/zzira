@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -250,7 +251,7 @@ func (s *Store) PlanWork(ctx context.Context, workspaceID, userID string, plan P
 		item  models.TimelineItem
 	}
 	included := []entry{}
-	epics := map[string]int{}
+	byID := map[string]int{}
 	for rows.Next() {
 		issue, err := scanIssue(rows)
 		if err != nil {
@@ -260,23 +261,42 @@ func (s *Store) PlanWork(ctx context.Context, workspaceID, userID string, plan P
 			continue
 		}
 		item := models.TimelineItem{Issue: issue, StartDate: planDateValue(issue, startID), DueDate: planDateValue(issue, endID)}
-		if issue.IssueType.HierarchyLevel == 1 {
-			epics[issue.ID] = len(included)
-		}
+		byID[issue.ID] = len(included)
 		included = append(included, entry{issue: issue, item: item})
 	}
 	if err := rows.Err(); err != nil {
 		return work, err
 	}
-	// Child work sits under its epic when the plan includes the epic.
+	// Work sits under its parent whenever the plan includes the parent,
+	// whatever level that parent is: an epic nests under an initiative the
+	// same way a story nests under an epic. Attaching runs from the lowest
+	// level up, because attaching copies the child with the children it has
+	// already gathered.
+	order := make([]int, 0, len(included))
+	for index := range included {
+		order = append(order, index)
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		return included[order[i]].issue.IssueType.HierarchyLevel < included[order[j]].issue.IssueType.HierarchyLevel
+	})
 	placed := map[int]bool{}
-	for index, candidate := range included {
-		if parent := candidate.issue.Parent; parent != nil {
-			if epicIndex, ok := epics[parent.ID]; ok && epicIndex != index {
-				included[epicIndex].item.Children = append(included[epicIndex].item.Children, candidate.item)
-				placed[index] = true
-			}
+	for _, index := range order {
+		candidate := included[index]
+		parent := candidate.issue.Parent
+		if parent == nil {
+			continue
 		}
+		parentIndex, ok := byID[parent.ID]
+		if !ok || parentIndex == index {
+			continue
+		}
+		// A parent at or below its child's level would make a cycle out of a
+		// mis-typed hierarchy; the child stays where it is.
+		if included[parentIndex].issue.IssueType.HierarchyLevel <= candidate.issue.IssueType.HierarchyLevel {
+			continue
+		}
+		included[parentIndex].item.Children = append(included[parentIndex].item.Children, included[index].item)
+		placed[index] = true
 	}
 	for index, candidate := range included {
 		if !placed[index] {
