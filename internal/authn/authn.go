@@ -110,36 +110,151 @@ func ClearSessionCookie(w http.ResponseWriter) {
 // because the person can do something about it.
 var ErrSSORequired = errors.New("single sign-on is required for this account")
 
-// Login creates a session and returns the cookie token, with how long the
-// session lasts: the site's own duration, or the shorter one an
-// authentication policy gives this person.
-func Login(ctx context.Context, st *store.Store, email, password string) (string, time.Duration, error) {
+// SignIn is what a password gets: a session, or a sign-in waiting for a code
+// from the account's authenticator app.
+type SignIn struct {
+	// Session is the cookie token, and TTL how long it lasts: the site's own
+	// duration, or the shorter one an authentication policy gives this
+	// person. Both are empty while a code is still owed.
+	Session string
+	TTL     time.Duration
+	// Challenge identifies a sign-in that has passed the password and is
+	// waiting for its second step. It carries no access of its own.
+	Challenge string
+}
+
+// Login checks a password and says what it earns. An account that verifies in
+// two steps gets a challenge rather than a session: the password alone is half
+// the answer.
+func Login(ctx context.Context, st *store.Store, email, password string) (SignIn, error) {
 	if LocalCredentialsRefused(ctx) {
-		return "", 0, ErrUnauthorized
+		return SignIn{}, ErrUnauthorized
 	}
 	id, hash, _, err := st.UserByEmail(ctx, email)
 	if err != nil {
-		return "", 0, ErrUnauthorized
+		return SignIn{}, ErrUnauthorized
 	}
 	if !CheckPassword(hash, password) {
-		return "", 0, ErrUnauthorized
+		return SignIn{}, ErrUnauthorized
 	}
 	policy, err := st.AuthenticationPolicyForUser(ctx, id)
 	if err != nil {
-		return "", 0, err
+		return SignIn{}, err
 	}
 	if policy.Enforced && policy.EnforceSSO {
-		return "", 0, ErrSSORequired
+		return SignIn{}, ErrSSORequired
 	}
+	enrolment, err := st.TwoStep(ctx, id)
+	if err != nil {
+		return SignIn{}, err
+	}
+	// A policy that requires two steps holds a sign-in that has none in the
+	// same place a code would: the enrolment is what finishes it.
+	if enrolment.Confirmed || (policy.Enforced && policy.RequireTwoStep) {
+		challenge, err := randomToken()
+		if err != nil {
+			return SignIn{}, err
+		}
+		if err := st.CreateSignInChallenge(ctx, hashToken(challenge), id); err != nil {
+			return SignIn{}, err
+		}
+		return SignIn{Challenge: challenge}, nil
+	}
+	return newSession(ctx, st, id, policy)
+}
+
+// newSession mints the session an answered sign-in earns.
+func newSession(ctx context.Context, st *store.Store, userID string, policy store.AuthenticationPolicy) (SignIn, error) {
 	ttl := policy.SessionDuration(sessionTTL)
 	token, err := randomToken()
 	if err != nil {
-		return "", 0, err
+		return SignIn{}, err
 	}
-	if err := st.CreateSession(ctx, hashToken(token), id, ttl); err != nil {
-		return "", 0, err
+	if err := st.CreateSession(ctx, hashToken(token), userID, ttl); err != nil {
+		return SignIn{}, err
 	}
-	return token, ttl, nil
+	return SignIn{Session: token, TTL: ttl}, nil
+}
+
+// CompleteSignIn answers a waiting sign-in with a code from the authenticator
+// app or one of the account's recovery codes. A wrong code is counted, and
+// the challenge is thrown away once there have been too many.
+func CompleteSignIn(ctx context.Context, st *store.Store, challenge, code string, secret func(context.Context, string) (string, error)) (SignIn, error) {
+	userID, err := st.SignInChallengeUser(ctx, hashToken(challenge))
+	if err != nil {
+		return SignIn{}, err
+	}
+	plain, err := secret(ctx, userID)
+	if err != nil {
+		return SignIn{}, err
+	}
+	code = strings.TrimSpace(code)
+	matched := TOTPMatches(plain, code, time.Now())
+	if !matched {
+		// A recovery code is the way past a phone that is gone. It is
+		// spent here, so the same one cannot be used twice.
+		if err := st.UseRecoveryCode(ctx, userID, hashToken(normalizeRecoveryCode(code))); err != nil {
+			if errors.Is(err, store.ErrTwoStepCode) {
+				if failure := st.FailSignInChallenge(ctx, hashToken(challenge)); failure != nil {
+					return SignIn{}, failure
+				}
+				return SignIn{}, store.ErrTwoStepCode
+			}
+			return SignIn{}, err
+		}
+	}
+	policy, err := st.AuthenticationPolicyForUser(ctx, userID)
+	if err != nil {
+		return SignIn{}, err
+	}
+	if err := st.DeleteSignInChallenge(ctx, hashToken(challenge)); err != nil {
+		return SignIn{}, err
+	}
+	return newSession(ctx, st, userID, policy)
+}
+
+// CompleteEnrolledSignIn finishes a sign-in that was waiting on an enrolment
+// the account has now made. The code was checked as part of confirming it.
+func CompleteEnrolledSignIn(ctx context.Context, st *store.Store, challenge string) (SignIn, error) {
+	userID, err := st.SignInChallengeUser(ctx, hashToken(challenge))
+	if err != nil {
+		return SignIn{}, err
+	}
+	policy, err := st.AuthenticationPolicyForUser(ctx, userID)
+	if err != nil {
+		return SignIn{}, err
+	}
+	if err := st.DeleteSignInChallenge(ctx, hashToken(challenge)); err != nil {
+		return SignIn{}, err
+	}
+	return newSession(ctx, st, userID, policy)
+}
+
+// RecoveryCodeCount is how many recovery codes an enrolment mints. They are
+// shown once and kept as hashes.
+const RecoveryCodeCount = 10
+
+// NewRecoveryCodes mints an enrolment's recovery codes and the hashes kept
+// for them.
+func NewRecoveryCodes() ([]string, []string, error) {
+	codes := make([]string, 0, RecoveryCodeCount)
+	hashes := make([]string, 0, RecoveryCodeCount)
+	for range RecoveryCodeCount {
+		token, err := randomToken()
+		if err != nil {
+			return nil, nil, err
+		}
+		code := normalizeRecoveryCode(token[:12])
+		codes = append(codes, code)
+		hashes = append(hashes, hashToken(code))
+	}
+	return codes, hashes, nil
+}
+
+// normalizeRecoveryCode reads a code the way it was shown, whatever case it
+// was typed in and wherever the spaces went.
+func normalizeRecoveryCode(code string) string {
+	return strings.ToLower(strings.Join(strings.Fields(code), ""))
 }
 
 // LoginOIDC creates a normal opaque session for a verified external identity,

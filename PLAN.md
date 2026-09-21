@@ -156,11 +156,12 @@ restore and remove.
 - SAML single sign-on with multiple identity providers.
 - SCIM provisioning of product access, and a directory-scoped provisioning key
   (users and groups are provisioned, and `scimManaged` reflects it).
-- Authentication policies enforce single sign-on, session duration, the
-  shortest password and per-policy membership; two-step verification enrolment
-  and enforcement are still missing, as are password expiry and the rest of
-  Atlassian's strength rules, and a policy covers named people rather than a
-  group.
+- Authentication policies enforce single sign-on, two-step verification,
+  session duration, the shortest password and per-policy membership; password
+  expiry and the rest of Atlassian's strength rules are still missing, and a
+  policy covers named people rather than a group.
+- Two-step verification is an authenticator app alone: no WebAuthn, no
+  passkeys, and the key is shown as text rather than a QR image.
 - A forgotten password is replaced through a sign-in link an administrator
   issues; there is no self-service page for one.
 - Managed accounts claimed through verified domains; domain ownership exclusive

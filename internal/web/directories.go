@@ -82,6 +82,20 @@ type profilePageData struct {
 	PasswordError   string
 	PasswordMinimum int
 	PasswordManaged bool
+	// TwoStepConfigured says the site can seal a secret at all; without a
+	// credential encryption key there is nowhere safe to keep one.
+	TwoStepConfigured bool
+	TwoStepConfirmed  bool
+	TwoStepCodesLeft  int
+	// TwoStepPending is an enrolment that was started and never confirmed.
+	TwoStepPending bool
+	// TwoStepSecret and TwoStepURI are shown once, on the answer to the
+	// request that started the enrolment: they are the credential itself.
+	TwoStepSecret string
+	TwoStepURI    string
+	// TwoStepRecoveryCodes are shown once, when the enrolment is confirmed.
+	TwoStepRecoveryCodes []string
+	TwoStepError         string
 }
 
 type profileIdentityView struct {
@@ -459,6 +473,14 @@ func (h *Handler) buildProfileData(r *http.Request, user *models.User, wsID, acc
 	}
 	data.PasswordMinimum = policy.PasswordMinimum()
 	data.PasswordManaged = policy.Enforced && policy.EnforceSSO
+	enrolment, err := h.Store.TwoStep(r.Context(), user.ID)
+	if err != nil {
+		return profilePageData{}, err
+	}
+	data.TwoStepConfigured = h.ProviderSecrets != nil
+	data.TwoStepConfirmed = enrolment.Confirmed
+	data.TwoStepPending = len(enrolment.Secret) > 0 && !enrolment.Confirmed
+	data.TwoStepCodesLeft = enrolment.RecoveryCodesLeft
 	data.TokenRequestID = store.NewID("tkreq")
 	identities, err := h.Store.OIDCIdentitiesByUser(r.Context(), user.ID)
 	if err != nil {

@@ -144,6 +144,7 @@ var adminAuditActions = []adminAuditAction{
 	{Value: "user.invited", Name: "User invited"},
 	{Value: "user.profile.updated", Name: "User profile updated"},
 	{Value: "user.removed", Name: "User removed"},
+	{Value: "user.two-step.reset", Name: "Two-step verification reset"},
 	{Value: "user.restored", Name: "User restored"},
 	{Value: "user.suspended", Name: "User suspended"},
 }
@@ -985,8 +986,9 @@ func policyAuthenticationConfig(policy *models.OrganizationPolicy) *store.Authen
 // authenticationConfigFromForm reads the settings an administrator filled in.
 func authenticationConfigFromForm(r *http.Request) (*store.AuthenticationConfig, error) {
 	config := store.AuthenticationConfig{
-		EnforceSSO: r.FormValue("enforceSSO") == "true",
-		Default:    r.FormValue("default") == "true",
+		EnforceSSO:     r.FormValue("enforceSSO") == "true",
+		Default:        r.FormValue("default") == "true",
+		RequireTwoStep: r.FormValue("requireTwoStep") == "true",
 	}
 	duration := strings.TrimSpace(r.FormValue("sessionDurationMinutes"))
 	if duration == "" {
@@ -1443,13 +1445,28 @@ func (h *Handler) UpdateAdminUserStatus(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	action := r.FormValue("action")
-	if action != "suspend" && action != "restore" && action != "remove" && action != "sign-in-link" {
+	if action != "suspend" && action != "restore" && action != "remove" && action != "sign-in-link" && action != "two-step-reset" {
 		http.Error(w, "unsupported user action", http.StatusBadRequest)
 		return
 	}
 	accountID := r.PathValue("accountId")
 	if action == "sign-in-link" {
 		h.issueSignInLink(w, r, user, workspaceID, data, accountID)
+		return
+	}
+	if action == "two-step-reset" {
+		if err := h.Store.ResetDirectoryUserTwoStep(r.Context(), workspaceID, user.ID, data.Directory.ID, accountID); err != nil {
+			status := http.StatusInternalServerError
+			switch {
+			case errors.Is(err, store.ErrAdminNotFound):
+				status = http.StatusNotFound
+			case errors.Is(err, store.ErrTwoStep):
+				status = http.StatusBadRequest
+			}
+			http.Error(w, err.Error(), status)
+			return
+		}
+		http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Two-step verification reset"), http.StatusSeeOther)
 		return
 	}
 	if action == "remove" {

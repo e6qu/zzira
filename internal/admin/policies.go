@@ -38,6 +38,7 @@ type policyConfigRequest struct {
 	SessionDurationMinutes int  `json:"sessionDurationMinutes"`
 	Default                bool `json:"default"`
 	PasswordMinimumLength  int  `json:"passwordMinimumLength"`
+	RequireTwoStep         bool `json:"requireTwoStep"`
 }
 
 type policyDataRequest struct {
@@ -73,6 +74,7 @@ func policyStoreInput(input policyDataRequest) (store.PolicyInput, error) {
 			SessionDurationMinutes: config.SessionDurationMinutes,
 			Default:                config.Default,
 			PasswordMinimumLength:  config.PasswordMinimumLength,
+			RequireTwoStep:         config.RequireTwoStep,
 		}
 	}
 	return result, nil

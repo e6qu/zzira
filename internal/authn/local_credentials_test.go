@@ -69,14 +69,14 @@ func TestLocalCredentialsRefused(t *testing.T) {
 	}
 
 	// What the installation does today, and keeps doing by default.
-	passwordSession, _, err := Login(ctx, st, email, password)
+	passwordSignIn, err := Login(ctx, st, email, password)
 	if err != nil {
 		t.Fatalf("password sign-in with local credentials on: %v", err)
 	}
 	for name, request := range map[string]*http.Request{
 		"api token in basic auth": basic(),
 		"api token as bearer":     bearer(),
-		"password session":        withCookie(passwordSession),
+		"password session":        withCookie(passwordSignIn.Session),
 	} {
 		if got, err := Identify(ctx, st, request); err != nil || got != userID {
 			t.Fatalf("%s with local credentials on: %q, %v", name, got, err)
@@ -85,7 +85,7 @@ func TestLocalCredentialsRefused(t *testing.T) {
 
 	// The instance's own setting closes every one of them.
 	closed := WithoutLocalCredentials(ctx)
-	if _, _, err := Login(closed, st, email, password); err != ErrUnauthorized {
+	if _, err := Login(closed, st, email, password); err != ErrUnauthorized {
 		t.Fatalf("password sign-in with local credentials off: %v, want ErrUnauthorized", err)
 	}
 	for name, request := range map[string]*http.Request{
@@ -93,7 +93,7 @@ func TestLocalCredentialsRefused(t *testing.T) {
 		"api token as bearer":     bearer(),
 		// A session minted from a password before the switch is one of the
 		// credentials being refused, so it goes with them.
-		"password session": withCookie(passwordSession),
+		"password session": withCookie(passwordSignIn.Session),
 	} {
 		if got, err := Identify(closed, st, request); err == nil {
 			t.Fatalf("%s with local credentials off resolved %q, want refused", name, got)

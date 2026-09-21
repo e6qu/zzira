@@ -160,8 +160,8 @@ func TestAuthenticationPolicyJourney(t *testing.T) {
 
 	// Until a policy covers them, everyone signs in with a password and keeps
 	// the site's own session length.
-	if _, ttl, err := authn.Login(ctx, st, memberID+"@example.invalid", password); err != nil || ttl != 30*24*time.Hour {
-		t.Fatalf("sign-in with no policy: ttl=%s err=%v", ttl, err)
+	if signIn, err := authn.Login(ctx, st, memberID+"@example.invalid", password); err != nil || signIn.TTL != 30*24*time.Hour {
+		t.Fatalf("sign-in with no policy: ttl=%s err=%v", signIn.TTL, err)
 	}
 
 	memberPath := policyPath + "/members/" + memberID
@@ -176,7 +176,7 @@ func TestAuthenticationPolicyJourney(t *testing.T) {
 	// The policy is felt at sign-in: its member is admitted only through the
 	// identity provider, and the session it makes lasts as long as the policy
 	// says.
-	if _, _, err := authn.Login(ctx, st, memberID+"@example.invalid", password); !errors.Is(err, authn.ErrSSORequired) {
+	if _, err := authn.Login(ctx, st, memberID+"@example.invalid", password); !errors.Is(err, authn.ErrSSORequired) {
 		t.Fatalf("password sign-in under a single sign-on policy: %v, want ErrSSORequired", err)
 	}
 	_, ttl, err := authn.LoginOIDC(ctx, st, memberID, "id-token", "https://issuer.example.invalid", memberID+"-subject", "")
@@ -186,26 +186,26 @@ func TestAuthenticationPolicyJourney(t *testing.T) {
 
 	// Everyone else keeps their password until a default policy says
 	// otherwise, and then gets that policy's session length.
-	if _, ttl, err := authn.Login(ctx, st, outsiderID+"@example.invalid", password); err != nil || ttl != 30*24*time.Hour {
-		t.Fatalf("sign-in outside the policy: ttl=%s err=%v", ttl, err)
+	if signIn, err := authn.Login(ctx, st, outsiderID+"@example.invalid", password); err != nil || signIn.TTL != 30*24*time.Hour {
+		t.Fatalf("sign-in outside the policy: ttl=%s err=%v", signIn.TTL, err)
 	}
 	defaults := call(http.MethodPost, policiesPath, authenticationPolicy("Everyone else", map[string]any{
 		"sessionDurationMinutes": 60, "default": true,
 	}, "enabled"), http.StatusAccepted)
 	defaultID := defaults["data"].(map[string]any)["id"].(string)
-	if _, ttl, err := authn.Login(ctx, st, outsiderID+"@example.invalid", password); err != nil || ttl != time.Hour {
-		t.Fatalf("sign-in under the default policy: ttl=%s err=%v", ttl, err)
+	if signIn, err := authn.Login(ctx, st, outsiderID+"@example.invalid", password); err != nil || signIn.TTL != time.Hour {
+		t.Fatalf("sign-in under the default policy: ttl=%s err=%v", signIn.TTL, err)
 	}
 	// A policy of one's own wins over the default.
-	if _, _, err := authn.Login(ctx, st, memberID+"@example.invalid", password); !errors.Is(err, authn.ErrSSORequired) {
+	if _, err := authn.Login(ctx, st, memberID+"@example.invalid", password); !errors.Is(err, authn.ErrSSORequired) {
 		t.Fatalf("the default policy overrode the member's own: %v", err)
 	}
 	// A disabled policy enforces nothing.
 	call(http.MethodPut, policiesPath+"/"+defaultID, authenticationPolicy("Everyone else", map[string]any{
 		"sessionDurationMinutes": 60, "default": true,
 	}, "disabled"), http.StatusAccepted)
-	if _, ttl, err := authn.Login(ctx, st, outsiderID+"@example.invalid", password); err != nil || ttl != 30*24*time.Hour {
-		t.Fatalf("sign-in under a disabled default policy: ttl=%s err=%v", ttl, err)
+	if signIn, err := authn.Login(ctx, st, outsiderID+"@example.invalid", password); err != nil || signIn.TTL != 30*24*time.Hour {
+		t.Fatalf("sign-in under a disabled default policy: ttl=%s err=%v", signIn.TTL, err)
 	}
 
 	// Membership moves with the person: joining a second policy leaves the
@@ -217,8 +217,8 @@ func TestAuthenticationPolicyJourney(t *testing.T) {
 	}
 	call(http.MethodDelete, policiesPath+"/"+defaultID+"/members/"+memberID, nil, http.StatusNoContent)
 	call(http.MethodDelete, policiesPath+"/"+defaultID+"/members/"+memberID, nil, http.StatusNotFound)
-	if _, ttl, err := authn.Login(ctx, st, memberID+"@example.invalid", password); err != nil || ttl != 30*24*time.Hour {
-		t.Fatalf("sign-in after leaving every policy: ttl=%s err=%v", ttl, err)
+	if signIn, err := authn.Login(ctx, st, memberID+"@example.invalid", password); err != nil || signIn.TTL != 30*24*time.Hour {
+		t.Fatalf("sign-in after leaving every policy: ttl=%s err=%v", signIn.TTL, err)
 	}
 
 	// A policy can ask for longer passwords than the site does, and that is

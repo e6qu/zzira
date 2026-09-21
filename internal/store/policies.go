@@ -42,6 +42,10 @@ type AuthenticationConfig struct {
 	SessionDurationMinutes int `json:"sessionDurationMinutes"`
 	// Default marks the policy everyone who is in no other one gets.
 	Default bool `json:"default"`
+	// RequireTwoStep makes the people this policy covers verify in two
+	// steps: they are asked to set up an authenticator app the next time
+	// they sign in with a password, and cannot get past it without one.
+	RequireTwoStep bool `json:"requireTwoStep"`
 	// PasswordMinimumLength is the shortest password the people this policy
 	// covers may set. It is read where a password is set, not at sign-in: a
 	// password already in use goes on working until it is replaced.

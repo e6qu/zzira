@@ -50,14 +50,15 @@ func TestChangePassword(t *testing.T) {
 		return r
 	}
 
-	here, _, err := Login(ctx, st, email, password)
+	first, err := Login(ctx, st, email, password)
 	if err != nil {
 		t.Fatal(err)
 	}
-	elsewhere, _, err := Login(ctx, st, email, password)
+	second, err := Login(ctx, st, email, password)
 	if err != nil {
 		t.Fatal(err)
 	}
+	here, elsewhere := first.Session, second.Session
 
 	// What the rules refuse leaves the password as it was.
 	var refused ErrPasswordRefused
@@ -79,17 +80,17 @@ func TestChangePassword(t *testing.T) {
 	if err := ChangePassword(ctx, st, userID, password, string(long), here); !errors.As(err, &refused) {
 		t.Fatalf("change to a password past where bcrypt reads: %v, want ErrPasswordRefused", err)
 	}
-	if _, _, err := Login(ctx, st, email, password); err != nil {
+	if _, err := Login(ctx, st, email, password); err != nil {
 		t.Fatalf("the refused changes took the old password away: %v", err)
 	}
 
 	if err := ChangePassword(ctx, st, userID, password, replacement, here); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := Login(ctx, st, email, password); !errors.Is(err, ErrUnauthorized) {
+	if _, err := Login(ctx, st, email, password); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("the old password still signs in: %v", err)
 	}
-	if _, _, err := Login(ctx, st, email, replacement); err != nil {
+	if _, err := Login(ctx, st, email, replacement); err != nil {
 		t.Fatalf("the new password does not sign in: %v", err)
 	}
 
@@ -165,7 +166,7 @@ func TestPasswordLink(t *testing.T) {
 	if err := SetPasswordWithLink(ctx, st, replaced, "a-good-password"); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := Login(ctx, st, email, "a-good-password"); err != nil {
+	if _, err := Login(ctx, st, email, "a-good-password"); err != nil {
 		t.Fatalf("the password the link set does not sign in: %v", err)
 	}
 	// The link is spent.

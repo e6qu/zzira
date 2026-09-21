@@ -1068,7 +1068,7 @@ func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
 	}
-	token, ttl, err := authn.Login(r.Context(), h.Store, r.PostFormValue("email"), r.PostFormValue("password"))
+	signIn, err := authn.Login(r.Context(), h.Store, r.PostFormValue("email"), r.PostFormValue("password"))
 	if errors.Is(err, authn.ErrSSORequired) {
 		// An authentication policy admits this person only through the
 		// identity provider, which is something they can act on: the page
@@ -1083,7 +1083,13 @@ func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 		writePageStatus(w, "page_login", loginPageData{Error: "Incorrect email or password.", Providers: h.loginProviders(), Password: !authn.LocalCredentialsRefused(r.Context())}, http.StatusUnauthorized)
 		return
 	}
-	authn.SetSessionCookieFor(w, token, ttl)
+	if signIn.Challenge != "" {
+		// The password is half the answer: this account verifies in two
+		// steps, and the rest is a code.
+		h.startSignInChallenge(w, r, signIn.Challenge)
+		return
+	}
+	authn.SetSessionCookieFor(w, signIn.Session, signIn.TTL)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
