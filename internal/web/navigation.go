@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -8,8 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 const projectPreferenceCookie = "zzira_project"
@@ -112,6 +116,14 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 		}
 		if project.ProjectTypeKey == "software" {
 			features, featureErr := h.Store.ProjectFeatures(r.Context(), workspaceID, project.ID)
+			// A project can be archived, trashed or deleted between the list
+			// above and this read. It is then no longer part of anyone's
+			// navigation, and a reader who happened to load a page during
+			// that moment should get the page rather than an error about a
+			// project that is gone.
+			if errors.Is(featureErr, pgx.ErrNoRows) {
+				continue
+			}
 			if featureErr != nil {
 				return nil, fmt.Errorf("load features for project %s: %w", project.Key, featureErr)
 			}
@@ -176,6 +188,11 @@ func (h *Handler) workspaceNavigation(r *http.Request, workspaceID, preferred st
 	navigation.ProjectAdminAppModules = appModulesShown(navigation.ProjectAdminAppModules, projectFacts)
 	if currentUser != nil && navigation.Current != nil {
 		navigation.CanManageCurrentProject, err = h.Store.CanAdministerProject(r.Context(), workspaceID, currentUser.ID, navigation.Current.Project.ID)
+		// A project that went away while this page was being built is not
+		// one anybody administers, which is an answer rather than a failure.
+		if errors.Is(err, store.ErrPermissionSchemeNotFound) {
+			navigation.CanManageCurrentProject, err = false, nil
+		}
 		if err != nil {
 			return nil, fmt.Errorf("resolve project administration: %w", err)
 		}
