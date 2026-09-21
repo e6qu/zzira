@@ -32,6 +32,7 @@ import (
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/mailer"
 	"github.com/e6qu/zzira/internal/notifybus"
+	"github.com/e6qu/zzira/internal/scim"
 	"github.com/e6qu/zzira/internal/secretbox"
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/e6qu/zzira/internal/syncapi"
@@ -205,6 +206,7 @@ func main() {
 		Store: st, BaseURL: api.BaseURL, WorkspaceSlug: workspaceSlug,
 		InvitationNotificationsConfigured: smtpSender != nil,
 	}
+	scimAPI := &scim.Handler{Store: st, BaseURL: api.BaseURL, WorkspaceSlug: workspaceSlug}
 	bus := notifybus.New()
 	sse := &syncapi.SSEHandler{Store: st, Bus: bus, WorkspaceSlug: workspaceSlug}
 	sync := &syncapi.Handler{Store: st, WorkspaceSlug: workspaceSlug}
@@ -833,6 +835,24 @@ func main() {
 	})
 	mux.Handle("/gateway/api/automation/public/jira/", automationAPI)
 	mux.Handle("/automation/public/jira/", automationAPI)
+	// SCIM 2.0 provisioning for one directory: an identity provider creates,
+	// updates and deactivates its people and groups. These are written out one
+	// by one rather than in a loop so the route guard sees every pattern.
+	mux.HandleFunc("GET /scim/directory/{directoryId}/ServiceProviderConfig", scimAPI.ServiceProviderConfig)
+	mux.HandleFunc("GET /scim/directory/{directoryId}/ResourceTypes", scimAPI.ResourceTypes)
+	mux.HandleFunc("GET /scim/directory/{directoryId}/Schemas", scimAPI.Schemas)
+	mux.HandleFunc("GET /scim/directory/{directoryId}/Users", scimAPI.Users)
+	mux.HandleFunc("POST /scim/directory/{directoryId}/Users", scimAPI.Users)
+	mux.HandleFunc("GET /scim/directory/{directoryId}/Users/{userId}", scimAPI.User)
+	mux.HandleFunc("PUT /scim/directory/{directoryId}/Users/{userId}", scimAPI.User)
+	mux.HandleFunc("PATCH /scim/directory/{directoryId}/Users/{userId}", scimAPI.User)
+	mux.HandleFunc("DELETE /scim/directory/{directoryId}/Users/{userId}", scimAPI.User)
+	mux.HandleFunc("GET /scim/directory/{directoryId}/Groups", scimAPI.Groups)
+	mux.HandleFunc("POST /scim/directory/{directoryId}/Groups", scimAPI.Groups)
+	mux.HandleFunc("GET /scim/directory/{directoryId}/Groups/{groupId}", scimAPI.Group)
+	mux.HandleFunc("PUT /scim/directory/{directoryId}/Groups/{groupId}", scimAPI.Group)
+	mux.HandleFunc("PATCH /scim/directory/{directoryId}/Groups/{groupId}", scimAPI.Group)
+	mux.HandleFunc("DELETE /scim/directory/{directoryId}/Groups/{groupId}", scimAPI.Group)
 	mux.HandleFunc("GET /admin/v1/orgs", adminAPI.Organizations)
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}", adminAPI.Organization)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories", adminAPI.Directories)

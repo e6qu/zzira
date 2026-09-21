@@ -134,7 +134,7 @@ All operations of the pinned Organizations API (`api/specs/organization-admin.js
 | OpenID Connect SSO (Google, Microsoft Entra ID, Atlassian, any discovered OIDC provider) | Built; see [shauth-sso.md](shauth-sso.md). |
 | IP allowlists | Built and enforced. |
 | SAML SSO | Missing. |
-| SCIM user provisioning | Missing. The service management organization bean always reports `scimManaged: false`. |
+| SCIM user provisioning | `/scim/directory/{directoryId}` serves SCIM 2.0 Users and Groups ([SCIM.md](SCIM.md)). The organization bean reports `scimManaged: true` once a provider has written to the directory. |
 | Authentication policies (enforced SSO, two-step verification, password rules, session duration) | Missing. `mfaEnabled` is stored and reported but nothing enrolls or enforces it. |
 | Data security policies | Missing. |
 
@@ -144,7 +144,7 @@ Tracked in [PLAN.md](../PLAN.md).
 
 - One server serves one site; an organization cannot hold several sites, and organization discovery returns only that site's organization.
 - SAML single sign-on.
-- SCIM user and group provisioning, including identity-provider-driven deactivation.
+- SCIM provisions people and groups ([SCIM.md](SCIM.md)); product access is not provisioned with them, and a provider authenticates as an organization administrator rather than with a directory-scoped key.
 - Authentication policies: enforced SSO, two-step verification, password requirements, session duration, and policy assignment to users.
 - Account claiming from verified domains (managed vs unmanaged accounts), and domain ownership checks across organizations.
 - The Atlassian user management API (`/users/{account_id}/manage/...`: profile, email, lifecycle, API tokens).

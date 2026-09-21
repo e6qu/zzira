@@ -153,7 +153,8 @@ Entra, Atlassian, custom), DNS domain verification, IP allowlists, and managed
 profile edit, suspend, restore and remove.
 
 - SAML single sign-on with multiple identity providers.
-- SCIM 2.0 user and group provisioning (`scimManaged` reflects it).
+- SCIM provisioning of product access, and a directory-scoped provisioning key
+  (users and groups are provisioned, and `scimManaged` reflects it).
 - Authentication policies: enforced SSO, two-step verification enrolment and
   enforcement, password rules, session duration, per-policy membership.
 - Managed accounts claimed through verified domains; domain ownership exclusive
