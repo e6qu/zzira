@@ -109,9 +109,12 @@ type CumulativeFlow struct {
 
 // CycleSample is one work item's trip from starting to done.
 type CycleSample struct {
-	Key          string
-	Summary      string
-	CompletedAt  string
+	Key         string
+	Summary     string
+	CompletedAt string
+	// IssueType is the work type's name, which the cycle time report groups
+	// by. The control chart leaves it empty.
+	IssueType    string
 	CycleSeconds int64
 }
 

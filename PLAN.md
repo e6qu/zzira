@@ -132,7 +132,6 @@ but nothing shows or uses it.
 
 ## 4. Boards, reports and DORA
 
-- Reports: deployment frequency and cycle time as pages of their own.
 - DORA: which work items count as incidents (environments and pipelines are
   configured per project), and excluded periods.
 - Dashboards: layout and favourites over REST, inline gadget item properties,

@@ -8,10 +8,12 @@ Project reports chart delivery, sprint, flow and issue-analysis data. They count
 |---|---|---|---|
 | Report list | `/projects/{key}/reports` | all | The built-in reports, with the agile ones offered on software projects only, then a card for each `jira:report` app module labelled with its category ([APPS.md](APPS.md)) |
 | DORA metrics | `/projects/{key}/reports/dora` | all | `window` of 7, 30 (default) or 90 days |
+| Deployment frequency | `/projects/{key}/reports/deployment-frequency` | all | `window` of 7, 30 (default) or 90 days; `group` of day (default), week or month |
 | Sprint report | `/projects/{key}/reports/sprint` | software | A scrum board and one started sprint |
 | Velocity chart | `/projects/{key}/reports/velocity` | software | A scrum board |
 | Cumulative flow diagram | `/projects/{key}/reports/cumulative-flow` | software | Any board; 14, 30 (default) or 90 days |
 | Control chart | `/projects/{key}/reports/control-chart` | software | Any board; 14, 30 (default) or 90 days |
+| Cycle time | `/projects/{key}/reports/cycle-time` | software | Any board; 14, 30 (default) or 90 days |
 | Epic report | `/projects/{key}/reports/epic` | software | An epic and a board |
 | Version report | `/projects/{key}/reports/version` | software | An unarchived version and a board |
 | Epic burndown | `/projects/{key}/reports/epic-burndown` | software | An epic and a board with started sprints |
@@ -56,6 +58,21 @@ A report draws only from data that already exists, so a site being filled for a 
 | Service desk report | Requests created on the desk inside the window. CSAT also needs satisfaction ratings, and the breach count needs SLA cycles that have breached. |
 
 Each report also counts only work the viewer can browse, so a demo account needs Browse projects on the project (and, for the service report, agent access to the desk).
+
+## Deployment frequency and cycle time
+
+The DORA page totals four measures; two of them also answer a question of
+their own.
+
+- **Deployment frequency** buckets the deployments the project counts as
+  production (see the DORA mapping below) by day, week or month across the
+  window, with the weekly rate and the failed or rolled-back count beside it.
+  A week starts on Monday.
+- **Cycle time** reads a board's completed work the way the control chart
+  does -- first move into an in-progress status to the move into a done one --
+  and reports the 50th, 85th and 95th percentiles for the board and for each
+  work type, with the longest item of each type. Percentiles are nearest-rank,
+  so every one of them is a time some work item actually took.
 
 ## DORA metrics
 
@@ -219,7 +236,6 @@ Service project agents and managers see, for the requests the desk received in t
 
 - DORA counts the incidents Jira Service Management raises; which work items count as incidents cannot be configured.
 - DORA has no excluded-period calendars.
-- Deployment frequency and cycle time have no page of their own; the DORA report carries deployment frequency as a number and the control chart carries cycle time as a distribution.
 
 Remaining work is tracked in [PLAN.md](../PLAN.md).
 
