@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/authz"
@@ -40,11 +41,28 @@ func selectedWorkspaceSlug(configured string, r *http.Request) (string, bool) {
 	return requested, true
 }
 
+// slowSync is how long a delta-sync read may take before it is worth knowing
+// about. A replica's own client gives up after five seconds and tells its
+// person the site is offline, so anything approaching that is a fault the
+// server should be able to account for afterwards.
+const slowSync = 2 * time.Second
+
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	// Only what this server itself worked out goes into the line: a request
+	// carries whatever text its sender chose, and a log is not the place to
+	// find out.
+	started := time.Now()
+	var reported struct{ since, limit, delivered int64 }
+	defer func() {
+		if elapsed := time.Since(started); elapsed > slowSync {
+			log.Printf("syncapi: slow read: %s since=%d limit=%d delivered=%d",
+				elapsed.Round(time.Millisecond), reported.since, reported.limit, reported.delivered)
+		}
+	}()
 	userID, err := authn.Identify(r.Context(), h.Store, r)
 	if err != nil {
 		// A Basic challenge can suspend fetch() behind browser credential UI.
@@ -93,6 +111,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotModified, nil)
 		return
 	}
+	reported.since, reported.limit = since, limit
 	actions, to, err := h.Store.ActionPageSince(r.Context(), workspaceID, userID, since, limit)
 	if err != nil {
 		log.Printf("%s: %v", "syncapi.go", err)
@@ -107,6 +126,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	reported.delivered = int64(len(actions))
 	resp := models.SyncResponse{
 		Workspace:       wsSlug,
 		From:            since,

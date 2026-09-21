@@ -98,3 +98,36 @@ test('a second field saved before the first answers is shown, not swallowed', as
   expect(bean.fields.duedate).toBe('2027-04-05');
   expect(bean.fields.labels).toEqual([`quick-${stamp}`]);
 });
+
+// A save answers with the whole work item view. What somebody is part way
+// through typing into another field must survive that: it used to be replaced
+// by the server's value, and the next click then saved an empty box.
+test('a save landing does not wipe the box being filled in next to it', async ({ page, request }) => {
+  const auth = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const created = await request.post('/rest/api/3/issue', {
+    headers: auth,
+    data: { fields: { project: { key: 'ZZ' }, summary: `Typing ${stamp}`, issuetype: { name: 'Task' } } },
+  });
+  expect(created.status()).toBe(201);
+  const key = (await created.json()).key as string;
+
+  await login(page);
+  await page.goto(`/browse/${key}`);
+  const labels = page.locator('#field-labels');
+  await labels.fill(`typing-${stamp}`);
+  await labels.locator('xpath=..').getByRole('button', { name: 'Save labels' }).click();
+  // Still typing the next field while that save is on its way back.
+  await page.locator('#field-duedate').fill('2027-07-08');
+  await expect(page.locator('#field-labels')).toHaveValue(`typing-${stamp}`);
+  await page.waitForTimeout(2000);
+  // The answer has landed and the box still holds what was typed into it.
+  await expect(page.locator('#field-duedate')).toHaveValue('2027-07-08');
+
+  await page.locator('#field-duedate').locator('xpath=..').getByRole('button', { name: 'Save due date' }).click();
+  await expect(page.locator('#field-duedate')).toHaveValue('2027-07-08');
+  await expect.poll(async () => {
+    const bean = await (await request.get(`/rest/api/3/issue/${key}`, { headers: auth })).json();
+    return { due: bean.fields.duedate, labels: bean.fields.labels };
+  }, { timeout: 15_000 }).toEqual({ due: '2027-07-08', labels: [`typing-${stamp}`] });
+});

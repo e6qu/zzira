@@ -686,6 +686,9 @@ func main() {
 	mux.HandleFunc("POST /issues/{key}/bulk/transition", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.SubmitBulkIssueTransition(w, r, r.PathValue("key"))
 	})
+	mux.HandleFunc("GET /issues/{key}/bulk/fields", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.BulkIssueFields(w, r, r.PathValue("key"))
+	})
 	mux.HandleFunc("GET /issues/{key}/bulk/{task}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.BulkIssueTask(w, r, r.PathValue("key"), r.PathValue("task"))
 	})

@@ -10,6 +10,8 @@ LOADTEST_ADMIN_DSN=postgres://…/postgres LOADTEST_DSN=postgres://…/zzira_loa
 
 `LOADTEST_KEEP=1` leaves the seeded database behind, which is how a slow number here is taken apart with `EXPLAIN (ANALYZE, BUFFERS)` afterwards.
 
+A million actions is about 7 GB of database. The run drops it at the end, but a Postgres in a virtual machine (Podman, Docker Desktop) keeps the space: its disk image grows and does not shrink by itself. `podman machine ssh sudo fstrim -av` gives it back.
+
 What the tool does:
 1. Drops and recreates the `zzira_load` database, then migrates it.
 2. Serves the real handlers in-process.
@@ -50,6 +52,14 @@ Reading the million-action workspace while 8 writers work on it: 117 writes per 
 Postgres compiles a plan whose estimated cost crosses `jit_above_cost`, and the estimate for the sync page crosses it at any real size: the permission filter is a large hand-written predicate, and the planner costs it against the whole table. Compiling it took **1.08 s of the 1.14 s** a cold catch-up spent at a million actions — 329 functions, emitted and optimized on every execution, to read 500 rows.
 
 `store.Open` therefore starts every connection with `jit=off` (a DSN that sets `jit` itself is left alone). The same query, same plan, same rows: **1,145 ms → 54 ms**. This is why the table above is flat where the earlier one was not; the read path had always been a key-range scan, and the compiler was the thing that grew.
+
+## When a read is slow
+
+A replica's own client gives up on a sync after five seconds and tells its
+person the site is offline. The server therefore logs any delta-sync read that
+takes longer than two seconds, with how long it took, where the caller was up
+to and how many actions it carried -- and nothing the caller wrote, because a
+log is not the place to find out what a sender chose to put in a URL.
 
 ## Limits
 

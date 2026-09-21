@@ -793,6 +793,34 @@
     reopenIssueSections(open);
     rootRenderCount++;
   }
+  // A save answers with the whole work item view, so it replaces the boxes of
+  // every other field with the server's values -- including one somebody is
+  // part way through filling in. What is typed and not yet sent is carried
+  // across the swap; what was sent is not, because the answer is the truth
+  // about it.
+  let typedBeforeSwap = null;
+  document.body.addEventListener('htmx:configRequest', (event) => {
+    const form = event.detail && event.detail.elt && event.detail.elt.closest && event.detail.elt.closest('form');
+    if (form) form.removeAttribute('data-dirty');
+  });
+  function typedValues(root) {
+    const typed = {};
+    root.querySelectorAll('form[data-dirty="true"] input[id], form[data-dirty="true"] textarea[id], form[data-dirty="true"] select[id]').forEach((field) => {
+      typed[field.id] = field.value;
+    });
+    return typed;
+  }
+  function restoreTyped(typed) {
+    if (!typed) return;
+    Object.keys(typed).forEach((id) => {
+      const field = document.getElementById(id);
+      if (!field || field.value === typed[id]) return;
+      field.value = typed[id];
+      const form = field.closest('form');
+      if (form) form.dataset.dirty = 'true';
+    });
+  }
+
   let sectionsBeforeSwap = null;
   document.body.addEventListener('htmx:beforeSwap', (event) => {
     const detail = event.detail;
@@ -810,6 +838,8 @@
         return;
       }
     }
+    const view = holder ? document.getElementById('issue-root') : null;
+    typedBeforeSwap = view ? typedValues(view) : null;
     sectionsBeforeSwap = holder ? openIssueSections() : null;
   });
   document.body.addEventListener('htmx:afterSwap', (event) => {
@@ -821,6 +851,8 @@
       // of anything: drop it rather than letting it undo what was saved.
       pendingRootHtml = null;
     }
+    restoreTyped(typedBeforeSwap);
+    typedBeforeSwap = null;
     if (!sectionsBeforeSwap) return;
     reopenIssueSections(sectionsBeforeSwap);
     sectionsBeforeSwap = null;
@@ -847,7 +879,9 @@
       pendingRootHtml = null;
       return; // stale replica render: the DOM already has newer data
     }
+    const typed = typedValues(root);
     replaceIssueRoot(root, html);
+    restoreTyped(typed);
     pendingRootHtml = null;
     hydrate(document.getElementById('issue-root'));
   }

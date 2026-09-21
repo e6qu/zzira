@@ -139,7 +139,10 @@ See [PLAN.md](../PLAN.md).
 **Edit selected** offers a field per fieldset: tick a field and fill its box.
 The custom fields are the ones shared by every work type in the project,
 because the selection is whatever is ticked -- a field only some types carry
-would fail for the rest. What a field is, and whether it may be set at all, is
+would fail for the rest. The custom fields are fetched when the
+editor is opened, not with the page around it: reading them means reading the
+whole site's create metadata, and a page of work items should not pay for an
+editor nobody opened. What a field is, and whether it may be set at all, is
 read from the project when the edit is submitted rather than taken from the
 form, so a form naming another field changes nothing. An emptied box clears
 the field, as the single-item editor does; a date and time is read as UTC.

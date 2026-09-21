@@ -106,6 +106,29 @@ func (h *Handler) bulkCustomFields(ctx context.Context, workspaceID, userID, pro
 	return fields, nil
 }
 
+// BulkIssueFields answers with the custom fields the bulk editor can set,
+// which the editor asks for when it is opened. It is not part of the
+// navigator page: reading them means reading the whole site's create
+// metadata, and a page of work items should not pay for an editor nobody
+// opened.
+func (h *Handler) BulkIssueFields(w http.ResponseWriter, r *http.Request, projectKey string) {
+	user, workspaceID, ok := h.requireBulkChange(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByKey(r.Context(), workspaceID, projectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	fields, err := h.bulkCustomFields(r.Context(), workspaceID, user.ID, project.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeFragment(w, "bulk_custom_fields", struct{ Fields []bulkCustomField }{Fields: fields})
+}
+
 // bulkCustomFieldOperation reads one custom field's value out of the form, in
 // the shapes the update command takes: an option by id, a list of options by
 // id, a list of strings, a number, or text. An empty value clears the field,
