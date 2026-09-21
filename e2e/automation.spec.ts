@@ -882,3 +882,55 @@ test('admin builds a rule that raises a follow-up work item', async ({ page }) =
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
 });
+
+// Releasing a version is not something that happens to a work item, so the
+// rule it starts has none: it raises one instead, in the project it names.
+test('admin builds a rule that runs when a version is released', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const projectKey = `VR${stamp.toString(36).toUpperCase().slice(-8)}`;
+  const me = await (await page.request.get('/rest/api/3/myself', { headers })).json();
+  expect((await page.request.post('/rest/api/3/project', {
+    headers, data: { key: projectKey, name: `Releases ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' },
+  })).status()).toBe(201);
+  const projectID = String((await (await page.request.get(`/rest/api/3/project/${projectKey}`, { headers })).json()).id);
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E release ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('jira.version.event.trigger:released');
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.create:it_task');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('Write release notes for {{version.name}}');
+  await page.getByRole('combobox', { name: 'Project for created work', exact: true }).first().selectOption(projectID);
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  await expect(page.getByRole('combobox', { name: 'Trigger', exact: true })).toHaveValue('jira.version.event.trigger:released');
+  await expect(page.getByRole('combobox', { name: 'Project for created work', exact: true }).first()).toHaveValue(projectID);
+  await page.goto('/settings/automation');
+  await expect(page.getByRole('article').filter({ hasText: name })).toContainText('Version released');
+
+  // A version that is only planned starts nothing; releasing it does.
+  const version = await page.request.post('/rest/api/3/version', { headers, data: { name: `2.0 ${stamp}`, projectId: Number(projectID) } });
+  expect(version.status()).toBe(201);
+  const versionID = (await version.json()).id;
+  const raised = async () => {
+    const found = await (await page.request.get(`/rest/api/3/search/jql?fields=summary&jql=${encodeURIComponent(`project = ${projectKey}`)}`, { headers })).json();
+    return (found.issues ?? []).map((issue: any) => issue.fields?.summary ?? '');
+  };
+  await page.waitForTimeout(4000);
+  expect(await raised()).toEqual([]);
+
+  expect((await page.request.put(`/rest/api/3/version/${versionID}`, { headers, data: { released: true } })).status()).toBe(200);
+  await expect.poll(raised, { timeout: 20_000 }).toContain(`Write release notes for 2.0 ${stamp}`);
+  await page.goto(ruleURL);
+  await expect(page.locator('.automation-audit tbody')).toContainText('SUCCESS');
+
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+  expect((await page.request.delete(`/rest/api/3/project/${projectKey}?enableUndo=false`, { headers })).status()).toBe(204);
+});

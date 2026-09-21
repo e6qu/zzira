@@ -280,6 +280,12 @@ type IssueUpsertPayload struct {
 
 type DeletePayload struct {
 	Reason string `json:"reason"`
+	// Key, Summary and ProjectID say what went. A deletion is the one event
+	// whose subject cannot be read back afterwards, so what a rule or a
+	// reader needs to name it travels with the action.
+	Key       string `json:"key,omitempty"`
+	Summary   string `json:"summary,omitempty"`
+	ProjectID string `json:"projectId,omitempty"`
 }
 
 // SyncResponse is the /sync wire contract.

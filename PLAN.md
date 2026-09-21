@@ -175,6 +175,8 @@ restore and remove.
 ZZIRA runs the event, scheduled, manual and incoming-webhook triggers, the
 condition catalog, and 14 action types including web requests and page creation.
 
+- Triggers for Confluence content and for work entering or leaving a sprint;
+  work deleted, work moved, versions and sprints are covered.
 - Connections: execute actions through stored connections (auth, secrets,
   rotation).
 - Usage limits: per-site monthly execution quota, usage page, global vs

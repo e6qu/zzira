@@ -75,6 +75,10 @@ saving is turned off; change such rules through the API.
 | `jira.issue.event.trigger:assigned` | optional `jql` | The assignee changes, including to nobody |
 | `jira.issue.attachment.added` | optional `jql` | An attachment is added, for the work item it was added to |
 | `jira.webhook.trigger` | `issuesFromWebhook` | `POST /pro/hooks/{token}` |
+| `jira.issue.event.trigger:moved` | optional `jql` | A work item moves to another project, for the work item that moved |
+| `jira.issue.event.trigger:deleted` | none | A work item is deleted; the run has no work item and reads `{{deletedIssue.*}}` |
+| `jira.version.event.trigger:created`, `:updated`, `:released` | none | A version is created, changed, or released; the run has no work item and reads `{{version.*}}` |
+| `jira.sprint.event.trigger:started`, `:completed` | none | A sprint starts or completes; the run has no work item and reads `{{sprint.*}}` |
 | `jira.manual.trigger.issue.action` | `inputPrompts` (`displayName`, `inputType`, `required`, `variableName`) | Invoked through the API |
 
 **Scheduling.** Fixed intervals measure elapsed time, so they ignore
@@ -87,6 +91,19 @@ or as a top-level `cronExpression`, and runs in the rule's timezone.
 - Local times skipped by a daylight-saving change do not fire.
 - A missed time runs once.
 - Disabling a rule clears its next run time.
+
+**Events with no work item.** A deletion, a version and a sprint do not happen
+to a work item a rule can read: the deleted one is gone, and the others are not
+work items at all. Such a rule runs once, with no work item, as an incoming
+webhook that named none does -- so it takes no JQL (400 through the API, a
+refusal in the editor), and an action that needs a work item fails and says so.
+Raising work and sending a request are the two that do not. What the event
+happened to travels with the run rather than being read back later, because by
+then the deleted work item is gone and the version is whatever it is now.
+
+A version reports its release once: saving a version that is already released
+is an update, not another release. A sprint reports starting and completing the
+same way, from the state it was in before the change.
 
 **Events.** The worker reads the action log in order and queues one run per rule
 and event, so a retried batch never repeats a run. Enabling a rule does not
@@ -148,7 +165,7 @@ values. Most actions set a desired state, so a replayed action does nothing.
 | `jira.issue.log-work` | `duration` (e.g. `3h 30m`), optional `comment` | Uses the site's time tracking settings; zero or less stops the rule |
 | `jira.issue.delete` | `{}` | Needs Delete issues. Sub-tasks are handled as in a normal delete. Nothing after it runs |
 | `jira.issue.create-subtask` | `summary` | Uses the scheme's sub-task type. A sub-task with the same summary counts as done. Fails on a sub-task, or when the project has no sub-task type |
-| `jira.issue.create` | `issueTypeId`, `summary` | Creates in the same project with a type from the project's scheme, not a sub-task type. The same type and summary already existing counts as done |
+| `jira.issue.create` | `issueTypeId`, `summary`, optional `projectId` | Creates with a type from the project's scheme, not a sub-task type. The project is the one named, else the triggering work item's, else the single project the rule is scoped to; without any of those the action fails rather than the run. The same type and summary already existing counts as done |
 | `jira.issue.link` | `linkTypeId`, `issueKey` | The named item takes the inward side. Existing links and self-links count as done; a key from another site fails |
 | `jira.issue.email` | `recipient` (`assignee`, `reporter`, `watchers`), `body` | Plain text through the mail outbox. Subject is key and summary. Skips people without an address and deactivated accounts |
 | `jira.issue.outgoing-webhook` | `method` (GET, POST, PUT, DELETE), `url` | Sends the request; POST and PUT carry the work item in Jira format (or `{}`). Response is `{{webResponse}}` / `{{webResponse.status}}` (64 KiB kept). Non-2xx fails; private-network hosts are refused; 20 s timeout |
@@ -179,6 +196,11 @@ actions) once for each related item the actor can see.
 `{{triggerIssue.key}}`, `{{triggerIssue.summary}}`, `{{rule.name}}`,
 `{{now}}`, `{{now.jiraDate}}`, `{{webResponse}}`, `{{webResponse.body}}`,
 `{{webResponse.status}}`, `{{webhookData}}` and `{{webhookData.<path>}}`.
+
+An event with no work item carries what it happened to:
+`{{deletedIssue.key}}`, `{{deletedIssue.summary}}`, `{{deletedIssue.reason}}`,
+`{{version.name}}`, `{{version.released}}`, `{{sprint.name}}`,
+`{{sprint.goal}}`, `{{sprint.state}}`, and any other path into them.
 
 The initiator is whoever made the change behind an event run, or whoever
 invoked a manual rule. Unknown values render empty. Rendered text is limited to
@@ -213,7 +235,8 @@ See [PLAN.md](../PLAN.md).
 - Connections: stored, returned and redacted by the API, but no action uses
   them.
 - Usage limits: no monthly execution quota or per-rule usage tracking.
-- Triggers for work deleted or moved, versions, sprints and Confluence.
+- Triggers for Confluence content, and for work items entering or leaving a
+  sprint.
 - The rest of Jira's trigger, condition, action and branch catalog, including
   JQL branches, for-each branches, lookup/create variables and custom web
   request bodies and headers.

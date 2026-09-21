@@ -401,11 +401,11 @@ func (s *Store) DeleteIssue(ctx context.Context, actorID, workspaceID, issueID, 
 		return nil, nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var projectID, issueKey string
+	var projectID, issueKey, issueSummary string
 	var securityLevelID *string
 	if err := tx.QueryRow(ctx,
-		`SELECT project_id, key, security_level_id FROM issues WHERE id=$1 AND workspace_id=$2 FOR UPDATE`,
-		issueID, workspaceID).Scan(&projectID, &issueKey, &securityLevelID); err != nil {
+		`SELECT project_id, key, summary, security_level_id FROM issues WHERE id=$1 AND workspace_id=$2 FOR UPDATE`,
+		issueID, workspaceID).Scan(&projectID, &issueKey, &issueSummary, &securityLevelID); err != nil {
 		return nil, nil, err
 	}
 	rows, err := tx.Query(ctx, `SELECT blob_ref FROM attachments WHERE issue_id=$1 ORDER BY id`, issueID)
@@ -436,7 +436,9 @@ func (s *Store) DeleteIssue(ctx context.Context, actorID, workspaceID, issueID, 
 	if err != nil {
 		return nil, nil, err
 	}
-	payload, err := json.Marshal(models.DeletePayload{Reason: reason})
+	payload, err := json.Marshal(models.DeletePayload{
+		Reason: reason, Key: issueKey, Summary: issueSummary, ProjectID: projectID,
+	})
 	if err != nil {
 		return nil, nil, err
 	}

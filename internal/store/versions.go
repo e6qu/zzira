@@ -85,16 +85,20 @@ func lockVersionProject(ctx context.Context, tx pgx.Tx, ws, project string) erro
 	var id string
 	return tx.QueryRow(ctx, `SELECT id FROM projects WHERE workspace_id=$1 AND id=$2 FOR UPDATE`, ws, project).Scan(&id)
 }
-func versionAction(ctx context.Context, tx pgx.Tx, ws, actor string, v *models.Version, op string) error {
+
+// versionAction records a change to a version. wasReleased is the state
+// before it, so a reader can tell the release itself from a later save of a
+// version that was already released.
+func versionAction(ctx context.Context, tx pgx.Tx, ws, actor string, v *models.Version, op string, wasReleased bool) error {
 	seq, err := nextSeq(ctx, tx, ws)
 	if err != nil {
 		return err
 	}
-	payload, err := json.Marshal(map[string]any{"version": v, "projectId": v.ProjectID})
+	payload, err := json.Marshal(map[string]any{"version": v, "projectId": v.ProjectID, "wasReleased": wasReleased})
 	if err != nil {
 		return err
 	}
-	return appendAction(ctx, tx, &models.Action{WorkspaceID: ws, Seq: seq, EntityType: "version", EntityID: v.ID, Op: op, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actor})
+	return appendAction(ctx, tx, &models.Action{WorkspaceID: ws, Seq: seq, EntityType: models.EntityVersion, EntityID: v.ID, Op: op, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actor})
 }
 func (s *Store) SaveVersion(ctx context.Context, ws, actor, project, id string, up VersionUpdate) (*models.Version, error) {
 	tx, err := s.Pool.Begin(ctx)
@@ -180,7 +184,7 @@ func (s *Store) SaveVersion(ctx context.Context, ws, actor, project, id string, 
 			return nil, err
 		}
 	}
-	if err = versionAction(ctx, tx, ws, actor, v, models.OpUpsert); err != nil {
+	if err = versionAction(ctx, tx, ws, actor, v, models.OpUpsert, wasReleased); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -447,7 +451,7 @@ func (s *Store) DeleteVersion(ctx context.Context, ws, actor, id, fixTo, affecte
 	if _, err = tx.Exec(ctx, `DELETE FROM project_versions WHERE id=$1`, id); err != nil {
 		return err
 	}
-	if err = versionAction(ctx, tx, ws, actor, v, models.OpDelete); err != nil {
+	if err = versionAction(ctx, tx, ws, actor, v, models.OpDelete, v.Released); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

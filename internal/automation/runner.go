@@ -38,6 +38,10 @@ type claimedRun struct {
 	// WebhookData is the body of the request that ran an incoming webhook
 	// rule, which its actions read as {{webhookData}}.
 	WebhookData json.RawMessage
+	// TriggerData is what an event that happened to something other than a
+	// work item carried: the version, the sprint, or the work item that has
+	// gone. Its actions read it as {{version.name}} and the like.
+	TriggerData json.RawMessage
 	// WebResponse is the answer the rule's last web request received, which
 	// later actions read as {{webResponse}}.
 	WebResponse *webResponse
@@ -188,16 +192,16 @@ func (r *Runner) claim(ctx context.Context, workspaceID string) (*claimedRun, er
 		  started_at=COALESCE(started_at,now()),completed_at=NULL
 		 FROM candidate WHERE ar.id=candidate.id
 		 RETURNING ar.id,ar.rule_uuid,ar.scheduled_for,ar.state,ar.attempts,ar.started_at,
-		           ar.completed_at,ar.matched_count,ar.changed_count,ar.detail,ar.issue_id,ar.initiator_id,ar.webhook_data
+		           ar.completed_at,ar.matched_count,ar.changed_count,ar.detail,ar.issue_id,ar.initiator_id,ar.webhook_data,ar.trigger_data
 		)
 		SELECT c.id::text,c.rule_uuid::text,c.scheduled_for,c.state,c.attempts,c.started_at,c.completed_at,
 		       c.matched_count,c.changed_count,c.detail,rule.workspace_id,rule.actor_id,rule.payload,rule.jql,
-		       COALESCE(c.issue_id,''),COALESCE(c.initiator_id,''),rule.name,rule.rule_scope_aris,c.webhook_data
+		       COALESCE(c.issue_id,''),COALESCE(c.initiator_id,''),rule.name,rule.rule_scope_aris,c.webhook_data,c.trigger_data
 		FROM claimed c JOIN automation_rules rule ON rule.uuid=c.rule_uuid`, workspaceID).
 		Scan(&run.ID, &run.RuleUUID, &run.ScheduledFor, &run.State, &run.Attempts, &run.StartedAt,
 			&run.CompletedAt, &run.MatchedCount, &run.ChangedCount, &run.Detail, &run.WorkspaceID,
 			&run.ActorID, &run.Payload, &run.JQL, &run.IssueID, &run.InitiatorID, &run.RuleName, &run.ScopeARIs,
-			&run.WebhookData)
+			&run.WebhookData, &run.TriggerData)
 	return run, err
 }
 
@@ -214,6 +218,17 @@ func (r *Runner) execute(ctx context.Context, run *claimedRun) (int, int, error)
 	var issues []*models.Issue
 	total := 0
 	switch {
+	case EventTriggers[triggerType(run.Payload)] != "" && run.IssueID == "":
+		// An event with no work item of its own -- a deletion, a version or a
+		// sprint -- runs once, with what it carried.
+		changed, err := r.runComponents(ctx, run, nil, components)
+		if err != nil {
+			return 0, 0, err
+		}
+		if changed {
+			return 0, 1, nil
+		}
+		return 0, 0, nil
 	case triggerType(run.Payload) == WebhookTriggerType:
 		// An incoming webhook runs for the work the request named, or, when it
 		// named none, once with no work item, as Jira's webhook trigger does.
@@ -584,11 +599,45 @@ func (r *Runner) relatedIssues(ctx context.Context, run *claimedRun, issue *mode
 	return visible, nil
 }
 
+// createProject is where a create action raises its work: the project the
+// action names, the one the triggering work item is in, or -- when the event
+// brought no work item -- the single project the rule is scoped to. A rule
+// that names none of those says so rather than failing on a work item that
+// is not there.
+func (r *Runner) createProject(ctx context.Context, run *claimedRun, issue *models.Issue, named string) (string, error) {
+	if named != "" {
+		return named, nil
+	}
+	if issue != nil {
+		return issue.ProjectID, nil
+	}
+	cloudID, err := r.Service.WorkspaceCloudID(ctx, run.WorkspaceID)
+	if err != nil {
+		return "", err
+	}
+	scoped := ""
+	for _, ari := range run.ScopeARIs {
+		kind, id, ok := parseObjectARI(cloudID, ari)
+		if !ok || kind != "project" {
+			continue
+		}
+		if scoped != "" && scoped != id {
+			return "", errors.New("this action needs a project: the trigger brought no work item and the rule covers several")
+		}
+		scoped = id
+	}
+	if scoped == "" {
+		return "", errors.New("this action needs a project: the trigger brought no work item, so name one in the action or scope the rule to a project")
+	}
+	return scoped, nil
+}
+
 func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue, action component) (bool, error) {
-	// Every action this rule catalog holds acts on a work item. Jira fails
-	// such an action when the trigger supplied none, rather than skipping it.
+	// Every action this rule catalog holds acts on a work item, except
+	// raising one and sending a request. Jira fails such an action when the
+	// trigger supplied none, rather than skipping it.
 	if issue == nil && action.Type != "jira.issue.create" && action.Type != WebRequestActionType && !strings.HasPrefix(action.Type, "jira.issue.create:") {
-		return false, errors.New("this action needs a work item, and the webhook named none")
+		return false, errors.New("this action needs a work item, and the trigger supplied none")
 	}
 	valueRaw := decodeComponentValue(action.Value)
 	render := func(text string) (string, error) { return r.renderSmartValues(ctx, run, issue, text) }
@@ -746,6 +795,10 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 		var value struct {
 			IssueTypeID string `json:"issueTypeId"`
 			Summary     string `json:"summary"`
+			// ProjectID is where the work is raised when the trigger brought
+			// no work item to take it from -- a deletion, a version, a
+			// sprint, or a webhook that named none.
+			ProjectID string `json:"projectId"`
 		}
 		if err := json.Unmarshal(valueRaw, &value); err != nil || strings.TrimSpace(value.IssueTypeID) == "" || strings.TrimSpace(value.Summary) == "" {
 			return false, errors.New("create action requires value.issueTypeId and value.summary")
@@ -757,10 +810,14 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 		if summary = strings.TrimSpace(summary); summary == "" {
 			return false, errors.New("create action rendered an empty summary")
 		}
+		projectID, err := r.createProject(ctx, run, issue, strings.TrimSpace(value.ProjectID))
+		if err != nil {
+			return false, err
+		}
 		// The work type comes from the project's own scheme, so a rule cannot
 		// raise a type the project does not offer, and sub-tasks keep their own
 		// action because they need a parent.
-		issueTypes, err := r.Service.Store.ProjectIssueTypes(ctx, run.WorkspaceID, issue.ProjectID, nil)
+		issueTypes, err := r.Service.Store.ProjectIssueTypes(ctx, run.WorkspaceID, projectID, nil)
 		if err != nil {
 			return false, err
 		}
@@ -774,7 +831,7 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 		if wanted == nil {
 			return false, errors.New("the project offers no such work type")
 		}
-		project, err := r.Service.Store.ProjectByIDOrKey(ctx, run.WorkspaceID, issue.ProjectID)
+		project, err := r.Service.Store.ProjectByIDOrKey(ctx, run.WorkspaceID, projectID)
 		if err != nil {
 			return false, err
 		}
@@ -789,7 +846,7 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 			return false, nil
 		}
 		created, _, err := r.Service.Commands.CreateIssue(ctx, commands.CreateIssueInput{
-			ActorID: run.ActorID, WorkspaceID: run.WorkspaceID, ProjectIDOrKey: issue.ProjectID,
+			ActorID: run.ActorID, WorkspaceID: run.WorkspaceID, ProjectIDOrKey: projectID,
 			Summary: summary, IssueTypeID: wanted.ID,
 		})
 		return created != nil, err

@@ -753,7 +753,7 @@ func (s *Store) UpdateSprint(ctx context.Context, actorID, workspaceID, sprintID
 	if err != nil {
 		return nil, nil, err
 	}
-	payload, err := json.Marshal(models.SprintUpsertPayload{Sprint: *updated})
+	payload, err := json.Marshal(models.SprintUpsertPayload{Sprint: *updated, PreviousState: currentState})
 	if err != nil {
 		return nil, nil, err
 	}

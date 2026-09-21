@@ -598,3 +598,204 @@ func TestAssignedAndAttachmentTriggers(t *testing.T) {
 		t.Fatalf("untouched work labels = %v", got)
 	}
 }
+
+// TestEventRulesRunOnWhatHappensAroundWork covers the events whose subject a
+// rule cannot load when it runs: a work item that has been deleted, and the
+// versions and sprints that work moves through. Each starts a rule once, with
+// what it happened to.
+func TestEventRulesRunOnWhatHappensAroundWork(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID, otherProjectID := store.NewID("prj"), store.NewID("prj")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id,lead_account_id) VALUES($1,$2,'ARD','Around','wf_default',$3),($4,$2,'ARE','Elsewhere','wf_default',$3)`,
+		projectID, fx.ws, fx.admin, otherProjectID); err != nil {
+		t.Fatal(err)
+	}
+	create := func(summary string) *models.Issue {
+		t.Helper()
+		issue, _, err := fx.store.CreateIssue(fx.ctx, fx.admin, projectID, summary, json.RawMessage(`{"type":"doc","version":1,"content":[]}`), "st_todo", "it_task", "pr_medium", "", nil, nil, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return issue
+	}
+	mustRule := func(name, triggerType string, value map[string]any, components ...map[string]any) string {
+		t.Helper()
+		body, _ := json.Marshal(map[string]any{"rule": map[string]any{
+			"actor": map[string]string{"actor": fx.admin, "type": "ACCOUNT_ID"}, "name": name, "state": "ENABLED",
+			"canOtherRuleTrigger": false, "components": components,
+			"trigger": map[string]any{"component": "TRIGGER", "type": triggerType, "schemaVersion": 1, "value": value},
+		}, "connections": []any{}})
+		uuid, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		return uuid
+	}
+	// A rule that writes down what happened: creating a work item is the one
+	// thing a rule can do when the event brought none.
+	record := func(summary string) map[string]any {
+		return map[string]any{"component": "ACTION", "type": "jira.issue.create",
+			"value": map[string]string{"issueTypeId": "it_task", "projectId": projectID, "summary": summary}}
+	}
+	runner := &Runner{Service: fx.service}
+	drain := func() {
+		t.Helper()
+		for range 25 {
+			if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	summaries := func() []string {
+		t.Helper()
+		rows, err := fx.store.Pool.Query(fx.ctx, `SELECT summary FROM issues WHERE workspace_id=$1 ORDER BY key`, fx.ws)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		found := []string{}
+		for rows.Next() {
+			var summary string
+			if err := rows.Scan(&summary); err != nil {
+				t.Fatal(err)
+			}
+			found = append(found, summary)
+		}
+		return found
+	}
+	written := func(want string) bool {
+		for _, summary := range summaries() {
+			if summary == want {
+				return true
+			}
+		}
+		return false
+	}
+
+	// A trigger with no work item takes no JQL: there is nothing to match.
+	body, _ := json.Marshal(map[string]any{"rule": map[string]any{
+		"actor": map[string]string{"actor": fx.admin, "type": "ACCOUNT_ID"}, "name": "Deleted with JQL", "state": "ENABLED",
+		"components": []map[string]any{record("never")},
+		"trigger":    map[string]any{"component": "TRIGGER", "type": "jira.issue.event.trigger:deleted", "schemaVersion": 1, "value": map[string]any{"jql": "project = ARD"}},
+	}, "connections": []any{}})
+	if _, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body); err == nil || !strings.Contains(err.Error(), "takes no JQL") {
+		t.Fatalf("deleted trigger with JQL: %v", err)
+	}
+
+	deleted := mustRule("Note the deletion", "jira.issue.event.trigger:deleted", map[string]any{},
+		record("Gone: {{deletedIssue.key}} {{deletedIssue.summary}}"))
+	moved := mustRule("Note the move", "jira.issue.event.trigger:moved", map[string]any{},
+		map[string]any{"component": "ACTION", "type": "jira.issue.add-label", "value": map[string]string{"label": "moved"}})
+	mustRule("Note the release", "jira.version.event.trigger:released", map[string]any{},
+		record("Released: {{version.name}}"))
+	mustRule("Note the version", "jira.version.event.trigger:created", map[string]any{},
+		record("Planned: {{version.name}}"))
+	mustRule("Note the sprint", "jira.sprint.event.trigger:started", map[string]any{},
+		record("Started: {{sprint.name}}"))
+	drain()
+
+	// A deletion starts a rule that can still say what went.
+	goner := create("Work that goes")
+	drain()
+	if _, err := fx.service.Commands.DeleteIssue(fx.ctx, fx.admin, fx.ws, goner.ID, "no longer needed"); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	if !written("Gone: " + goner.Key + " Work that goes") {
+		t.Fatalf("the deletion wrote nothing: %v", summaries())
+	}
+	if runs, err := fx.service.Runs(fx.ctx, fx.ws, deleted, 10); err != nil || len(runs) != 1 || runs[0].State != "SUCCESS" {
+		t.Fatalf("deleted rule runs = %+v, %v", runs, err)
+	}
+
+	// A move starts a rule for the work item it moved, which is still there.
+	traveller := create("Work that moves")
+	drain()
+	move := store.IssueMove{ProjectID: otherProjectID, IssueTypeID: "it_task", StatusID: "st_todo"}
+	if _, _, err := fx.store.MoveIssue(fx.ctx, fx.admin, fx.ws, traveller.ID, move); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	fresh, err := fx.store.IssueByIDOrKey(fx.ctx, fx.ws, traveller.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(fresh.Labels, "moved") {
+		t.Fatalf("the move did not start the rule: %v", fresh.Labels)
+	}
+	if runs, err := fx.service.Runs(fx.ctx, fx.ws, moved, 10); err != nil || len(runs) != 1 {
+		t.Fatalf("moved rule runs = %+v, %v", runs, err)
+	}
+
+	// A version says when it is planned and when it is released, and only
+	// then: saving a released version again is not another release.
+	version, err := fx.store.SaveVersion(fx.ctx, fx.ws, fx.admin, projectID, "", store.VersionUpdate{Name: ptr("1.0")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	if !written("Planned: 1.0") {
+		t.Fatalf("the new version wrote nothing: %v", summaries())
+	}
+	released := true
+	if _, err := fx.store.SaveVersion(fx.ctx, fx.ws, fx.admin, projectID, version.ID, store.VersionUpdate{Released: &released}); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	if !written("Released: 1.0") {
+		t.Fatalf("the release wrote nothing: %v", summaries())
+	}
+	description := "shipped"
+	if _, err := fx.store.SaveVersion(fx.ctx, fx.ws, fx.admin, projectID, version.ID, store.VersionUpdate{Description: &description}); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	count := 0
+	for _, summary := range summaries() {
+		if summary == "Released: 1.0" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("saving a released version again released it again: %d notes", count)
+	}
+
+	// A sprint says when it starts, and a rename while it runs does not.
+	board, err := fx.store.CreateBoard(fx.ctx, fx.admin, fx.ws, store.BoardCreate{Name: "Around board", Type: "scrum", ProjectID: projectID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sprint, _, err := fx.store.CreateSprint(fx.ctx, fx.admin, fx.ws, board.ID, "Sprint 1", "Ship it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	start := time.Now().UTC()
+	end := start.Add(14 * 24 * time.Hour)
+	if _, _, err := fx.store.UpdateSprint(fx.ctx, fx.admin, fx.ws, sprint.ID, store.SprintUpdate{
+		Name: "Sprint 1", Goal: "Ship it", State: "active", StartDate: &start, EndDate: &end,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	if !written("Started: Sprint 1") {
+		t.Fatalf("the sprint start wrote nothing: %v", summaries())
+	}
+	if _, _, err := fx.store.UpdateSprint(fx.ctx, fx.admin, fx.ws, sprint.ID, store.SprintUpdate{
+		Name: "Sprint one", Goal: "Ship it", State: "active", StartDate: &start, EndDate: &end,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	starts := 0
+	for _, summary := range summaries() {
+		if strings.HasPrefix(summary, "Started: ") {
+			starts++
+		}
+	}
+	if starts != 1 {
+		t.Fatalf("renaming a running sprint started it again: %d notes", starts)
+	}
+}
+
+func ptr[T any](value T) *T { return &value }

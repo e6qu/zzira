@@ -61,7 +61,12 @@ func (r *Runner) enqueueEvents(ctx context.Context, workspaceID string) error {
 	rows, err := tx.Query(ctx, `
 		SELECT a.seq, a.entity_type, a.entity_id, a.op, a.payload, a.actor_id, a.automation_rule_uuid::text,
 		       NOT EXISTS (SELECT 1 FROM actions earlier WHERE earlier.workspace_id=a.workspace_id AND earlier.entity_type=a.entity_type AND earlier.entity_id=a.entity_id AND earlier.seq<a.seq)
-		FROM actions a WHERE a.workspace_id=$1 AND a.seq>$2 AND a.entity_type IN ('issue','comment','issue_link','attachment') AND a.op='upsert'
+		FROM actions a WHERE a.workspace_id=$1 AND a.seq>$2
+		  AND (
+		    (a.entity_type IN ('comment','issue_link','attachment') AND a.op='upsert')
+		    OR (a.entity_type='issue' AND a.op IN ('upsert','delete'))
+		    OR (a.entity_type IN ('version','sprint') AND a.op='upsert')
+		  )
 		ORDER BY a.seq LIMIT $3`, workspaceID, last, eventBatch)
 	if err != nil {
 		return err
@@ -101,10 +106,17 @@ func (r *Runner) enqueueEvents(ctx context.Context, workspaceID string) error {
 			if err != nil {
 				return err
 			}
+			// An event that happened to something other than a work item
+			// carries what it happened to, because the rule cannot read it
+			// back: the version, the sprint, or the work item that is gone.
+			var data any
+			if SubjectlessEvents[event] {
+				data = triggerData(event, action)
+			}
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO automation_runs(id,rule_uuid,scheduled_for,state,trigger_seq,issue_id,initiator_id)
-				VALUES($1,$2,clock_timestamp(),'PENDING',$3,$4,$5)
-				ON CONFLICT (rule_uuid,trigger_seq) WHERE trigger_seq IS NOT NULL DO NOTHING`, id, rule.UUID, action.Seq, issueID, action.ActorID); err != nil {
+				INSERT INTO automation_runs(id,rule_uuid,scheduled_for,state,trigger_seq,issue_id,initiator_id,trigger_data)
+				VALUES($1,$2,clock_timestamp(),'PENDING',$3,$4,$5,$6)
+				ON CONFLICT (rule_uuid,trigger_seq) WHERE trigger_seq IS NOT NULL DO NOTHING`, id, rule.UUID, action.Seq, issueID, action.ActorID, data); err != nil {
 				return err
 			}
 		}
@@ -170,6 +182,11 @@ func (r *Runner) eventRules(ctx context.Context, workspaceID string) ([]eventRul
 func actionEvent(action loggedAction) (string, string, map[string]models.ChangeItem) {
 	switch action.EntityType {
 	case models.EntityIssue:
+		if action.Op == models.OpDelete {
+			// A deleted work item starts a run with no work item: there is
+			// nothing left to read, act on or match JQL against.
+			return "deleted", "", nil
+		}
 		var payload models.IssueUpdatePayload
 		if json.Unmarshal(action.Payload, &payload) != nil || payload.SuppressEvents {
 			return "", "", nil
@@ -179,6 +196,30 @@ func actionEvent(action loggedAction) (string, string, map[string]models.ChangeI
 		}
 		if len(payload.Diff) > 0 {
 			return "updated", action.EntityID, payload.Diff
+		}
+	case models.EntityVersion:
+		var payload versionActionPayload
+		if json.Unmarshal(action.Payload, &payload) != nil || payload.Version.ID == "" {
+			return "", "", nil
+		}
+		switch {
+		case payload.Version.Released && !payload.WasReleased:
+			return "version_released", "", nil
+		case action.First:
+			return "version_created", "", nil
+		default:
+			return "version_updated", "", nil
+		}
+	case models.EntitySprint:
+		var payload models.SprintUpsertPayload
+		if json.Unmarshal(action.Payload, &payload) != nil || payload.Sprint.ID == "" {
+			return "", "", nil
+		}
+		switch {
+		case payload.Sprint.State == "active" && payload.PreviousState != "active":
+			return "sprint_started", "", nil
+		case payload.Sprint.State == "closed" && payload.PreviousState != "closed":
+			return "sprint_completed", "", nil
 		}
 	case models.EntityComment:
 		var payload models.CommentUpsertPayload
@@ -212,8 +253,18 @@ func (rule eventRule) matches(event string, diff map[string]models.ChangeItem, a
 		return false
 	}
 	switch rule.Event {
-	case "created", "commented", "linked", "attachment_added":
+	case "created", "commented", "linked", "attachment_added", "deleted",
+		"version_created", "version_updated", "version_released",
+		"sprint_started", "sprint_completed":
 		return event == rule.Event
+	case "moved":
+		// A move is an update that changes the work item's project, which is
+		// what the change carries.
+		if event != "updated" {
+			return false
+		}
+		_, changed := diff["project"]
+		return changed
 	case "assigned":
 		// Jira has a trigger of its own for the assignee changing, which is
 		// the field people watch for most often.
@@ -239,4 +290,52 @@ func (rule eventRule) matches(event string, diff map[string]models.ChangeItem, a
 		}
 	}
 	return false
+}
+
+// versionActionPayload is what a version's action records: the version and
+// whether it was already released before the change.
+type versionActionPayload struct {
+	Version     models.Version `json:"version"`
+	WasReleased bool           `json:"wasReleased"`
+}
+
+// triggerData is what a rule reads about an event whose subject it cannot
+// load: the version, the sprint, or the work item that has gone.
+func triggerData(event string, action loggedAction) json.RawMessage {
+	switch {
+	case event == "deleted":
+		var payload models.DeletePayload
+		if json.Unmarshal(action.Payload, &payload) != nil {
+			return nil
+		}
+		data, err := json.Marshal(map[string]any{"deletedIssue": map[string]string{
+			"id": action.EntityID, "key": payload.Key, "summary": payload.Summary,
+			"projectId": payload.ProjectID, "reason": payload.Reason,
+		}})
+		if err != nil {
+			return nil
+		}
+		return data
+	case strings.HasPrefix(event, "version_"):
+		var payload versionActionPayload
+		if json.Unmarshal(action.Payload, &payload) != nil {
+			return nil
+		}
+		data, err := json.Marshal(map[string]any{"version": payload.Version})
+		if err != nil {
+			return nil
+		}
+		return data
+	case strings.HasPrefix(event, "sprint_"):
+		var payload models.SprintUpsertPayload
+		if json.Unmarshal(action.Payload, &payload) != nil {
+			return nil
+		}
+		data, err := json.Marshal(map[string]any{"sprint": payload.Sprint})
+		if err != nil {
+			return nil
+		}
+		return data
+	}
+	return nil
 }
