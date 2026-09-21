@@ -27,8 +27,16 @@ async function accessible(page: Page) {
 
 test('epic and release burndowns follow the work through sprints', async ({ page, request }) => {
   const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
-  const stamp = Date.now();
-  const project = await (await request.get('/rest/api/3/project/ZZ', { headers })).json();
+  const stamp = Date.now().toString(36).toUpperCase();
+  // A project of its own: a board may run one sprint at a time, and the
+  // demo project's board is already running one for another journey.
+  const key = `BD${stamp}`.slice(0, 10);
+  const created = await request.post('/rest/api/3/project', {
+    headers,
+    data: { key, name: `Burndowns ${stamp}`, projectTypeKey: 'software', leadAccountId: (await (await request.get('/rest/api/3/myself', { headers })).json()).accountId },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const project = await created.json();
   const versionResponse = await request.post('/rest/api/3/version', { headers, data: { name: `Burndown ${stamp}`, projectId: Number(project.id) } });
   expect(versionResponse.status(), await versionResponse.text()).toBe(201);
   const version = await versionResponse.json();
@@ -38,12 +46,12 @@ test('epic and release burndowns follow the work through sprints', async ({ page
     expect(response.status(), await response.text()).toBe(201);
     return (await response.json());
   };
-  const epic = await createIssue({ project: { key: 'ZZ' }, summary: `Burndown epic ${stamp}`, issuetype: { name: 'Epic' } });
-  const finished = await createIssue({ project: { key: 'ZZ' }, summary: `Burndown finished ${stamp}`, issuetype: { name: 'Story' }, parent: { key: epic.key }, fixVersions: [{ id: version.id }] });
-  const open = await createIssue({ project: { key: 'ZZ' }, summary: `Burndown open ${stamp}`, issuetype: { name: 'Story' }, parent: { key: epic.key }, fixVersions: [{ id: version.id }] });
+  const epic = await createIssue({ project: { key }, summary: `Burndown epic ${stamp}`, issuetype: { name: 'Epic' } });
+  const finished = await createIssue({ project: { key }, summary: `Burndown finished ${stamp}`, issuetype: { name: 'Story' }, parent: { key: epic.key }, fixVersions: [{ id: version.id }] });
+  const open = await createIssue({ project: { key }, summary: `Burndown open ${stamp}`, issuetype: { name: 'Story' }, parent: { key: epic.key }, fixVersions: [{ id: version.id }] });
 
   // A sprint the work runs through, so the chart has a bar to draw.
-  const boards = await (await request.get('/rest/agile/1.0/board?projectKeyOrId=ZZ', { headers })).json();
+  const boards = await (await request.get(`/rest/agile/1.0/board?projectKeyOrId=${key}`, { headers })).json();
   const board = boards.values.find((candidate: { type: string }) => candidate.type === 'scrum') ?? boards.values[0];
   const sprintResponse = await request.post('/rest/agile/1.0/sprint', { headers, data: { name: `Burndown sprint ${stamp}`, originBoardId: board.id } });
   expect(sprintResponse.status(), await sprintResponse.text()).toBe(201);
@@ -62,7 +70,7 @@ test('epic and release burndowns follow the work through sprints', async ({ page
   await page.click('button[type=submit]');
   await expect(page).toHaveURL('/');
 
-  await page.goto('/projects/ZZ/reports');
+  await page.goto(`/projects/${key}/reports`);
   await page.getByRole('link', { name: 'Open Epic burndown' }).click();
   await expect(page.getByRole('heading', { name: 'Epic burndown', level: 1 })).toBeVisible();
   await page.getByLabel('Board', { exact: true }).selectOption({ label: board.name });
@@ -79,7 +87,7 @@ test('epic and release burndowns follow the work through sprints', async ({ page
   expect(epicCSV.lines[0]).toBe('Sprint,Completed,Added,Remaining');
   expect(epicCSV.lines.find((line) => line.startsWith(`Burndown sprint ${stamp},`))).toBeTruthy();
 
-  await page.goto('/projects/ZZ/reports/release-burndown');
+  await page.goto(`/projects/${key}/reports/release-burndown`);
   await expect(page.getByRole('heading', { name: 'Release burndown', level: 1 })).toBeVisible();
   await page.getByLabel('Board', { exact: true }).selectOption({ label: board.name });
   await page.getByRole('button', { name: 'Show board' }).click();
