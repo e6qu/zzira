@@ -165,3 +165,112 @@ func TestAbsoluteLinks(t *testing.T) {
 		t.Fatalf("no base URL changed the body: %q", got)
 	}
 }
+
+// A project's own sender address goes in the From header, and only there:
+// the envelope stays the site's so a bounce comes back to the site.
+func TestSMTPSendsProjectSenderInTheHeaderOnly(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = listener.Close() }()
+	envelope := make(chan string, 1)
+	received := make(chan string, 1)
+	serverError := make(chan error, 1)
+	go func() {
+		connection, err := listener.Accept()
+		if err != nil {
+			serverError <- err
+			return
+		}
+		defer func() { _ = connection.Close() }()
+		reader, writer := bufio.NewReader(connection), bufio.NewWriter(connection)
+		write := func(value string) bool {
+			if _, err := writer.WriteString(value); err != nil {
+				serverError <- err
+				return false
+			}
+			return writer.Flush() == nil
+		}
+		if !write("220 smtp.test ESMTP\r\n") {
+			return
+		}
+		var message strings.Builder
+		inData := false
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				serverError <- err
+				return
+			}
+			if inData {
+				if line == ".\r\n" {
+					received <- message.String()
+					inData = false
+					if !write("250 queued\r\n") {
+						return
+					}
+					continue
+				}
+				message.WriteString(line)
+				continue
+			}
+			command := strings.ToUpper(line)
+			switch {
+			case strings.HasPrefix(command, "EHLO"):
+				if !write("250 smtp.test\r\n") {
+					return
+				}
+			case strings.HasPrefix(command, "MAIL FROM"):
+				envelope <- strings.TrimSpace(line)
+				if !write("250 ok\r\n") {
+					return
+				}
+			case strings.HasPrefix(command, "RCPT TO"):
+				if !write("250 ok\r\n") {
+					return
+				}
+			case strings.HasPrefix(command, "DATA"):
+				inData = true
+				if !write("354 end with dot\r\n") {
+					return
+				}
+			case strings.HasPrefix(command, "QUIT"):
+				_ = write("221 bye\r\n")
+				return
+			default:
+				serverError <- &smtpTestError{line: line}
+				return
+			}
+		}
+	}()
+
+	sender := &SMTP{Address: listener.Addr().String(), Host: "127.0.0.1", From: "noreply@zzira.test"}
+	message := Message{Recipient: "person@example.test", Subject: "[ZZ-1] Updated", Body: "ZZ-1", From: "delivery@example.test"}
+	if err := sender.Send(context.Background(), message); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-serverError:
+		t.Fatal(err)
+	case payload := <-received:
+		if !strings.Contains(payload, "From: delivery@example.test") {
+			t.Fatalf("project sender is not in the header: %q", payload)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("SMTP server did not receive the message")
+	}
+	select {
+	case line := <-envelope:
+		if !strings.Contains(line, "noreply@zzira.test") {
+			t.Fatalf("envelope sender = %q, want the site's", line)
+		}
+	default:
+		t.Fatal("the server saw no MAIL FROM")
+	}
+
+	// A sender that is not one plain address never reaches a header.
+	if err := sender.Send(context.Background(), Message{Recipient: "a@example.test", Subject: "x", Body: "y", From: "Delivery <delivery@example.test>"}); err == nil {
+		t.Fatal("a display-name sender was accepted")
+	}
+}

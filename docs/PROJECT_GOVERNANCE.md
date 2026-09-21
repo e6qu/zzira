@@ -80,6 +80,12 @@ of the [Jira platform](JIRA_PLATFORM.md); see
   it; saving the project as a site-wide template, and archiving or trashing
   it, are site administration and are shown only to site administrators.
   When the project shares a workflow, the page offers to start one of its own.
+- The sender address a project chooses is the `From` header of the mail its
+  work queues, once the site has verified that address's domain
+  ([DOMAINS](ADMIN.md)); until then, and for mail that belongs to no project,
+  the site's own sender answers. The envelope sender is always the site's, so
+  a bounce comes back to the site. The configuration page says which of the
+  two a project is getting.
 - **Configuration** (`/projects/{key}/settings/configuration`): every scheme
   the project routes through -- permission, notification, issue security,
   workflow scheme and workflow, work type, work type screen, field
@@ -91,8 +97,8 @@ of the [Jira platform](JIRA_PLATFORM.md); see
 
 See [PLAN.md](../PLAN.md).
 
-- The project sender address is stored but not used as the From address of
-  notification email; no custom-domain verification or bounce handling.
+- Bounces are not handled: the envelope sender stays the site's, so a bounce
+  comes back to the site rather than to the project.
 - Connect apps cannot contribute project features.
 
 ## Tests

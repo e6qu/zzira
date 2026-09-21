@@ -492,6 +492,10 @@ type projectConfigurationData struct {
 	Lead     string
 	Category string
 	Sender   string
+	// SenderVerified reports that the site has verified the sender address's
+	// domain. Mail leaves as the site's own sender until it has, so the page
+	// says which is happening.
+	SenderVerified bool
 }
 
 // ProjectConfigurationPage names every scheme the project routes through and
@@ -508,6 +512,12 @@ func (h *Handler) ProjectConfigurationPage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	data := projectConfigurationData{Project: project, Entries: entries, Sender: project.SenderEmail}
+	if at := strings.LastIndex(project.SenderEmail, "@"); at >= 0 {
+		if data.SenderVerified, err = h.Store.SenderDomainVerified(r.Context(), workspaceID, project.SenderEmail[at+1:]); err != nil {
+			http.Error(w, "Could not read the sender domain.", http.StatusInternalServerError)
+			return
+		}
+	}
 	if project.LeadAccountID != "" {
 		if lead, err := h.Store.UserByID(r.Context(), project.LeadAccountID); err == nil && lead != nil {
 			data.Lead = lead.DisplayName

@@ -91,7 +91,9 @@ Each numbered item is one or more substantial PRs.
 - Worklogs: `started`, real `updated`/`updateAuthor`, `issueId`, `self` with the
   work item; list paging and `startedAfter`/`startedBefore`/`expand=properties`;
   worklog visibility.
-- Project sender address used by the mailer, with bounce handling.
+- Bounce handling for the project sender address (the address itself is the
+  From header of the mail a project's work queues, once its domain is
+  verified).
 - Anonymous browsing in the UI (`/browse/{key}`), not only REST.
 - `atlassian-addons-project-access` role for installed apps.
 - Project templates: inline `REF` objects and team-managed projects.

@@ -555,7 +555,7 @@ func deliverIssueNotificationTx(ctx context.Context, tx pgx.Tx, workspaceID, act
 			continue
 		}
 		dedupe := fmt.Sprintf("issue-notification:%s:%d:%d:email:%s", workspaceID, actionSeq, eventID, email)
-		if _, err = tx.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,html_body,dedupe_key) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, workspaceID, email, subject, body, htmlBody, dedupe); err != nil {
+		if _, err = tx.Exec(ctx, queueProjectEmailSQL, workspaceID, email, subject, body, htmlBody, dedupe, projectID); err != nil {
 			return err
 		}
 	}
@@ -601,7 +601,7 @@ func notifyIssueUserTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID, act
 	}
 	if collector := bulkNotifications(ctx); collector != nil {
 		collector.add(email, subject)
-	} else if _, err = tx.Exec(ctx, `INSERT INTO email_outbox(workspace_id,recipient,subject,body,html_body,dedupe_key) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, workspaceID, email, subject, body, htmlBody, dedupe); err != nil {
+	} else if _, err = tx.Exec(ctx, queueProjectEmailSQL, workspaceID, email, subject, body, htmlBody, dedupe, projectID); err != nil {
 		return "", err
 	}
 	return email, nil
