@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
 )
 
@@ -334,12 +335,12 @@ func (h *Handler) agileIssueSearch(w http.ResponseWriter, r *http.Request, works
 	compiled, err := h.compileJQL(r.Context(), workspaceID, userID, r.URL.Query().Get("jql"))
 	if err != nil {
 		if validate {
-			jiraError(w, http.StatusBadRequest, "Error in the JQL Query: "+err.Error())
+			jiraError(w, http.StatusBadRequest, jql.QueryMessage(err.Error()))
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"expand": "schema,names", "startAt": startAt, "maxResults": maxResults, "total": 0, "issues": []any{},
-			"warningMessages": []string{"Error in the JQL Query: " + err.Error()},
+			"warningMessages": []string{jql.QueryMessage(err.Error())},
 		})
 		return
 	}

@@ -116,6 +116,11 @@ matches nothing.
   invalid booleans are 400.
 - Numeric Jira issue IDs work wherever an ID or key is accepted; internal
   `iss_*` IDs stay stable for sync.
+- **Values:** a clause naming a status, priority, resolution or work type that
+  the site does not have answers Jira's `The value 'X' does not exist for the
+  field 'Y'.` -- as an error under `strict`, as a warning under `warn`, where
+  the clause then matches nothing. `Unresolved` stays the absence of a
+  resolution, and `EMPTY` is not a value.
 - `validateQuery`: `strict` (or `true`) answers 400 with every error; `warn`
   (or `false`) runs the query with failing clauses matching nothing, skips
   unsortable ordering and returns `warningMessages`; `none` does the same
@@ -209,9 +214,9 @@ See [PLAN.md](../PLAN.md).
 - JSM fields not searchable: `Organizations`, because a request is not shared
   with an organization here; only a desk is.
 - `versionedRepresentations` carry only the current value, not field history.
-- No value validation: a clause naming a status, project or other value that
-  does not exist matches nothing instead of reporting Jira's "The value 'X'
-  does not exist for the field 'Y'" error.
+- Value validation covers status, priority, resolution and work type (by name
+  or id). A project, component, version, user or custom field option that does
+  not exist still matches nothing rather than reporting it.
 
 ## See also
 

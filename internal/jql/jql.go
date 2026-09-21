@@ -149,6 +149,28 @@ type SyntaxError struct {
 
 func (e *SyntaxError) Error() string { return fmt.Sprintf("JQL syntax error at %d: %s", e.Pos, e.Msg) }
 
+// ValueError is a value a field cannot hold. The query parses; it just names
+// something that is not there. Jira answers it with this exact sentence, so
+// clients that show the message show Jira's.
+type ValueError struct {
+	Field string
+	Value string
+}
+
+// QueryMessage is how a client is told a query failed: Jira heads a syntax
+// error with "Error in the JQL Query", and answers a value that does not
+// exist with a sentence of its own, which is shown as it is.
+func QueryMessage(message string) string {
+	if strings.HasPrefix(message, "The value '") {
+		return message
+	}
+	return "Error in the JQL Query: " + message
+}
+
+func (e *ValueError) Error() string {
+	return "The value '" + e.Value + "' does not exist for the field '" + e.Field + "'."
+}
+
 // ---- Lexer ----
 
 type token struct {
@@ -908,6 +930,11 @@ type FieldResolver struct {
 	// SLAFields are the lower-cased names of the site's SLAs, which the SLA
 	// functions search.
 	SLAFields map[string]bool
+	// KnownValues are the values a field can take, lower-cased, for the
+	// fields Jira checks a query against. A value that is not among them is
+	// an error rather than a query that matches nothing, because a typed
+	// status is a mistake and an empty result hides it.
+	KnownValues map[string]map[string]bool
 	// FilterJQL resolves a saved filter a query names -- by id or by name --
 	// to the JQL it holds, for the person searching. It answers false for a
 	// filter that does not exist or that they may not see, which are the
@@ -2258,7 +2285,26 @@ func (c *compiler) fieldValue(field, value string) any {
 	case "project":
 		return strings.ToUpper(value)
 	}
+	if !c.knownValue(field, value) {
+		return value
+	}
 	return value
+}
+
+// knownValue reports whether a field can hold the value a query names, and
+// records Jira's own error when it cannot. A field the site has no catalogue
+// for is not checked.
+func (c *compiler) knownValue(field, value string) bool {
+	known, checked := c.res.KnownValues[field]
+	if !checked {
+		return true
+	}
+	text := strings.ToLower(strings.Trim(strings.TrimSpace(value), `"'`))
+	if text == "" || known[text] {
+		return true
+	}
+	c.err = &ValueError{Field: field, Value: strings.Trim(strings.TrimSpace(value), `"'`)}
+	return false
 }
 
 func (c *compiler) datePredicateSQL(value string) string {

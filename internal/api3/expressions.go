@@ -13,6 +13,7 @@ import (
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/jexpr"
+	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
 )
 
@@ -294,7 +295,7 @@ func (h *Handler) evaluateExpression(w http.ResponseWriter, r *http.Request, enh
 		case userID != "":
 			found, count, err := h.Store.Search(r.Context(), workspaceID, userID, compiled, maxResults, offset)
 			if err != nil {
-				jiraError(w, http.StatusBadRequest, "Error in the JQL Query: "+err.Error())
+				jiraError(w, http.StatusBadRequest, jql.QueryMessage(err.Error()))
 				return
 			}
 			for _, issue := range found {

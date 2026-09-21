@@ -182,7 +182,7 @@ func (h *Handler) scopedIssuePage(w http.ResponseWriter, r *http.Request, worksp
 	}
 	compiled, err := h.compileJQL(r.Context(), workspaceID, userID, r.URL.Query().Get("jql"))
 	if err != nil {
-		jiraError(w, http.StatusBadRequest, "Error in the JQL Query: "+err.Error())
+		jiraError(w, http.StatusBadRequest, jql.QueryMessage(err.Error()))
 		return
 	}
 	issues, total, err := h.Store.SearchScoped(r.Context(), workspaceID, userID, compiled, scope, scopeArgs, maxResults, startAt)
@@ -226,7 +226,7 @@ func (h *Handler) scopedIssueScroll(w http.ResponseWriter, r *http.Request, work
 	}
 	compiled, err := h.compileJQL(r.Context(), workspaceID, userID, query.Get("jql"))
 	if err != nil {
-		jiraError(w, http.StatusBadRequest, "Error in the JQL Query: "+err.Error())
+		jiraError(w, http.StatusBadRequest, jql.QueryMessage(err.Error()))
 		return
 	}
 	issues, total, err := h.Store.SearchScoped(r.Context(), workspaceID, userID, compiled, scope, scopeArgs, maxResults, offset)

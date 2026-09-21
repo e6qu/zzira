@@ -693,7 +693,7 @@ func (h *Handler) adminWebhookRoute(w http.ResponseWriter, r *http.Request) {
 		query := request.Filters["issue-related-events-section"]
 		if strings.TrimSpace(query) != "" {
 			if _, err := jql.Parse(query); err != nil {
-				jiraFieldError(w, http.StatusBadRequest, map[string]string{"filters": "Error in the JQL Query: " + err.Error()})
+				jiraFieldError(w, http.StatusBadRequest, map[string]string{"filters": jql.QueryMessage(err.Error())})
 				return store.AdminWebhookInput{}, false
 			}
 		}

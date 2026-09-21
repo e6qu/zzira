@@ -231,8 +231,11 @@ func (h *Handler) writeWorkspacePage(w http.ResponseWriter, r *http.Request, nam
 func (h *Handler) writeWorkspacePageStatus(w http.ResponseWriter, r *http.Request, name string, user *models.User, workspaceID string, data any, active, preferredProject string, status int) {
 	navigation, err := h.workspaceNavigation(r, workspaceID, preferredProject)
 	if err != nil {
+		// Each of this function's failures says which stage it was, because
+		// "internal error" on every one of them leaves a reader -- and a
+		// failing test -- with only the server log to go on.
 		log.Printf("render %s navigation: %v", name, err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		http.Error(w, "Could not load the workspace navigation.", http.StatusInternalServerError)
 		return
 	}
 	if preferredProject != "" {
@@ -242,7 +245,7 @@ func (h *Handler) writeWorkspacePageStatus(w http.ResponseWriter, r *http.Reques
 	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), workspaceID)
 	if err != nil {
 		log.Printf("render %s site configuration: %v", name, err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		http.Error(w, "Could not load the site configuration.", http.StatusInternalServerError)
 		return
 	}
 	if configuration.Announcement.IsEnabled {
@@ -259,7 +262,7 @@ func (h *Handler) writeWorkspacePageStatus(w http.ResponseWriter, r *http.Reques
 		custom, err := h.Store.EffectiveWikiLookAndFeel(r.Context(), workspaceID, spaceID)
 		if err != nil {
 			log.Printf("render %s look and feel: %v", name, err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			http.Error(w, "Could not load the look and feel.", http.StatusInternalServerError)
 			return
 		}
 		page.WikiLook = wikiLookFor(custom)
@@ -268,7 +271,7 @@ func (h *Handler) writeWorkspacePageStatus(w http.ResponseWriter, r *http.Reques
 		center, err := h.Store.ServiceHelpCenter(r.Context(), workspaceID)
 		if err != nil {
 			log.Printf("render %s help center: %v", name, err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			http.Error(w, "Could not load the help center.", http.StatusInternalServerError)
 			return
 		}
 		page.ServiceLook = serviceLookFor(center)

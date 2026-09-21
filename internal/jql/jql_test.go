@@ -701,3 +701,53 @@ func TestProjectsWhereUserHasPermission(t *testing.T) {
 		}
 	}
 }
+
+// Jira answers a value a field cannot hold with an error naming it; a query
+// that matches nothing hides the typo that caused it.
+func TestCompileUnknownValueIsAnError(t *testing.T) {
+	resolver := DefaultResolver()
+	resolver.KnownValues = map[string]map[string]bool{
+		"status":     {"to do": true, "in progress": true, "done": true, "10001": true},
+		"resolution": {"done": true, "unresolved": true},
+	}
+	for _, tc := range []struct {
+		name  string
+		query string
+		err   string
+	}{
+		{name: "unknown status", query: `status = Nope`, err: `The value 'Nope' does not exist for the field 'status'.`},
+		{name: "unknown status in a list", query: `status in ("In Progress", Nope)`, err: `The value 'Nope' does not exist for the field 'status'.`},
+		{name: "known status", query: `status = "In Progress"`},
+		{name: "status by id", query: `status = 10001`},
+		{name: "status is not case sensitive", query: `status = DONE`},
+		{name: "unresolved is the absence of a resolution", query: `resolution = Unresolved`},
+		{name: "a field with no catalogue is not checked", query: `summary ~ anything`},
+		{name: "empty is not a value", query: `status is EMPTY`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q, err := Parse(tc.query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			compiled := Compile(q, "usr_me", resolver)
+			switch {
+			case tc.err == "" && compiled.Err != nil:
+				t.Fatalf("compile: %v", compiled.Err)
+			case tc.err != "" && compiled.Err == nil:
+				t.Fatal("an unknown value must fail")
+			case tc.err != "" && compiled.Err.Error() != tc.err:
+				t.Fatalf("error = %q, want %q", compiled.Err, tc.err)
+			}
+		})
+	}
+	// A lenient compile keeps the rest of the query and reports the value as
+	// a warning, which is what a dashboard or board filter needs.
+	q, err := Parse(`status = Nope OR summary ~ walk`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := CompileLenientAt(q, "usr_me", resolver, 1)
+	if compiled.Err != nil || len(compiled.Warnings) != 1 || !strings.Contains(compiled.Warnings[0], "does not exist for the field 'status'") {
+		t.Fatalf("lenient compile = %+v", compiled)
+	}
+}

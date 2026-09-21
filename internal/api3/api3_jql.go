@@ -847,7 +847,7 @@ func (h *Handler) jqlPersonalDataMigration(w http.ResponseWriter, r *http.Reques
 	for _, query := range request.QueryStrings {
 		operands, _, parseErr := jql.Operands(query)
 		if parseErr != nil {
-			jiraError(w, 400, "Error in the JQL Query: "+parseErr.Error())
+			jiraError(w, 400, jql.QueryMessage(parseErr.Error()))
 			return
 		}
 		edits, hasUnknown := []jql.Edit{}, false
@@ -953,7 +953,7 @@ func (h *Handler) jqlSanitize(w http.ResponseWriter, r *http.Request) {
 		}
 		sanitized, err := h.sanitizeJQL(r, workspaceID, viewer, item.Query)
 		if err != nil {
-			result["errors"] = map[string]any{"errorMessages": []string{"Error in the JQL Query: " + err.Error()}, "errors": map[string]string{}}
+			result["errors"] = map[string]any{"errorMessages": []string{jql.QueryMessage(err.Error())}, "errors": map[string]string{}}
 		} else {
 			result["sanitizedQuery"] = sanitized
 		}

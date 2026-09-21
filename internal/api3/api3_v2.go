@@ -605,10 +605,10 @@ func (h *Handler) compileJQL(ctx context.Context, workspaceID, raw, currentUser 
 	}
 	q, err := jql.Parse(raw)
 	if err != nil {
-		return jql.Compiled{}, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
+		return jql.Compiled{}, &jerr{http.StatusBadRequest, jql.QueryMessage(err.Error()), nil}
 	}
 	if err := h.Store.ExpandAppJQL(ctx, workspaceID, q); err != nil {
-		return jql.Compiled{}, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
+		return jql.Compiled{}, &jerr{http.StatusBadRequest, jql.QueryMessage(err.Error()), nil}
 	}
 	resolver, err := h.Store.JQLResolver(ctx, workspaceID)
 	if err != nil {
@@ -617,7 +617,7 @@ func (h *Handler) compileJQL(ctx context.Context, workspaceID, raw, currentUser 
 	// offset 2: store.Search reserves $1 for the workspace predicate
 	c := jql.CompileAt(q, currentUser, resolver, 2)
 	if c.Err != nil {
-		return jql.Compiled{}, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + c.Err.Error(), nil}
+		return jql.Compiled{}, &jerr{http.StatusBadRequest, jql.QueryMessage(c.Err.Error()), nil}
 	}
 	return c, nil
 }
@@ -632,10 +632,10 @@ func (h *Handler) compileJQLValidated(ctx context.Context, workspaceID, raw, cur
 	}
 	q, err := jql.Parse(raw)
 	if err != nil {
-		return jql.Compiled{}, nil, nil, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
+		return jql.Compiled{}, nil, nil, &jerr{http.StatusBadRequest, jql.QueryMessage(err.Error()), nil}
 	}
 	if err = h.Store.ExpandAppJQL(ctx, workspaceID, q); err != nil {
-		return jql.Compiled{}, nil, nil, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + err.Error(), nil}
+		return jql.Compiled{}, nil, nil, &jerr{http.StatusBadRequest, jql.QueryMessage(err.Error()), nil}
 	}
 	resolver, resolverErr := h.Store.JQLResolver(ctx, workspaceID)
 	if resolverErr != nil {
@@ -643,11 +643,11 @@ func (h *Handler) compileJQLValidated(ctx context.Context, workspaceID, raw, cur
 	}
 	compiled = jql.CompileLenientAt(q, currentUser, resolver, 2)
 	if compiled.Err != nil {
-		return jql.Compiled{}, nil, nil, &jerr{http.StatusBadRequest, "Error in the JQL Query: " + compiled.Err.Error(), nil}
+		return jql.Compiled{}, nil, nil, &jerr{http.StatusBadRequest, jql.QueryMessage(compiled.Err.Error()), nil}
 	}
 	messages := make([]string, 0, len(compiled.Warnings))
 	for _, warning := range compiled.Warnings {
-		messages = append(messages, "Error in the JQL Query: "+warning)
+		messages = append(messages, jql.QueryMessage(warning))
 	}
 	switch mode {
 	case "none":
@@ -720,7 +720,7 @@ func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, jqlText stri
 	}
 	issues, total, err := h.Store.Search(r.Context(), wsID, userID, c, maxResults, startAt)
 	if err != nil {
-		jiraError(w, http.StatusBadRequest, "Error in the JQL Query: "+err.Error())
+		jiraError(w, http.StatusBadRequest, jql.QueryMessage(err.Error()))
 		return
 	}
 	customFields, err := h.Store.CustomFieldsForWorkspace(r.Context(), wsID)
@@ -962,7 +962,7 @@ func (h *Handler) searchJQL(w http.ResponseWriter, r *http.Request) {
 	}
 	parsed, err := jql.Parse(req.JQL)
 	if err != nil {
-		jiraError(w, 400, "Error in the JQL Query: "+err.Error())
+		jiraError(w, 400, jql.QueryMessage(err.Error()))
 		return
 	}
 	if root, ok := parsed.Root.(jql.Text); ok && root.Value == "" {
@@ -1036,7 +1036,7 @@ func (h *Handler) searchCount(w http.ResponseWriter, r *http.Request) {
 	}
 	parsed, err := jql.Parse(req.JQL)
 	if err != nil {
-		jiraError(w, http.StatusBadRequest, "Error in the JQL Query: "+err.Error())
+		jiraError(w, http.StatusBadRequest, jql.QueryMessage(err.Error()))
 		return
 	}
 	if root, ok := parsed.Root.(jql.Text); ok && root.Value == "" {
@@ -1055,7 +1055,7 @@ func (h *Handler) searchCount(w http.ResponseWriter, r *http.Request) {
 	}
 	_, total, err := h.Store.Search(r.Context(), wsID, userID, c, 1, 0)
 	if err != nil {
-		jiraError(w, http.StatusBadRequest, "Error in the JQL Query: "+err.Error())
+		jiraError(w, http.StatusBadRequest, jql.QueryMessage(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"count": total})

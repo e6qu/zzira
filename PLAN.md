@@ -145,7 +145,6 @@ but nothing shows or uses it.
 - `fields.lastViewed` on a work item read, which needs the reader threaded
   through the bean.
 - Historical `versionedRepresentations`.
-- Unknown values (`status = Nope`) return Jira's error instead of matching nothing.
 - Filters: subscriptions by any viewer with permission, group subscriptions,
   `MANAGE_GROUP_FILTER_SUBSCRIPTIONS`, opt-in for empty results,
   `CREATE_SHARED_OBJECTS` on sharing.
