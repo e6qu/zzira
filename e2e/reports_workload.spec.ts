@@ -33,14 +33,21 @@ async function reflows(page: Page) {
 }
 
 test('workload and time tracking reports say who holds the work and what it will cost', async ({ page, request }) => {
-  const headers = { Authorization: apiAuthHeader() };
-  const stamp = Date.now();
-  const project = await (await request.get('/rest/api/3/project/ZZ', { headers })).json();
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now().toString(36).toUpperCase();
+  // A project of its own, so the totals on these pages are this journey's
+  // work and a retry starts from nothing rather than from its own first
+  // attempt.
+  const key = `WL${stamp}`.slice(0, 10);
+  const me = await (await request.get('/rest/api/3/myself', { headers })).json();
+  const created = await request.post('/rest/api/3/project', {
+    headers, data: { key, name: `Workloads ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const project = await created.json();
   const versionResponse = await request.post('/rest/api/3/version', { headers, data: { name: `Workload ${stamp}`, projectId: Number(project.id) } });
   expect(versionResponse.status(), await versionResponse.text()).toBe(201);
   const version = await versionResponse.json();
-  const me = await (await request.get('/rest/api/3/myself', { headers })).json();
-
   const createIssue = async (fields: Record<string, unknown>) => {
     const response = await request.post('/rest/api/3/issue', { headers, data: { fields } });
     expect(response.status(), await response.text()).toBe(201);
@@ -49,16 +56,16 @@ test('workload and time tracking reports say who holds the work and what it will
   // Two work items in the version, one of them mine with time logged
   // against it, and one outside the version so the version narrows.
   const mine = await createIssue({
-    project: { key: 'ZZ' }, summary: `Workload mine ${stamp}`, issuetype: { name: 'Task' },
+    project: { key }, summary: `Workload mine ${stamp}`, issuetype: { name: 'Task' },
     assignee: { accountId: me.accountId }, fixVersions: [{ id: version.id }],
     timetracking: { originalEstimate: '4h', remainingEstimate: '3h' },
   });
   const unassigned = await createIssue({
-    project: { key: 'ZZ' }, summary: `Workload unassigned ${stamp}`, issuetype: { name: 'Bug' },
+    project: { key }, summary: `Workload unassigned ${stamp}`, issuetype: { name: 'Bug' },
     fixVersions: [{ id: version.id }], timetracking: { originalEstimate: '2h', remainingEstimate: '2h' },
   });
   const elsewhere = await createIssue({
-    project: { key: 'ZZ' }, summary: `Workload elsewhere ${stamp}`, issuetype: { name: 'Task' },
+    project: { key }, summary: `Workload elsewhere ${stamp}`, issuetype: { name: 'Task' },
     timetracking: { originalEstimate: '1h', remainingEstimate: '1h' },
   });
   const logged = await request.post(`/rest/api/3/issue/${mine}/worklog`, {
@@ -74,7 +81,7 @@ test('workload and time tracking reports say who holds the work and what it will
   await expect(page).toHaveURL('/');
 
   // User workload: the whole project, by the person holding the work.
-  await page.goto('/projects/ZZ/reports');
+  await page.goto(`/projects/${key}/reports`);
   await page.getByRole('link', { name: 'Open User workload' }).click();
   await expect(page.getByRole('heading', { name: 'User workload', level: 1 })).toBeVisible();
   const people = page.getByRole('table', { name: 'Unresolved work by assignee' });
@@ -85,13 +92,13 @@ test('workload and time tracking reports say who holds the work and what it will
   await accessible(page);
   await reflows(page);
   const workloadCSV = await downloadCSV(page);
-  expect(workloadCSV.name).toMatch(/^ZZ-user-workload-\d{4}-\d{2}-\d{2}\.csv$/);
+  expect(workloadCSV.name).toMatch(new RegExp(`^${key}-user-workload-\\d{4}-\\d{2}-\\d{2}\\.csv$`));
   expect(workloadCSV.lines[0]).toBe('Assignee,Unresolved work items,Remaining estimate');
   expect(workloadCSV.lines.find((line) => line.startsWith('Unassigned,'))).toBeTruthy();
 
   // Version workload: the same question of one version, by person and by
   // work type, and the work outside the version is not in it.
-  await page.goto('/projects/ZZ/reports/version-workload');
+  await page.goto(`/projects/${key}/reports/version-workload`);
   await page.getByLabel('Version').selectOption(version.id);
   await page.getByRole('button', { name: 'Show version' }).click();
   await expect(page.getByRole('region', { name: 'Workload summary' })).toContainText('2');
@@ -100,7 +107,7 @@ test('workload and time tracking reports say who holds the work and what it will
   expect(versionCSV.lines.filter((line) => line.startsWith('Work type,')).length).toBe(2);
 
   // Time tracking: estimates against what the work has cost.
-  await page.goto('/projects/ZZ/reports/time-tracking');
+  await page.goto(`/projects/${key}/reports/time-tracking`);
   await expect(page.getByRole('heading', { name: 'Time tracking', level: 1 })).toBeVisible();
   const tracking = page.getByRole('table', { name: 'Estimates and time spent for each unresolved work item' });
   await expect(tracking).toContainText(mine);
@@ -118,7 +125,7 @@ test('workload and time tracking reports say who holds the work and what it will
   expect(trackingCSV.lines.find((line) => line.startsWith(`${mine},`))).toBeTruthy();
 
   // Work by field: how the project's work divides, by the field chosen.
-  await page.goto('/projects/ZZ/reports/group-by');
+  await page.goto(`/projects/${key}/reports/group-by`);
   await expect(page.getByRole('heading', { name: 'Work by field', level: 1 })).toBeVisible();
   const grouped = page.getByRole('table', { name: 'Work items counted by the chosen field' });
   await expect(grouped).toContainText('Demo User');
@@ -137,6 +144,6 @@ test('workload and time tracking reports say who holds the work and what it will
   const done = transitions.find((candidate) => candidate.to.statusCategory.key === 'done');
   expect(done).toBeTruthy();
   expect((await request.post(`/rest/api/3/issue/${unassigned}/transitions`, { headers, data: { transition: { id: done!.id } } })).status()).toBe(204);
-  await page.goto('/projects/ZZ/reports/user-workload');
+  await page.goto(`/projects/${key}/reports/user-workload`);
   await expect(page.getByRole('table', { name: 'Unresolved work by assignee' }).getByRole('row').filter({ hasText: 'Unassigned' })).toContainText('1h');
 });
