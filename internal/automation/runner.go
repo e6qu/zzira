@@ -229,8 +229,18 @@ func (r *Runner) execute(ctx context.Context, run *claimedRun) (int, int, error)
 	total := 0
 	switch {
 	case EventTriggers[triggerType(run.Payload)] != "" && run.IssueID == "":
-		// An event with no work item of its own -- a deletion, a version or a
-		// sprint -- runs once, with what it carried.
+		// An event with no work item of its own -- a deletion, a version, a
+		// sprint or something written in the wiki -- runs once, with what it
+		// carried.
+		if WikiEvents[EventTriggers[triggerType(run.Payload)]] {
+			// The rule runs as its actor, so wiki content the actor may not
+			// read must not reach its actions: not as a title in a comment,
+			// and not as the reason work was raised.
+			visible, err := r.wikiContentVisible(ctx, run)
+			if err != nil || !visible {
+				return 0, 0, err
+			}
+		}
 		changed, err := r.runComponents(ctx, run, nil, components)
 		if err != nil {
 			return 0, 0, err

@@ -93,8 +93,9 @@ func (r *Runner) renderSmartValues(ctx context.Context, run *claimedRun, issue *
 			return run.UserInputs[input]
 		}
 		// What an event carried when its subject is not a work item this run
-		// can load: {{version.name}}, {{sprint.goal}}, {{deletedIssue.key}}.
-		for _, subject := range []string{"version", "sprint", "deletedIssue"} {
+		// can load: {{version.name}}, {{sprint.goal}}, {{deletedIssue.key}},
+		// {{page.title}}, {{blogPost.title}}, {{comment.body.value}}.
+		for _, subject := range []string{"version", "sprint", "deletedIssue", "page", "blogPost", "comment", "label"} {
 			if name == subject || strings.HasPrefix(name, subject+".") {
 				return webhookValue(run.TriggerData, name)
 			}

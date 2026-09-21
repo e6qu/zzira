@@ -56,6 +56,11 @@ func TestAutomationEditorKeepsWhatItCannotShow(t *testing.T) {
 		t.Fatalf("editor actions = %+v", actions)
 	}
 
+	// A rule the wiki starts is one the editor shows like any other.
+	if got := automationEditorUnsupported(json.RawMessage(`{"trigger":{"type":"confluence.page.created"},"components":[{"component":"ACTION","type":"jira.issue.create","value":{"issueTypeId":"it_task","summary":"x"}}]}`)); got != "" {
+		t.Fatalf("a page rule is unsupported: %q", got)
+	}
+
 	// A branch over a query reads its query back, and a create variable
 	// action reads back the name it gave and what it holds.
 	queried := parseAutomationBranch(json.RawMessage(`{"components":[{"component":"BRANCH","type":"jira.issue.related","value":{"relatedType":"jql","jql":"labels = late"},"children":[{"component":"ACTION","type":"jira.create.variable","value":{"variableName":"note","variableValue":"{{issue.key}}"}}]}]}`))

@@ -905,9 +905,19 @@ func (s *Store) ServiceDesksAdministered(ctx context.Context, workspaceID, userI
 	if err != nil {
 		return nil, err
 	}
+	return s.serviceDesksAdministeredFrom(ctx, workspaceID, userID, desks)
+}
+
+// serviceDesksAdministeredFrom answers which of the desks already listed the
+// user administers. Listing them and asking about each of them are separate
+// statements, so a desk's project can be archived, trashed or deleted in
+// between and the list it came from is already stale. A desk whose project is
+// gone is not one anybody administers: this answer is read on every page's
+// navigation, and nobody's page should fail over somebody else's deletion.
+func (s *Store) serviceDesksAdministeredFrom(ctx context.Context, workspaceID, userID string, desks []models.ServiceDesk) ([]models.ServiceDesk, error) {
 	administered := make([]models.ServiceDesk, 0)
 	for _, desk := range desks {
-		admin, err := s.HasProjectPermission(ctx, workspaceID, userID, desk.ProjectID, "", "ADMINISTER_PROJECTS")
+		admin, err := s.projectPermissionGranted(ctx, workspaceID, userID, desk.ProjectID, "ADMINISTER_PROJECTS")
 		if err != nil {
 			return nil, err
 		}

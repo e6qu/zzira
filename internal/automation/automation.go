@@ -652,6 +652,11 @@ var EventTriggers = map[string]string{
 	"jira.version.event.trigger:released":   "version_released",
 	"jira.sprint.event.trigger:started":     "sprint_started",
 	"jira.sprint.event.trigger:completed":   "sprint_completed",
+	"confluence.page.created":               "page_created",
+	"confluence.page.updated":               "page_updated",
+	"confluence.page.commented":             "page_commented",
+	"confluence.page.labelled":              "page_labelled",
+	"confluence.blogpost.created":           "blogpost_created",
 }
 
 // SubjectlessEvents are the events that happen to something other than a work
@@ -661,6 +666,16 @@ var EventTriggers = map[string]string{
 var SubjectlessEvents = map[string]bool{
 	"deleted": true, "version_created": true, "version_updated": true,
 	"version_released": true, "sprint_started": true, "sprint_completed": true,
+	"page_created": true, "page_updated": true, "page_commented": true,
+	"page_labelled": true, "blogpost_created": true,
+}
+
+// WikiEvents are the events that happen to wiki content rather than to work.
+// A run they start reads the content as the rule actor, so a rule cannot act
+// on a page its actor may not see.
+var WikiEvents = map[string]bool{
+	"page_created": true, "page_updated": true, "page_commented": true,
+	"page_labelled": true, "blogpost_created": true,
 }
 
 // eventTriggerValue is what an event trigger narrows its events to: work

@@ -186,6 +186,9 @@ var (
 		{"jira.version.event.trigger:released", "Version released"},
 		{"jira.sprint.event.trigger:started", "Sprint started"}, {"jira.sprint.event.trigger:completed", "Sprint completed"},
 		{automation.WebhookTriggerType, "Incoming webhook"},
+		{"confluence.page.created", "Page created"}, {"confluence.page.updated", "Page updated"},
+		{"confluence.page.commented", "Page commented"}, {"confluence.page.labelled", "Page labelled"},
+		{"confluence.blogpost.created", "Blog post created"},
 		{automation.ManualTriggerType, "Run manually from a work item"},
 	}
 	automationActionTypes = []automationOption{
@@ -581,9 +584,11 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 		"jira.issue.event.trigger:assigned", "jira.issue.attachment.added", "jira.issue.event.trigger:moved":
 		triggerValue = map[string]any{"jql": query}
 	case "jira.issue.event.trigger:deleted", "jira.version.event.trigger:created", "jira.version.event.trigger:updated",
-		"jira.version.event.trigger:released", "jira.sprint.event.trigger:started", "jira.sprint.event.trigger:completed":
+		"jira.version.event.trigger:released", "jira.sprint.event.trigger:started", "jira.sprint.event.trigger:completed",
+		"confluence.page.created", "confluence.page.updated", "confluence.page.commented",
+		"confluence.page.labelled", "confluence.blogpost.created":
 		// These happen to something a rule cannot match work against: a work
-		// item that has gone, a version or a sprint.
+		// item that has gone, a version, a sprint, or something in the wiki.
 		if query != "" {
 			return nil, fmt.Errorf("that trigger takes no JQL: there is no work item to match")
 		}
