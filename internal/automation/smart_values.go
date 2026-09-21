@@ -13,7 +13,10 @@ import (
 	"github.com/e6qu/zzira/internal/models"
 )
 
-var smartValuePattern = regexp.MustCompile(`\{\{\s*([A-Za-z][A-Za-z.]*)\s*\}\}`)
+// A smart value names a path: letters, digits and the separators a variable
+// name or a JSON path uses. A prompt called release2 or blog_post is a name
+// like any other.
+var smartValuePattern = regexp.MustCompile(`\{\{\s*([A-Za-z][A-Za-z0-9._-]*)\s*\}\}`)
 
 // renderSmartValues replaces Jira Automation smart values in an action's text
 // with the work item's, the event initiator's and the rule's values. Unknown
@@ -79,6 +82,10 @@ func (r *Runner) renderSmartValues(ctx context.Context, run *claimedRun, issue *
 		}
 		if name == "webhookData" || strings.HasPrefix(name, "webhookData.") {
 			return webhookValue(run.WebhookData, strings.TrimPrefix(strings.TrimPrefix(name, "webhookData"), "."))
+		}
+		// What the person running a manual rule typed into its prompts.
+		if input, ok := strings.CutPrefix(name, "userInputs."); ok {
+			return run.UserInputs[input]
 		}
 		// What an event carried when its subject is not a work item this run
 		// can load: {{version.name}}, {{sprint.goal}}, {{deletedIssue.key}}.

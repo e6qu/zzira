@@ -42,6 +42,9 @@ type claimedRun struct {
 	// work item carried: the version, the sprint, or the work item that has
 	// gone. Its actions read it as {{version.name}} and the like.
 	TriggerData json.RawMessage
+	// UserInputs are what the person who ran a manual rule typed into its
+	// prompts, which its actions read as {{userInputs.<name>}}.
+	UserInputs map[string]string
 	// WebResponse is the answer the rule's last web request received, which
 	// later actions read as {{webResponse}}.
 	WebResponse *webResponse

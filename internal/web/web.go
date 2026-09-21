@@ -391,6 +391,12 @@ func writePageStatus(w http.ResponseWriter, name string, data any, status int) {
 
 // writeFragment renders an HTMX fragment; template failures are loud 500s.
 func writeFragment(w http.ResponseWriter, name string, data any) {
+	writeFragmentStatus(w, name, data, http.StatusOK)
+}
+
+// writeFragmentStatus renders a fragment with a status of its own, for an
+// answer that is also a refusal.
+func writeFragmentStatus(w http.ResponseWriter, name string, data any, status int) {
 	var output bytes.Buffer
 	if err := render.Fragment(&output, name, data); err != nil {
 		log.Printf("render %s: %v", name, err)
@@ -398,6 +404,7 @@ func writeFragment(w http.ResponseWriter, name string, data any) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
 	_, _ = output.WriteTo(w)
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,6 +39,47 @@ type automationActionView struct {
 	// "Name: value" to a line.
 	Body    string
 	Headers string
+}
+
+// automationFormPrompts reads the questions a manual rule asks. A row with
+// nothing in it is no question; a row with anything in it needs a name and a
+// variable, because the rule reads the answer by that variable.
+func automationFormPrompts(names, variables, types, required []string) ([]map[string]any, error) {
+	prompts := []map[string]any{}
+	at := func(list []string, index int) string {
+		if index < len(list) {
+			return strings.TrimSpace(list[index])
+		}
+		return ""
+	}
+	for index := range names {
+		name, variable := at(names, index), at(variables, index)
+		inputType, want := at(types, index), at(required, index)
+		if name == "" && variable == "" {
+			continue
+		}
+		if name == "" {
+			return nil, fmt.Errorf("every question needs what to call it")
+		}
+		if !manualPromptName.MatchString(variable) {
+			return nil, fmt.Errorf("the variable for %q is a name such as reason or release_note", name)
+		}
+		if automationOptionName(automationPromptTypes, inputType) == "" {
+			return nil, fmt.Errorf("choose what kind of answer %q takes", name)
+		}
+		for _, held := range prompts {
+			if held["variableName"] == variable {
+				return nil, fmt.Errorf("two questions cannot share the variable %q", variable)
+			}
+		}
+		prompts = append(prompts, map[string]any{
+			"displayName": name, "variableName": variable, "inputType": inputType, "required": want == "required",
+		})
+		if len(prompts) > maxManualPrompts {
+			return nil, fmt.Errorf("a rule asks at most %d questions", maxManualPrompts)
+		}
+	}
+	return prompts, nil
 }
 
 // automationFormHeaders reads the headers a web request is sent with, one
@@ -91,7 +133,30 @@ type automationTriggerView struct {
 	// WebhookIssues is whether an incoming webhook rule runs for the work
 	// items the request names, rather than for none.
 	WebhookIssues bool
+	// Prompts are what a manual rule asks whoever runs it, in order, with a
+	// blank row at the end to add another.
+	Prompts []automationPromptView
 }
+
+// automationPromptView is one question a manual rule asks before it runs.
+type automationPromptView struct {
+	DisplayName, VariableName, InputType string
+	Required                             bool
+}
+
+// automationPromptTypes are the kinds of answer a prompt takes, as Jira's
+// manual rules offer them.
+var automationPromptTypes = []automationOption{
+	{"TEXT", "Text"}, {"TEXT_AREA", "Paragraph"}, {"NUMBER", "Number"}, {"DATE", "Date"}, {"CHECKBOX", "Yes or no"},
+}
+
+// manualPromptName is what a prompt's variable may be called: the smart value
+// {{userInputs.<name>}} has to name it, so it is a plain identifier.
+var manualPromptName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
+
+// maxManualPrompts is how many questions one rule asks. Jira's own editor
+// stops well before a form nobody would fill in.
+const maxManualPrompts = 10
 
 // automationConditionView is a work item fields or JQL condition in the
 // editor; a JQL condition has the field "jql".
@@ -116,6 +181,7 @@ var (
 		{"jira.version.event.trigger:released", "Version released"},
 		{"jira.sprint.event.trigger:started", "Sprint started"}, {"jira.sprint.event.trigger:completed", "Sprint completed"},
 		{automation.WebhookTriggerType, "Incoming webhook"},
+		{automation.ManualTriggerType, "Run manually from a work item"},
 	}
 	automationActionTypes = []automationOption{
 		{"jira.issue.add-label", "Add label"}, {"jira.issue.remove-label", "Remove label"}, {"jira.issue.assign", "Assign work item"},
@@ -170,6 +236,8 @@ type automationEditorData struct {
 	// Triggers, ActionTypes, ConditionFields and ConditionOperators are the
 	// editor's choices.
 	Triggers, ActionTypes, ConditionFields, ConditionOperators []automationOption
+	// PromptTypes are the kinds of answer a manual rule's question takes.
+	PromptTypes []automationOption
 	// Unsupported names what the editor cannot show in the rule, which turns
 	// saving there off so it is not lost.
 	Unsupported string
@@ -209,9 +277,12 @@ func (h *Handler) AutomationRules(w http.ResponseWriter, r *http.Request) {
 	data := automationRulesData{CloudID: cloudID, Rules: make([]automationRuleCard, 0, len(page.Rules))}
 	look := h.siteLook(r, workspaceID)
 	for _, rule := range page.Rules {
+		// The card says what starts the rule, whatever kind of trigger that
+		// is: a webhook and a rule run by hand have no event trigger either,
+		// and both used to read as an imported rule nobody here could name.
 		card := automationRuleCard{Rule: rule, Trigger: "Imported trigger"}
-		if rule.EventTrigger != "" {
-			card.Trigger = automationOptionName(automationTriggers, parseAutomationTrigger(rule.Payload).Type)
+		if name := automationOptionName(automationTriggers, parseAutomationTrigger(rule.Payload).Type); name != "" {
+			card.Trigger = name
 		}
 		if rule.IntervalMinutes != nil {
 			card.Trigger = "Scheduled"
@@ -370,12 +441,12 @@ func (h *Handler) automationEditorData(r *http.Request, workspaceID string, rule
 	}
 	data := automationEditorData{Rule: rule, Members: members, Statuses: statuses, CloudID: cloudID, Projects: projects,
 		Triggers: automationTriggers, ActionTypes: actionTypes, ConditionFields: automationConditionFields, ConditionOperators: automationConditionOperators,
-		RelatedTypes: automationRelatedTypes}
+		RelatedTypes: automationRelatedTypes, PromptTypes: automationPromptTypes}
 	if rule != nil && rule.WebhookToken != "" {
 		data.WebhookURL = strings.TrimSuffix(h.BaseURL, "/") + "/pro/hooks/" + url.PathEscape(rule.WebhookToken)
 	}
 	if rule == nil {
-		data.Trigger = automationTriggerView{Type: "jira.jql.scheduled"}
+		data.Trigger = automationTriggerView{Type: "jira.jql.scheduled", Prompts: []automationPromptView{{InputType: "TEXT"}}}
 		data.Conditions = []automationConditionView{{}}
 		data.Branch = automationBranchView{Actions: []automationActionView{}, Conditions: []automationConditionView{{}}}
 		data.Rule = &automation.Rule{State: "ENABLED", ActorID: h.currentUser(r).ID, ScheduleTimezone: h.currentUser(r).TimeZone}
@@ -524,6 +595,15 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 		// names or for none at all, and the rule says which it expects.
 		issues := r.PostFormValue("webhook_issues") == "true"
 		triggerValue = map[string]any{"jql": query, "issuesFromWebhook": issues}
+	case automation.ManualTriggerType:
+		prompts, err := automationFormPrompts(r.PostForm["prompt_name"], r.PostForm["prompt_variable"],
+			r.PostForm["prompt_type"], r.PostForm["prompt_required"])
+		if err != nil {
+			return nil, err
+		}
+		// A manual rule runs for the work item it was run from, so its scope
+		// is that work item rather than a query.
+		triggerValue = map[string]any{"inputPrompts": prompts}
 	default:
 		return nil, fmt.Errorf("unsupported trigger")
 	}
@@ -827,10 +907,25 @@ func parseAutomationTrigger(payload json.RawMessage) automationTriggerView {
 		ToStatusIDs       []string `json:"toStatusIds"`
 		Fields            []string `json:"fields"`
 		IssuesFromWebhook bool     `json:"issuesFromWebhook"`
+		InputPrompts      []struct {
+			DisplayName  string `json:"displayName"`
+			VariableName string `json:"variableName"`
+			InputType    string `json:"inputType"`
+			Required     bool   `json:"required"`
+		} `json:"inputPrompts"`
 	}
 	automationComponentValue(rule.Trigger.Value, &value)
 	view := automationTriggerView{Type: rule.Trigger.Type, Fields: strings.Join(value.Fields, ", "), AllowRules: rule.CanOtherRuleTrigger,
 		WebhookIssues: value.IssuesFromWebhook}
+	for _, prompt := range value.InputPrompts {
+		view.Prompts = append(view.Prompts, automationPromptView{
+			DisplayName: prompt.DisplayName, VariableName: prompt.VariableName,
+			InputType: prompt.InputType, Required: prompt.Required,
+		})
+	}
+	// One blank row so another question can be added without a trip through
+	// the API.
+	view.Prompts = append(view.Prompts, automationPromptView{InputType: "TEXT"})
 	if len(value.FromStatusIDs) > 0 {
 		view.FromStatus = value.FromStatusIDs[0]
 	}

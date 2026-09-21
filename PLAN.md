@@ -184,8 +184,10 @@ condition catalog, and 14 action types including web requests and page creation.
 - Confluence triggers: page created, updated, published, commented, labelled;
   Confluence actions beyond create page.
 - Branches: JQL, for-each on lists, related work items at any level.
-- Variables (create variable action, `{{variable}}`), web request custom bodies
-  and headers, manual trigger in the rule editor.
+- Variables (create variable action, `{{variable}}`); web request custom bodies
+  and headers, and the manual trigger with its questions in the rule editor and
+  on the work item, are done.
+- Running a manual rule over a selection of work items from the navigator.
 - Remaining Jira action catalog, compared action by action with Atlassian's list.
 
 ## 8. Assets

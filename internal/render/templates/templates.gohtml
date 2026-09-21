@@ -21,12 +21,12 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=45">
+<link rel="stylesheet" href="/static/css/workspace.css?v=46">
 <link rel="preload" href="/static/zzira-worker.wasm?v=4" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
 <script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js?v=35" defer></script>
+<script src="/static/app.js?v=36" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -189,6 +189,12 @@
 </div>
 {{end}}
 
+{{define "manual_rules"}}
+{{if .Error}}<div class="form-error" role="alert"><strong>Rule not run</strong><span>{{.Error}}</span></div>{{end}}
+{{if .Ran}}<div class="alert success" role="status">{{.Ran}}</div>{{end}}
+{{range $rule := .Rules}}<form class="manual-rule" method="post" action="/issues/{{$.IssueKey}}/automation/{{$rule.UUID}}" hx-post="/issues/{{$.IssueKey}}/automation/{{$rule.UUID}}" hx-target="#issue-view-holder" hx-swap="innerHTML"><div class="manual-rule-name">{{$rule.Name}}</div>{{range $prompt := $rule.Prompts}}<label>{{$prompt.DisplayName}}{{if eq $prompt.InputType "TEXT_AREA"}}<textarea name="input_{{$prompt.VariableName}}" rows="2" maxlength="4000" {{if $prompt.Required}}required{{end}}></textarea>{{else if eq $prompt.InputType "NUMBER"}}<input name="input_{{$prompt.VariableName}}" type="number" step="any" {{if $prompt.Required}}required{{end}}>{{else if eq $prompt.InputType "DATE"}}<input name="input_{{$prompt.VariableName}}" type="date" {{if $prompt.Required}}required{{end}}>{{else if eq $prompt.InputType "CHECKBOX"}}<select name="input_{{$prompt.VariableName}}"><option value="no">No</option><option value="yes">Yes</option></select>{{else}}<input name="input_{{$prompt.VariableName}}" maxlength="255" {{if $prompt.Required}}required{{end}}>{{end}}</label>{{end}}<button class="btn" type="submit">Run {{$rule.Name}}</button></form>{{else}}<p class="manual-rules-empty">No rules to run on this work item. An administrator writes one with the "Run manually from a work item" trigger.</p>{{end}}
+{{end}}
+
 {{define "issue_view"}}
 <div class="issue-view" id="issue-root" data-issue-id="{{.Issue.ID}}" data-issue-key="{{.Issue.Key}}" data-seq="{{.Issue.UpdatedSeq}}">
   <nav class="project-tabs" aria-label="{{.ProjectName}} project"><a href="/projects/{{.ProjectKey}}">Overview</a>{{if .BoardID}}<a href="/board/{{.BoardID}}/backlog">Backlog</a><a href="/board/{{.BoardID}}">Board</a>{{end}}<a href="/issues/{{.ProjectKey}}">Work items</a></nav>
@@ -217,6 +223,7 @@
 {{end}}
 {{end}}
 {{if .CanEdit}}
+      <details class="issue-automation"><summary class="btn">Run automation</summary><div class="issue-automation-rules" hx-get="/issues/{{.Issue.Key}}/automation" hx-trigger="toggle from:closest details once" hx-target="this" hx-swap="innerHTML"><p class="manual-rules-empty">Reading the rules…</p></div></details>
 {{if and .CanTriage (or .WatchingEnabled .IsWatching)}}
       <form method="post" action="/issues/{{.Issue.Key}}/watch" hx-post="/issues/{{.Issue.Key}}/watch" hx-target="#issue-view-holder" hx-swap="innerHTML">
         <input type="hidden" name="watching" value="{{if .IsWatching}}false{{else}}true{{end}}">

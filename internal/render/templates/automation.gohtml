@@ -1,5 +1,5 @@
 {{define "page_automation_rules"}}
-<!doctype html><html lang="en"><head><title>Automation · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/automation.css?v=5"></head>
+<!doctype html><html lang="en"><head><title>Automation · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/automation.css?v=6"></head>
 <body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}
 <main class="page page-fluid automation-directory" id="main-content" tabindex="-1">
   <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><span>Settings</span><span aria-hidden="true">/</span><span aria-current="page">Automation</span></nav>
@@ -16,7 +16,7 @@
 {{end}}
 
 {{define "page_automation_rule"}}
-<!doctype html><html lang="en"><head><title>{{if .Data.IsNew}}Create automation rule{{else}}{{.Data.Rule.Name}}{{end}} · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/automation.css?v=5"></head>
+<!doctype html><html lang="en"><head><title>{{if .Data.IsNew}}Create automation rule{{else}}{{.Data.Rule.Name}}{{end}} · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/automation.css?v=6"></head>
 <body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}
 <main class="page page-fluid automation-editor" id="main-content" tabindex="-1">
   <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/settings/automation">Automation</a><span aria-hidden="true">/</span><span aria-current="page">{{if .Data.IsNew}}Create rule{{else}}{{.Data.Rule.Name}}{{end}}</span></nav>
@@ -37,6 +37,7 @@
         <fieldset class="automation-trigger-options"><legend>Work item transitioned</legend><div class="automation-node-fields"><label>From status<select name="from_status"><option value="">Any status</option>{{range .Data.Statuses}}<option value="{{.ID}}" {{if eq $.Data.Trigger.FromStatus .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></label><label>To status<select name="to_status"><option value="">Any status</option>{{range .Data.Statuses}}<option value="{{.ID}}" {{if eq $.Data.Trigger.ToStatus .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></label></div></fieldset>
         <fieldset class="automation-trigger-options"><legend>Field value changed</legend><label>Fields<input name="changed_fields" value="{{.Data.Trigger.Fields}}" placeholder="summary, priority"><small>Comma-separated, such as summary, priority, assignee, labels or duedate.</small></label></fieldset>
         <fieldset class="automation-trigger-options"><legend>Incoming webhook</legend><div class="automation-node-fields"><label class="automation-toggle"><input type="checkbox" name="webhook_issues" value="true" {{if .Data.Trigger.WebhookIssues}}checked{{end}}> The request names the work items to run for</label>{{if .Data.WebhookURL}}<label>Webhook URL<input value="{{.Data.WebhookURL}}" readonly><small>Send a POST here to run this rule. Keep it secret: anyone holding it can run the rule. The request body reads as <code>{{"{{"}}webhookData{{"}}"}}</code>.</small></label>{{else}}<small>The address appears once the rule is saved.</small>{{end}}</div></fieldset>
+        <fieldset class="automation-trigger-options"><legend>Run manually from a work item</legend><p class="automation-scope-note">Whoever runs the rule answers these, and the rule reads an answer as <code>{{"{{"}}userInputs.name{{"}}"}}</code>.</p>{{range $prompt := .Data.Trigger.Prompts}}<div class="automation-prompt-row"><label>Question<input name="prompt_name" value="{{$prompt.DisplayName}}" maxlength="255" placeholder="Why are you doing this?"></label><label>Variable<input name="prompt_variable" value="{{$prompt.VariableName}}" maxlength="64" placeholder="reason"></label><label>Answer<select name="prompt_type">{{range $.Data.PromptTypes}}<option value="{{.Value}}" {{if eq $prompt.InputType .Value}}selected{{end}}>{{.Name}}</option>{{end}}</select></label><label>Needed<select name="prompt_required"><option value="optional" {{if not $prompt.Required}}selected{{end}}>Optional</option><option value="required" {{if $prompt.Required}}selected{{end}}>Required</option></select></label></div>{{end}}</fieldset>
         <label class="automation-toggle"><input type="checkbox" name="allow_rule_trigger" value="true" {{if .Data.Trigger.AllowRules}}checked{{end}}> Allow other rules to trigger this rule</label>
       </section>
       <span class="automation-connector" aria-hidden="true">→</span>
@@ -72,7 +73,7 @@
 {{end}}
 
 {{define "page_automation_templates"}}
-<!doctype html><html lang="en"><head><title>Rule templates · Automation · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/automation.css?v=5"></head>
+<!doctype html><html lang="en"><head><title>Rule templates · Automation · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/automation.css?v=6"></head>
 <body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}
 <main class="page page-fluid automation-directory" id="main-content" tabindex="-1">
   <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/settings/automation">Automation</a><span aria-hidden="true">/</span><span aria-current="page">Templates</span></nav>

@@ -825,6 +825,16 @@
   document.body.addEventListener('htmx:beforeSwap', (event) => {
     const detail = event.detail;
     const target = detail.target;
+    // A form that refuses what was typed answers 400 with the form again and
+    // the reason. htmx drops error responses, so say that an HTML-bodied 400
+    // is an answer to show: without this the refusal is silence, and somebody
+    // presses the button again expecting something to happen. A plain-text
+    // 400 is still an error, and is still left alone.
+    const xhr = detail.xhr;
+    if (xhr && xhr.status === 400 && (xhr.getResponseHeader('Content-Type') || '').startsWith('text/html')) {
+      detail.shouldSwap = true;
+      detail.isError = false;
+    }
     const holder = target && (target.id === 'issue-view-holder' || target.id === 'issue-root');
     const view = holder ? document.getElementById('issue-root') : null;
     typedBeforeSwap = view ? typedValues(view) : null;
