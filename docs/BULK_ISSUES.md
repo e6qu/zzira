@@ -114,11 +114,11 @@ described in [SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md#queues).
 The issue navigator (`/issues/{projectKey}`) shows its selection checkboxes and
 bulk forms only to people holding Bulk change. They select rows on the current
 page and bulk delete, move (project, type, parent) or transition them, choosing
-whether to notify watchers. "Edit selected" changes one field across the
-selection -- the assignee, the priority, the due date, or labels added or
-removed -- and reads the box belonging to the field it names, so the form can
-carry them all. An empty box clears the field, except for a priority, which
-Jira has no unset value for. Watching and unwatching the selection ask only to
+whether to notify watchers. "Edit selected" ticks the fields to change and
+changes every ticked one in a single task: the assignee, the priority, the due
+date, labels, components and fix versions. A list field replaces what is
+there, adds to it or takes values out of it; an empty box clears the field,
+except for a priority, which Jira has no unset value for. Watching and unwatching the selection ask only to
 be able to see the work items, as watching one does, so they are offered
 without Bulk change. Progress is shown at
 `/issues/{projectKey}/bulk/{taskId}` to the submitter and administrators.
@@ -127,8 +127,10 @@ without Bulk change. Progress is shown at
 
 See [PLAN.md](../PLAN.md).
 
-- The navigator's bulk edit sets one field at a time, and only the four it
-  offers; the REST endpoint takes any number of them.
+- The navigator's bulk edit offers the six fields above. The REST endpoint
+  takes any field on the shared edit metadata, including custom fields, and
+  work type and status, which the navigator changes through bulk move and
+  bulk transition instead.
 
 ## See also
 

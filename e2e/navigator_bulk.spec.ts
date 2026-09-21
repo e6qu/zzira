@@ -25,48 +25,80 @@ async function accessible(page: Page) {
   expect(violations).toEqual([]);
 }
 
-// Changing many work items at once from the navigator: a field across the
-// selection, and watching or unwatching them. Both were API-only.
+// Changing many work items at once from the navigator: several fields across
+// the selection in one task, and watching or unwatching them. All were
+// API-only.
 test('navigator edits, watches and unwatches a selection', async ({ page, request }) => {
   const auth = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
   const stamp = Date.now();
+  // Its own project, so a component and a version can be counted on and no
+  // other spec's work is edited.
+  const projectKey = `BK${stamp.toString(36).toUpperCase().slice(-8)}`;
+  const me = await (await request.get('/rest/api/3/myself', { headers: auth })).json();
+  const project = await request.post('/rest/api/3/project', {
+    headers: auth,
+    data: { key: projectKey, name: `Bulk edit ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' },
+  });
+  expect(project.status()).toBe(201);
+  const componentName = `Runtime ${stamp}`;
+  expect((await request.post('/rest/api/3/component', { headers: auth, data: { name: componentName, project: projectKey } })).status()).toBe(201);
+  const versionName = `Release ${stamp}`;
+  expect((await request.post('/rest/api/3/version', { headers: auth, data: { name: versionName, project: projectKey } })).status()).toBe(201);
+
   const keys: string[] = [];
   for (const summary of [`Bulk ${stamp} one`, `Bulk ${stamp} two`]) {
     const created = await request.post('/rest/api/3/issue', {
       headers: auth,
-      data: { fields: { project: { key: 'ZZ' }, summary, issuetype: { name: 'Task' } } },
+      data: { fields: { project: { key: projectKey }, summary, issuetype: { name: 'Task' } } },
     });
     expect(created.status()).toBe(201);
     keys.push((await created.json()).key as string);
   }
 
   await login(page);
-  await page.goto(`/issues/ZZ?text=Bulk+${stamp}`);
+  await page.goto(`/issues/${projectKey}?text=Bulk+${stamp}`);
   for (const key of keys) {
     await page.locator('tr').filter({ hasText: key }).getByRole('checkbox').check();
   }
 
-  // One field, across the selection.
+  // Six fields, across the selection, in one task.
   await page.locator('summary').filter({ hasText: 'Edit selected' }).click();
   const editor = page.locator('.bulk-edit-picker');
-  await editor.locator('select[name="field"]').selectOption('labels');
+  for (const field of ['assignee', 'priority', 'duedate', 'labels', 'components', 'fixVersions']) {
+    await editor.locator(`input[name="field"][value="${field}"]`).check();
+  }
+  // The project lead is assignable in their own project; the point is that
+  // the assignee changes at all, which it never did through this form.
+  await editor.locator('select[name="valueAssignee"]').selectOption({ label: me.displayName });
+  const priority = editor.locator('select[name="valuePriority"]');
+  await priority.selectOption({ index: 1 });
+  const priorityName = (await priority.locator('option').nth(1).textContent())!.trim();
+  await editor.locator('input[name="valueDueDate"]').fill('2027-02-03');
   await editor.locator('input[name="valueLabels"]').fill(`bulk-${stamp}`);
+  await editor.locator('select[name="valueComponents"]').selectOption({ label: componentName });
+  await editor.locator('select[name="valueFixVersions"]').selectOption({ label: versionName });
   await accessible(page);
   page.once('dialog', (dialog) => dialog.accept());
   await editor.getByRole('button', { name: 'Start edit' }).click();
   await expect(page.getByRole('heading', { name: /Bulk edit issues/ })).toBeVisible();
   await expect(page.locator('.page-header .lozenge')).toContainText(/COMPLETE|RUNNING|ENQUEUED/);
 
-  // The label is on both work items once the task has run.
+  // Every field the editor was asked to change is on both work items once the
+  // task has run.
   await expect(async () => {
     for (const key of keys) {
       const issue = await (await request.get(`/rest/api/3/issue/${key}`, { headers: auth })).json();
       expect(issue.fields.labels).toContain(`bulk-${stamp}`);
+      expect(issue.fields.assignee?.displayName).toBe(me.displayName);
+      expect(issue.fields.priority?.name).toBe(priorityName);
+      expect(issue.fields.duedate).toBe('2027-02-03');
+      expect((issue.fields.components ?? []).map((c: any) => c.name)).toContain(componentName);
+      expect((issue.fields.fixVersions ?? []).map((v: any) => v.name)).toContain(versionName);
     }
   }).toPass({ timeout: 20_000 });
 
   // Watching the selection, then not.
-  await page.goto(`/issues/ZZ?text=Bulk+${stamp}`);
+  await page.goto(`/issues/${projectKey}?text=Bulk+${stamp}`);
   for (const key of keys) {
     await page.locator('tr').filter({ hasText: key }).getByRole('checkbox').check();
   }
@@ -79,7 +111,7 @@ test('navigator edits, watches and unwatches a selection', async ({ page, reques
     }
   }).toPass({ timeout: 20_000 });
 
-  await page.goto(`/issues/ZZ?text=Bulk+${stamp}`);
+  await page.goto(`/issues/${projectKey}?text=Bulk+${stamp}`);
   for (const key of keys) {
     await page.locator('tr').filter({ hasText: key }).getByRole('checkbox').check();
   }
@@ -91,4 +123,6 @@ test('navigator edits, watches and unwatches a selection', async ({ page, reques
       expect(watchers.isWatching).toBe(false);
     }
   }).toPass({ timeout: 20_000 });
+
+  expect((await request.delete(`/rest/api/3/project/${projectKey}?enableUndo=false`, { headers: auth })).status()).toBe(204);
 });

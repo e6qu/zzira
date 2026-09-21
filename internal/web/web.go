@@ -109,8 +109,11 @@ type projectIssuesData struct {
 	IssueTypes      []models.IssueType
 	BulkTransitions []models.WorkflowTransition
 	// BulkPriorities are the priorities a bulk edit can set, which are the
-	// project's own.
+	// project's own. BulkComponents and BulkVersions are the same for the
+	// two list fields a project owns.
 	BulkPriorities []models.Priority
+	BulkComponents []*models.ProjectComponent
+	BulkVersions   []*models.Version
 	BoardID        string
 	Issues         []*models.Issue
 	Selected       *models.Issue
@@ -1635,6 +1638,14 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		if data.BulkComponents, err = h.Store.Components(r.Context(), wsID, project.ID, "", "name"); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if data.BulkVersions, err = h.Store.ProjectVersions(r.Context(), project.ID); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	}
 	h.writeWorkspacePage(w, r, "page_project", user, wsID, data, "issues", project.ID)
 }
@@ -1875,13 +1886,13 @@ func (h *Handler) SubmitBulkIssueEdit(w http.ResponseWriter, r *http.Request, pr
 	if !ok {
 		return
 	}
-	operation, err := bulkEditOperation(r)
+	operations, err := bulkEditOperations(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	task, err := h.Store.EnqueueBulkEditTask(r.Context(), workspaceID, user.ID, store.BulkIssueEditTaskPayload{
-		Issues: bulkTaskItems(issues), Operations: []store.BulkIssueEditOperation{operation},
+		Issues: bulkTaskItems(issues), Operations: operations,
 		SendBulkNotification: r.FormValue("sendNotification") == "true",
 	})
 	if errors.Is(err, store.ErrBulkTaskLimit) {
@@ -1895,58 +1906,89 @@ func (h *Handler) SubmitBulkIssueEdit(w http.ResponseWriter, r *http.Request, pr
 	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"/bulk/"+url.PathEscape(task.WireID()), http.StatusSeeOther)
 }
 
-// bulkEditOperation reads the one field the navigator's form sets. Clearing a
-// field is saying nothing in its box, which is how the single-item edit
-// clears one too.
-func bulkEditOperation(r *http.Request) (store.BulkIssueEditOperation, error) {
-	field := r.FormValue("field")
-	// Each field has its own box, so the form can carry them all and the
-	// chosen one is read. One box named "value" for every field would submit
-	// them all and the server would take whichever came first.
-	value := strings.TrimSpace(r.FormValue(map[string]string{
-		"assignee": "valueAssignee", "priority": "valuePriority",
-		"duedate": "valueDueDate", "labels": "valueLabels",
-	}[field]))
+// bulkEditOperations reads every field the navigator's editor was asked to
+// change, in the shapes the bulk edit command reads: a user or a priority by
+// id, labels, components and versions as lists. A field is changed when its
+// box is ticked, so the editor sets several at once the way Jira's does, and
+// an empty box clears the field -- except a priority, which Jira has no unset
+// value for.
+func bulkEditOperations(r *http.Request) ([]store.BulkIssueEditOperation, error) {
 	encode := func(v any) json.RawMessage {
 		encoded, _ := json.Marshal(v)
 		return encoded
 	}
-	switch field {
-	case "assignee":
-		if value == "" {
-			return store.BulkIssueEditOperation{FieldID: "assignee", Action: "SET", Value: encode(nil)}, nil
-		}
-		return store.BulkIssueEditOperation{FieldID: "assignee", Action: "SET", Value: encode(map[string]string{"accountId": value})}, nil
-	case "priority":
-		if value == "" {
-			return store.BulkIssueEditOperation{}, fmt.Errorf("choose a priority")
-		}
-		return store.BulkIssueEditOperation{FieldID: "priority", Action: "SET", Value: encode(map[string]string{"id": value})}, nil
-	case "duedate":
-		if value == "" {
-			return store.BulkIssueEditOperation{FieldID: "duedate", Action: "SET", Value: encode(nil)}, nil
-		}
-		if _, err := time.Parse("2006-01-02", value); err != nil {
-			return store.BulkIssueEditOperation{}, fmt.Errorf("a due date is a date, as YYYY-MM-DD")
-		}
-		return store.BulkIssueEditOperation{FieldID: "duedate", Action: "SET", Value: encode(value)}, nil
-	case "labels":
-		labels := []string{}
-		for _, label := range strings.Split(value, ",") {
-			if trimmed := strings.TrimSpace(label); trimmed != "" {
-				labels = append(labels, trimmed)
+	list := func(name string) []string {
+		values := []string{}
+		for _, value := range r.Form[name] {
+			for _, part := range strings.Split(value, ",") {
+				if trimmed := strings.TrimSpace(part); trimmed != "" {
+					values = append(values, trimmed)
+				}
 			}
 		}
-		if len(labels) == 0 {
-			return store.BulkIssueEditOperation{}, fmt.Errorf("name at least one label")
-		}
-		action := "ADD"
-		if r.FormValue("labelAction") == "remove" {
-			action = "REMOVE"
-		}
-		return store.BulkIssueEditOperation{FieldID: "labels", Action: action, Value: encode(labels)}, nil
+		return values
 	}
-	return store.BulkIssueEditOperation{}, fmt.Errorf("choose a field to change")
+	operations := []store.BulkIssueEditOperation{}
+	for _, field := range r.Form["field"] {
+		value := strings.TrimSpace(r.FormValue(map[string]string{
+			"assignee": "valueAssignee", "priority": "valuePriority",
+			"duedate": "valueDueDate", "summary": "valueSummary",
+		}[field]))
+		switch field {
+		case "assignee":
+			// The command sets the assignee from an account id, and an empty
+			// one unassigns, as the single-item edit does.
+			operations = append(operations, store.BulkIssueEditOperation{FieldID: "assignee", Action: "SET", Value: encode(value)})
+		case "priority":
+			if value == "" {
+				return nil, fmt.Errorf("choose a priority")
+			}
+			operations = append(operations, store.BulkIssueEditOperation{FieldID: "priority", Action: "SET", Value: encode(value)})
+		case "duedate":
+			if value != "" {
+				if _, err := time.Parse("2006-01-02", value); err != nil {
+					return nil, fmt.Errorf("a due date is a date, as YYYY-MM-DD")
+				}
+			}
+			operations = append(operations, store.BulkIssueEditOperation{FieldID: "duedate", Action: "SET", Value: encode(value)})
+		case "labels":
+			labels := list("valueLabels")
+			if len(labels) == 0 {
+				return nil, fmt.Errorf("name at least one label")
+			}
+			action := "ADD"
+			if r.FormValue("labelAction") == "remove" {
+				action = "REMOVE"
+			}
+			operations = append(operations, store.BulkIssueEditOperation{FieldID: "labels", Action: action, Value: encode(labels)})
+		case "components":
+			operations = append(operations, store.BulkIssueEditOperation{
+				FieldID: "components", Action: bulkListAction(r.FormValue("componentAction")), Value: encode(list("valueComponents")),
+			})
+		case "fixVersions":
+			operations = append(operations, store.BulkIssueEditOperation{
+				FieldID: "fixVersions", Action: bulkListAction(r.FormValue("versionAction")), Value: encode(list("valueFixVersions")),
+			})
+		default:
+			return nil, fmt.Errorf("choose a field to change")
+		}
+	}
+	if len(operations) == 0 {
+		return nil, fmt.Errorf("choose a field to change")
+	}
+	return operations, nil
+}
+
+// bulkListAction reads what to do with a list field: replace what is there,
+// add to it, or take values out of it. An empty list with SET clears it.
+func bulkListAction(action string) string {
+	switch action {
+	case "add":
+		return "ADD"
+	case "remove":
+		return "REMOVE"
+	}
+	return "SET"
 }
 
 // SubmitBulkIssueWatch starts watching, or stops watching, every work item in
