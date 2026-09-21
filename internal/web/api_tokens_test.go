@@ -68,7 +68,7 @@ func newAPITokenFixture(t *testing.T) *apiTokenFixture {
 		tokens:  map[string]string{},
 	}
 	for _, id := range []string{ownerID, otherID} {
-		session, err := authn.LoginOIDC(ctx, st, id, "id-token", "https://issuer.example.invalid", id+"-subject", "")
+		session, _, err := authn.LoginOIDC(ctx, st, id, "id-token", "https://issuer.example.invalid", id+"-subject", "")
 		if err != nil {
 			t.Fatal(err)
 		}

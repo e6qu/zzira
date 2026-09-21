@@ -590,6 +590,20 @@ func (s *Store) HasGlobalPermission(ctx context.Context, workspaceID, userID, pe
 	return globalPermissionForUser(ctx, tx, workspaceID, userID, permission)
 }
 
+// projectPermissionGranted answers whether one person holds a permission on
+// one project, reading a project that is no longer there as one they do not
+// hold it on. Listing the projects and asking about each of them are separate
+// statements, so a project archived, trashed or deleted in between is gone by
+// the time it is asked about -- and one person's page of their own projects
+// is no place to fail over somebody else's deletion.
+func (s *Store) projectPermissionGranted(ctx context.Context, workspaceID, userID, projectID, permission string) (bool, error) {
+	granted, err := s.HasProjectPermission(ctx, workspaceID, userID, projectID, "", permission)
+	if errors.Is(err, ErrPermissionSchemeNotFound) {
+		return false, nil
+	}
+	return granted, err
+}
+
 func (s *Store) ProjectsWithPermissions(ctx context.Context, workspaceID, userID string, permissions []string) ([]*models.Project, error) {
 	projects, err := s.ProjectsByWorkspace(ctx, workspaceID)
 	if err != nil {
@@ -599,7 +613,7 @@ func (s *Store) ProjectsWithPermissions(ctx context.Context, workspaceID, userID
 	for _, project := range projects {
 		allowed := true
 		for _, permission := range permissions {
-			granted, permissionErr := s.HasProjectPermission(ctx, workspaceID, userID, project.ID, "", permission)
+			granted, permissionErr := s.projectPermissionGranted(ctx, workspaceID, userID, project.ID, permission)
 			if permissionErr != nil {
 				return nil, permissionErr
 			}

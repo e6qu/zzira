@@ -71,7 +71,7 @@ func TestCustomFieldOptionsAreKeptFromTheSettingsPage(t *testing.T) {
 	contextID := contexts[0].ID
 
 	h := &Handler{Store: st, Commands: &commands.Service{Store: st}, WorkspaceSlug: workspaceID}
-	token, err := authn.LoginOIDC(ctx, st, adminID, "id-token", "https://issuer.example.invalid", adminID+"-subject", "")
+	token, _, err := authn.LoginOIDC(ctx, st, adminID, "id-token", "https://issuer.example.invalid", adminID+"-subject", "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -91,10 +91,13 @@ test('site admin manages a directory group and its audited membership', async ({
   await expect(domainRow).toContainText('zzira-domain-verification=');
 
   const policyName = `Office network ${Date.now()}`;
-  await page.getByLabel('Policy name').fill(policyName);
-  await page.getByLabel('Policy type').selectOption('ip-allowlist');
+  // The page carries a second create form for authentication policies, so an
+  // access policy is filled in through its own.
+  const accessPolicyForm = page.locator('#admin-access-policy-create');
+  await accessPolicyForm.getByLabel('Policy name').fill(policyName);
+  await accessPolicyForm.getByLabel('Policy type').selectOption('ip-allowlist');
   // The allowlist keeps the loopback addresses the browser runs from.
-  await page.getByLabel('Rule values').fill('192.0.2.0/24, 127.0.0.1, ::1');
+  await accessPolicyForm.getByLabel('Rule values').fill('192.0.2.0/24, 127.0.0.1, ::1');
   await page.getByRole('group', { name: 'Policy products' }).getByLabel('Jira Software').check();
   await page.getByRole('button', { name: 'Create policy' }).click();
   await expect(page).toHaveURL(/\/admin\?saved=Policy\+created$/);
@@ -297,4 +300,73 @@ test('a site administrator sees every filter email and stops one', async ({ page
   await page.goto('/filters');
   card = page.locator(`#filter-${filterID}`);
   await expect(card.getByRole('heading', { name })).toBeVisible();
+});
+
+test('an administrator makes one person sign in through the identity provider', async ({ page, browser }) => {
+  await login(page);
+  await page.goto('/admin');
+  await expect(page.getByRole('heading', { name: 'Authentication policies', level: 2 })).toBeVisible();
+
+  // The policy is written first and covers nobody, so nothing changes yet.
+  const policyName = `Contractors ${Date.now()}`;
+  const create = page.locator('.admin-authentication-policy-create');
+  await create.getByLabel('Policy name').fill(policyName);
+  await create.getByLabel('Session duration in minutes').fill('30');
+  await create.getByLabel('Single sign-on only').check();
+  await create.getByLabel('Enable immediately').check();
+  await create.getByRole('button', { name: 'Create authentication policy' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Policy\+created$/);
+  let policy = page.locator('.admin-authentication-policy').filter({ hasText: policyName });
+  await expect(policy).toContainText('enabled');
+  await expect(policy).toContainText('0 members');
+  await accessible(page);
+
+  // Putting someone under it is what changes how they sign in.
+  await policy.getByLabel('Add a person').selectOption({ label: 'Ana Soursop' });
+  await policy.getByRole('button', { name: 'Add member' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Policy\+member\+added$/);
+  policy = page.locator('.admin-authentication-policy').filter({ hasText: policyName });
+  await expect(policy).toContainText('1 member');
+  await expect(policy.locator('.admin-policy-members')).toContainText('Ana Soursop');
+
+  // A policy with members still fits a narrow viewport.
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await accessible(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  // Her password is no longer a way in, and the page says why rather than
+  // reading as a wrong password.
+  const refused = await browser.newContext();
+  const refusedPage = await refused.newPage();
+  await refusedPage.goto('/login');
+  await refusedPage.fill('#login-email', 'ana@zzira.dev');
+  await refusedPage.fill('#login-password', 'ana12345');
+  await refusedPage.click('button[type=submit]');
+  await expect(refusedPage).toHaveURL(/\/login/);
+  await expect(refusedPage.locator('body')).toContainText('Your organization signs this account in through its identity provider.');
+
+  // The settings are editable in place, and the policy can be relaxed.
+  await policy.getByRole('button', { name: 'Remove Ana Soursop' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Policy\+member\+removed$/);
+  policy = page.locator('.admin-authentication-policy').filter({ hasText: policyName });
+  await expect(policy).toContainText('0 members');
+  const settings = policy.locator('.admin-policy-settings');
+  await settings.getByLabel('Session duration in minutes').fill('120');
+  await settings.getByLabel('Single sign-on only').uncheck();
+  await settings.getByRole('button', { name: 'Save settings' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Policy\+settings\+saved$/);
+  policy = page.locator('.admin-authentication-policy').filter({ hasText: policyName });
+  await expect(policy.locator('.admin-policy-settings').getByLabel('Session duration in minutes')).toHaveValue('120');
+
+  // Deleting it puts everyone back on the site's own sign-in.
+  await policy.getByRole('button', { name: 'Delete policy' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Policy\+deleted$/);
+  await expect(page.locator('.admin-authentication-policy').filter({ hasText: policyName })).toHaveCount(0);
+  await refusedPage.goto('/login');
+  await refusedPage.fill('#login-email', 'ana@zzira.dev');
+  await refusedPage.fill('#login-password', 'ana12345');
+  await refusedPage.click('button[type=submit]');
+  await expect(refusedPage).not.toHaveURL(/\/login/);
+  await refused.close();
 });

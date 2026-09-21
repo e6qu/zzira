@@ -149,13 +149,19 @@ but nothing shows or uses it.
 ## 6. Enterprise identity
 
 Atlassian Guard and organization administration. ZZIRA has OIDC sign-in (Google,
-Entra, Atlassian, custom), DNS domain verification, IP allowlists, and managed
-profile edit, suspend, restore and remove.
+Entra, Atlassian, custom), DNS domain verification, IP allowlists, SCIM user and
+group provisioning, authentication policies, and managed profile edit, suspend,
+restore and remove.
 
 - SAML single sign-on with multiple identity providers.
-- SCIM 2.0 user and group provisioning (`scimManaged` reflects it).
-- Authentication policies: enforced SSO, two-step verification enrolment and
-  enforcement, password rules, session duration, per-policy membership.
+- SCIM provisioning of product access, and a directory-scoped provisioning key
+  (users and groups are provisioned, and `scimManaged` reflects it).
+- Authentication policies enforce single sign-on, two-step verification,
+  session duration, the shortest password and per-policy membership; password
+  expiry and the rest of Atlassian's strength rules are still missing, and a
+  policy covers named people rather than a group.
+- Two-step verification is an authenticator app alone: no WebAuthn, no
+  passkeys, and the key is shown as text rather than a QR image.
 - Managed accounts claimed through verified domains; domain ownership exclusive
   across organizations; `claimStatus` derived, not constant.
 - User management API (`/users/{id}/manage/...`).

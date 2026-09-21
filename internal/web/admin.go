@@ -23,12 +23,25 @@ type adminGroupRow struct {
 	ProductAccess map[string]bool
 }
 
+// adminAuthenticationPolicy is one authentication policy with the settings it
+// applies and the people it covers.
+type adminAuthenticationPolicy struct {
+	*models.OrganizationPolicy
+	store.AuthenticationConfig
+	MemberIDs []string
+	Members   []*models.User
+	// PasswordMinimum is the rule this policy applies, which is the site's
+	// own shortest password when the policy asks for nothing longer.
+	PasswordMinimum int
+}
+
 type adminPageData struct {
 	Organization                      *models.Organization
 	Site                              *models.Site
 	Products                          []*models.Product
 	Domains                           []*models.OrganizationDomain
 	Policies                          []*models.OrganizationPolicy
+	AuthenticationPolicies            []adminAuthenticationPolicy
 	IdentityProviders                 []LoginProvider
 	Apps                              []*models.AppInstallation
 	Transfers                         map[string][]store.AppMigrationTransfer
@@ -51,13 +64,25 @@ type adminPageData struct {
 	TimeTrackingProviders             []store.InstalledTimeTrackingProvider
 	ApplicationProperties             []models.ApplicationProperty
 	NavigatorColumns                  []adminNavigatorColumn
-	ProjectCategories                 []*models.ProjectCategory
-	IssueEvents                       []adminIssueEvent
-	GlobalPermissions                 []adminGlobalPermission
-	FilterSubscriptions               []store.WorkspaceFilterSubscription
-	ClassificationLevels              []models.DataClassificationLevel
-	ClassificationColors              []string
-	LastClassificationIndex           int
+	// SignInLink is a sign-in link just issued, shown once on the response to
+	// the request that made it: it is a credential, so it is never carried in
+	// a redirect or written to the audit detail. SignInLinkAbsolute says
+	// whether the site knows its own address; without ZZIRA_EXTERNAL_URL the
+	// link is a path an administrator has to prefix themselves.
+	SignInLink         string
+	SignInLinkAbsolute bool
+	SignInLinkPerson   string
+	SignInLinkExpires  string
+	// SignInLinkEmailed says the person was sent the link as well as shown
+	// it, which needs both SMTP and the site's own address.
+	SignInLinkEmailed       bool
+	ProjectCategories       []*models.ProjectCategory
+	IssueEvents             []adminIssueEvent
+	GlobalPermissions       []adminGlobalPermission
+	FilterSubscriptions     []store.WorkspaceFilterSubscription
+	ClassificationLevels    []models.DataClassificationLevel
+	ClassificationColors    []string
+	LastClassificationIndex int
 }
 
 type adminNavigatorColumn struct {
@@ -119,6 +144,7 @@ var adminAuditActions = []adminAuditAction{
 	{Value: "user.invited", Name: "User invited"},
 	{Value: "user.profile.updated", Name: "User profile updated"},
 	{Value: "user.removed", Name: "User removed"},
+	{Value: "user.two-step.reset", Name: "Two-step verification reset"},
 	{Value: "user.restored", Name: "User restored"},
 	{Value: "user.suspended", Name: "User suspended"},
 }
@@ -148,12 +174,35 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	if err != nil {
 		return adminPageData{}, err
 	}
+	// An authentication policy covers people rather than products, so it gets
+	// its own section instead of sitting among the access policies.
+	access := make([]*models.OrganizationPolicy, 0, len(policies))
+	authenticationPolicies := []adminAuthenticationPolicy{}
+	for _, policy := range policies {
+		if policy.Type != "authentication-policy" {
+			access = append(access, policy)
+			continue
+		}
+		members, err := h.Store.AuthenticationPolicyMembers(r.Context(), organization.ID, policy.ID)
+		if err != nil {
+			return adminPageData{}, err
+		}
+		config := store.AuthenticationConfigFromRule(policy.Rule)
+		authenticationPolicies = append(authenticationPolicies, adminAuthenticationPolicy{
+			OrganizationPolicy:   policy,
+			AuthenticationConfig: config,
+			MemberIDs:            members,
+			PasswordMinimum:      store.AuthenticationPolicy{AuthenticationConfig: config, Enforced: true}.PasswordMinimum(),
+		})
+	}
+	policies = access
 	data := adminPageData{
 		Organization:                      organization,
 		Site:                              site,
 		Products:                          products,
 		Domains:                           domains,
 		Policies:                          policies,
+		AuthenticationPolicies:            authenticationPolicies,
 		IdentityProviders:                 h.adminProviders(),
 		Groups:                            []adminGroupRow{},
 		Users:                             []*models.User{},
@@ -231,6 +280,17 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	data.Users, err = h.Store.DirectoryUsers(r.Context(), data.Directory.ID)
 	if err != nil {
 		return adminPageData{}, err
+	}
+	knownUsers := make(map[string]*models.User, len(data.Users))
+	for _, member := range data.Users {
+		knownUsers[member.ID] = member
+	}
+	for index := range data.AuthenticationPolicies {
+		for _, memberID := range data.AuthenticationPolicies[index].MemberIDs {
+			if member, ok := knownUsers[memberID]; ok {
+				data.AuthenticationPolicies[index].Members = append(data.AuthenticationPolicies[index].Members, member)
+			}
+		}
 	}
 	groups, err := h.Store.GroupsByDirectory(r.Context(), data.Directory.ID)
 	if err != nil {
@@ -912,6 +972,47 @@ func policyRuleValues(policy *models.OrganizationPolicy) []string {
 	return result
 }
 
+// policyAuthenticationConfig is an authentication policy's settings read back
+// off the policy, so enabling or disabling one keeps the settings it was
+// created with.
+func policyAuthenticationConfig(policy *models.OrganizationPolicy) *store.AuthenticationConfig {
+	if policy.Type != "authentication-policy" {
+		return nil
+	}
+	config := store.AuthenticationConfigFromRule(policy.Rule)
+	return &config
+}
+
+// authenticationConfigFromForm reads the settings an administrator filled in.
+func authenticationConfigFromForm(r *http.Request) (*store.AuthenticationConfig, error) {
+	config := store.AuthenticationConfig{
+		EnforceSSO:     r.FormValue("enforceSSO") == "true",
+		Default:        r.FormValue("default") == "true",
+		RequireTwoStep: r.FormValue("requireTwoStep") == "true",
+	}
+	duration := strings.TrimSpace(r.FormValue("sessionDurationMinutes"))
+	if duration == "" {
+		config.SessionDurationMinutes = store.MaximumSessionMinutes
+	} else {
+		minutes, err := strconv.Atoi(duration)
+		if err != nil {
+			return nil, errors.New("session duration must be a number of minutes")
+		}
+		config.SessionDurationMinutes = minutes
+	}
+	length := strings.TrimSpace(r.FormValue("passwordMinimumLength"))
+	if length == "" {
+		config.PasswordMinimumLength = store.MinimumPasswordLength
+		return &config, nil
+	}
+	characters, err := strconv.Atoi(length)
+	if err != nil {
+		return nil, errors.New("the shortest password must be a number of characters")
+	}
+	config.PasswordMinimumLength = characters
+	return &config, nil
+}
+
 func policyResourceInputs(policy *models.OrganizationPolicy) []store.PolicyResourceInput {
 	resources := make([]store.PolicyResourceInput, 0, len(policy.Resources))
 	for _, resource := range policy.Resources {
@@ -933,6 +1034,14 @@ func (h *Handler) CreateAdminPolicy(w http.ResponseWriter, r *http.Request) {
 	input := store.PolicyInput{Type: r.FormValue("type"), Name: r.FormValue("name"), Status: "disabled", Values: values}
 	if r.FormValue("enabled") == "true" {
 		input.Status = "enabled"
+	}
+	if input.Type == "authentication-policy" {
+		config, err := authenticationConfigFromForm(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		input.Config, input.Values = config, nil
 	}
 	data, err := h.adminData(r, workspaceID, "")
 	if err != nil {
@@ -985,8 +1094,8 @@ func (h *Handler) UpdateAdminPolicy(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Policy deleted"), http.StatusSeeOther)
 		return
 	}
-	if action != "enable" && action != "disable" {
-		http.Error(w, "action must be enable, disable, or delete", http.StatusBadRequest)
+	if action != "enable" && action != "disable" && action != "save" {
+		http.Error(w, "action must be enable, disable, save, or delete", http.StatusBadRequest)
 		return
 	}
 	organization, err := h.Store.OrganizationByWorkspace(r.Context(), workspaceID)
@@ -1003,16 +1112,78 @@ func (h *Handler) UpdateAdminPolicy(w http.ResponseWriter, r *http.Request) {
 	if action == "disable" {
 		status = "disabled"
 	}
+	if action == "save" {
+		status = policy.Status
+	}
+	config := policyAuthenticationConfig(policy)
+	if action == "save" {
+		if policy.Type != "authentication-policy" {
+			http.Error(w, "only an authentication policy carries settings", http.StatusBadRequest)
+			return
+		}
+		if config, err = authenticationConfigFromForm(r); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	_, err = h.Store.UpdateOrganizationPolicy(r.Context(), workspaceID, user.ID, policy.ID, store.PolicyInput{
-		Type: policy.Type, Name: policy.Name, Status: status, Values: policyRuleValues(policy), Resources: policyResourceInputs(policy),
+		Type: policy.Type, Name: policy.Name, Status: status, Values: policyRuleValues(policy),
+		Resources: policyResourceInputs(policy), Config: config,
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, store.ErrAdminValidation) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 	message := "Policy enabled"
-	if action == "disable" {
+	switch action {
+	case "disable":
 		message = "Policy disabled"
+	case "save":
+		message = "Policy settings saved"
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(message), http.StatusSeeOther)
+}
+
+// UpdateAdminPolicyMembers puts one person under an authentication policy or
+// takes them out of it.
+func (h *Handler) UpdateAdminPolicyMembers(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	action := r.FormValue("action")
+	if action != "add" && action != "remove" {
+		http.Error(w, "action must be add or remove", http.StatusBadRequest)
+		return
+	}
+	accountID := strings.TrimSpace(r.FormValue("accountId"))
+	if accountID == "" {
+		http.Error(w, "accountId is required", http.StatusBadRequest)
+		return
+	}
+	err := h.Store.SetAuthenticationPolicyMember(r.Context(), workspaceID, user.ID, r.PathValue("policyId"), accountID, action == "add")
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, store.ErrAdminNotFound):
+			status = http.StatusNotFound
+		case errors.Is(err, store.ErrAdminValidation):
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	message := "Policy member added"
+	if action == "remove" {
+		message = "Policy member removed"
 	}
 	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(message), http.StatusSeeOther)
 }
@@ -1274,11 +1445,30 @@ func (h *Handler) UpdateAdminUserStatus(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	action := r.FormValue("action")
-	if action != "suspend" && action != "restore" && action != "remove" {
+	if action != "suspend" && action != "restore" && action != "remove" && action != "sign-in-link" && action != "two-step-reset" {
 		http.Error(w, "unsupported user action", http.StatusBadRequest)
 		return
 	}
 	accountID := r.PathValue("accountId")
+	if action == "sign-in-link" {
+		h.issueSignInLink(w, r, user, workspaceID, data, accountID)
+		return
+	}
+	if action == "two-step-reset" {
+		if err := h.Store.ResetDirectoryUserTwoStep(r.Context(), workspaceID, user.ID, data.Directory.ID, accountID); err != nil {
+			status := http.StatusInternalServerError
+			switch {
+			case errors.Is(err, store.ErrAdminNotFound):
+				status = http.StatusNotFound
+			case errors.Is(err, store.ErrTwoStep):
+				status = http.StatusBadRequest
+			}
+			http.Error(w, err.Error(), status)
+			return
+		}
+		http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Two-step verification reset"), http.StatusSeeOther)
+		return
+	}
 	if action == "remove" {
 		err = h.Store.RemoveDirectoryUser(r.Context(), workspaceID, user.ID, data.Directory.ID, accountID)
 	} else {
@@ -1296,6 +1486,49 @@ func (h *Handler) UpdateAdminUserStatus(w http.ResponseWriter, r *http.Request) 
 	}
 	messages := map[string]string{"suspend": "User suspended", "restore": "User restored", "remove": "User removed"}
 	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(messages[action]), http.StatusSeeOther)
+}
+
+// issueSignInLink gives an administrator a one-time link that lets a person
+// set their own password: how an invited account, whose password nobody knows,
+// is first signed in to, and how a forgotten one is replaced. The link is
+// shown on this response and emailed when the site can send mail; it is never
+// redirected to, because a redirect would leave the credential in history.
+func (h *Handler) issueSignInLink(w http.ResponseWriter, r *http.Request, actor *models.User, workspaceID string, data adminPageData, accountID string) {
+	var person *models.User
+	for _, member := range data.Users {
+		if member.ID == accountID {
+			person = member
+			break
+		}
+	}
+	if person == nil {
+		http.Error(w, "that person is not in this directory", http.StatusNotFound)
+		return
+	}
+	token, expires, err := authn.NewPasswordLink(r.Context(), h.Store, accountID)
+	if err != nil {
+		if errors.Is(err, store.ErrPasswordInactive) {
+			http.Error(w, "a suspended account cannot set a password", http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	data.CurrentUserID = actor.ID
+	data.SignInLinkAbsolute = h.IdentityExternalURL != ""
+	data.SignInLink = h.IdentityExternalURL + "/password/set?token=" + url.QueryEscape(token)
+	data.SignInLinkPerson = person.DisplayName
+	data.SignInLinkExpires = expires.UTC().Format("2006-01-02 15:04 UTC")
+	if h.InvitationNotificationsConfigured && data.SignInLinkAbsolute {
+		body := "Set the password for your " + data.Site.Name + " account:\n\n" + data.SignInLink +
+			"\n\nThe link works once and expires on " + data.SignInLinkExpires + "."
+		if err := h.Store.QueueEmail(r.Context(), workspaceID, person.Email, "Set your password", body); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		data.SignInLinkEmailed = true
+	}
+	h.writeWorkspacePage(w, r, "page_admin", actor, workspaceID, data, "admin", "")
 }
 
 func (h *Handler) UpdateAdminUserProfile(w http.ResponseWriter, r *http.Request) {

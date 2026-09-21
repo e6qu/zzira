@@ -69,14 +69,14 @@ func TestLocalCredentialsRefused(t *testing.T) {
 	}
 
 	// What the installation does today, and keeps doing by default.
-	passwordSession, err := Login(ctx, st, email, password)
+	passwordSignIn, err := Login(ctx, st, email, password)
 	if err != nil {
 		t.Fatalf("password sign-in with local credentials on: %v", err)
 	}
 	for name, request := range map[string]*http.Request{
 		"api token in basic auth": basic(),
 		"api token as bearer":     bearer(),
-		"password session":        withCookie(passwordSession),
+		"password session":        withCookie(passwordSignIn.Session),
 	} {
 		if got, err := Identify(ctx, st, request); err != nil || got != userID {
 			t.Fatalf("%s with local credentials on: %q, %v", name, got, err)
@@ -93,7 +93,7 @@ func TestLocalCredentialsRefused(t *testing.T) {
 		"api token as bearer":     bearer(),
 		// A session minted from a password before the switch is one of the
 		// credentials being refused, so it goes with them.
-		"password session": withCookie(passwordSession),
+		"password session": withCookie(passwordSignIn.Session),
 	} {
 		if got, err := Identify(closed, st, request); err == nil {
 			t.Fatalf("%s with local credentials off resolved %q, want refused", name, got)
@@ -105,7 +105,7 @@ func TestLocalCredentialsRefused(t *testing.T) {
 
 	// Single sign-on still works, which is the whole point of closing the
 	// rest: the session an identity provider established is accepted.
-	ssoSession, err := LoginOIDC(ctx, st, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
+	ssoSession, _, err := LoginOIDC(ctx, st, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
 	if err != nil {
 		t.Fatal(err)
 	}

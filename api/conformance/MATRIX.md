@@ -152,6 +152,8 @@ Playwright (Chromium) specs are in [`e2e/`](../../e2e). They cover:
 ## Load
 
 See [loadtest.md](../../docs/loadtest.md).
-- **Sync p95:** 6.8 ms at 10,000 work items and 89.6 ms at 100,000.
+- **Sync p95:** 63 ms at 10,000 work items, 69 ms at 100,000 and 72 ms at
+  1,000,000; 218 ms at 1,000,000 while 8 writers work on the same workspace.
+  Every page is 500 actions, so history does not move the number.
 - **Index threshold:** a posting-list index is added above 300 ms. Current p95
-  is about 3.3× under it.
+  is about 4× under it, and about 1.4× under it with concurrent writes.

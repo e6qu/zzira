@@ -206,7 +206,7 @@ func TestValidationRendersTheFullIdentityContract(t *testing.T) {
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, userID)
 	}()
 
-	token, err := authn.LoginOIDC(ctx, st, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
+	token, _, err := authn.LoginOIDC(ctx, st, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}

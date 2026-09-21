@@ -75,6 +75,27 @@ type profilePageData struct {
 	// TokenRequestID identifies this rendering of the create form, so the
 	// POST it makes is created once however many times it arrives.
 	TokenRequestID string
+	// PasswordError is why a password change was refused, and
+	// PasswordMinimum is the rule the person's authentication policy applies
+	// before they type one. PasswordManaged is an account signed in through
+	// an identity provider, which has no password to change.
+	PasswordError   string
+	PasswordMinimum int
+	PasswordManaged bool
+	// TwoStepConfigured says the site can seal a secret at all; without a
+	// credential encryption key there is nowhere safe to keep one.
+	TwoStepConfigured bool
+	TwoStepConfirmed  bool
+	TwoStepCodesLeft  int
+	// TwoStepPending is an enrolment that was started and never confirmed.
+	TwoStepPending bool
+	// TwoStepSecret and TwoStepURI are shown once, on the answer to the
+	// request that started the enrolment: they are the credential itself.
+	TwoStepSecret string
+	TwoStepURI    string
+	// TwoStepRecoveryCodes are shown once, when the enrolment is confirmed.
+	TwoStepRecoveryCodes []string
+	TwoStepError         string
 }
 
 type profileIdentityView struct {
@@ -446,6 +467,20 @@ func (h *Handler) buildProfileData(r *http.Request, user *models.User, wsID, acc
 	// chosen day is turned into an instant; a local day would offer a date
 	// the server refuses whenever the two calendars disagree.
 	data.DefaultExpiry = time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")
+	policy, err := h.Store.AuthenticationPolicyForUser(r.Context(), user.ID)
+	if err != nil {
+		return profilePageData{}, err
+	}
+	data.PasswordMinimum = policy.PasswordMinimum()
+	data.PasswordManaged = policy.Enforced && policy.EnforceSSO
+	enrolment, err := h.Store.TwoStep(r.Context(), user.ID)
+	if err != nil {
+		return profilePageData{}, err
+	}
+	data.TwoStepConfigured = h.ProviderSecrets != nil
+	data.TwoStepConfirmed = enrolment.Confirmed
+	data.TwoStepPending = len(enrolment.Secret) > 0 && !enrolment.Confirmed
+	data.TwoStepCodesLeft = enrolment.RecoveryCodesLeft
 	data.TokenRequestID = store.NewID("tkreq")
 	identities, err := h.Store.OIDCIdentitiesByUser(r.Context(), user.ID)
 	if err != nil {
@@ -559,6 +594,43 @@ func (h *Handler) profilePageWith(w http.ResponseWriter, r *http.Request, user *
 	}
 	adjust(&data)
 	h.writeWorkspacePageStatus(w, r, "page_profile", user, wsID, data, "people", "", status)
+}
+
+// ChangePassword replaces the signed-in person's own password. The page they
+// typed it on answers, because what went wrong is a rule they can meet on the
+// next try rather than something to carry in a URL.
+func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	user, _, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	current, next := r.PostFormValue("currentPassword"), r.PostFormValue("newPassword")
+	if next != r.PostFormValue("confirmPassword") {
+		h.profileWithPasswordError(w, r, user, "The new password and its confirmation are different.")
+		return
+	}
+	session := ""
+	if cookie, err := r.Cookie(sessionCookieName()); err == nil {
+		session = cookie.Value
+	}
+	err := authn.ChangePassword(r.Context(), h.Store, user.ID, current, next, session)
+	var refused authn.ErrPasswordRefused
+	switch {
+	case err == nil:
+		http.Redirect(w, r, "/people/"+url.PathEscape(user.ID)+"?saved="+url.QueryEscape("Password changed, and every other session ended"), http.StatusSeeOther)
+	case errors.Is(err, authn.ErrSSORequired):
+		h.profileWithPasswordError(w, r, user, "Your organization signs this account in through its identity provider, so it has no password to change.")
+	case errors.As(err, &refused):
+		h.profileWithPasswordError(w, r, user, refused.Reason)
+	case errors.Is(err, authn.ErrUnauthorized):
+		h.profileWithPasswordError(w, r, user, "That is not your current password.")
+	default:
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
+}
+
+func (h *Handler) profileWithPasswordError(w http.ResponseWriter, r *http.Request, user *models.User, message string) {
+	h.profilePageWith(w, r, user, func(data *profilePageData) { data.PasswordError = message }, http.StatusBadRequest)
 }
 
 // UpdateNotificationPreferences saves the signed-in person's personal

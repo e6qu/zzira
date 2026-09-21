@@ -126,3 +126,76 @@ test('navigator edits, watches and unwatches a selection', async ({ page, reques
 
   expect((await request.delete(`/rest/api/3/project/${projectKey}?enableUndo=false`, { headers: auth })).status()).toBe(204);
 });
+
+// Custom fields were editable in bulk only through REST: the navigator's
+// editor offered six built-in fields and nothing a site had added of its own.
+test('navigator bulk-edits the custom fields a project shares', async ({ page, request }) => {
+  const auth = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const projectKey = `CF${stamp.toString(36).toUpperCase().slice(-8)}`;
+  const me = await (await request.get('/rest/api/3/myself', { headers: auth })).json();
+  expect((await request.post('/rest/api/3/project', {
+    headers: auth,
+    data: { key: projectKey, name: `Custom bulk ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' },
+  })).status()).toBe(201);
+
+  // A number and a select, which is what a site adds and then wants to set
+  // across a release's worth of work at once.
+  const scoreName = `Effort ${stamp}`;
+  const score = await request.post('/rest/api/3/field', { headers: auth, data: { name: scoreName, type: 'number' } });
+  expect(score.status()).toBe(201);
+  const scoreID = (await score.json()).id;
+
+  const teamName = `Owning team ${stamp}`;
+  const team = await request.post('/rest/api/3/field', { headers: auth, data: { name: teamName, type: 'select' } });
+  expect(team.status()).toBe(201);
+  const teamID = (await team.json()).id;
+  const contexts = await (await request.get(`/rest/api/3/field/${teamID}/context`, { headers: auth })).json();
+  const contextID = String(contexts.values[0].id);
+  const options = await request.post(`/rest/api/3/field/${teamID}/context/${contextID}/option`, {
+    headers: auth, data: { options: [{ value: 'Platform' }, { value: 'Delivery' }] },
+  });
+  expect(options.status()).toBe(200);
+
+  const keys: string[] = [];
+  for (const summary of [`Custom ${stamp} one`, `Custom ${stamp} two`]) {
+    const created = await request.post('/rest/api/3/issue', {
+      headers: auth,
+      data: { fields: { project: { key: projectKey }, summary, issuetype: { name: 'Task' } } },
+    });
+    expect(created.status()).toBe(201);
+    keys.push((await created.json()).key as string);
+  }
+
+  await login(page);
+  await page.goto(`/issues/${projectKey}?text=Custom+${stamp}`);
+  for (const key of keys) {
+    await page.locator('tr').filter({ hasText: key }).getByRole('checkbox').check();
+  }
+  await page.locator('summary').filter({ hasText: 'Edit selected' }).click();
+  const editor = page.locator('.bulk-edit-picker');
+  await expect(editor.locator(`input[name="field"][value="${scoreID}"]`)).toBeVisible();
+  await editor.locator(`input[name="field"][value="${scoreID}"]`).check();
+  await editor.locator(`input[name="valueCustom_${scoreID}"]`).fill('8');
+  await editor.locator(`input[name="field"][value="${teamID}"]`).check();
+  await editor.locator(`select[name="valueCustom_${teamID}"]`).selectOption({ label: 'Delivery' });
+  await accessible(page);
+  page.once('dialog', (dialog) => dialog.accept());
+  await editor.getByRole('button', { name: 'Start edit' }).click();
+  await expect(page.getByRole('heading', { name: /Bulk edit issues/ })).toBeVisible();
+
+  await expect(async () => {
+    for (const key of keys) {
+      const issue = await (await request.get(`/rest/api/3/issue/${key}`, { headers: auth })).json();
+      expect(issue.fields[scoreID]).toBe(8);
+      expect(issue.fields[teamID]?.value ?? issue.fields[teamID]).toBe('Delivery');
+    }
+  }).toPass({ timeout: 20_000 });
+
+  // The work items say so on their own pages too, not only through the API.
+  await page.goto(`/browse/${keys[0]}`);
+  await expect(page.locator('body')).toContainText(scoreName);
+  await expect(page.locator('body')).toContainText('Delivery');
+
+  expect((await request.delete(`/rest/api/3/project/${projectKey}?enableUndo=false`, { headers: auth })).status()).toBe(204);
+});

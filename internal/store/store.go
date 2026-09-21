@@ -58,6 +58,20 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 	// Server-side prepared statements: JSONB operators like @>/? must never
 	// pass through pgx's client-side SQL sanitizer (it rejects literal ?).
 	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeCacheStatement
+	// Just-in-time compilation is off for every connection. This product's
+	// queries are paged reads under large hand-written predicates: the
+	// sync page reads 500 rows behind a filter that compiles to 329
+	// functions, and Postgres spent 1.08 s compiling them on every execution
+	// of it -- 1,145 ms against a workspace of a million actions, 54 ms with
+	// jit off, for the same plan and the same rows. The estimated cost of
+	// such a predicate crosses jit_above_cost at any real size, so the
+	// compiler runs exactly where it cannot pay for itself.
+	if cfg.ConnConfig.RuntimeParams == nil {
+		cfg.ConnConfig.RuntimeParams = map[string]string{}
+	}
+	if _, chosen := cfg.ConnConfig.RuntimeParams["jit"]; !chosen {
+		cfg.ConnConfig.RuntimeParams["jit"] = "off"
+	}
 	cfg.PrepareConn = prepareRequestConnection
 	cfg.AfterRelease = releaseRequestConnection
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)

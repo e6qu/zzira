@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/url"
 	"os"
@@ -79,8 +80,10 @@ func SecureCookies() bool {
 	return err == nil && strings.EqualFold(externalURL.Scheme, "https") && externalURL.Host != ""
 }
 
-// SetSessionCookie issues the opaque session cookie.
-func SetSessionCookie(w http.ResponseWriter, token string) {
+// SetSessionCookieFor issues the opaque session cookie for as long as the
+// session it carries lasts, which an authentication policy can make shorter
+// than the site's own duration.
+func SetSessionCookieFor(w http.ResponseWriter, token string, ttl time.Duration) {
 	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure is deployment-configured via COOKIE_SECURE
 
 		Name:     sessionCookie,
@@ -89,7 +92,7 @@ func SetSessionCookie(w http.ResponseWriter, token string) {
 		HttpOnly: true,
 		Secure:   SecureCookies(),
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(sessionTTL.Seconds()),
+		MaxAge:   int(ttl.Seconds()),
 	})
 }
 
@@ -102,58 +105,290 @@ func ClearSessionCookie(w http.ResponseWriter) {
 	})
 }
 
-// Login creates a session and returns the cookie token.
-func Login(ctx context.Context, st *store.Store, email, password string) (string, error) {
+// ErrSSORequired is an authentication policy that admits this person only
+// through the identity provider. It is told apart from a wrong password
+// because the person can do something about it.
+var ErrSSORequired = errors.New("single sign-on is required for this account")
+
+// SignIn is what a password gets: a session, or a sign-in waiting for a code
+// from the account's authenticator app.
+type SignIn struct {
+	// Session is the cookie token, and TTL how long it lasts: the site's own
+	// duration, or the shorter one an authentication policy gives this
+	// person. Both are empty while a code is still owed.
+	Session string
+	TTL     time.Duration
+	// Challenge identifies a sign-in that has passed the password and is
+	// waiting for its second step. It carries no access of its own.
+	Challenge string
+}
+
+// Login checks a password and says what it earns. An account that verifies in
+// two steps gets a challenge rather than a session: the password alone is half
+// the answer.
+func Login(ctx context.Context, st *store.Store, email, password string) (SignIn, error) {
 	if LocalCredentialsRefused(ctx) {
-		return "", ErrUnauthorized
+		return SignIn{}, ErrUnauthorized
 	}
 	id, hash, _, err := st.UserByEmail(ctx, email)
 	if err != nil {
-		return "", ErrUnauthorized
+		return SignIn{}, ErrUnauthorized
 	}
 	if !CheckPassword(hash, password) {
-		return "", ErrUnauthorized
+		return SignIn{}, ErrUnauthorized
 	}
-	token, err := randomToken()
+	policy, err := st.AuthenticationPolicyForUser(ctx, id)
 	if err != nil {
-		return "", err
+		return SignIn{}, err
 	}
-	if err := st.CreateSession(ctx, hashToken(token), id, sessionTTL); err != nil {
-		return "", err
+	if policy.Enforced && policy.EnforceSSO {
+		return SignIn{}, ErrSSORequired
 	}
-	return token, nil
+	enrolment, err := st.TwoStep(ctx, id)
+	if err != nil {
+		return SignIn{}, err
+	}
+	// A policy that requires two steps holds a sign-in that has none in the
+	// same place a code would: the enrolment is what finishes it.
+	if enrolment.Confirmed || (policy.Enforced && policy.RequireTwoStep) {
+		challenge, err := randomToken()
+		if err != nil {
+			return SignIn{}, err
+		}
+		if err := st.CreateSignInChallenge(ctx, hashToken(challenge), id); err != nil {
+			return SignIn{}, err
+		}
+		return SignIn{Challenge: challenge}, nil
+	}
+	return newSession(ctx, st, id, policy)
 }
 
-// LoginOIDC creates a normal opaque session for a verified external identity.
-func LoginOIDC(ctx context.Context, st *store.Store, userID, idToken, issuer, subject, sid string) (string, error) {
-	if userID == "" || idToken == "" || issuer == "" || subject == "" {
-		return "", ErrUnauthorized
-	}
+// newSession mints the session an answered sign-in earns.
+func newSession(ctx context.Context, st *store.Store, userID string, policy store.AuthenticationPolicy) (SignIn, error) {
+	ttl := policy.SessionDuration(sessionTTL)
 	token, err := randomToken()
 	if err != nil {
-		return "", err
+		return SignIn{}, err
 	}
-	if err := st.CreateOIDCSession(ctx, hashToken(token), userID, idToken, issuer, subject, sid, sessionTTL); err != nil {
-		return "", err
+	if err := st.CreateSession(ctx, hashToken(token), userID, ttl); err != nil {
+		return SignIn{}, err
 	}
-	return token, nil
+	return SignIn{Session: token, TTL: ttl}, nil
+}
+
+// CompleteSignIn answers a waiting sign-in with a code from the authenticator
+// app or one of the account's recovery codes. A wrong code is counted, and
+// the challenge is thrown away once there have been too many.
+func CompleteSignIn(ctx context.Context, st *store.Store, challenge, code string, secret func(context.Context, string) (string, error)) (SignIn, error) {
+	userID, err := st.SignInChallengeUser(ctx, hashToken(challenge))
+	if err != nil {
+		return SignIn{}, err
+	}
+	plain, err := secret(ctx, userID)
+	if err != nil {
+		return SignIn{}, err
+	}
+	code = strings.TrimSpace(code)
+	matched := TOTPMatches(plain, code, time.Now())
+	if !matched {
+		// A recovery code is the way past a phone that is gone. It is
+		// spent here, so the same one cannot be used twice.
+		if err := st.UseRecoveryCode(ctx, userID, hashToken(normalizeRecoveryCode(code))); err != nil {
+			if errors.Is(err, store.ErrTwoStepCode) {
+				if failure := st.FailSignInChallenge(ctx, hashToken(challenge)); failure != nil {
+					return SignIn{}, failure
+				}
+				return SignIn{}, store.ErrTwoStepCode
+			}
+			return SignIn{}, err
+		}
+	}
+	policy, err := st.AuthenticationPolicyForUser(ctx, userID)
+	if err != nil {
+		return SignIn{}, err
+	}
+	if err := st.DeleteSignInChallenge(ctx, hashToken(challenge)); err != nil {
+		return SignIn{}, err
+	}
+	return newSession(ctx, st, userID, policy)
+}
+
+// CompleteEnrolledSignIn finishes a sign-in that was waiting on an enrolment
+// the account has now made. The code was checked as part of confirming it.
+func CompleteEnrolledSignIn(ctx context.Context, st *store.Store, challenge string) (SignIn, error) {
+	userID, err := st.SignInChallengeUser(ctx, hashToken(challenge))
+	if err != nil {
+		return SignIn{}, err
+	}
+	policy, err := st.AuthenticationPolicyForUser(ctx, userID)
+	if err != nil {
+		return SignIn{}, err
+	}
+	if err := st.DeleteSignInChallenge(ctx, hashToken(challenge)); err != nil {
+		return SignIn{}, err
+	}
+	return newSession(ctx, st, userID, policy)
+}
+
+// RecoveryCodeCount is how many recovery codes an enrolment mints. They are
+// shown once and kept as hashes.
+const RecoveryCodeCount = 10
+
+// NewRecoveryCodes mints an enrolment's recovery codes and the hashes kept
+// for them.
+func NewRecoveryCodes() ([]string, []string, error) {
+	codes := make([]string, 0, RecoveryCodeCount)
+	hashes := make([]string, 0, RecoveryCodeCount)
+	for range RecoveryCodeCount {
+		token, err := randomToken()
+		if err != nil {
+			return nil, nil, err
+		}
+		code := normalizeRecoveryCode(token[:12])
+		codes = append(codes, code)
+		hashes = append(hashes, hashToken(code))
+	}
+	return codes, hashes, nil
+}
+
+// normalizeRecoveryCode reads a code the way it was shown, whatever case it
+// was typed in and wherever the spaces went.
+func normalizeRecoveryCode(code string) string {
+	return strings.ToLower(strings.Join(strings.Fields(code), ""))
+}
+
+// LoginOIDC creates a normal opaque session for a verified external identity,
+// which an authentication policy can make shorter.
+func LoginOIDC(ctx context.Context, st *store.Store, userID, idToken, issuer, subject, sid string) (string, time.Duration, error) {
+	if userID == "" || idToken == "" || issuer == "" || subject == "" {
+		return "", 0, ErrUnauthorized
+	}
+	policy, err := st.AuthenticationPolicyForUser(ctx, userID)
+	if err != nil {
+		return "", 0, err
+	}
+	ttl := policy.SessionDuration(sessionTTL)
+	token, err := randomToken()
+	if err != nil {
+		return "", 0, err
+	}
+	if err := st.CreateOIDCSession(ctx, hashToken(token), userID, idToken, issuer, subject, sid, ttl); err != nil {
+		return "", 0, err
+	}
+	return token, ttl, nil
 }
 
 // LoginIdentityProvider creates a session for either OIDC or OAuth identity
 // providers. OAuth-only providers do not issue an ID token, so idToken may be
 // empty; issuer and subject remain the immutable identity key.
-func LoginIdentityProvider(ctx context.Context, st *store.Store, userID, idToken, issuer, subject, sid, providerKey string) (string, error) {
+func LoginIdentityProvider(ctx context.Context, st *store.Store, userID, idToken, issuer, subject, sid, providerKey string) (string, time.Duration, error) {
 	if userID == "" || issuer == "" || subject == "" || providerKey == "" {
-		return "", ErrUnauthorized
+		return "", 0, ErrUnauthorized
 	}
+	policy, err := st.AuthenticationPolicyForUser(ctx, userID)
+	if err != nil {
+		return "", 0, err
+	}
+	ttl := policy.SessionDuration(sessionTTL)
 	token, err := randomToken()
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
-	if err := st.CreateIdentityProviderSession(ctx, hashToken(token), userID, idToken, issuer, subject, sid, providerKey, sessionTTL); err != nil {
-		return "", err
+	if err := st.CreateIdentityProviderSession(ctx, hashToken(token), userID, idToken, issuer, subject, sid, providerKey, ttl); err != nil {
+		return "", 0, err
 	}
-	return token, nil
+	return token, ttl, nil
+}
+
+// ErrPasswordRefused is a new password the rules refuse. It carries what the
+// rule is, because the person is about to type another one.
+type ErrPasswordRefused struct{ Reason string }
+
+func (err ErrPasswordRefused) Error() string { return err.Reason }
+
+// ChangePassword replaces the signed-in person's own password. They prove
+// they know the current one, the new one meets the rules their authentication
+// policy applies, and every other session of theirs ends -- a session opened
+// with the old password does not outlive it.
+func ChangePassword(ctx context.Context, st *store.Store, userID, current, next, sessionToken string) error {
+	if LocalCredentialsRefused(ctx) {
+		return ErrUnauthorized
+	}
+	hash, err := st.UserPasswordHash(ctx, userID)
+	if err != nil {
+		return ErrUnauthorized
+	}
+	if !CheckPassword(hash, current) {
+		return ErrUnauthorized
+	}
+	policy, err := st.AuthenticationPolicyForUser(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if policy.Enforced && policy.EnforceSSO {
+		return ErrSSORequired
+	}
+	if reason := policy.PasswordRefused(next); reason != "" {
+		return ErrPasswordRefused{Reason: reason}
+	}
+	if CheckPassword(hash, next) {
+		return ErrPasswordRefused{Reason: "That is the password already in use."}
+	}
+	replacement, err := HashPassword(next)
+	if err != nil {
+		return err
+	}
+	return st.SetUserPassword(ctx, userID, replacement, hashToken(sessionToken))
+}
+
+// NewPasswordLink mints a sign-in link's secret and the hash kept for it. The
+// secret is shown once, to whoever will pass it on; only its hash is stored.
+func NewPasswordLink(ctx context.Context, st *store.Store, userID string) (string, time.Time, error) {
+	token, err := randomToken()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	expires, err := st.CreatePasswordLink(ctx, userID, hashToken(token))
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return token, expires, nil
+}
+
+// PasswordLinkPolicy is whom a sign-in link is for and the rules their
+// authentication policy applies, which the page asks for before showing a
+// form nobody could fill in.
+func PasswordLinkPolicy(ctx context.Context, st *store.Store, token string) (string, store.AuthenticationPolicy, error) {
+	userID, err := st.PasswordLinkUser(ctx, hashToken(token))
+	if err != nil {
+		return "", store.AuthenticationPolicy{}, err
+	}
+	policy, err := st.AuthenticationPolicyForUser(ctx, userID)
+	if err != nil {
+		return "", store.AuthenticationPolicy{}, err
+	}
+	if policy.Enforced && policy.EnforceSSO {
+		return "", store.AuthenticationPolicy{}, ErrSSORequired
+	}
+	return userID, policy, nil
+}
+
+// SetPasswordWithLink spends a sign-in link on a new password. Every session
+// that account had ends with it.
+func SetPasswordWithLink(ctx context.Context, st *store.Store, token, next string) error {
+	_, policy, err := PasswordLinkPolicy(ctx, st, token)
+	if err != nil {
+		return err
+	}
+	if reason := policy.PasswordRefused(next); reason != "" {
+		return ErrPasswordRefused{Reason: reason}
+	}
+	hash, err := HashPassword(next)
+	if err != nil {
+		return err
+	}
+	_, err = st.UsePasswordLink(ctx, hashToken(token), hash)
+	return err
 }
 
 var ErrUnauthorized = unauthorized{}
@@ -296,9 +531,15 @@ func IdentifyBearer(ctx context.Context, st *store.Store, r *http.Request) (stri
 
 // ProtectCookieMutations rejects cross-origin unsafe requests authenticated by
 // a browser session. API-token clients use Authorization and therefore do not
-// depend on ambient browser credentials. Requiring an explicit same-origin
-// Origin header avoids accepting a request merely because a session cookie was
-// attached to it.
+// depend on ambient browser credentials.
+//
+// Where the browser says what kind of request this is, that answer decides:
+// Sec-Fetch-Site is set by the browser, cannot be written by a page, and is
+// the only thing a form on the sign-in page carries. That page asks for no
+// referrer, so Chrome serializes its Origin as "null" -- and a browser still
+// holding the cookie of a session that has ended (a password changed on
+// another device, an account suspended and restored) could then not sign in
+// again at all. Without Fetch Metadata, the Origin must match this host.
 func ProtectCookieMutations(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !unsafeMethod(r.Method) || r.Header.Get("Authorization") != "" {
@@ -307,6 +548,18 @@ func ProtectCookieMutations(next http.Handler) http.Handler {
 		}
 		if _, err := r.Cookie(sessionCookie); err != nil {
 			next.ServeHTTP(w, r)
+			return
+		}
+		switch r.Header.Get("Sec-Fetch-Site") {
+		case "same-origin", "none":
+			// Same document origin, or no initiator at all: a typed address
+			// or a bookmark, neither of which another site can arrange.
+			next.ServeHTTP(w, r)
+			return
+		case "same-site", "cross-site":
+			// A sibling host is another origin here: this site is served
+			// from one.
+			http.Error(w, "cross-origin request blocked", http.StatusForbidden)
 			return
 		}
 		origin, err := url.Parse(r.Header.Get("Origin"))

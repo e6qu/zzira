@@ -19,6 +19,7 @@ work is in [PLAN.md](../PLAN.md); status per product is in
 
 - [Organization and site administration](ADMIN.md) — overview
 - [Identity provider sign-in](shauth-sso.md)
+- [SCIM 2.0 provisioning](SCIM.md)
 - [People, groups and avatars](PEOPLE.md)
 - [Anonymous access](ANONYMOUS_ACCESS.md)
 - [Data classification levels](CLASSIFICATION_LEVELS.md)

@@ -26,14 +26,52 @@ type PolicyInput struct {
 	Status    string
 	Values    []string
 	Resources []PolicyResourceInput
+	// Config is an authentication policy's settings. The other policy types
+	// carry a list of values instead.
+	Config *AuthenticationConfig
 }
+
+// AuthenticationConfig is how the people an authentication policy covers sign
+// in. Jira's own policy carries more; this carries what is enforced here.
+type AuthenticationConfig struct {
+	// EnforceSSO refuses a password sign-in, so the people it covers reach
+	// the site only through the identity provider.
+	EnforceSSO bool `json:"enforceSSO"`
+	// SessionDurationMinutes is how long a session lasts before it must be
+	// made again. Atlassian's range is 5 minutes to 30 days.
+	SessionDurationMinutes int `json:"sessionDurationMinutes"`
+	// Default marks the policy everyone who is in no other one gets.
+	Default bool `json:"default"`
+	// RequireTwoStep makes the people this policy covers verify in two
+	// steps: they are asked to set up an authenticator app the next time
+	// they sign in with a password, and cannot get past it without one.
+	RequireTwoStep bool `json:"requireTwoStep"`
+	// PasswordMinimumLength is the shortest password the people this policy
+	// covers may set. It is read where a password is set, not at sign-in: a
+	// password already in use goes on working until it is replaced.
+	PasswordMinimumLength int `json:"passwordMinimumLength"`
+}
+
+// Session durations an authentication policy can ask for, in minutes.
+const (
+	MinimumSessionMinutes = 5
+	MaximumSessionMinutes = 30 * 24 * 60
+)
+
+// Password lengths a policy can ask for. The shortest is what a site with no
+// policy asks for, and the longest is where bcrypt stops reading: a longer
+// password would be accepted and then silently truncated.
+const (
+	MinimumPasswordLength = 8
+	MaximumPasswordLength = 72
+)
 
 func normalizePolicyInput(input PolicyInput) (PolicyInput, error) {
 	input.Type = strings.TrimSpace(input.Type)
 	input.Name = strings.TrimSpace(input.Name)
 	input.Status = strings.TrimSpace(input.Status)
-	if input.Type != "ip-allowlist" && input.Type != "data-residency" {
-		return input, fmt.Errorf("%w: policy type must be ip-allowlist or data-residency", ErrAdminValidation)
+	if input.Type != "ip-allowlist" && input.Type != "data-residency" && input.Type != "authentication-policy" {
+		return input, fmt.Errorf("%w: policy type must be ip-allowlist, data-residency or authentication-policy", ErrAdminValidation)
 	}
 	if input.Name == "" || len(input.Name) > 255 {
 		return input, fmt.Errorf("%w: policy name must contain between 1 and 255 characters", ErrAdminValidation)
@@ -43,6 +81,27 @@ func normalizePolicyInput(input PolicyInput) (PolicyInput, error) {
 	}
 	if input.Status != "enabled" && input.Status != "disabled" {
 		return input, fmt.Errorf("%w: policy status must be enabled or disabled", ErrAdminValidation)
+	}
+	if input.Type == "authentication-policy" {
+		if len(input.Values) > 0 {
+			return input, fmt.Errorf("%w: an authentication policy carries settings, not values", ErrAdminValidation)
+		}
+		if input.Config == nil {
+			return input, fmt.Errorf("%w: an authentication policy needs its settings", ErrAdminValidation)
+		}
+		if input.Config.SessionDurationMinutes == 0 {
+			input.Config.SessionDurationMinutes = MaximumSessionMinutes
+		}
+		if input.Config.SessionDurationMinutes < MinimumSessionMinutes || input.Config.SessionDurationMinutes > MaximumSessionMinutes {
+			return input, fmt.Errorf("%w: a session lasts between %d minutes and %d minutes", ErrAdminValidation, MinimumSessionMinutes, MaximumSessionMinutes)
+		}
+		if input.Config.PasswordMinimumLength == 0 {
+			input.Config.PasswordMinimumLength = MinimumPasswordLength
+		}
+		if input.Config.PasswordMinimumLength < MinimumPasswordLength || input.Config.PasswordMinimumLength > MaximumPasswordLength {
+			return input, fmt.Errorf("%w: a password is between %d and %d characters", ErrAdminValidation, MinimumPasswordLength, MaximumPasswordLength)
+		}
+		return input, nil
 	}
 	if len(input.Values) == 0 || len(input.Values) > 500 {
 		return input, fmt.Errorf("%w: policy rule must contain between 1 and 500 values", ErrAdminValidation)
@@ -82,6 +141,15 @@ func normalizePolicyInput(input PolicyInput) (PolicyInput, error) {
 		input.Resources[index] = resource
 	}
 	return input, nil
+}
+
+// policyRule is what a policy's rule column holds: the values it allows, or,
+// for an authentication policy, the settings it applies.
+func policyRule(input PolicyInput) ([]byte, error) {
+	if input.Type == "authentication-policy" {
+		return json.Marshal(map[string]any{"config": input.Config})
+	}
+	return json.Marshal(map[string]any{"in": input.Values})
 }
 
 func policyOrganizationForWorkspace(ctx context.Context, tx pgx.Tx, workspaceID string) (string, error) {
@@ -239,7 +307,7 @@ func (s *Store) CreateOrganizationPolicy(ctx context.Context, workspaceID, actor
 	if err != nil {
 		return nil, err
 	}
-	rule, err := json.Marshal(map[string]any{"in": input.Values})
+	rule, err := policyRule(input)
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +348,7 @@ func (s *Store) UpdateOrganizationPolicy(ctx context.Context, workspaceID, actor
 	if err != nil {
 		return nil, err
 	}
-	rule, err := json.Marshal(map[string]any{"in": input.Values})
+	rule, err := policyRule(input)
 	if err != nil {
 		return nil, err
 	}

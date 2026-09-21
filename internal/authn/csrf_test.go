@@ -10,20 +10,29 @@ import (
 func TestProtectCookieMutations(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	tests := []struct {
-		name, method, origin, authorization string
-		want                                int
+		name, method, origin, authorization, fetchSite string
+		want                                           int
 	}{
 		{name: "safe request", method: http.MethodGet, want: http.StatusNoContent},
 		{name: "same origin form", method: http.MethodPost, origin: "https://zzira.example", want: http.StatusNoContent},
 		{name: "missing origin", method: http.MethodPost, want: http.StatusForbidden},
 		{name: "cross origin", method: http.MethodDelete, origin: "https://attacker.example", want: http.StatusForbidden},
 		{name: "api token", method: http.MethodPost, authorization: "Basic dXNlcjp0b2tlbg==", want: http.StatusNoContent},
+		// The sign-in page asks for no referrer, so Chrome sends its form
+		// with Origin: null. What the browser says the request is decides.
+		{name: "sign-in form with a null origin", method: http.MethodPost, origin: "null", fetchSite: "same-origin", want: http.StatusNoContent},
+		{name: "typed address", method: http.MethodPost, fetchSite: "none", want: http.StatusNoContent},
+		{name: "another site's form", method: http.MethodPost, origin: "https://attacker.example", fetchSite: "cross-site", want: http.StatusForbidden},
+		// A sibling host is another origin here, whatever the browser calls
+		// the relationship: this site is served from one origin.
+		{name: "a sibling host", method: http.MethodPost, origin: "https://other.zzira.example", fetchSite: "same-site", want: http.StatusForbidden},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := httptest.NewRequest(tt.method, "https://zzira.example/rest/api/3/issue", nil)
 			r.AddCookie(&http.Cookie{Name: sessionCookie, Value: "session"})
 			r.Header.Set("Origin", tt.origin)
+			r.Header.Set("Sec-Fetch-Site", tt.fetchSite)
 			r.Header.Set("Authorization", tt.authorization)
 			w := httptest.NewRecorder()
 			ProtectCookieMutations(next).ServeHTTP(w, r)

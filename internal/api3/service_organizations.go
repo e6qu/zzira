@@ -8,11 +8,20 @@ import (
 	"github.com/e6qu/zzira/internal/models"
 )
 
-func (h *Handler) serviceOrganizationBean(organization models.ServiceOrganization) map[string]any {
+// serviceOrganizationBean reports one organization. scimManaged says whether
+// an identity provider provisions this site's people and groups, which is
+// what SCIM makes true ([SCIM.md]).
+func (h *Handler) serviceOrganizationBean(organization models.ServiceOrganization, scimManaged bool) map[string]any {
 	return map[string]any{
-		"id": organization.ID, "uuid": organization.UUID, "name": organization.Name, "scimManaged": false, "created": serviceDate(organization.CreatedAt),
+		"id": organization.ID, "uuid": organization.UUID, "name": organization.Name, "scimManaged": scimManaged, "created": serviceDate(organization.CreatedAt),
 		"_links": map[string]string{"self": h.BaseURL + "/rest/servicedeskapi/organization/" + organization.ID},
 	}
+}
+
+// scimManaged answers whether an identity provider provisions this site.
+func (h *Handler) scimManaged(r *http.Request, workspaceID string) bool {
+	managed, err := h.Store.DirectorySCIMManaged(r.Context(), workspaceID)
+	return err == nil && managed
 }
 
 func (h *Handler) serviceAgentAccess(r *http.Request, workspaceID, actorID string) (bool, bool) {
@@ -115,7 +124,7 @@ func (h *Handler) serviceOrganizations(w http.ResponseWriter, r *http.Request, w
 			jiraError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusCreated, h.serviceOrganizationBean(*organization))
+		writeJSON(w, http.StatusCreated, h.serviceOrganizationBean(*organization, h.scimManaged(r, workspaceID)))
 		return
 	}
 	accountID := r.URL.Query().Get("accountId")
@@ -128,9 +137,10 @@ func (h *Handler) serviceOrganizations(w http.ResponseWriter, r *http.Request, w
 		jiraError(w, http.StatusInternalServerError, "Could not load organizations.")
 		return
 	}
+	managed := h.scimManaged(r, workspaceID)
 	beans := make([]map[string]any, 0, len(organizations))
 	for _, organization := range organizations {
-		beans = append(beans, h.serviceOrganizationBean(organization))
+		beans = append(beans, h.serviceOrganizationBean(organization, managed))
 	}
 	h.writeServicePage(w, r, beans)
 }
@@ -158,7 +168,7 @@ func (h *Handler) serviceOrganization(w http.ResponseWriter, r *http.Request, wo
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.serviceOrganizationBean(*organization))
+	writeJSON(w, http.StatusOK, h.serviceOrganizationBean(*organization, h.scimManaged(r, workspaceID)))
 }
 
 func (h *Handler) readableServiceOrganization(w http.ResponseWriter, r *http.Request, workspaceID, actorID, organizationID string) bool {
@@ -373,10 +383,11 @@ func (h *Handler) serviceDeskOrganizations(w http.ResponseWriter, r *http.Reques
 				member[organization.ID] = true
 			}
 		}
+		managed := h.scimManaged(r, workspaceID)
 		beans := make([]map[string]any, 0, len(organizations))
 		for _, organization := range organizations {
 			if member == nil || member[organization.ID] {
-				beans = append(beans, h.serviceOrganizationBean(organization))
+				beans = append(beans, h.serviceOrganizationBean(organization, managed))
 			}
 		}
 		h.writeServicePage(w, r, beans)

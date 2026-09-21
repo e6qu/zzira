@@ -26,7 +26,19 @@ type policyAttributesRequest struct {
 	Name      string                  `json:"name"`
 	Status    string                  `json:"status"`
 	Rule      policyRuleRequest       `json:"rule"`
+	Config    *policyConfigRequest    `json:"config"`
 	Resources []policyResourceRequest `json:"resources"`
+}
+
+// policyConfigRequest is an authentication policy's settings. It is a pointer
+// on the attributes so that leaving it out is told apart from asking for the
+// zero settings.
+type policyConfigRequest struct {
+	EnforceSSO             bool `json:"enforceSSO"`
+	SessionDurationMinutes int  `json:"sessionDurationMinutes"`
+	Default                bool `json:"default"`
+	PasswordMinimumLength  int  `json:"passwordMinimumLength"`
+	RequireTwoStep         bool `json:"requireTwoStep"`
 }
 
 type policyDataRequest struct {
@@ -52,10 +64,20 @@ func policyStoreInput(input policyDataRequest) (store.PolicyInput, error) {
 	for _, resource := range input.Attributes.Resources {
 		resources = append(resources, store.PolicyResourceInput{ID: resource.ID, Meta: resource.Meta, Links: resource.Links})
 	}
-	return store.PolicyInput{
+	result := store.PolicyInput{
 		Type: input.Attributes.Type, Name: input.Attributes.Name, Status: input.Attributes.Status,
 		Values: input.Attributes.Rule.In, Resources: resources,
-	}, nil
+	}
+	if config := input.Attributes.Config; config != nil {
+		result.Config = &store.AuthenticationConfig{
+			EnforceSSO:             config.EnforceSSO,
+			SessionDurationMinutes: config.SessionDurationMinutes,
+			Default:                config.Default,
+			PasswordMinimumLength:  config.PasswordMinimumLength,
+			RequireTwoStep:         config.RequireTwoStep,
+		}
+	}
+	return result, nil
 }
 
 func (h *Handler) policyModel(policy *models.OrganizationPolicy) map[string]any {
@@ -125,7 +147,7 @@ func (h *Handler) Policies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	policyType := r.URL.Query().Get("type")
-	if policyType != "" && policyType != "ip-allowlist" && policyType != "data-residency" && policyType != "data-security" {
+	if policyType != "" && policyType != "ip-allowlist" && policyType != "data-residency" && policyType != "data-security" && policyType != "authentication-policy" {
 		failure(w, http.StatusBadRequest, "Policy type is invalid.")
 		return
 	}
@@ -285,4 +307,81 @@ func (h *Handler) ValidatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// PolicyMembers lists the people an authentication policy covers.
+func (h *Handler) PolicyMembers(w http.ResponseWriter, r *http.Request) {
+	_, workspaceID, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if err := rejectUnknownQuery(r.URL.Query(), "cursor"); err != nil {
+		failure(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	organization, ok := h.organizationForRequest(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	policyID := r.PathValue("policyId")
+	policy, err := h.Store.OrganizationPolicy(r.Context(), organization.ID, policyID)
+	if err != nil {
+		policyFailure(w, err, "Policy")
+		return
+	}
+	if policy.Type != "authentication-policy" {
+		failure(w, http.StatusBadRequest, "Only an authentication policy has members.")
+		return
+	}
+	offset, limit, err := parsePage(r.URL.Query())
+	if err != nil {
+		failure(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	members, err := h.Store.AuthenticationPolicyMembers(r.Context(), organization.ID, policyID)
+	if err != nil {
+		failure(w, http.StatusInternalServerError, "Policy member lookup failed.")
+		return
+	}
+	page, next := pageSlice(members, offset, limit)
+	data := make([]map[string]any, 0, len(page))
+	for _, accountID := range page {
+		data = append(data, map[string]any{"id": accountID, "type": "user"})
+	}
+	meta := map[string]any{"next": nil, "page_size": len(data)}
+	links := map[string]string{"self": strings.TrimRight(h.BaseURL, "/") + r.URL.RequestURI()}
+	if next != "" {
+		meta["next"] = next
+		query := r.URL.Query()
+		query.Set("cursor", next)
+		links["next"] = strings.TrimRight(h.BaseURL, "/") + r.URL.Path + "?" + query.Encode()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": data, "meta": meta, "links": links})
+}
+
+// PolicyMemberDetails puts one person under an authentication policy, or takes
+// them out of it.
+func (h *Handler) PolicyMemberDetails(w http.ResponseWriter, r *http.Request) {
+	actorID, workspaceID, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if err := rejectUnknownQuery(r.URL.Query()); err != nil {
+		failure(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if _, ok := h.organizationForRequest(w, r, workspaceID); !ok {
+		return
+	}
+	member := r.Method == http.MethodPost
+	err := h.Store.SetAuthenticationPolicyMember(r.Context(), workspaceID, actorID, r.PathValue("policyId"), r.PathValue("accountId"), member)
+	if err != nil {
+		policyFailure(w, err, "Policy or member")
+		return
+	}
+	if member {
+		writeJSON(w, http.StatusAccepted, map[string]any{"data": map[string]any{"id": r.PathValue("accountId"), "type": "user"}})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

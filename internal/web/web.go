@@ -1055,7 +1055,11 @@ func (h *Handler) LoginForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/auth/shauth", http.StatusSeeOther)
 		return
 	}
-	writePage(w, "page_login", loginPageData{Providers: providers, Password: !authn.LocalCredentialsRefused(r.Context())})
+	notice := ""
+	if r.URL.Query().Get("saved") == "password" {
+		notice = "Your password is set. Sign in with it."
+	}
+	writePage(w, "page_login", loginPageData{Notice: notice, Providers: providers, Password: !authn.LocalCredentialsRefused(r.Context())})
 }
 
 func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
@@ -1064,12 +1068,28 @@ func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
 	}
-	token, err := authn.Login(r.Context(), h.Store, r.PostFormValue("email"), r.PostFormValue("password"))
+	signIn, err := authn.Login(r.Context(), h.Store, r.PostFormValue("email"), r.PostFormValue("password"))
+	if errors.Is(err, authn.ErrSSORequired) {
+		// An authentication policy admits this person only through the
+		// identity provider, which is something they can act on: the page
+		// says so rather than reading as a wrong password.
+		writePageStatus(w, "page_login", loginPageData{
+			Error:     "Your organization signs this account in through its identity provider.",
+			Providers: h.loginProviders(), Password: !authn.LocalCredentialsRefused(r.Context()),
+		}, http.StatusForbidden)
+		return
+	}
 	if err != nil {
 		writePageStatus(w, "page_login", loginPageData{Error: "Incorrect email or password.", Providers: h.loginProviders(), Password: !authn.LocalCredentialsRefused(r.Context())}, http.StatusUnauthorized)
 		return
 	}
-	authn.SetSessionCookie(w, token)
+	if signIn.Challenge != "" {
+		// The password is half the answer: this account verifies in two
+		// steps, and the rest is a code.
+		h.startSignInChallenge(w, r, signIn.Challenge)
+		return
+	}
+	authn.SetSessionCookieFor(w, signIn.Session, signIn.TTL)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
@@ -1124,7 +1144,12 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 // gives an anonymous caller (and Shauth's own SSO validator, which asserts
 // on that exact accessible name) no visible way back into the app.
 type loginPageData struct {
-	Error     string
+	Error string
+	// Notice is what just happened somewhere else that the person needs to
+	// read here, such as a password they have set and can now sign in with.
+	// It is chosen from a fixed set, never taken from the URL: the page is
+	// public, and text carried in a link is text an attacker writes.
+	Notice    string
 	Providers []LoginProvider
 	// Password says whether this installation still accepts the credentials
 	// it issued itself. With ZZIRA_LOCAL_CREDENTIALS=off it does not, so the
@@ -1891,7 +1916,15 @@ func (h *Handler) SubmitBulkIssueEdit(w http.ResponseWriter, r *http.Request, pr
 	if !ok {
 		return
 	}
-	operations, err := bulkEditOperations(r)
+	// The custom fields are read from the project rather than from the form:
+	// what a field is, and whether it may be set at all, is the site's
+	// answer, not the submission's.
+	customFields, err := h.bulkCustomFields(r.Context(), workspaceID, user.ID, project.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	operations, err := bulkEditOperations(r, customFields)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1917,7 +1950,11 @@ func (h *Handler) SubmitBulkIssueEdit(w http.ResponseWriter, r *http.Request, pr
 // box is ticked, so the editor sets several at once the way Jira's does, and
 // an empty box clears the field -- except a priority, which Jira has no unset
 // value for.
-func bulkEditOperations(r *http.Request) ([]store.BulkIssueEditOperation, error) {
+func bulkEditOperations(r *http.Request, customFields []bulkCustomField) ([]store.BulkIssueEditOperation, error) {
+	byID := make(map[string]bulkCustomField, len(customFields))
+	for _, field := range customFields {
+		byID[field.ID] = field
+	}
 	encode := func(v any) json.RawMessage {
 		encoded, _ := json.Marshal(v)
 		return encoded
@@ -1975,7 +2012,15 @@ func bulkEditOperations(r *http.Request) ([]store.BulkIssueEditOperation, error)
 				FieldID: "fixVersions", Action: bulkListAction(r.FormValue("versionAction")), Value: encode(list("valueFixVersions")),
 			})
 		default:
-			return nil, fmt.Errorf("choose a field to change")
+			custom, known := byID[field]
+			if !known {
+				return nil, fmt.Errorf("choose a field to change")
+			}
+			operation, err := bulkCustomFieldOperation(r, custom)
+			if err != nil {
+				return nil, err
+			}
+			operations = append(operations, operation)
 		}
 	}
 	if len(operations) == 0 {

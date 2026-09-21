@@ -32,6 +32,7 @@ import (
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/mailer"
 	"github.com/e6qu/zzira/internal/notifybus"
+	"github.com/e6qu/zzira/internal/scim"
 	"github.com/e6qu/zzira/internal/secretbox"
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/e6qu/zzira/internal/syncapi"
@@ -205,6 +206,7 @@ func main() {
 		Store: st, BaseURL: api.BaseURL, WorkspaceSlug: workspaceSlug,
 		InvitationNotificationsConfigured: smtpSender != nil,
 	}
+	scimAPI := &scim.Handler{Store: st, BaseURL: api.BaseURL, WorkspaceSlug: workspaceSlug}
 	bus := notifybus.New()
 	sse := &syncapi.SSEHandler{Store: st, Bus: bus, WorkspaceSlug: workspaceSlug}
 	sync := &syncapi.Handler{Store: st, WorkspaceSlug: workspaceSlug}
@@ -289,6 +291,10 @@ func main() {
 	mux.HandleFunc("GET /monitoring/observation", webHandler.Monitoring)
 	mux.HandleFunc("POST /auth/{provider}/backchannel-logout", webHandler.BackChannelLogout)
 	mux.HandleFunc("POST /login", webHandler.LoginSubmit)
+	mux.HandleFunc("GET /login/verify", webHandler.VerifySignInForm)
+	mux.HandleFunc("POST /login/verify", webHandler.VerifySignInSubmit)
+	mux.HandleFunc("GET /login/enrol", webHandler.EnrolTwoStepForm)
+	mux.HandleFunc("POST /login/enrol", webHandler.EnrolTwoStepSubmit)
 	mux.HandleFunc("POST /logout", webHandler.Logout)
 	mux.HandleFunc("GET /signed-out", webHandler.SignedOut)
 	mux.HandleFunc("GET /projects", webHandler.ProjectsPage)
@@ -365,6 +371,7 @@ func main() {
 	mux.HandleFunc("POST /admin/domains/{domainId}", webHandler.UpdateAdminDomain)
 	mux.HandleFunc("POST /admin/policies", webHandler.CreateAdminPolicy)
 	mux.HandleFunc("POST /admin/policies/{policyId}", webHandler.UpdateAdminPolicy)
+	mux.HandleFunc("POST /admin/policies/{policyId}/members", webHandler.UpdateAdminPolicyMembers)
 	mux.HandleFunc("POST /admin/jira-configuration/{section}", webHandler.UpdateAdminJiraConfiguration)
 	mux.HandleFunc("POST /admin/jira-application-properties/{property}", webHandler.UpdateAdminJiraApplicationProperty)
 	mux.HandleFunc("POST /admin/global-permissions", webHandler.CreateAdminGlobalPermissionGrant)
@@ -547,6 +554,12 @@ func main() {
 	mux.HandleFunc("GET /profile", webHandler.SelfProfile)
 	mux.HandleFunc("POST /profile/identities/{provider}/unlink", webHandler.UnlinkIdentityProvider)
 	mux.HandleFunc("POST /profile/notifications", webHandler.UpdateNotificationPreferences)
+	mux.HandleFunc("POST /profile/password", webHandler.ChangePassword)
+	mux.HandleFunc("POST /profile/two-step", webHandler.UpdateTwoStep)
+	mux.HandleFunc("GET /password/forgot", webHandler.ForgotPasswordForm)
+	mux.HandleFunc("POST /password/forgot", webHandler.ForgotPasswordSubmit)
+	mux.HandleFunc("GET /password/set", webHandler.SetPasswordForm)
+	mux.HandleFunc("POST /password/set", webHandler.SetPasswordSubmit)
 	mux.HandleFunc("POST /profile/tokens", webHandler.CreateAPIToken)
 	mux.HandleFunc("POST /profile/tokens/{token}/revoke", webHandler.RevokeAPIToken)
 	mux.HandleFunc("GET /people/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -672,6 +685,9 @@ func main() {
 	})
 	mux.HandleFunc("POST /issues/{key}/bulk/transition", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.SubmitBulkIssueTransition(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("GET /issues/{key}/bulk/fields", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.BulkIssueFields(w, r, r.PathValue("key"))
 	})
 	mux.HandleFunc("GET /issues/{key}/bulk/{task}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.BulkIssueTask(w, r, r.PathValue("key"), r.PathValue("task"))
@@ -833,6 +849,24 @@ func main() {
 	})
 	mux.Handle("/gateway/api/automation/public/jira/", automationAPI)
 	mux.Handle("/automation/public/jira/", automationAPI)
+	// SCIM 2.0 provisioning for one directory: an identity provider creates,
+	// updates and deactivates its people and groups. These are written out one
+	// by one rather than in a loop so the route guard sees every pattern.
+	mux.HandleFunc("GET /scim/directory/{directoryId}/ServiceProviderConfig", scimAPI.ServiceProviderConfig)
+	mux.HandleFunc("GET /scim/directory/{directoryId}/ResourceTypes", scimAPI.ResourceTypes)
+	mux.HandleFunc("GET /scim/directory/{directoryId}/Schemas", scimAPI.Schemas)
+	mux.HandleFunc("GET /scim/directory/{directoryId}/Users", scimAPI.Users)
+	mux.HandleFunc("POST /scim/directory/{directoryId}/Users", scimAPI.Users)
+	mux.HandleFunc("GET /scim/directory/{directoryId}/Users/{userId}", scimAPI.User)
+	mux.HandleFunc("PUT /scim/directory/{directoryId}/Users/{userId}", scimAPI.User)
+	mux.HandleFunc("PATCH /scim/directory/{directoryId}/Users/{userId}", scimAPI.User)
+	mux.HandleFunc("DELETE /scim/directory/{directoryId}/Users/{userId}", scimAPI.User)
+	mux.HandleFunc("GET /scim/directory/{directoryId}/Groups", scimAPI.Groups)
+	mux.HandleFunc("POST /scim/directory/{directoryId}/Groups", scimAPI.Groups)
+	mux.HandleFunc("GET /scim/directory/{directoryId}/Groups/{groupId}", scimAPI.Group)
+	mux.HandleFunc("PUT /scim/directory/{directoryId}/Groups/{groupId}", scimAPI.Group)
+	mux.HandleFunc("PATCH /scim/directory/{directoryId}/Groups/{groupId}", scimAPI.Group)
+	mux.HandleFunc("DELETE /scim/directory/{directoryId}/Groups/{groupId}", scimAPI.Group)
 	mux.HandleFunc("GET /admin/v1/orgs", adminAPI.Organizations)
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}", adminAPI.Organization)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories", adminAPI.Directories)
@@ -871,6 +905,9 @@ func main() {
 	mux.HandleFunc("PUT /admin/v1/orgs/{orgId}/policies/{policyId}/resources/{resourceId}", adminAPI.PolicyResourceDetails)
 	mux.HandleFunc("DELETE /admin/v1/orgs/{orgId}/policies/{policyId}/resources/{resourceId}", adminAPI.PolicyResourceDetails)
 	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/policies/{policyId}/validate", adminAPI.ValidatePolicy)
+	mux.HandleFunc("GET /admin/v1/orgs/{orgId}/policies/{policyId}/members", adminAPI.PolicyMembers)
+	mux.HandleFunc("POST /admin/v1/orgs/{orgId}/policies/{policyId}/members/{accountId}", adminAPI.PolicyMemberDetails)
+	mux.HandleFunc("DELETE /admin/v1/orgs/{orgId}/policies/{policyId}/members/{accountId}", adminAPI.PolicyMemberDetails)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users", adminAPI.DirectoryUsers)
 	mux.HandleFunc("GET /admin/v2/orgs/{orgId}/directories/{directoryId}/users/count", adminAPI.DirectoryUserCount)
 	mux.HandleFunc("POST /admin/v2/orgs/{orgId}/directories/{directoryId}/users/search", adminAPI.SearchUsers)

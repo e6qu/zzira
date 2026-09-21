@@ -73,7 +73,7 @@ func TestWikiSpaceTrashJourney(t *testing.T) {
 	h := &Handler{Store: st, Commands: &commands.Service{Store: st}, WorkspaceSlug: ws}
 	tokens := map[string]string{}
 	for _, person := range []string{siteAdmin, spaceAdmin} {
-		token, loginErr := authn.LoginOIDC(ctx, st, person, "id-token", "https://issuer.example.invalid", person+"-subject", "")
+		token, _, loginErr := authn.LoginOIDC(ctx, st, person, "id-token", "https://issuer.example.invalid", person+"-subject", "")
 		if loginErr != nil {
 			t.Fatal(loginErr)
 		}

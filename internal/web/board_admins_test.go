@@ -63,7 +63,7 @@ func TestBoardAdministratorsMayConfigureTheirBoard(t *testing.T) {
 	h := &Handler{Store: st, Commands: &commands.Service{Store: st}, WorkspaceSlug: workspaceID}
 	post := func(userID string) int {
 		t.Helper()
-		token, err := authn.LoginOIDC(ctx, st, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
+		token, _, err := authn.LoginOIDC(ctx, st, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
 		if err != nil {
 			t.Fatal(err)
 		}

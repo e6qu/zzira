@@ -11,7 +11,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | User signs in and orients | ✅ | `identity-providers`, `session-isolation`, `directories`, `v0` | — |
 | Contributor finds work | ✅ | `v2`, `filters`, `directories` | — |
 | Contributor creates and triages work | ✅ | `create`, `v1`, `v3`, `triage`, `issue_mentions`, `custom_field_options` | — |
-| Contributor changes many work items at once | 🟡 | `navigator_bulk` (six fields across a selection in one task, watch, unwatch), `v2` (delete, move, transition) | Custom fields are editable only through REST; work type and status through bulk move and transition ([BULK_ISSUES](BULK_ISSUES.md#gaps)) |
+| Contributor changes many work items at once | 🟡 | `navigator_bulk` (six built-in fields and the project's shared custom fields across a selection in one task, watch, unwatch), `v2` (delete, move, transition) | Cascading selects, user and group pickers and rich text are editable only through REST; work type and status through bulk move and transition ([BULK_ISSUES](BULK_ISSUES.md#gaps)) |
 | Contributor records how work was resolved | ✅ | `resolution` (transition screen, work item page, REST, a reader who may not move the work, accessibility) | — |
 | Contributor plans and runs a sprint | ✅ | `backlog`, `board_columns`, `board_swimlanes`, `v4`, `projects` | — |
 | Contributor works offline | 🟡 | `v0`, `v5`, `revocation`, `session-isolation` | Only work items are available offline; other entities and richer edits need a connection |
@@ -33,7 +33,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | Knowledge team collaborates live | ✅ | `wiki_live_editing`, `wiki_presence` | — |
 | Knowledge user diagrams or models data | 🟡 | `wiki_database`, `wiki_whiteboard` | Direct manipulation, advanced whiteboard objects, rich embeds, exports |
 | Space manager governs knowledge | 🟡 | `wiki_space_admin` (details, custom roles, direct grants), `wiki_space_tools`, `wiki_page_lifecycle`, `classification_levels` | Space import |
-| Site admin manages people, access and Jira settings | 🟡 | `admin`, `api_tokens`, `people`, `global_permissions`, `identity-providers`, `permission_schemes`, `permission_helper`, `notification_schemes`, `notification_helper`, `notification_preferences`, `notifications`, `issue_security_schemes` | Remaining enterprise identity journeys ([ADMIN](ADMIN.md)) |
+| Site admin manages people, access and Jira settings | 🟡 | `admin`, `password`, `two_step`, `api_tokens`, `people`, `global_permissions`, `identity-providers`, `permission_schemes`, `permission_helper`, `notification_schemes`, `notification_helper`, `notification_preferences`, `notifications`, `issue_security_schemes` | SAML; two-step verification is an authenticator app with a typed key rather than a QR image; authentication policies cover named people rather than groups; SCIM provisioning has no browser page of its own ([ADMIN](ADMIN.md), [SCIM](SCIM.md)) |
 | Site admin manages apps | 🟡 | `apps` | Several Connect module families; Forge compute; workflow modules ([APPS](APPS.md)) |
 
 Evidence names refer to `e2e/<name>.spec.ts`. `wire-ids` and `accessibility` apply across all journeys; see [WIRE_IDS.md](WIRE_IDS.md) and [ACCESSIBILITY.md](ACCESSIBILITY.md).

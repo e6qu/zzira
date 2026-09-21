@@ -84,7 +84,7 @@ func newWikiSpaceAdminFixture(t *testing.T) *wikiSpaceAdminFixture {
 // post signs the user in and calls one of the space administration handlers.
 func (f *wikiSpaceAdminFixture) post(t *testing.T, handler func(http.ResponseWriter, *http.Request), userID, path string, form url.Values) *httptest.ResponseRecorder {
 	t.Helper()
-	token, err := authn.LoginOIDC(context.Background(), f.store, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
+	token, _, err := authn.LoginOIDC(context.Background(), f.store, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
 	if err != nil {
 		t.Fatal(err)
 	}
