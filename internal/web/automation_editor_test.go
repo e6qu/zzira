@@ -55,4 +55,28 @@ func TestAutomationEditorKeepsWhatItCannotShow(t *testing.T) {
 	if actions := parseAutomationActions(json.RawMessage(`{"components":[{"component":"BRANCH","type":"jira.issue.related"},{"component":"ACTION","type":"jira.issue.comment","value":{"comment":"hi"}}]}`)); len(actions) != 1 || actions[0].Value != "hi" {
 		t.Fatalf("editor actions = %+v", actions)
 	}
+
+	// A branch over a query reads its query back, and a create variable
+	// action reads back the name it gave and what it holds.
+	queried := parseAutomationBranch(json.RawMessage(`{"components":[{"component":"BRANCH","type":"jira.issue.related","value":{"relatedType":"jql","jql":"labels = late"},"children":[{"component":"ACTION","type":"jira.create.variable","value":{"variableName":"note","variableValue":"{{issue.key}}"}}]}]}`))
+	if queried.RelatedType != "jql" || queried.JQL != "labels = late" || len(queried.Actions) != 1 {
+		t.Fatalf("queried branch = %+v", queried)
+	}
+	if action := queried.Actions[0]; action.Type != "jira.create.variable" || action.Variable != "note" || action.Value != "{{issue.key}}" {
+		t.Fatalf("variable action = %+v", action)
+	}
+	// The editor writes what the runner reads: the name in its own column,
+	// the value in the row's value, and a variable holding nothing is a
+	// variable all the same.
+	components, err := automationFormActions(automationActionRows{
+		Types:     []string{"jira.create.variable", "jira.issue.comment"},
+		Values:    []string{"", "Noted {{note}}"},
+		Variables: []string{"note", ""},
+	})
+	if err != nil || len(components) != 2 {
+		t.Fatalf("form actions = %+v, %v", components, err)
+	}
+	if value := components[0]["value"].(map[string]string); value["variableName"] != "note" || value["variableValue"] != "" {
+		t.Fatalf("variable action = %+v", value)
+	}
 }

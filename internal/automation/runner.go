@@ -45,6 +45,10 @@ type claimedRun struct {
 	// UserInputs are what the person who ran a manual rule typed into its
 	// prompts, which its actions read as {{userInputs.<name>}}.
 	UserInputs map[string]string
+	// Variables are what the rule's own create variable actions have set so
+	// far, read as {{name}}. A branch keeps its own: what it sets belongs to
+	// the work item it is running for, not to whatever runs after it.
+	Variables map[string]string
 	// WebResponse is the answer the rule's last web request received, which
 	// later actions read as {{webResponse}}.
 	WebResponse *webResponse
@@ -68,6 +72,9 @@ type component struct {
 type branchValue struct {
 	RelatedType string   `json:"relatedType"`
 	LinkTypes   []string `json:"linkTypes"`
+	// JQL is what a "jql" branch runs for: the work the rule actor can see
+	// that the query matches, whether or not the rule has a work item.
+	JQL string `json:"jql"`
 }
 
 func (r *Runner) Run(ctx context.Context, workspaceID string) {
@@ -257,24 +264,10 @@ func (r *Runner) execute(ctx context.Context, run *claimedRun) (int, int, error)
 		}
 		issues, total = []*models.Issue{issue}, 1
 	default:
-		query, err := jql.Parse(run.JQL)
+		var err error
+		issues, total, err = r.searchIssues(ctx, run, run.JQL, 1000)
 		if err != nil {
-			return 0, 0, fmt.Errorf("parse JQL: %w", err)
-		}
-		if err := r.Service.Store.ExpandAppJQL(ctx, run.WorkspaceID, query); err != nil {
-			return 0, 0, fmt.Errorf("expand app JQL: %w", err)
-		}
-		resolver, err := r.Service.Store.JQLResolver(ctx, run.WorkspaceID)
-		if err != nil {
-			return 0, 0, fmt.Errorf("resolve JQL fields: %w", err)
-		}
-		compiled := jql.CompileAt(query, run.ActorID, resolver, 2)
-		if compiled.Err != nil {
-			return 0, 0, fmt.Errorf("compile JQL: %w", compiled.Err)
-		}
-		issues, total, err = r.Service.Store.Search(ctx, run.WorkspaceID, run.ActorID, compiled, 1000, 0)
-		if err != nil {
-			return 0, 0, fmt.Errorf("search issues: %w", err)
+			return 0, 0, err
 		}
 		if total > 1000 {
 			return total, 0, fmt.Errorf("JQL matched %d issues; scheduled rules are limited to 1000 per run", total)
@@ -345,20 +338,30 @@ func (r *Runner) runComponents(ctx context.Context, run *claimedRun, issue *mode
 	changed := false
 	for _, item := range components {
 		if item.Component == "BRANCH" {
-			if issue == nil {
+			// A branch over related work needs the work item it is related
+			// to; a JQL branch asks the query, so it runs for a rule that
+			// never had one.
+			if issue == nil && branchRelatedType(item) != "jql" {
 				return changed, fmt.Errorf("%s on %s: a branch needs a work item, and the webhook named none", item.Type, where)
 			}
-			related, err := r.relatedIssues(ctx, run, issue, item)
+			related, err := r.branchIssues(ctx, run, issue, item)
 			if err != nil {
-				return changed, fmt.Errorf("%s on %s: %w", item.Type, issue.Key, err)
+				return changed, fmt.Errorf("%s on %s: %w", item.Type, where, err)
 			}
+			// What a branch names belongs to the branch: Jira keeps a
+			// variable set inside one out of everything that follows,
+			// because the branch runs for each work item separately.
+			outer := run.Variables
 			for _, relatedIssue := range related {
+				run.Variables = cloneVariables(outer)
 				didChange, err := r.runComponents(ctx, run, relatedIssue, item.Children)
 				if err != nil {
+					run.Variables = outer
 					return changed, err
 				}
 				changed = changed || didChange
 			}
+			run.Variables = outer
 			continue
 		}
 		if item.Component == "CONDITION" {
@@ -416,23 +419,34 @@ func (r *Runner) matchesJQL(ctx context.Context, run *claimedRun, issue *models.
 // matchingWorkExists reports whether the rule actor can see any work item the
 // query matches, where matchesJQL asks the same of one work item.
 func (r *Runner) matchingWorkExists(ctx context.Context, run *claimedRun, text string) (bool, error) {
+	_, total, err := r.searchIssues(ctx, run, text, 1)
+	return total > 0, err
+}
+
+// searchIssues runs a rule's query as the rule actor, so a rule sees exactly
+// the work its actor may see. It answers the work found, up to the limit, and
+// how much there is in all.
+func (r *Runner) searchIssues(ctx context.Context, run *claimedRun, text string, limit int) ([]*models.Issue, int, error) {
 	query, err := jql.Parse(text)
 	if err != nil {
-		return false, fmt.Errorf("parse JQL: %w", err)
+		return nil, 0, fmt.Errorf("parse JQL: %w", err)
 	}
 	if err := r.Service.Store.ExpandAppJQL(ctx, run.WorkspaceID, query); err != nil {
-		return false, fmt.Errorf("expand app JQL: %w", err)
+		return nil, 0, fmt.Errorf("expand app JQL: %w", err)
 	}
 	resolver, err := r.Service.Store.JQLResolver(ctx, run.WorkspaceID)
 	if err != nil {
-		return false, err
+		return nil, 0, fmt.Errorf("resolve JQL fields: %w", err)
 	}
 	compiled := jql.CompileAt(query, run.ActorID, resolver, 2)
 	if compiled.Err != nil {
-		return false, fmt.Errorf("compile JQL: %w", compiled.Err)
+		return nil, 0, fmt.Errorf("compile JQL: %w", compiled.Err)
 	}
-	_, total, err := r.Service.Store.Search(ctx, run.WorkspaceID, run.ActorID, compiled, 1, 0)
-	return total > 0, err
+	issues, total, err := r.Service.Store.Search(ctx, run.WorkspaceID, run.ActorID, compiled, limit, 0)
+	if err != nil {
+		return nil, 0, fmt.Errorf("search issues: %w", err)
+	}
+	return issues, total, nil
 }
 
 func validateExecutionActor(payload json.RawMessage, actorID string) error {
@@ -453,12 +467,12 @@ func validateExecutionActor(payload json.RawMessage, actorID string) error {
 
 // Actions and conditions the runner executes.
 var (
-	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true, "jira.issue.delete": true, WikiPageActionType: true}
+	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true, "jira.issue.delete": true, WikiPageActionType: true, VariableActionType: true}
 	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true, "jira.issue.related.condition": true}
 )
 
 // relatedTypes are the related work items a branch can run for.
-var relatedTypes = map[string]bool{"sub-tasks": true, "parent": true, "linked": true}
+var relatedTypes = map[string]bool{"sub-tasks": true, "parent": true, "linked": true, "jql": true}
 
 // maxBranchIssues bounds how many related work items one branch runs for.
 const maxBranchIssues = 100
@@ -494,6 +508,11 @@ func validateComponents(items []component, inBranch bool) (int, error) {
 			if !runnableActions[item.Type] {
 				return 0, fmt.Errorf("unsupported action %q", item.Type)
 			}
+			if item.Type == VariableActionType {
+				if _, err := validateVariableAction(item.Value); err != nil {
+					return 0, err
+				}
+			}
 			actions++
 		case "BRANCH":
 			if inBranch {
@@ -504,7 +523,15 @@ func validateComponents(items []component, inBranch bool) (int, error) {
 			}
 			var value branchValue
 			if err := json.Unmarshal(decodeComponentValue(item.Value), &value); err != nil || !relatedTypes[value.RelatedType] {
-				return 0, errors.New("a related work items branch needs relatedType sub-tasks, parent or linked")
+				return 0, errors.New("a related work items branch needs relatedType sub-tasks, parent, linked or jql")
+			}
+			if value.RelatedType == "jql" {
+				if strings.TrimSpace(value.JQL) == "" {
+					return 0, errors.New("a JQL branch needs the query it runs for")
+				}
+				if _, err := jql.Parse(value.JQL); err != nil {
+					return 0, fmt.Errorf("branch JQL: %w", err)
+				}
 			}
 			nested, err := validateComponents(item.Children, true)
 			if err != nil {
@@ -521,15 +548,48 @@ func validateComponents(items []component, inBranch bool) (int, error) {
 	return actions, nil
 }
 
-// relatedIssues finds the work items a branch runs for that the rule actor can
-// see: a work item's sub-tasks, its parent, or work linked to it by the
-// branch's link types, named as the work item reads the link (such as blocks
-// or is blocked by) or by the link type's name.
-func (r *Runner) relatedIssues(ctx context.Context, run *claimedRun, issue *models.Issue, branch component) ([]*models.Issue, error) {
+// branchRelatedType is what a branch runs for, read without failing: an
+// unreadable value is refused where the rule is validated.
+func branchRelatedType(branch component) string {
+	var value branchValue
+	_ = json.Unmarshal(decodeComponentValue(branch.Value), &value)
+	return value.RelatedType
+}
+
+// cloneVariables copies what a rule has named so far, for a branch to add to
+// without the next work item inheriting it.
+func cloneVariables(variables map[string]string) map[string]string {
+	if variables == nil {
+		return nil
+	}
+	copied := make(map[string]string, len(variables))
+	for name, value := range variables {
+		copied[name] = value
+	}
+	return copied
+}
+
+// branchIssues finds the work items a branch runs for that the rule actor can
+// see: a work item's sub-tasks, its parent, work linked to it by the branch's
+// link types, named as the work item reads the link (such as blocks or is
+// blocked by) or by the link type's name, or whatever a query matches.
+func (r *Runner) branchIssues(ctx context.Context, run *claimedRun, issue *models.Issue, branch component) ([]*models.Issue, error) {
 	var value branchValue
 	_ = json.Unmarshal(decodeComponentValue(branch.Value), &value)
 	candidates := []*models.Issue{}
 	switch value.RelatedType {
+	case "jql":
+		// The query is rendered first, so a branch can run for what an
+		// earlier action found: assignee = {{issue.assignee.accountId}}.
+		text, err := r.renderSmartValues(ctx, run, issue, value.JQL)
+		if err != nil {
+			return nil, err
+		}
+		found, _, err := r.searchIssues(ctx, run, text, maxBranchIssues)
+		if err != nil {
+			return nil, err
+		}
+		candidates = found
 	case "sub-tasks":
 		children, err := r.Service.Store.ChildIssues(ctx, run.WorkspaceID, issue.ID)
 		if err != nil {
@@ -639,12 +699,24 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 	// Every action this rule catalog holds acts on a work item, except
 	// raising one and sending a request. Jira fails such an action when the
 	// trigger supplied none, rather than skipping it.
-	if issue == nil && action.Type != "jira.issue.create" && action.Type != WebRequestActionType && !strings.HasPrefix(action.Type, "jira.issue.create:") {
+	if issue == nil && action.Type != "jira.issue.create" && action.Type != WebRequestActionType && action.Type != VariableActionType && !strings.HasPrefix(action.Type, "jira.issue.create:") {
 		return false, errors.New("this action needs a work item, and the trigger supplied none")
 	}
 	valueRaw := decodeComponentValue(action.Value)
 	render := func(text string) (string, error) { return r.renderSmartValues(ctx, run, issue, text) }
 	switch action.Type {
+	case VariableActionType:
+		value, err := validateVariableAction(action.Value)
+		if err != nil {
+			return false, err
+		}
+		rendered, err := render(value.VariableValue)
+		if err != nil {
+			return false, err
+		}
+		// Naming a value changes nothing about the work: a rule whose only
+		// action is this one did nothing, and its run says so.
+		return false, r.setVariable(run, rendered, value)
 	case "jira.issue.add-label":
 		var value struct {
 			Label string `json:"label"`

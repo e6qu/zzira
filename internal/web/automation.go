@@ -39,6 +39,9 @@ type automationActionView struct {
 	// "Name: value" to a line.
 	Body    string
 	Headers string
+	// Variable is what a create variable action names its value, which the
+	// rest of the rule reads as {{name}}.
+	Variable string
 }
 
 // automationFormPrompts reads the questions a manual rule asks. A row with
@@ -165,7 +168,9 @@ type automationConditionView struct{ Field, Operator, Value string }
 // automationBranchView is a related work items branch and its actions.
 type automationBranchView struct {
 	RelatedType, LinkTypes string
-	Actions                []automationActionView
+	// JQL is what a branch over matching work runs for.
+	JQL     string
+	Actions []automationActionView
 	// Conditions choose which related work items the branch acts on.
 	Conditions []automationConditionView
 }
@@ -184,6 +189,7 @@ var (
 		{automation.ManualTriggerType, "Run manually from a work item"},
 	}
 	automationActionTypes = []automationOption{
+		{automation.VariableActionType, "Create variable"},
 		{"jira.issue.add-label", "Add label"}, {"jira.issue.remove-label", "Remove label"}, {"jira.issue.assign", "Assign work item"},
 		{"jira.issue.assign:round-robin", "Assign work item (round-robin)"}, {"jira.issue.assign:balanced", "Assign work item (balanced workload)"},
 		{"jira.issue.assign:random", "Assign work item (random)"}, {"jira.issue.transition", "Transition work item"},
@@ -199,7 +205,7 @@ var (
 		{automation.WebRequestActionType + ":GET", "Send web request (GET)"},
 		{automation.WebRequestActionType + ":DELETE", "Send web request (DELETE)"},
 	}
-	automationRelatedTypes    = []automationOption{{"sub-tasks", "Sub-tasks"}, {"parent", "Parent"}, {"linked", "Linked work items"}}
+	automationRelatedTypes    = []automationOption{{"sub-tasks", "Sub-tasks"}, {"parent", "Parent"}, {"linked", "Linked work items"}, {"jql", "Work matching JQL"}}
 	automationConditionFields = []automationOption{
 		{"jql", "Matches JQL"}, {"related:sub-tasks", "Sub-tasks match JQL"}, {"related:parent", "Parent matches JQL"},
 		{"related:linked", "Linked work matches JQL"}, {"status", "Status"}, {"priority", "Priority"}, {"issuetype", "Work type"}, {"assignee", "Assignee"},
@@ -611,8 +617,10 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	actionComponents, err := automationFormActions(r.PostForm["action_type"], r.PostForm["action_value"], r.PostForm["action_project"],
-		r.PostForm["action_body"], r.PostForm["action_headers"])
+	actionComponents, err := automationFormActions(automationActionRows{
+		Types: r.PostForm["action_type"], Values: r.PostForm["action_value"], Projects: r.PostForm["action_project"],
+		Bodies: r.PostForm["action_body"], HeaderLines: r.PostForm["action_headers"], Variables: r.PostForm["action_variable"],
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -628,7 +636,9 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 		if err != nil {
 			return nil, err
 		}
-		branchActions, err := automationFormActions(r.PostForm["branch_action_type"], r.PostForm["branch_action_value"], nil, nil, nil)
+		branchActions, err := automationFormActions(automationActionRows{
+			Types: r.PostForm["branch_action_type"], Values: r.PostForm["branch_action_value"], Variables: r.PostForm["branch_action_variable"],
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -639,6 +649,13 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 		value := map[string]any{"relatedType": related}
 		if linkTypes := splitLines(r.PostFormValue("branch_link_types")); related == "linked" && len(linkTypes) > 0 {
 			value["linkTypes"] = linkTypes
+		}
+		if related == "jql" {
+			query := strings.TrimSpace(r.PostFormValue("branch_jql"))
+			if query == "" {
+				return nil, fmt.Errorf("a branch over work matching JQL needs the query")
+			}
+			value["jql"] = query
 		}
 		components = append(components, map[string]any{"component": "BRANCH", "schemaVersion": 1, "type": "jira.issue.related", "value": value, "children": children})
 		actions += len(branchActions)
@@ -656,6 +673,12 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 		"trigger": map[string]any{"component": "TRIGGER", "schemaVersion": 1, "type": triggerType, "value": triggerValue},
 	}
 	return json.Marshal(map[string]any{"rule": rule, "connections": []any{}})
+}
+
+// automationActionRows are the editor's action columns as the form posts
+// them, one entry per row: an action reads the columns it uses.
+type automationActionRows struct {
+	Types, Values, Projects, Bodies, HeaderLines, Variables []string
 }
 
 // automationFormActions reads the editor's action rows into rule components.
@@ -714,7 +737,8 @@ func automationFormConditions(fields, operators, values []string) ([]map[string]
 // automationFormActions reads the rule's actions. projects is the project
 // each create action raises its work in, which matters when the trigger
 // brings no work item to take one from; it is empty for every other action.
-func automationFormActions(types, values, projects, bodies, headerLines []string) ([]map[string]any, error) {
+func automationFormActions(rows automationActionRows) ([]map[string]any, error) {
+	types, values, projects, bodies, headerLines, variables := rows.Types, rows.Values, rows.Projects, rows.Bodies, rows.HeaderLines, rows.Variables
 	components := []map[string]any{}
 	at := func(list []string, index int) string {
 		if index < len(list) {
@@ -733,6 +757,17 @@ func automationFormActions(types, values, projects, bodies, headerLines []string
 		}
 		if index < len(projects) {
 			project = strings.TrimSpace(projects[index])
+		}
+		// A create variable action names its value in its own column, and
+		// what the variable holds is the row's value, which may be empty: a
+		// rule can name what a web request answered even when it answered
+		// nothing.
+		if actionType == automation.VariableActionType {
+			components = append(components, map[string]any{
+				"component": "ACTION", "schemaVersion": 1, "type": automation.VariableActionType,
+				"value": map[string]string{"variableName": at(variables, index), "variableValue": value},
+			})
+			continue
 		}
 		// Deleting takes no value, as it takes none in Jira.
 		if actionType == "jira.issue.delete" {
@@ -1021,6 +1056,8 @@ func automationActionViews(components []automationComponentJSON) []automationAct
 			view.Value = fields["spaceKey"]
 		case "jira.issue.delete":
 			view.Value = ""
+		case automation.VariableActionType:
+			view.Value, view.Variable = fields["variableValue"], fields["variableName"]
 		case "jira.issue.edit":
 			view.Type, view.Value = "jira.issue.edit:"+fields["field"], fields["value"]
 		case "jira.issue.link":
@@ -1054,10 +1091,11 @@ func parseAutomationBranch(payload json.RawMessage) automationBranchView {
 		var value struct {
 			RelatedType string   `json:"relatedType"`
 			LinkTypes   []string `json:"linkTypes"`
+			JQL         string   `json:"jql"`
 		}
 		automationComponentValue(component.Value, &value)
-		return automationBranchView{RelatedType: value.RelatedType, LinkTypes: strings.Join(value.LinkTypes, ", "), Actions: automationActionViews(component.Children),
-			Conditions: automationConditionViews(component.Children)}
+		return automationBranchView{RelatedType: value.RelatedType, LinkTypes: strings.Join(value.LinkTypes, ", "), JQL: value.JQL,
+			Actions: automationActionViews(component.Children), Conditions: automationConditionViews(component.Children)}
 	}
 	return automationBranchView{Actions: []automationActionView{}, Conditions: []automationConditionView{}}
 }
