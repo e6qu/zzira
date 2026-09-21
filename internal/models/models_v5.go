@@ -3,8 +3,11 @@ package models
 // Rank is the LexoRank ordering key; carried on issue snapshots so replicas
 // order board columns without extra state.
 const (
-	EntityBoard          = "board"
-	EntitySprint         = "sprint"
+	EntityBoard  = "board"
+	EntitySprint = "sprint"
+	// EntityVersion is a project version, which the action log has carried
+	// under this name since versions were first recorded.
+	EntityVersion        = "version"
 	EntitySprintIssue    = "sprint_issue"
 	EntityWatcher        = "watcher"
 	EntityVote           = "vote"
@@ -165,6 +168,10 @@ type BoardUpsertPayload struct {
 
 type SprintUpsertPayload struct {
 	Sprint Sprint `json:"sprint"`
+	// PreviousState is the state the sprint was in before this change, so a
+	// reader can tell a sprint that has just started from one that was
+	// already running when its name changed.
+	PreviousState string `json:"previousState,omitempty"`
 }
 
 type SprintIssuePayload struct {
@@ -172,6 +179,9 @@ type SprintIssuePayload struct {
 	IssueID  string `json:"issueId"`
 	Rank     string `json:"rank"`
 	Removed  bool   `json:"removed,omitempty"`
+	// Added tells a work item joining the sprint from one that was already in
+	// it being ranked again, which writes the same kind of action.
+	Added bool `json:"added,omitempty"`
 }
 
 // RankUpdatePayload: rank changes materialize but stay out of the changelog.

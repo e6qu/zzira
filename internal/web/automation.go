@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,55 @@ type automationRulesData struct {
 type automationActionView struct {
 	Type  string
 	Value string
+	// ProjectID is where a create action raises its work, when the rule says
+	// so rather than taking the triggering work item's project.
+	ProjectID string
+	// Body and Headers are what a web request sends besides its address:
+	// the body the receiver asked for, and the headers it is read with, one
+	// "Name: value" to a line.
+	Body    string
+	Headers string
+}
+
+// automationFormHeaders reads the headers a web request is sent with, one
+// "Name: value" to a line, as the editor takes them.
+func automationFormHeaders(lines string) (map[string]string, error) {
+	headers := map[string]string{}
+	for _, line := range strings.Split(lines, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		name, value, found := strings.Cut(line, ":")
+		name = strings.TrimSpace(name)
+		if !found || name == "" {
+			return nil, fmt.Errorf("a request header is written as Name: value, not %q", line)
+		}
+		headers[name] = strings.TrimSpace(value)
+	}
+	return headers, nil
+}
+
+// automationHeaderLines writes a saved action's headers back as the editor
+// shows them, in a settled order so the same rule reads the same way twice.
+func automationHeaderLines(raw json.RawMessage) string {
+	var value struct {
+		Headers map[string]string `json:"headers"`
+	}
+	automationComponentValue(raw, &value)
+	if len(value.Headers) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(value.Headers))
+	for name := range value.Headers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	lines := make([]string, 0, len(names))
+	for _, name := range names {
+		lines = append(lines, name+": "+value.Headers[name])
+	}
+	return strings.Join(lines, "\n")
 }
 
 // automationOption is a choice in the rule editor.
@@ -61,6 +111,10 @@ var (
 		{"jira.issue.event.trigger:transitioned", "Work item transitioned"}, {"jira.issue.field.changed", "Field value changed"},
 		{"jira.issue.event.trigger:commented", "Work item commented"}, {"jira.issue.event.trigger:linked", "Work item linked"},
 		{"jira.issue.event.trigger:assigned", "Work item assigned"}, {"jira.issue.attachment.added", "Attachment added"},
+		{"jira.issue.event.trigger:moved", "Work item moved"}, {"jira.issue.event.trigger:deleted", "Work item deleted"},
+		{"jira.version.event.trigger:created", "Version created"}, {"jira.version.event.trigger:updated", "Version updated"},
+		{"jira.version.event.trigger:released", "Version released"},
+		{"jira.sprint.event.trigger:started", "Sprint started"}, {"jira.sprint.event.trigger:completed", "Sprint completed"},
 		{automation.WebhookTriggerType, "Incoming webhook"},
 	}
 	automationActionTypes = []automationOption{
@@ -126,7 +180,10 @@ type automationEditorData struct {
 	Runs         []automationRunView
 	Members      []*models.User
 	Statuses     []models.Status
-	CloudID      string
+	// Projects are where a create action can raise work when the trigger
+	// brings no work item to take a project from.
+	Projects []*models.Project
+	CloudID  string
 	// WebhookURL is the address an incoming webhook rule is called at.
 	WebhookURL string
 	IsNew      bool
@@ -307,7 +364,11 @@ func (h *Handler) automationEditorData(r *http.Request, workspaceID string, rule
 			actionTypes = append(actionTypes, automationOption{"jira.issue.create:" + issueType.ID, "Create: " + issueType.Name})
 		}
 	}
-	data := automationEditorData{Rule: rule, Members: members, Statuses: statuses, CloudID: cloudID,
+	projects, err := h.Store.ProjectsByWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		return automationEditorData{}, err
+	}
+	data := automationEditorData{Rule: rule, Members: members, Statuses: statuses, CloudID: cloudID, Projects: projects,
 		Triggers: automationTriggers, ActionTypes: actionTypes, ConditionFields: automationConditionFields, ConditionOperators: automationConditionOperators,
 		RelatedTypes: automationRelatedTypes}
 	if rule != nil && rule.WebhookToken != "" {
@@ -440,8 +501,16 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 		}
 		triggerValue = map[string]any{"intervalMinutes": interval, "timezone": timezone, "jql": query}
 	case "jira.issue.event.trigger:created", "jira.issue.event.trigger:commented", "jira.issue.event.trigger:linked",
-		"jira.issue.event.trigger:assigned", "jira.issue.attachment.added":
+		"jira.issue.event.trigger:assigned", "jira.issue.attachment.added", "jira.issue.event.trigger:moved":
 		triggerValue = map[string]any{"jql": query}
+	case "jira.issue.event.trigger:deleted", "jira.version.event.trigger:created", "jira.version.event.trigger:updated",
+		"jira.version.event.trigger:released", "jira.sprint.event.trigger:started", "jira.sprint.event.trigger:completed":
+		// These happen to something a rule cannot match work against: a work
+		// item that has gone, a version or a sprint.
+		if query != "" {
+			return nil, fmt.Errorf("that trigger takes no JQL: there is no work item to match")
+		}
+		triggerValue = map[string]any{}
 	case "jira.issue.event.trigger:transitioned":
 		triggerValue = map[string]any{"jql": query, "fromStatusIds": nonEmpty(r.PostFormValue("from_status")), "toStatusIds": nonEmpty(r.PostFormValue("to_status"))}
 	case "jira.issue.field.changed":
@@ -462,7 +531,8 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	actionComponents, err := automationFormActions(r.PostForm["action_type"], r.PostForm["action_value"])
+	actionComponents, err := automationFormActions(r.PostForm["action_type"], r.PostForm["action_value"], r.PostForm["action_project"],
+		r.PostForm["action_body"], r.PostForm["action_headers"])
 	if err != nil {
 		return nil, err
 	}
@@ -478,7 +548,7 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 		if err != nil {
 			return nil, err
 		}
-		branchActions, err := automationFormActions(r.PostForm["branch_action_type"], r.PostForm["branch_action_value"])
+		branchActions, err := automationFormActions(r.PostForm["branch_action_type"], r.PostForm["branch_action_value"], nil, nil, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -561,16 +631,28 @@ func automationFormConditions(fields, operators, values []string) ([]map[string]
 	return components, nil
 }
 
-func automationFormActions(types, values []string) ([]map[string]any, error) {
+// automationFormActions reads the rule's actions. projects is the project
+// each create action raises its work in, which matters when the trigger
+// brings no work item to take one from; it is empty for every other action.
+func automationFormActions(types, values, projects, bodies, headerLines []string) ([]map[string]any, error) {
 	components := []map[string]any{}
+	at := func(list []string, index int) string {
+		if index < len(list) {
+			return strings.TrimSpace(list[index])
+		}
+		return ""
+	}
 	for index, actionType := range types {
 		actionType = strings.TrimSpace(actionType)
 		if actionType == "" {
 			continue
 		}
-		value := ""
+		value, project := "", ""
 		if index < len(values) {
 			value = strings.TrimSpace(values[index])
+		}
+		if index < len(projects) {
+			project = strings.TrimSpace(projects[index])
 		}
 		// Deleting takes no value, as it takes none in Jira.
 		if actionType == "jira.issue.delete" {
@@ -595,18 +677,31 @@ func automationFormActions(types, values []string) ([]map[string]any, error) {
 		// A create action names its work type in the action, as a link names
 		// its link type.
 		if issueTypeID := strings.TrimPrefix(actionType, "jira.issue.create:"); issueTypeID != actionType && strings.TrimSpace(issueTypeID) != "" {
+			create := map[string]string{"issueTypeId": issueTypeID, "summary": value}
+			if project != "" {
+				create["projectId"] = project
+			}
 			components = append(components, map[string]any{
-				"component": "ACTION", "schemaVersion": 1, "type": "jira.issue.create",
-				"value": map[string]string{"issueTypeId": issueTypeID, "summary": value},
+				"component": "ACTION", "schemaVersion": 1, "type": "jira.issue.create", "value": create,
 			})
 			continue
 		}
 		// A web request names its method in the action, as a link names its
 		// link type, and carries the address it is sent to.
 		if method := strings.TrimPrefix(actionType, automation.WebRequestActionType+":"); method != actionType && strings.TrimSpace(method) != "" {
+			request := map[string]any{"method": method, "url": value}
+			if body := at(bodies, index); body != "" {
+				request["body"] = body
+			}
+			headers, err := automationFormHeaders(at(headerLines, index))
+			if err != nil {
+				return nil, err
+			}
+			if len(headers) > 0 {
+				request["headers"] = headers
+			}
 			components = append(components, map[string]any{
-				"component": "ACTION", "schemaVersion": 1, "type": automation.WebRequestActionType,
-				"value": map[string]string{"method": method, "url": value},
+				"component": "ACTION", "schemaVersion": 1, "type": automation.WebRequestActionType, "value": request,
 			})
 			continue
 		}
@@ -839,8 +934,11 @@ func automationActionViews(components []automationComponentJSON) []automationAct
 			view.Type, view.Value = "jira.issue.email:"+fields["recipient"], fields["body"]
 		case "jira.issue.create":
 			view.Type, view.Value = "jira.issue.create:"+fields["issueTypeId"], fields["summary"]
+			view.ProjectID = fields["projectId"]
 		case automation.WebRequestActionType:
 			view.Type, view.Value = automation.WebRequestActionType+":"+fields["method"], fields["url"]
+			view.Body = fields["body"]
+			view.Headers = automationHeaderLines(component.Value)
 		}
 		actions = append(actions, view)
 	}

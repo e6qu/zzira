@@ -76,7 +76,7 @@ func (s *Store) AddVersionApprover(ctx context.Context, ws, actor, versionID, ac
 		ON CONFLICT(version_id,account_id) DO UPDATE SET description=EXCLUDED.description,status='PENDING',decline_reason=''`, v.ID, accountID, description); err != nil {
 		return err
 	}
-	if err = versionAction(ctx, tx, ws, actor, v, models.OpUpsert); err != nil {
+	if err = versionAction(ctx, tx, ws, actor, v, models.OpUpsert, v.Released); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -103,7 +103,7 @@ func (s *Store) RemoveVersionApprover(ctx context.Context, ws, actor, versionID,
 	if command.RowsAffected() == 0 {
 		return pgx.ErrNoRows
 	}
-	if err = versionAction(ctx, tx, ws, actor, v, models.OpUpsert); err != nil {
+	if err = versionAction(ctx, tx, ws, actor, v, models.OpUpsert, v.Released); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -139,7 +139,7 @@ func (s *Store) DecideVersionApproval(ctx context.Context, ws, actor, versionID 
 	if command.RowsAffected() == 0 {
 		return errors.Join(ErrVersionValidation, fmt.Errorf("only an approver of this release can decide on it"))
 	}
-	if err = versionAction(ctx, tx, ws, actor, v, models.OpUpsert); err != nil {
+	if err = versionAction(ctx, tx, ws, actor, v, models.OpUpsert, v.Released); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

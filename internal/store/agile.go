@@ -753,7 +753,7 @@ func (s *Store) UpdateSprint(ctx context.Context, actorID, workspaceID, sprintID
 	if err != nil {
 		return nil, nil, err
 	}
-	payload, err := json.Marshal(models.SprintUpsertPayload{Sprint: *updated})
+	payload, err := json.Marshal(models.SprintUpsertPayload{Sprint: *updated, PreviousState: currentState})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -909,12 +909,15 @@ func (s *Store) BacklogIssues(ctx context.Context, boardID, userID string) ([]*m
 	return issues, rows.Err()
 }
 
-func appendSprintMembershipAction(ctx context.Context, tx pgx.Tx, actorID, workspaceID, sprintID, issueID, rank string, removed bool) (*models.Action, error) {
+// appendSprintMembershipAction records a work item joining, moving within, or
+// leaving a sprint. added tells the joining from the re-ranking, which write
+// the same kind of action.
+func appendSprintMembershipAction(ctx context.Context, tx pgx.Tx, actorID, workspaceID, sprintID, issueID, rank string, removed, added bool) (*models.Action, error) {
 	seq, err := nextSeq(ctx, tx, workspaceID)
 	if err != nil {
 		return nil, err
 	}
-	payload, err := json.Marshal(models.SprintIssuePayload{SprintID: sprintID, IssueID: issueID, Rank: rank, Removed: removed})
+	payload, err := json.Marshal(models.SprintIssuePayload{SprintID: sprintID, IssueID: issueID, Rank: rank, Removed: removed, Added: added})
 	if err != nil {
 		return nil, err
 	}
@@ -983,16 +986,19 @@ func (s *Store) AddIssueToSprint(ctx context.Context, actorID, workspaceID, spri
 		if _, err := tx.Exec(ctx, `DELETE FROM sprint_issues WHERE sprint_id=$1 AND issue_id=$2`, membership.sprintID, issueID); err != nil {
 			return nil, err
 		}
-		if _, err := appendSprintMembershipAction(ctx, tx, actorID, workspaceID, membership.sprintID, issueID, membership.rank, true); err != nil {
+		if _, err := appendSprintMembershipAction(ctx, tx, actorID, workspaceID, membership.sprintID, issueID, membership.rank, true, false); err != nil {
 			return nil, err
 		}
 	}
-	if _, err := tx.Exec(ctx,
+	// xmax is zero on a row this statement inserted, which is how the join is
+	// told from the re-rank of work already in the sprint.
+	var joined bool
+	if err := tx.QueryRow(ctx,
 		`INSERT INTO sprint_issues (sprint_id, issue_id, rank) VALUES ($1,$2,$3)
-		 ON CONFLICT (sprint_id, issue_id) DO UPDATE SET rank=$4`, sprintID, issueID, rank, rank); err != nil {
+		 ON CONFLICT (sprint_id, issue_id) DO UPDATE SET rank=$4 RETURNING (xmax = 0)`, sprintID, issueID, rank, rank).Scan(&joined); err != nil {
 		return nil, err
 	}
-	action, err := appendSprintMembershipAction(ctx, tx, actorID, workspaceID, sprintID, issueID, rank, false)
+	action, err := appendSprintMembershipAction(ctx, tx, actorID, workspaceID, sprintID, issueID, rank, false, joined)
 	if err != nil {
 		return nil, err
 	}
@@ -1043,7 +1049,7 @@ func (s *Store) RemoveIssueFromPlanning(ctx context.Context, actorID, workspaceI
 		if _, err := tx.Exec(ctx, `DELETE FROM sprint_issues WHERE sprint_id=$1 AND issue_id=$2`, item.sprintID, issueID); err != nil {
 			return err
 		}
-		if _, err := appendSprintMembershipAction(ctx, tx, actorID, workspaceID, item.sprintID, issueID, item.rank, true); err != nil {
+		if _, err := appendSprintMembershipAction(ctx, tx, actorID, workspaceID, item.sprintID, issueID, item.rank, true, false); err != nil {
 			return err
 		}
 	}

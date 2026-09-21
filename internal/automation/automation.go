@@ -645,6 +645,22 @@ var EventTriggers = map[string]string{
 	"jira.issue.event.trigger:linked":       "linked",
 	"jira.issue.event.trigger:assigned":     "assigned",
 	"jira.issue.attachment.added":           "attachment_added",
+	"jira.issue.event.trigger:deleted":      "deleted",
+	"jira.issue.event.trigger:moved":        "moved",
+	"jira.version.event.trigger:created":    "version_created",
+	"jira.version.event.trigger:updated":    "version_updated",
+	"jira.version.event.trigger:released":   "version_released",
+	"jira.sprint.event.trigger:started":     "sprint_started",
+	"jira.sprint.event.trigger:completed":   "sprint_completed",
+}
+
+// SubjectlessEvents are the events that happen to something other than a work
+// item, or to one that is gone by the time a rule reads it. A rule they start
+// runs once, with no work item, the way an incoming webhook that named none
+// does.
+var SubjectlessEvents = map[string]bool{
+	"deleted": true, "version_created": true, "version_updated": true,
+	"version_released": true, "sprint_started": true, "sprint_completed": true,
 }
 
 // eventTriggerValue is what an event trigger narrows its events to: work
@@ -691,6 +707,11 @@ func nativeEvent(payload json.RawMessage) (string, string, error) {
 	}
 	if event == "field_changed" && (len(value.Fields) == 0 || len(value.Fields) > 20) {
 		return "", "", fmt.Errorf("field value changed trigger needs between 1 and 20 fields")
+	}
+	if SubjectlessEvents[event] && value.JQL != "" {
+		// There is no work item to match: the item is gone, or the event
+		// happened to a version or a sprint.
+		return "", "", fmt.Errorf("%s trigger takes no JQL", rule.Trigger.Type)
 	}
 	return event, value.JQL, nil
 }
