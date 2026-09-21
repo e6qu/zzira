@@ -70,6 +70,27 @@ func TestAutomationEditorKeepsWhatItCannotShow(t *testing.T) {
 	if action := queried.Actions[0]; action.Type != "jira.create.variable" || action.Variable != "note" || action.Value != "{{issue.key}}" {
 		t.Fatalf("variable action = %+v", action)
 	}
+	// What a rule writes in the wiki round-trips: the page in its own column,
+	// and a blank page means the page the rule ran for.
+	wiki, err := automationFormActions(automationActionRows{
+		Types:  []string{"confluence.page.comment", "confluence.page.label"},
+		Values: []string{"Read by {{rule.name}}", "read-by-a-rule"},
+		Pages:  []string{"{{page.id}}", ""},
+	})
+	if err != nil || len(wiki) != 2 {
+		t.Fatalf("wiki actions = %+v, %v", wiki, err)
+	}
+	if value := wiki[0]["value"].(map[string]string); value["comment"] != "Read by {{rule.name}}" || value["pageId"] != "{{page.id}}" {
+		t.Fatalf("comment action = %+v", value)
+	}
+	if value := wiki[1]["value"].(map[string]string); value["label"] != "read-by-a-rule" || value["pageId"] != "" {
+		t.Fatalf("label action = %+v", value)
+	}
+	read := parseAutomationActions(json.RawMessage(`{"components":[{"component":"ACTION","type":"confluence.page.comment","value":{"comment":"hi","pageId":"9"}},{"component":"ACTION","type":"confluence.page.label","value":{"label":"sorted"}}]}`))
+	if len(read) != 2 || read[0].Value != "hi" || read[0].Page != "9" || read[1].Value != "sorted" || read[1].Page != "" {
+		t.Fatalf("wiki actions read back as %+v", read)
+	}
+
 	// The editor writes what the runner reads: the name in its own column,
 	// the value in the row's value, and a variable holding nothing is a
 	// variable all the same.

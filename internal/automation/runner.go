@@ -339,9 +339,10 @@ func (r *Runner) runComponents(ctx context.Context, run *claimedRun, issue *mode
 		run.TriggerIssue = issue
 		defer func() { run.TriggerIssue = nil }()
 	}
-	// A rule an incoming webhook ran without work items has no work item to
-	// name in a failure, and no related work to branch over.
-	where := "the webhook's request"
+	// A run with no work item still has to say what it was about when
+	// something fails: the page, the version, the sprint, the work item that
+	// is gone, or the request that started it.
+	where := runSubject(run)
 	if issue != nil {
 		where = issue.Key
 	}
@@ -403,6 +404,48 @@ func (r *Runner) runComponents(ctx context.Context, run *claimedRun, issue *mode
 		}
 	}
 	return changed, nil
+}
+
+// runSubject names what a run with no work item is about, for a failure to
+// read as something a person can go and look at.
+func runSubject(run *claimedRun) string {
+	if len(run.TriggerData) > 0 {
+		var carried struct {
+			Page struct {
+				ID, Title string
+			} `json:"page"`
+			BlogPost struct {
+				Title string
+			} `json:"blogPost"`
+			Version struct {
+				Name string
+			} `json:"version"`
+			Sprint struct {
+				Name string
+			} `json:"sprint"`
+			DeletedIssue struct {
+				Key string
+			} `json:"deletedIssue"`
+			PageID string `json:"pageId"`
+		}
+		if json.Unmarshal(run.TriggerData, &carried) == nil {
+			switch {
+			case carried.Page.Title != "":
+				return "the page " + strconv.Quote(carried.Page.Title)
+			case carried.BlogPost.Title != "":
+				return "the blog post " + strconv.Quote(carried.BlogPost.Title)
+			case carried.PageID != "":
+				return "page " + carried.PageID
+			case carried.Version.Name != "":
+				return "the version " + strconv.Quote(carried.Version.Name)
+			case carried.Sprint.Name != "":
+				return "the sprint " + strconv.Quote(carried.Sprint.Name)
+			case carried.DeletedIssue.Key != "":
+				return carried.DeletedIssue.Key
+			}
+		}
+	}
+	return "the webhook's request"
 }
 
 // matchesJQL reports whether the rule actor's JQL matches a work item.
@@ -475,9 +518,18 @@ func validateExecutionActor(payload json.RawMessage, actorID string) error {
 	return nil
 }
 
+// actionsWithoutWork are the actions that do not act on a work item: raising
+// one, sending a request, naming a value, and what a rule writes in the wiki.
+// Jira fails the others when the trigger supplied no work item, rather than
+// skipping them.
+var actionsWithoutWork = map[string]bool{
+	"jira.issue.create": true, WebRequestActionType: true, VariableActionType: true,
+	WikiPageActionType: true, WikiCommentActionType: true, WikiLabelActionType: true,
+}
+
 // Actions and conditions the runner executes.
 var (
-	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true, "jira.issue.delete": true, WikiPageActionType: true, VariableActionType: true}
+	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true, "jira.issue.delete": true, WikiPageActionType: true, VariableActionType: true, WikiCommentActionType: true, WikiLabelActionType: true}
 	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true, "jira.issue.related.condition": true}
 )
 
@@ -706,15 +758,24 @@ func (r *Runner) createProject(ctx context.Context, run *claimedRun, issue *mode
 }
 
 func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue, action component) (bool, error) {
-	// Every action this rule catalog holds acts on a work item, except
-	// raising one and sending a request. Jira fails such an action when the
-	// trigger supplied none, rather than skipping it.
-	if issue == nil && action.Type != "jira.issue.create" && action.Type != WebRequestActionType && action.Type != VariableActionType && !strings.HasPrefix(action.Type, "jira.issue.create:") {
+	// Most actions act on a work item; the ones in actionsWithoutWork do not.
+	// Jira fails an action that needs one when the trigger supplied none,
+	// rather than skipping it.
+	if issue == nil && !actionsWithoutWork[action.Type] && !strings.HasPrefix(action.Type, "jira.issue.create:") {
 		return false, errors.New("this action needs a work item, and the trigger supplied none")
 	}
 	valueRaw := decodeComponentValue(action.Value)
 	render := func(text string) (string, error) { return r.renderSmartValues(ctx, run, issue, text) }
 	switch action.Type {
+	case WikiCommentActionType, WikiLabelActionType:
+		value, err := wikiPageActionValueOf(action.Value)
+		if err != nil {
+			return false, err
+		}
+		if action.Type == WikiCommentActionType {
+			return r.commentOnWikiPage(ctx, run, value, render)
+		}
+		return r.labelWikiPage(ctx, run, value, render)
 	case VariableActionType:
 		value, err := validateVariableAction(action.Value)
 		if err != nil {
