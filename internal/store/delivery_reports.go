@@ -58,7 +58,7 @@ func (s *Store) DeploymentFrequencyReport(ctx context.Context, workspaceID, proj
 	if err != nil {
 		return DeploymentFrequencyReport{}, err
 	}
-	until = until.UTC()
+	until = s.windowEnd(ctx, until)
 	since := until.Add(-time.Duration(days) * 24 * time.Hour)
 	report := DeploymentFrequencyReport{
 		Grouping: grouping, WindowDays: days, Since: since.Format("2006-01-02"), Until: until.Format("2006-01-02"),

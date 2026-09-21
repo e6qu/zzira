@@ -102,7 +102,7 @@ time to restore read the same exclusions.
 - **Production:** the deployment's environment `type`, as sent by the provider, must be one the project counts as production. A project counts `production` until its administrators choose otherwise on the report itself (`POST /projects/{key}/reports/dora/mapping`), where they pick from `production`, `staging`, `testing`, `development` and `unmapped`, and may name the pipelines that count -- none named counts every pipeline. The environment name is ignored. The report says what it counted.
 - **Identity:** a deployment is its pipeline, environment and `deploymentSequenceNumber`.
 - **Latest update:** every accepted build and deployment update is stored and never changed. For each deployment, the report reads the update with the highest `updateSequenceNumber`, and dates it by that update's `lastUpdated`.
-- **Window:** that date must fall in the window, which ends at the moment the page is drawn and runs back 7, 30 or 90 days.
+- **Window:** that date must fall in the window, which ends at the moment the page is drawn and runs back 7, 30 or 90 days. "The moment the page is drawn" is the database's clock, because every timestamp the window filters is written by the database: a window that ended at the server's own clock would lose whatever was recorded in the gap between the two.
 - **Visibility:** the deployment's `issueKeys` must name a work item in this project that the viewer can browse.
 - **Counted states:** `successful` counts as a deployment; `failed` and `rolled_back` count as failures. `pending`, `in_progress`, `cancelled` and `unknown` count toward neither, though they still appear in the recent list.
 - **Time zone:** all timestamps are UTC.

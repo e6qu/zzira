@@ -26,7 +26,7 @@ func (s *Store) DORAReport(ctx context.Context, workspaceID, projectID, userID s
 	if err != nil {
 		return models.DORAReport{}, err
 	}
-	until = until.UTC()
+	until = s.windowEnd(ctx, until)
 	since := until.Add(-time.Duration(days) * 24 * time.Hour)
 	report := models.DORAReport{
 		WindowDays: days, Since: since.Format("2006-01-02"), Until: until.Format("2006-01-02"),
@@ -148,6 +148,26 @@ func (s *Store) DORAReport(ctx context.Context, workspaceID, projectID, userID s
 	report.MTTRSeconds = medianSeconds(recoveries)
 	report.MTTRDisplay = reportDuration(report.MTTRSeconds, report.RecoveredIncidents)
 	return report, nil
+}
+
+// windowEnd is when a report's window closes. A window that means "now" ends
+// at the database's clock, not this process's: every timestamp it filters was
+// written by the database, and two clocks that differ by milliseconds leave a
+// hole at the end of the window where the work recorded a moment ago
+// disappears. A window that deliberately ends in the past is left alone.
+func (s *Store) windowEnd(ctx context.Context, until time.Time) time.Time {
+	until = until.UTC()
+	if time.Since(until) > time.Minute {
+		return until
+	}
+	var now time.Time
+	if err := s.Pool.QueryRow(ctx, `SELECT now()`).Scan(&now); err != nil {
+		return until
+	}
+	if now = now.UTC(); now.After(until) {
+		return now
+	}
+	return until
 }
 
 // excludedDay answers whether a moment falls inside one of the periods a
