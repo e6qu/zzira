@@ -568,12 +568,12 @@ func (h *Handler) OIDCCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	session, err := authn.LoginIdentityProvider(r.Context(), h.Store, userID, identity.IDToken, identity.Issuer, identity.Subject, identity.SID, providerKey)
+	session, ttl, err := authn.LoginIdentityProvider(r.Context(), h.Store, userID, identity.IDToken, identity.Issuer, identity.Subject, identity.SID, providerKey)
 	if err != nil {
 		http.Error(w, "could not create sign-in session", http.StatusInternalServerError)
 		return
 	}
-	authn.SetSessionCookie(w, session)
+	authn.SetSessionCookieFor(w, session, ttl)
 	if linkUserID != "" {
 		http.Redirect(w, r, "/people/"+url.PathEscape(userID)+"?saved="+url.QueryEscape(provider.displayName+" connected"), http.StatusSeeOther)
 		return

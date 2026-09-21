@@ -87,7 +87,7 @@ func TestLocalCredentialsOffRefusesAPITokensInJirasShape(t *testing.T) {
 	}
 
 	// The session an identity provider established still reaches the API.
-	session, err := authn.LoginOIDC(ctx, st, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
+	session, _, err := authn.LoginOIDC(ctx, st, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
 	if err != nil {
 		t.Fatal(err)
 	}

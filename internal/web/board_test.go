@@ -152,7 +152,7 @@ func TestBoardSettingsRejectionKeepsTheBoardItCameFrom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := authn.LoginOIDC(ctx, st, ownerID, "id-token", "https://issuer.example.invalid", ownerID+"-subject", "")
+	token, _, err := authn.LoginOIDC(ctx, st, ownerID, "id-token", "https://issuer.example.invalid", ownerID+"-subject", "")
 	if err != nil {
 		t.Fatal(err)
 	}

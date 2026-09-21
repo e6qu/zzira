@@ -1064,12 +1064,22 @@ func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
 	}
-	token, err := authn.Login(r.Context(), h.Store, r.PostFormValue("email"), r.PostFormValue("password"))
+	token, ttl, err := authn.Login(r.Context(), h.Store, r.PostFormValue("email"), r.PostFormValue("password"))
+	if errors.Is(err, authn.ErrSSORequired) {
+		// An authentication policy admits this person only through the
+		// identity provider, which is something they can act on: the page
+		// says so rather than reading as a wrong password.
+		writePageStatus(w, "page_login", loginPageData{
+			Error:     "Your organization signs this account in through its identity provider.",
+			Providers: h.loginProviders(), Password: !authn.LocalCredentialsRefused(r.Context()),
+		}, http.StatusForbidden)
+		return
+	}
 	if err != nil {
 		writePageStatus(w, "page_login", loginPageData{Error: "Incorrect email or password.", Providers: h.loginProviders(), Password: !authn.LocalCredentialsRefused(r.Context())}, http.StatusUnauthorized)
 		return
 	}
-	authn.SetSessionCookie(w, token)
+	authn.SetSessionCookieFor(w, token, ttl)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

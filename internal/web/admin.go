@@ -23,12 +23,22 @@ type adminGroupRow struct {
 	ProductAccess map[string]bool
 }
 
+// adminAuthenticationPolicy is one authentication policy with the settings it
+// applies and the people it covers.
+type adminAuthenticationPolicy struct {
+	*models.OrganizationPolicy
+	store.AuthenticationConfig
+	MemberIDs []string
+	Members   []*models.User
+}
+
 type adminPageData struct {
 	Organization                      *models.Organization
 	Site                              *models.Site
 	Products                          []*models.Product
 	Domains                           []*models.OrganizationDomain
 	Policies                          []*models.OrganizationPolicy
+	AuthenticationPolicies            []adminAuthenticationPolicy
 	IdentityProviders                 []LoginProvider
 	Apps                              []*models.AppInstallation
 	Transfers                         map[string][]store.AppMigrationTransfer
@@ -148,12 +158,33 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	if err != nil {
 		return adminPageData{}, err
 	}
+	// An authentication policy covers people rather than products, so it gets
+	// its own section instead of sitting among the access policies.
+	access := make([]*models.OrganizationPolicy, 0, len(policies))
+	authenticationPolicies := []adminAuthenticationPolicy{}
+	for _, policy := range policies {
+		if policy.Type != "authentication-policy" {
+			access = append(access, policy)
+			continue
+		}
+		members, err := h.Store.AuthenticationPolicyMembers(r.Context(), organization.ID, policy.ID)
+		if err != nil {
+			return adminPageData{}, err
+		}
+		authenticationPolicies = append(authenticationPolicies, adminAuthenticationPolicy{
+			OrganizationPolicy:   policy,
+			AuthenticationConfig: store.AuthenticationConfigFromRule(policy.Rule),
+			MemberIDs:            members,
+		})
+	}
+	policies = access
 	data := adminPageData{
 		Organization:                      organization,
 		Site:                              site,
 		Products:                          products,
 		Domains:                           domains,
 		Policies:                          policies,
+		AuthenticationPolicies:            authenticationPolicies,
 		IdentityProviders:                 h.adminProviders(),
 		Groups:                            []adminGroupRow{},
 		Users:                             []*models.User{},
@@ -231,6 +262,17 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	data.Users, err = h.Store.DirectoryUsers(r.Context(), data.Directory.ID)
 	if err != nil {
 		return adminPageData{}, err
+	}
+	knownUsers := make(map[string]*models.User, len(data.Users))
+	for _, member := range data.Users {
+		knownUsers[member.ID] = member
+	}
+	for index := range data.AuthenticationPolicies {
+		for _, memberID := range data.AuthenticationPolicies[index].MemberIDs {
+			if member, ok := knownUsers[memberID]; ok {
+				data.AuthenticationPolicies[index].Members = append(data.AuthenticationPolicies[index].Members, member)
+			}
+		}
 	}
 	groups, err := h.Store.GroupsByDirectory(r.Context(), data.Directory.ID)
 	if err != nil {
@@ -912,6 +954,36 @@ func policyRuleValues(policy *models.OrganizationPolicy) []string {
 	return result
 }
 
+// policyAuthenticationConfig is an authentication policy's settings read back
+// off the policy, so enabling or disabling one keeps the settings it was
+// created with.
+func policyAuthenticationConfig(policy *models.OrganizationPolicy) *store.AuthenticationConfig {
+	if policy.Type != "authentication-policy" {
+		return nil
+	}
+	config := store.AuthenticationConfigFromRule(policy.Rule)
+	return &config
+}
+
+// authenticationConfigFromForm reads the settings an administrator filled in.
+func authenticationConfigFromForm(r *http.Request) (*store.AuthenticationConfig, error) {
+	config := store.AuthenticationConfig{
+		EnforceSSO: r.FormValue("enforceSSO") == "true",
+		Default:    r.FormValue("default") == "true",
+	}
+	duration := strings.TrimSpace(r.FormValue("sessionDurationMinutes"))
+	if duration == "" {
+		config.SessionDurationMinutes = store.MaximumSessionMinutes
+		return &config, nil
+	}
+	minutes, err := strconv.Atoi(duration)
+	if err != nil {
+		return nil, errors.New("session duration must be a number of minutes")
+	}
+	config.SessionDurationMinutes = minutes
+	return &config, nil
+}
+
 func policyResourceInputs(policy *models.OrganizationPolicy) []store.PolicyResourceInput {
 	resources := make([]store.PolicyResourceInput, 0, len(policy.Resources))
 	for _, resource := range policy.Resources {
@@ -933,6 +1005,14 @@ func (h *Handler) CreateAdminPolicy(w http.ResponseWriter, r *http.Request) {
 	input := store.PolicyInput{Type: r.FormValue("type"), Name: r.FormValue("name"), Status: "disabled", Values: values}
 	if r.FormValue("enabled") == "true" {
 		input.Status = "enabled"
+	}
+	if input.Type == "authentication-policy" {
+		config, err := authenticationConfigFromForm(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		input.Config, input.Values = config, nil
 	}
 	data, err := h.adminData(r, workspaceID, "")
 	if err != nil {
@@ -985,8 +1065,8 @@ func (h *Handler) UpdateAdminPolicy(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin?saved="+url.QueryEscape("Policy deleted"), http.StatusSeeOther)
 		return
 	}
-	if action != "enable" && action != "disable" {
-		http.Error(w, "action must be enable, disable, or delete", http.StatusBadRequest)
+	if action != "enable" && action != "disable" && action != "save" {
+		http.Error(w, "action must be enable, disable, save, or delete", http.StatusBadRequest)
 		return
 	}
 	organization, err := h.Store.OrganizationByWorkspace(r.Context(), workspaceID)
@@ -1003,16 +1083,78 @@ func (h *Handler) UpdateAdminPolicy(w http.ResponseWriter, r *http.Request) {
 	if action == "disable" {
 		status = "disabled"
 	}
+	if action == "save" {
+		status = policy.Status
+	}
+	config := policyAuthenticationConfig(policy)
+	if action == "save" {
+		if policy.Type != "authentication-policy" {
+			http.Error(w, "only an authentication policy carries settings", http.StatusBadRequest)
+			return
+		}
+		if config, err = authenticationConfigFromForm(r); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	_, err = h.Store.UpdateOrganizationPolicy(r.Context(), workspaceID, user.ID, policy.ID, store.PolicyInput{
-		Type: policy.Type, Name: policy.Name, Status: status, Values: policyRuleValues(policy), Resources: policyResourceInputs(policy),
+		Type: policy.Type, Name: policy.Name, Status: status, Values: policyRuleValues(policy),
+		Resources: policyResourceInputs(policy), Config: config,
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		status := http.StatusInternalServerError
+		if errors.Is(err, store.ErrAdminValidation) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 	message := "Policy enabled"
-	if action == "disable" {
+	switch action {
+	case "disable":
 		message = "Policy disabled"
+	case "save":
+		message = "Policy settings saved"
+	}
+	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(message), http.StatusSeeOther)
+}
+
+// UpdateAdminPolicyMembers puts one person under an authentication policy or
+// takes them out of it.
+func (h *Handler) UpdateAdminPolicyMembers(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	action := r.FormValue("action")
+	if action != "add" && action != "remove" {
+		http.Error(w, "action must be add or remove", http.StatusBadRequest)
+		return
+	}
+	accountID := strings.TrimSpace(r.FormValue("accountId"))
+	if accountID == "" {
+		http.Error(w, "accountId is required", http.StatusBadRequest)
+		return
+	}
+	err := h.Store.SetAuthenticationPolicyMember(r.Context(), workspaceID, user.ID, r.PathValue("policyId"), accountID, action == "add")
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, store.ErrAdminNotFound):
+			status = http.StatusNotFound
+		case errors.Is(err, store.ErrAdminValidation):
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	message := "Policy member added"
+	if action == "remove" {
+		message = "Policy member removed"
 	}
 	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(message), http.StatusSeeOther)
 }

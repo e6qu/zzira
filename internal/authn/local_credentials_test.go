@@ -69,7 +69,7 @@ func TestLocalCredentialsRefused(t *testing.T) {
 	}
 
 	// What the installation does today, and keeps doing by default.
-	passwordSession, err := Login(ctx, st, email, password)
+	passwordSession, _, err := Login(ctx, st, email, password)
 	if err != nil {
 		t.Fatalf("password sign-in with local credentials on: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestLocalCredentialsRefused(t *testing.T) {
 
 	// The instance's own setting closes every one of them.
 	closed := WithoutLocalCredentials(ctx)
-	if _, err := Login(closed, st, email, password); err != ErrUnauthorized {
+	if _, _, err := Login(closed, st, email, password); err != ErrUnauthorized {
 		t.Fatalf("password sign-in with local credentials off: %v, want ErrUnauthorized", err)
 	}
 	for name, request := range map[string]*http.Request{
@@ -105,7 +105,7 @@ func TestLocalCredentialsRefused(t *testing.T) {
 
 	// Single sign-on still works, which is the whole point of closing the
 	// rest: the session an identity provider established is accepted.
-	ssoSession, err := LoginOIDC(ctx, st, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
+	ssoSession, _, err := LoginOIDC(ctx, st, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
 	if err != nil {
 		t.Fatal(err)
 	}

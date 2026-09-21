@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/url"
 	"os"
@@ -79,8 +80,22 @@ func SecureCookies() bool {
 	return err == nil && strings.EqualFold(externalURL.Scheme, "https") && externalURL.Host != ""
 }
 
-// SetSessionCookie issues the opaque session cookie.
+// SetSessionCookie issues the opaque session cookie for the site's own
+// duration.
 func SetSessionCookie(w http.ResponseWriter, token string) {
+	SetSessionCookieFor(w, token, sessionTTL)
+}
+
+// SetSessionCookieFor issues the cookie for as long as the session lasts,
+// which an authentication policy can make shorter than the site's own.
+func SetSessionCookieFor(w http.ResponseWriter, token string, ttl time.Duration) {
+	if ttl <= 0 {
+		ttl = sessionTTL
+	}
+	setSessionCookie(w, token, ttl)
+}
+
+func setSessionCookie(w http.ResponseWriter, token string, ttl time.Duration) {
 	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure is deployment-configured via COOKIE_SECURE
 
 		Name:     sessionCookie,
@@ -89,7 +104,7 @@ func SetSessionCookie(w http.ResponseWriter, token string) {
 		HttpOnly: true,
 		Secure:   SecureCookies(),
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(sessionTTL.Seconds()),
+		MaxAge:   int(ttl.Seconds()),
 	})
 }
 
@@ -102,58 +117,84 @@ func ClearSessionCookie(w http.ResponseWriter) {
 	})
 }
 
-// Login creates a session and returns the cookie token.
-func Login(ctx context.Context, st *store.Store, email, password string) (string, error) {
+// ErrSSORequired is an authentication policy that admits this person only
+// through the identity provider. It is told apart from a wrong password
+// because the person can do something about it.
+var ErrSSORequired = errors.New("single sign-on is required for this account")
+
+// Login creates a session and returns the cookie token, with how long the
+// session lasts: the site's own duration, or the shorter one an
+// authentication policy gives this person.
+func Login(ctx context.Context, st *store.Store, email, password string) (string, time.Duration, error) {
 	if LocalCredentialsRefused(ctx) {
-		return "", ErrUnauthorized
+		return "", 0, ErrUnauthorized
 	}
 	id, hash, _, err := st.UserByEmail(ctx, email)
 	if err != nil {
-		return "", ErrUnauthorized
+		return "", 0, ErrUnauthorized
 	}
 	if !CheckPassword(hash, password) {
-		return "", ErrUnauthorized
+		return "", 0, ErrUnauthorized
 	}
+	policy, err := st.AuthenticationPolicyForUser(ctx, id)
+	if err != nil {
+		return "", 0, err
+	}
+	if policy.Enforced && policy.EnforceSSO {
+		return "", 0, ErrSSORequired
+	}
+	ttl := policy.SessionDuration(sessionTTL)
 	token, err := randomToken()
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
-	if err := st.CreateSession(ctx, hashToken(token), id, sessionTTL); err != nil {
-		return "", err
+	if err := st.CreateSession(ctx, hashToken(token), id, ttl); err != nil {
+		return "", 0, err
 	}
-	return token, nil
+	return token, ttl, nil
 }
 
-// LoginOIDC creates a normal opaque session for a verified external identity.
-func LoginOIDC(ctx context.Context, st *store.Store, userID, idToken, issuer, subject, sid string) (string, error) {
+// LoginOIDC creates a normal opaque session for a verified external identity,
+// which an authentication policy can make shorter.
+func LoginOIDC(ctx context.Context, st *store.Store, userID, idToken, issuer, subject, sid string) (string, time.Duration, error) {
 	if userID == "" || idToken == "" || issuer == "" || subject == "" {
-		return "", ErrUnauthorized
+		return "", 0, ErrUnauthorized
 	}
+	policy, err := st.AuthenticationPolicyForUser(ctx, userID)
+	if err != nil {
+		return "", 0, err
+	}
+	ttl := policy.SessionDuration(sessionTTL)
 	token, err := randomToken()
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
-	if err := st.CreateOIDCSession(ctx, hashToken(token), userID, idToken, issuer, subject, sid, sessionTTL); err != nil {
-		return "", err
+	if err := st.CreateOIDCSession(ctx, hashToken(token), userID, idToken, issuer, subject, sid, ttl); err != nil {
+		return "", 0, err
 	}
-	return token, nil
+	return token, ttl, nil
 }
 
 // LoginIdentityProvider creates a session for either OIDC or OAuth identity
 // providers. OAuth-only providers do not issue an ID token, so idToken may be
 // empty; issuer and subject remain the immutable identity key.
-func LoginIdentityProvider(ctx context.Context, st *store.Store, userID, idToken, issuer, subject, sid, providerKey string) (string, error) {
+func LoginIdentityProvider(ctx context.Context, st *store.Store, userID, idToken, issuer, subject, sid, providerKey string) (string, time.Duration, error) {
 	if userID == "" || issuer == "" || subject == "" || providerKey == "" {
-		return "", ErrUnauthorized
+		return "", 0, ErrUnauthorized
 	}
+	policy, err := st.AuthenticationPolicyForUser(ctx, userID)
+	if err != nil {
+		return "", 0, err
+	}
+	ttl := policy.SessionDuration(sessionTTL)
 	token, err := randomToken()
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
-	if err := st.CreateIdentityProviderSession(ctx, hashToken(token), userID, idToken, issuer, subject, sid, providerKey, sessionTTL); err != nil {
-		return "", err
+	if err := st.CreateIdentityProviderSession(ctx, hashToken(token), userID, idToken, issuer, subject, sid, providerKey, ttl); err != nil {
+		return "", 0, err
 	}
-	return token, nil
+	return token, ttl, nil
 }
 
 var ErrUnauthorized = unauthorized{}

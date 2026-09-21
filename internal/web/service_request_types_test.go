@@ -83,7 +83,7 @@ func TestServiceRequestTypeSettingsShapeThePortal(t *testing.T) {
 	h := &Handler{Store: st, Commands: service, WorkspaceSlug: workspaceSlug}
 	session := func(userID string) string {
 		t.Helper()
-		token, err := authn.LoginOIDC(ctx, st, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
+		token, _, err := authn.LoginOIDC(ctx, st, userID, "id-token", "https://issuer.example.invalid", userID+"-subject", "")
 		if err != nil {
 			t.Fatal(err)
 		}
