@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
 )
 
@@ -24,6 +25,10 @@ type DORASettings struct {
 	EnvironmentTypes []string
 	// PipelineIDs empty means every pipeline.
 	PipelineIDs []string
+	// IncidentJQL is what the project counts as an incident. Empty is the
+	// service desk's own incident requests, which is where incidents come
+	// from until a project says otherwise.
+	IncidentJQL string
 	// Configured reports that the project has chosen, rather than taking the
 	// default, so a page can say which it is showing.
 	Configured bool
@@ -47,15 +52,16 @@ type DORAPipeline struct {
 func (s *Store) DORASettingsFor(ctx context.Context, workspaceID, projectID string) (DORASettings, error) {
 	settings := DefaultDORASettings()
 	var environments, pipelines []string
-	err := s.Pool.QueryRow(ctx, `SELECT environment_types,pipeline_ids FROM project_dora_settings WHERE project_id=$1 AND workspace_id=$2`,
-		projectID, workspaceID).Scan(&environments, &pipelines)
+	var incidentJQL string
+	err := s.Pool.QueryRow(ctx, `SELECT environment_types,pipeline_ids,incident_jql FROM project_dora_settings WHERE project_id=$1 AND workspace_id=$2`,
+		projectID, workspaceID).Scan(&environments, &pipelines, &incidentJQL)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return settings, nil
 		}
 		return settings, err
 	}
-	return DORASettings{EnvironmentTypes: environments, PipelineIDs: pipelines, Configured: true}, nil
+	return DORASettings{EnvironmentTypes: environments, PipelineIDs: pipelines, IncidentJQL: incidentJQL, Configured: true}, nil
 }
 
 // SaveDORASettings records which deployments count. It is a project
@@ -66,6 +72,23 @@ func (s *Store) SaveDORASettings(ctx context.Context, workspaceID, actorID, proj
 		return err
 	}
 	pipelines := normalizeDORAPipelines(settings.PipelineIDs)
+	incidents := strings.TrimSpace(settings.IncidentJQL)
+	if len(incidents) > 2000 {
+		return fmt.Errorf("%w: an incident query is at most 2000 characters", ErrDORASettings)
+	}
+	if incidents != "" {
+		query, parseErr := jql.Parse(incidents)
+		if parseErr != nil {
+			return fmt.Errorf("%w: %s", ErrDORASettings, parseErr.Error())
+		}
+		resolver, resolverErr := s.JQLResolver(ctx, workspaceID)
+		if resolverErr != nil {
+			return resolverErr
+		}
+		if compiled := jql.CompileAt(query, actorID, resolver, 1); compiled.Err != nil {
+			return fmt.Errorf("%w: %s", ErrDORASettings, compiled.Err.Error())
+		}
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -74,14 +97,14 @@ func (s *Store) SaveDORASettings(ctx context.Context, workspaceID, actorID, proj
 	if err := projectRoleAdmin(ctx, tx, workspaceID, actorID, projectID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO project_dora_settings(project_id,workspace_id,environment_types,pipeline_ids)
-		VALUES($1,$2,$3,$4)
-		ON CONFLICT(project_id) DO UPDATE SET environment_types=EXCLUDED.environment_types,pipeline_ids=EXCLUDED.pipeline_ids,updated_at=now()`,
-		projectID, workspaceID, environments, pipelines); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO project_dora_settings(project_id,workspace_id,environment_types,pipeline_ids,incident_jql)
+		VALUES($1,$2,$3,$4,$5)
+		ON CONFLICT(project_id) DO UPDATE SET environment_types=EXCLUDED.environment_types,pipeline_ids=EXCLUDED.pipeline_ids,incident_jql=EXCLUDED.incident_jql,updated_at=now()`,
+		projectID, workspaceID, environments, pipelines, incidents); err != nil {
 		return err
 	}
 	if err := appendProjectGovernanceAction(ctx, tx, workspaceID, actorID, "project_dora_settings", projectID, models.OpUpsert,
-		map[string]any{"environmentTypes": environments, "pipelineIds": pipelines}); err != nil {
+		map[string]any{"environmentTypes": environments, "pipelineIds": pipelines, "incidentJql": incidents}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

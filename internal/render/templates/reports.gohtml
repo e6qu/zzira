@@ -38,6 +38,12 @@
 <fieldset><legend>Environments that count as production</legend>{{$mapping := .Data.Mapping}}{{range .Data.EnvironmentTypes}}<label><input type="checkbox" name="environment" value="{{.}}" {{$type := .}}{{range $mapping.EnvironmentTypes}}{{if eq . $type}}checked{{end}}{{end}}> {{.}}</label>{{end}}</fieldset>
 <fieldset><legend>Pipelines that count</legend>{{if .Data.Pipelines}}{{range .Data.Pipelines}}<label><input type="checkbox" name="pipeline" value="{{.ID}}" {{$id := .ID}}{{range $mapping.PipelineIDs}}{{if eq . $id}}checked{{end}}{{end}}> {{.Name}}</label>{{end}}<small>None chosen counts every pipeline.</small>{{else}}<p class="empty-state">No pipeline has deployed work in this project yet, so every pipeline counts.</p>{{end}}</fieldset>
 <button class="btn btn-primary" type="submit">Save mapping</button></form>{{else}}<p class="muted">A project administrator chooses what counts.</p>{{end}}
+<h3>What counts as an incident</h3>
+<p>{{if .Data.Report.IncidentJQL}}Time to restore reads the work this query answers: <code>{{.Data.Report.IncidentJQL}}</code>.{{else}}Time to restore reads the incident requests this project's service desk raises.{{end}}</p>
+{{if .Data.CanConfigure}}<form class="project-details-form" method="post" action="/projects/{{.Data.Project.Key}}/reports/dora/mapping"><input type="hidden" name="action" value="incidents">
+<label for="dora-incident-jql">Incidents (JQL)</label><input id="dora-incident-jql" name="incidentJql" maxlength="2000" value="{{.Data.Mapping.IncidentJQL}}" placeholder="issuetype = Bug AND labels = incident">
+<small>Leave it empty to count the service desk's incident requests.</small>
+<button class="btn" type="submit">Save what counts</button></form>{{end}}
 <h3>Excluded periods</h3>
 <p>Days these numbers leave out: a code freeze, a shutdown, a drill. Deployments made in one, and incidents opened in one, are not counted.</p>
 <ul class="dora-excluded-list">{{range .Data.Excluded}}<li><span><strong>{{.StartsOn}} to {{.EndsOn}}</strong>{{if .Reason}}<small>{{.Reason}}</small>{{end}}</span>{{if $.Data.CanConfigure}}<form method="post" action="/projects/{{$.Data.Project.Key}}/reports/dora/mapping"><input type="hidden" name="action" value="include"><input type="hidden" name="period" value="{{.ID}}"><button class="btn" type="submit">Count it again<span class="sr-only"> from {{.StartsOn}} to {{.EndsOn}}</span></button></form>{{end}}</li>{{else}}<li class="empty-state">No excluded periods; every day counts.</li>{{end}}</ul>

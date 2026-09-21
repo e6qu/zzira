@@ -34,8 +34,15 @@ type FilterSubscription struct {
 	UserID         string
 	CronExpression string
 	// Timezone is the IANA zone the schedule runs in; empty means UTC.
-	Timezone        string
-	Recipients      []string
+	Timezone   string
+	Recipients []string
+	// GroupID is the group a subscription emails instead of a list of people;
+	// GroupName is what to call it. Both are empty for a personal one.
+	GroupID   string
+	GroupName string
+	// EmailWhenEmpty sends the mail even when the filter matches nothing,
+	// which Jira leaves off by default.
+	EmailWhenEmpty  bool
 	Enabled         bool
 	NextRunAt       string
 	LastRunAt       string

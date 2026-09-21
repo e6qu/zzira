@@ -129,7 +129,7 @@ func dayEnds(days int, now time.Time) []time.Time {
 // CumulativeFlow counts the board's work in each column at the end of each of
 // the last days, today included.
 func (s *Store) CumulativeFlow(ctx context.Context, board *models.Board, userID string, days int, now time.Time) (models.CumulativeFlow, error) {
-	now = now.UTC()
+	now = s.windowEnd(ctx, now)
 	flow := models.CumulativeFlow{}
 	// One count per column, so statuses grouped into a column are counted
 	// together -- which is what the column means.
@@ -166,7 +166,7 @@ func (s *Store) CumulativeFlow(ctx context.Context, board *models.Board, userID 
 // in the last days: from the first move into an in-progress status to the
 // move into done that completed it.
 func (s *Store) ControlChart(ctx context.Context, board *models.Board, userID string, days int, now time.Time) (models.ControlChart, error) {
-	now = now.UTC()
+	now = s.windowEnd(ctx, now)
 	since := dayEnds(days, now)[0].Add(time.Nanosecond).AddDate(0, 0, -1)
 	chart := models.ControlChart{Samples: []models.CycleSample{}}
 	work, err := s.boardWorkHistory(ctx, board, userID)

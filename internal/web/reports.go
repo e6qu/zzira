@@ -190,6 +190,14 @@ func (h *Handler) SaveDORAMapping(w http.ResponseWriter, r *http.Request) {
 		err = h.Store.AddDORAExcludedPeriod(r.Context(), workspaceID, user.ID, project.ID, store.DORAExcludedPeriod{
 			StartsOn: r.PostFormValue("startsOn"), EndsOn: r.PostFormValue("endsOn"), Reason: r.PostFormValue("reason"),
 		})
+	case "incidents":
+		mapping, readErr := h.Store.DORASettingsFor(r.Context(), workspaceID, project.ID)
+		if readErr != nil {
+			http.Error(w, "Could not read the delivery mapping.", http.StatusInternalServerError)
+			return
+		}
+		mapping.IncidentJQL = r.PostFormValue("incidentJql")
+		err = h.Store.SaveDORASettings(r.Context(), workspaceID, user.ID, project.ID, mapping)
 	case "include":
 		id, parseErr := strconv.ParseInt(r.PostFormValue("period"), 10, 64)
 		if parseErr != nil {

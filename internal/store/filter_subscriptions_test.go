@@ -90,7 +90,7 @@ func TestFilterSubscriptionRunnerQueuesOnePermissionScopedEmail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	subscription, err := st.SaveFilterSubscription(ctx, workspaceID, userID, filter.ID, "0 8 * * *", "", nil)
+	subscription, err := st.SaveFilterSubscription(ctx, workspaceID, userID, filter.ID, FilterSubscriptionInput{Expression: "0 8 * * *"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,5 +142,152 @@ func TestFilterSubscriptionRunnerQueuesOnePermissionScopedEmail(t *testing.T) {
 	}
 	if err := st.DeleteWorkspaceFilterSubscription(ctx, workspaceID, all[0].ID); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("stopping it twice = %v, want no rows", err)
+	}
+}
+
+// Jira lets anyone who can see a filter subscribe to it, sends a group's
+// members the result when the subscription names one, and leaves an empty
+// result unsent unless it was told otherwise.
+func TestFilterSubscriptionsReachViewersAndGroups(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(st.Close)
+	if err = Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+	workspaceID, ownerID, viewerID, memberID, projectID := NewID("ws"), NewID("usr"), NewID("usr"), NewID("usr"), NewID("prj")
+	projectKey := strings.ToUpper("FG" + projectID[len(projectID)-5:])
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, execErr := st.Pool.Exec(ctx, query, args...); execErr != nil {
+			t.Fatal(execErr)
+		}
+	}
+	exec(`INSERT INTO workspaces(id,slug,name) VALUES($1,$1,'Group subscription test')`, workspaceID)
+	for _, id := range []string{ownerID, viewerID, memberID} {
+		exec(`INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$2,'test',$1)`, id, id+"@example.test")
+		exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'member')`, workspaceID, id)
+	}
+	exec(`INSERT INTO projects(id,workspace_id,key,name,workflow_id,lead_account_id) VALUES($1,$2,$3,'Group subscriptions','wf_default',$4)`, projectID, workspaceID, projectKey, ownerID)
+	var organizationID, directoryID, groupID string
+	if err = st.Pool.QueryRow(ctx, `SELECT organization_id::text,id::text FROM sites WHERE workspace_id=$1`, workspaceID).Scan(&organizationID, new(string)); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.Pool.QueryRow(ctx, `SELECT id::text FROM directories WHERE organization_id=$1::uuid AND active ORDER BY created_at LIMIT 1`, organizationID).Scan(&directoryID); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.Pool.QueryRow(ctx, `INSERT INTO groups(directory_id,name) VALUES($1::uuid,'Release watchers') RETURNING id::text`, directoryID).Scan(&groupID); err != nil {
+		t.Fatal(err)
+	}
+	exec(`INSERT INTO group_members(group_id,user_id) VALUES($1::uuid,$2)`, groupID, memberID)
+	t.Cleanup(func() {
+		exec(`DELETE FROM filters WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM issues WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM email_outbox WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM actions WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM projects WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM group_members WHERE group_id=$1::uuid`, groupID)
+		exec(`DELETE FROM groups WHERE id=$1::uuid`, groupID)
+		exec(`DELETE FROM workspaces WHERE id=$1`, workspaceID)
+		for _, id := range []string{ownerID, viewerID, memberID} {
+			exec(`DELETE FROM users WHERE id=$1`, id)
+		}
+	})
+	if _, _, err = st.CreateIssue(ctx, ownerID, projectID, "Watched work", json.RawMessage(`{"type":"doc","version":1,"content":[]}`), "st_todo", "it_task", "", "", nil, nil, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	filter, err := st.CreateManagedFilter(ctx, NewID("flt"), workspaceID, ownerID, FilterDetails{Name: "Everything", JQL: "project = " + projectKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.AddFilterPermission(ctx, workspaceID, ownerID, filter.ID, FilterPermissionInput{Type: "global", Rights: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Someone who can see the filter but does not own it may subscribe.
+	if _, err = st.SaveFilterSubscription(ctx, workspaceID, viewerID, filter.ID, FilterSubscriptionInput{Expression: "0 8 * * *"}); err != nil {
+		t.Fatalf("a viewer could not subscribe: %v", err)
+	}
+	// ...and may stop their own subscription, which they do not own the
+	// filter of.
+	viewerFilters, err := st.FilterByID(ctx, workspaceID, viewerID, filter.ID)
+	if err != nil || len(viewerFilters.Subscriptions) != 1 {
+		t.Fatalf("viewer subscriptions=%+v err=%v", viewerFilters.Subscriptions, err)
+	}
+	if err = st.DeleteFilterSubscription(ctx, workspaceID, viewerID, filter.ID, viewerFilters.Subscriptions[0].ID); err != nil {
+		t.Fatalf("a viewer could not stop their own subscription: %v", err)
+	}
+
+	// A group subscription needs the global permission that governs it.
+	if _, err = st.SaveFilterSubscription(ctx, workspaceID, viewerID, filter.ID, FilterSubscriptionInput{Expression: "0 8 * * *", GroupID: groupID}); !errors.Is(err, ErrFilterPermission) {
+		t.Fatalf("group subscription without the permission = %v", err)
+	}
+	exec(`INSERT INTO global_permission_grants(workspace_id,permission_key,group_id) VALUES($1,'MANAGE_GROUP_FILTER_SUBSCRIPTIONS',$2::uuid)`, workspaceID, groupID)
+	exec(`INSERT INTO group_members(group_id,user_id) VALUES($1::uuid,$2)`, groupID, ownerID)
+	subscription, err := st.SaveFilterSubscription(ctx, workspaceID, ownerID, filter.ID, FilterSubscriptionInput{Expression: "0 8 * * *", GroupID: groupID})
+	if err != nil {
+		t.Fatalf("group subscription with the permission: %v", err)
+	}
+
+	now := time.Date(2026, time.September, 9, 10, 0, 0, 0, time.UTC)
+	exec(`UPDATE filter_subscriptions SET next_run_at=$2 WHERE id=$1`, subscription.ID, now.Add(-time.Minute))
+	runner := &FilterSubscriptionRunner{Store: st, BaseURL: "https://zzira.test", Now: func() time.Time { return now }}
+	if err = runner.DrainOnce(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	var recipients []string
+	rows, err := st.Pool.Query(ctx, `SELECT recipient FROM email_outbox WHERE workspace_id=$1 ORDER BY recipient`, workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var recipient string
+		if err := rows.Scan(&recipient); err != nil {
+			t.Fatal(err)
+		}
+		recipients = append(recipients, recipient)
+	}
+	rows.Close()
+	// The group's members received it; nobody else did.
+	if len(recipients) != 2 || recipients[0] != memberID+"@example.test" && recipients[1] != memberID+"@example.test" {
+		t.Fatalf("group email recipients = %v", recipients)
+	}
+
+	// A filter that matches nothing is not emailed unless it was told to.
+	exec(`DELETE FROM email_outbox WHERE workspace_id=$1`, workspaceID)
+	empty, err := st.CreateManagedFilter(ctx, NewID("flt"), workspaceID, ownerID, FilterDetails{Name: "Nothing", JQL: "project = " + projectKey + " AND summary ~ nosuchwork"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	quiet, err := st.SaveFilterSubscription(ctx, workspaceID, ownerID, empty.ID, FilterSubscriptionInput{Expression: "0 8 * * *"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(`UPDATE filter_subscriptions SET next_run_at=$2 WHERE id=$1`, quiet.ID, now.Add(-time.Minute))
+	if err = runner.DrainOnce(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	var sent int
+	if err = st.Pool.QueryRow(ctx, `SELECT count(*) FROM email_outbox WHERE workspace_id=$1`, workspaceID).Scan(&sent); err != nil || sent != 0 {
+		t.Fatalf("an empty filter sent %d emails (%v)", sent, err)
+	}
+	loud, err := st.SaveFilterSubscription(ctx, workspaceID, ownerID, empty.ID, FilterSubscriptionInput{Expression: "0 9 * * *", EmailWhenEmpty: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(`UPDATE filter_subscriptions SET next_run_at=$2 WHERE id=$1`, loud.ID, now.Add(-time.Minute))
+	if err = runner.DrainOnce(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	if err = st.Pool.QueryRow(ctx, `SELECT count(*) FROM email_outbox WHERE workspace_id=$1`, workspaceID).Scan(&sent); err != nil || sent != 1 {
+		t.Fatalf("a subscription that asked for empty results sent %d emails (%v)", sent, err)
 	}
 }

@@ -46,6 +46,9 @@ type savedFiltersPageData struct {
 	Notice       string
 	Error        string
 	CanAdmin     bool
+	// CanSubscribeGroups is Jira's Manage group filter subscriptions
+	// permission: without it, a subscription reaches people, not groups.
+	CanSubscribeGroups bool
 }
 
 // filterColumnChoices offers every navigable field as a filter column: Jira's
@@ -124,6 +127,10 @@ func (h *Handler) SavedFilters(w http.ResponseWriter, r *http.Request) {
 		Members: members, Groups: groups, Projects: projects, ProjectRoles: projectRoles, DefaultScope: scope,
 		Notice: strings.TrimSpace(r.URL.Query().Get("notice")),
 		Error:  strings.TrimSpace(r.URL.Query().Get("error")), CanAdmin: admin,
+	}
+	if data.CanSubscribeGroups, err = h.Store.HasGlobalPermission(r.Context(), workspaceID, user.ID, "MANAGE_GROUP_FILTER_SUBSCRIPTIONS"); err != nil {
+		http.Error(w, "Could not read the filter permissions.", http.StatusInternalServerError)
+		return
 	}
 	h.writeWorkspacePage(w, r, "page_saved_filters", user, workspaceID, data, "filters", projectKey)
 }
@@ -247,7 +254,10 @@ func (h *Handler) UpdateSavedFilter(w http.ResponseWriter, r *http.Request, id s
 		if custom := strings.TrimSpace(r.FormValue("cron")); custom != "" {
 			schedule = custom
 		}
-		_, err = h.Store.SaveFilterSubscription(r.Context(), workspaceID, user.ID, id, schedule, r.FormValue("timezone"), r.Form["recipient"])
+		_, err = h.Store.SaveFilterSubscription(r.Context(), workspaceID, user.ID, id, store.FilterSubscriptionInput{
+			Expression: schedule, Timezone: r.FormValue("timezone"), Recipients: r.Form["recipient"],
+			GroupID: r.FormValue("group"), EmailWhenEmpty: r.FormValue("emailWhenEmpty") == "true",
+		})
 		notice = "Filter email scheduled."
 	case "unsubscribe":
 		subscriptionID, parseErr := strconv.ParseInt(r.FormValue("subscriptionId"), 10, 64)

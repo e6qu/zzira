@@ -106,7 +106,7 @@ func (s *Store) replayIssues(ctx context.Context, workspaceID string, board *mod
 // day, as Jira's epic and version reports chart it. Without an estimation
 // field every work item counts as one.
 func (s *Store) ProgressReport(ctx context.Context, workspaceID string, board *models.Board, issues []*models.Issue, start, now time.Time) (models.ProgressReport, error) {
-	now = now.UTC()
+	now = s.windowEnd(ctx, now)
 	report := models.ProgressReport{Statistic: estimateStatistic(board), Progress: VersionProgress(issues)}
 	replay, err := s.replayIssues(ctx, workspaceID, board, issues)
 	if err != nil {
@@ -159,7 +159,7 @@ func (s *Store) ProgressReport(ctx context.Context, workspaceID string, board *m
 // entered its scope, and what was left when it ended. Sprints the board has
 // not started yet have nothing to say and are left out.
 func (s *Store) BurndownReport(ctx context.Context, workspaceID string, board *models.Board, issues []*models.Issue, now time.Time) (models.BurndownReport, error) {
-	now = now.UTC()
+	now = s.windowEnd(ctx, now)
 	report := models.BurndownReport{Statistic: estimateStatistic(board)}
 	replay, err := s.replayIssues(ctx, workspaceID, board, issues)
 	if err != nil {

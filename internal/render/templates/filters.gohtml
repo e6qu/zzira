@@ -92,7 +92,6 @@
         </details>
         {{end}}
 
-        {{if .Owner}}
         <details>
           <summary class="btn">Email results</summary>
           <div class="filter-subscription-panel">
@@ -103,11 +102,14 @@
               <select id="filter-schedule-{{.Filter.JiraID}}" name="schedule"><option value="0 8 * * *">Every day at 08:00</option><option value="0 8 * * 1">Every Monday at 08:00</option></select><label for="filter-cron-{{.Filter.JiraID}}">Or a cron expression</label><input id="filter-cron-{{.Filter.JiraID}}" name="cron" placeholder="0 0 9 ? * MON-FRI"><label for="filter-zone-{{.Filter.JiraID}}">Time zone</label><input id="filter-zone-{{.Filter.JiraID}}" name="timezone" placeholder="UTC">
               <fieldset><legend>Recipients</legend>{{range $.Data.Members}}<label><input type="checkbox" name="recipient" value="{{.ID}}" {{if eq .ID $row.Filter.OwnerID}}checked{{end}}> {{.DisplayName}}</label>{{end}}</fieldset>
               <p>Leaving every recipient clear sends the result to the filter owner.</p>
+              {{if $.Data.CanSubscribeGroups}}<label for="filter-group-{{.Filter.JiraID}}">Or a group</label><select id="filter-group-{{.Filter.JiraID}}" name="group"><option value="">No group</option>{{range $.Data.Groups}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select><small>A group's members receive it instead of the people above.</small>{{end}}
+              <label class="report-toggle"><input type="checkbox" name="emailWhenEmpty" value="true"> Email even when nothing matches</label>
               <button class="btn" type="submit">Schedule email</button>
             </form>
           </div>
         </details>
 
+        {{if .Owner}}
         <details>
           <summary class="btn">Columns</summary>
           <form class="filter-columns-form" method="post" action="/filters/{{.Filter.JiraID}}">
