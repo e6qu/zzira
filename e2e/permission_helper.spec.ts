@@ -7,6 +7,9 @@ const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'se
 const authFor = (email: string) => ({ Authorization: 'Basic ' + Buffer.from(`${email}:${tokens[email]}`).toString('base64') });
 
 async function accessible(page: Page) {
+  // Axe counts controls under the sticky header as covered, so the page is
+  // checked from the top rather than wherever it was scrolled.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations);
   expect(violations).toEqual([]);

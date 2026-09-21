@@ -38,4 +38,7 @@ type DORAReport struct {
 	// deployment.
 	EnvironmentTypes []string
 	Pipelines        int
+	// ExcludedPeriods is how many stretches of days the project leaves out,
+	// so the report says that some delivery was not counted.
+	ExcludedPeriods int
 }

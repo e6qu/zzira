@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -152,4 +153,93 @@ func (s *Store) DORAPipelines(ctx context.Context, workspaceID, projectID string
 		pipelines = append(pipelines, pipeline)
 	}
 	return pipelines, rows.Err()
+}
+
+// DORAExcludedPeriod is a stretch of days a project leaves out of its
+// delivery metrics: a code freeze, a shutdown, a drill.
+type DORAExcludedPeriod struct {
+	ID       int64
+	StartsOn string
+	EndsOn   string
+	Reason   string
+}
+
+// DORAExcludedPeriods lists a project's excluded periods, earliest first.
+func (s *Store) DORAExcludedPeriods(ctx context.Context, workspaceID, projectID string) ([]DORAExcludedPeriod, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT id,starts_on::text,ends_on::text,reason FROM project_dora_excluded_periods
+		WHERE project_id=$1 AND workspace_id=$2 ORDER BY starts_on,id`, projectID, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	periods := make([]DORAExcludedPeriod, 0)
+	for rows.Next() {
+		var period DORAExcludedPeriod
+		if err := rows.Scan(&period.ID, &period.StartsOn, &period.EndsOn, &period.Reason); err != nil {
+			return nil, err
+		}
+		periods = append(periods, period)
+	}
+	return periods, rows.Err()
+}
+
+// AddDORAExcludedPeriod records a period whose deployments and incidents do
+// not count. It is a project administrator's choice, as the mapping is.
+func (s *Store) AddDORAExcludedPeriod(ctx context.Context, workspaceID, actorID, projectID string, period DORAExcludedPeriod) error {
+	start, err := time.Parse("2006-01-02", strings.TrimSpace(period.StartsOn))
+	if err != nil {
+		return fmt.Errorf("%w: a period starts on a date, as YYYY-MM-DD", ErrDORASettings)
+	}
+	end, err := time.Parse("2006-01-02", strings.TrimSpace(period.EndsOn))
+	if err != nil {
+		return fmt.Errorf("%w: a period ends on a date, as YYYY-MM-DD", ErrDORASettings)
+	}
+	if end.Before(start) {
+		return fmt.Errorf("%w: a period ends on or after the day it starts", ErrDORASettings)
+	}
+	reason := strings.TrimSpace(period.Reason)
+	if len([]rune(reason)) > 255 {
+		return fmt.Errorf("%w: a reason is at most 255 characters", ErrDORASettings)
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := projectRoleAdmin(ctx, tx, workspaceID, actorID, projectID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO project_dora_excluded_periods(project_id,workspace_id,starts_on,ends_on,reason) VALUES($1,$2,$3,$4,$5)`,
+		projectID, workspaceID, start, end, reason); err != nil {
+		return err
+	}
+	if err := appendProjectGovernanceAction(ctx, tx, workspaceID, actorID, "project_dora_excluded_period", projectID, models.OpUpsert,
+		map[string]any{"startsOn": period.StartsOn, "endsOn": period.EndsOn, "reason": reason}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// RemoveDORAExcludedPeriod puts a period's deployments and incidents back.
+func (s *Store) RemoveDORAExcludedPeriod(ctx context.Context, workspaceID, actorID, projectID string, id int64) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := projectRoleAdmin(ctx, tx, workspaceID, actorID, projectID); err != nil {
+		return err
+	}
+	command, err := tx.Exec(ctx, `DELETE FROM project_dora_excluded_periods WHERE id=$1 AND project_id=$2 AND workspace_id=$3`, id, projectID, workspaceID)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() == 0 {
+		return fmt.Errorf("%w: that period is already gone", ErrDORASettings)
+	}
+	if err := appendProjectGovernanceAction(ctx, tx, workspaceID, actorID, "project_dora_excluded_period", projectID, models.OpDelete,
+		map[string]any{"id": id}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

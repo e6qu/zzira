@@ -85,6 +85,12 @@ Builds, deployments and commits arrive through the [Jira Software DevOps APIs](J
 | Change failure rate | Failed and rolled-back production deployments divided by all successful, failed and rolled-back production deployments |
 | Time to restore service | Median time from an incident's creation to the first change that gave it a resolution |
 
+**Excluded periods.** A project's administrators can leave stretches of days
+out of these numbers -- a code freeze, a shutdown, a drill -- on the report
+itself. A deployment made inside one is not counted, and neither is an incident
+opened inside one; the report says how many periods it left out. Lead time and
+time to restore read the same exclusions.
+
 **Which deployments count**
 - **Production:** the deployment's environment `type`, as sent by the provider, must be one the project counts as production. A project counts `production` until its administrators choose otherwise on the report itself (`POST /projects/{key}/reports/dora/mapping`), where they pick from `production`, `staging`, `testing`, `development` and `unmapped`, and may name the pipelines that count -- none named counts every pipeline. The environment name is ignored. The report says what it counted.
 - **Identity:** a deployment is its pipeline, environment and `deploymentSequenceNumber`.
@@ -235,7 +241,6 @@ Service project agents and managers see, for the requests the desk received in t
 ## Gaps
 
 - DORA counts the incidents Jira Service Management raises; which work items count as incidents cannot be configured.
-- DORA has no excluded-period calendars.
 
 Remaining work is tracked in [PLAN.md](../PLAN.md).
 

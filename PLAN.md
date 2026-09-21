@@ -133,8 +133,8 @@ but nothing shows or uses it.
 
 ## 4. Boards, reports and DORA
 
-- DORA: which work items count as incidents (environments and pipelines are
-  configured per project), and excluded periods.
+- DORA: which work items count as incidents (environments, pipelines and
+  excluded periods are configured per project).
 - Dashboards: layout and favourites over REST, inline gadget item properties,
   Jira system gadgets.
 - Load test at 1M actions with mixed reads and writes.

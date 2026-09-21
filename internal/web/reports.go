@@ -24,6 +24,7 @@ type doraReportData struct {
 	Mapping          store.DORASettings
 	EnvironmentTypes []string
 	Pipelines        []store.DORAPipeline
+	Excluded         []store.DORAExcludedPeriod
 	CanConfigure     bool
 	MappingNotice    string
 	MappingError     string
@@ -161,6 +162,10 @@ func (h *Handler) DORAReport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not read the delivery pipelines.", http.StatusInternalServerError)
 		return
 	}
+	if data.Excluded, err = h.Store.DORAExcludedPeriods(r.Context(), workspaceID, project.ID); err != nil {
+		http.Error(w, "Could not read the excluded periods.", http.StatusInternalServerError)
+		return
+	}
 	data.EnvironmentTypes = store.DORAEnvironmentTypes
 	data.MappingNotice, data.MappingError = r.URL.Query().Get("mapping"), r.URL.Query().Get("mappingError")
 	if data.CanConfigure, err = h.Store.CanAdministerProject(r.Context(), workspaceID, user.ID, project.ID); err != nil {
@@ -179,9 +184,24 @@ func (h *Handler) SaveDORAMapping(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := "/projects/" + url.PathEscape(project.Key) + "/reports/dora"
-	err := h.Store.SaveDORASettings(r.Context(), workspaceID, user.ID, project.ID, store.DORASettings{
-		EnvironmentTypes: r.Form["environment"], PipelineIDs: r.Form["pipeline"],
-	})
+	var err error
+	switch r.PostFormValue("action") {
+	case "exclude":
+		err = h.Store.AddDORAExcludedPeriod(r.Context(), workspaceID, user.ID, project.ID, store.DORAExcludedPeriod{
+			StartsOn: r.PostFormValue("startsOn"), EndsOn: r.PostFormValue("endsOn"), Reason: r.PostFormValue("reason"),
+		})
+	case "include":
+		id, parseErr := strconv.ParseInt(r.PostFormValue("period"), 10, 64)
+		if parseErr != nil {
+			redirectLocal(w, r, target+"?mappingError="+url.QueryEscape("That period is already gone.")+"#dora-mapping")
+			return
+		}
+		err = h.Store.RemoveDORAExcludedPeriod(r.Context(), workspaceID, user.ID, project.ID, id)
+	default:
+		err = h.Store.SaveDORASettings(r.Context(), workspaceID, user.ID, project.ID, store.DORASettings{
+			EnvironmentTypes: r.Form["environment"], PipelineIDs: r.Form["pipeline"],
+		})
+	}
 	if errors.Is(err, store.ErrDORASettings) {
 		message := strings.TrimSpace(strings.TrimPrefix(err.Error(), store.ErrDORASettings.Error()+":"))
 		redirectLocal(w, r, target+"?mappingError="+url.QueryEscape(message)+"#dora-mapping")

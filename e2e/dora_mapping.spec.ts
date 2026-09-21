@@ -18,6 +18,9 @@ async function login(page: Page, email: string, password: string) {
 }
 
 async function accessible(page: Page) {
+  // Axe counts controls under the sticky header as covered, so the page is
+  // checked from the top rather than wherever its anchor scrolled it.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations);
   expect(violations).toEqual([]);
@@ -92,6 +95,29 @@ test('a project chooses which environments and pipelines its DORA metrics count'
   await page.locator('#dora-mapping').getByRole('button', { name: 'Save mapping' }).click();
   await expect(page.getByRole('alert')).toContainText('choose at least one environment');
   await expect(page.getByRole('region', { name: 'DORA summary' }).locator('.dora-metric').first().locator('strong')).toHaveText('1');
+
+  // A day inside an excluded period is not delivery.
+  const deployed = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const exclusion = page.locator('#dora-mapping form').filter({ has: page.getByRole('button', { name: 'Exclude these days' }) });
+  await exclusion.getByLabel('From').fill(deployed);
+  await exclusion.getByLabel('To').fill(deployed);
+  await exclusion.getByLabel('Why').fill(`Code freeze ${stamp}`);
+  await exclusion.getByRole('button', { name: 'Exclude these days' }).click();
+  await expect(page.getByRole('status')).toContainText('Delivery mapping saved');
+  await expect(page.locator('#dora-mapping')).toContainText('1 excluded period');
+  await expect(page.getByRole('region', { name: 'DORA summary' }).locator('.dora-metric').first().locator('strong')).toHaveText('0');
+
+  // Counting those days again brings the deployment back.
+  await page.locator('#dora-mapping').getByRole('button', { name: /Count it again/ }).click();
+  await expect(page.getByRole('status')).toContainText('Delivery mapping saved');
+  await expect(page.getByRole('region', { name: 'DORA summary' }).locator('.dora-metric').first().locator('strong')).toHaveText('1');
+
+  // A period that ends before it starts is refused.
+  const bad = page.locator('#dora-mapping form').filter({ has: page.getByRole('button', { name: 'Exclude these days' }) });
+  await bad.getByLabel('From').fill('2027-03-10');
+  await bad.getByLabel('To').fill('2027-03-01');
+  await bad.getByRole('button', { name: 'Exclude these days' }).click();
+  await expect(page.getByRole('alert')).toContainText('on or after the day it starts');
 
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
