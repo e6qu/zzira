@@ -850,6 +850,22 @@ func (h *Handler) SaveWorkflowSchemeDraft(w http.ResponseWriter, r *http.Request
 	http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(schemeID)+"?saved="+url.QueryEscape(message), http.StatusSeeOther)
 }
 
+// CopyWorkflowScheme makes a scheme an administrator can change without
+// touching the one projects are running, which is what every other scheme
+// page offers.
+func (h *Handler) CopyWorkflowScheme(w http.ResponseWriter, r *http.Request, schemeID string) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	copied, err := h.Store.CopyWorkflowScheme(r.Context(), workspaceID, user.ID, schemeID)
+	if err != nil {
+		statusAdminError(w, err)
+		return
+	}
+	http.Redirect(w, r, "/settings/workflow-schemes/"+url.PathEscape(copied.ID)+"?saved="+url.QueryEscape(copied.Name+" created"), http.StatusSeeOther)
+}
+
 func (h *Handler) FinishWorkflowSchemeDraft(w http.ResponseWriter, r *http.Request, schemeID string) {
 	user, workspaceID, ok := h.requireAdminPage(w, r)
 	if !ok || !parseForm(w, r) {

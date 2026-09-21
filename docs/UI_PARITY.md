@@ -23,7 +23,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | Manager builds an operating dashboard | ✅ | `dashboards`, `dashboard_reports`, `dashboard_subscriptions`, `v6` | Forge gadgets ([DASHBOARDS](DASHBOARDS.md#gaps)) |
 | Admin shapes the work item model | 🟡 | `issue_metadata` (work types and their schemes, priorities, resolutions), `custom_field_contexts`, `custom_field_options`, `field_configurations`, `screens`, `screen_schemes` | Per-language field translations ([ISSUE_METADATA](ISSUE_METADATA.md#gaps)) |
 | Admin structures work above the epic | 🟡 | `hierarchy` (add a level, move a work type onto it, parent an epic under it) | Boards, backlogs, plans and reports stop at the epic level ([ISSUE_METADATA](ISSUE_METADATA.md#work-type-hierarchy)) |
-| Admin designs and publishes a workflow | 🟡 | `directories` (workflow editor, statuses, workflow schemes, transition screens), `resolution` (a transition screen that asks for the resolution) | Workflow scheme administration is incomplete |
+| Admin designs and publishes a workflow | ✅ | `directories` (workflow editor, statuses, workflow schemes, transition screens), `scheme_copies` (copying a scheme before changing it), `resolution` (a transition screen that asks for the resolution) | — |
 | Admin automates work | 🟡 | `automation` | Much of the trigger, condition and action catalog ([AUTOMATION](AUTOMATION.md)) |
 | Service customer requests help | 🟡 | `service`, `service_assets` | Assets-backed form behavior such as AQL filters |
 | Service agent works a queue | 🟡 | `service`, `service_assets` | A queue is written in the site's own JQL, which is missing only JSM's `Organizations` ([JQL](JQL.md#gaps)) |

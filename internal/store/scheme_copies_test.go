@@ -8,6 +8,7 @@ import (
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 // Copying a scheme carries its configuration and nothing else: the copy is
@@ -230,6 +231,50 @@ func TestCopyingSchemesCarriesTheirConfiguration(t *testing.T) {
 	}
 	if !required {
 		t.Fatal("the copied field configuration lost what it insists on")
+	}
+
+	// A workflow scheme carries the workflow each work type uses, and takes
+	// no project with it.
+	var workflowID, issueTypeID string
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM workflows WHERE workspace_id IS NULL OR workspace_id=$1 ORDER BY id LIMIT 1`, ws).Scan(&workflowID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Pool.QueryRow(ctx, `SELECT id FROM issue_types WHERE workspace_id IS NULL ORDER BY jira_id LIMIT 1`).Scan(&issueTypeID); err != nil {
+		t.Fatal(err)
+	}
+	routing, err := st.CreateWorkflowScheme(ctx, ws, admin, workflow.Scheme{
+		Name: "Routing", Description: "Which workflow runs what",
+		DefaultWorkflowID: workflowID, IssueTypeMappings: map[string]string{issueTypeID: workflowID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	routingCopy, err := st.CopyWorkflowScheme(ctx, ws, admin, routing.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if routingCopy.Name != "Copy of Routing" || routingCopy.Description != routing.Description {
+		t.Fatalf("the copy is %q / %q", routingCopy.Name, routingCopy.Description)
+	}
+	if routingCopy.DefaultWorkflowID != workflowID || routingCopy.IssueTypeMappings[issueTypeID] != workflowID {
+		t.Fatalf("the copy lost what routes the work: %+v", copiedScheme)
+	}
+	if routingCopy.IsDefault {
+		t.Fatal("the copy took the site default's place")
+	}
+	projects, err := st.ProjectsForWorkflowScheme(ctx, ws, routingCopy.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projects) != 0 {
+		t.Fatalf("the copy arrived in use: %+v", projects)
+	}
+	routingAgain, err := st.CopyWorkflowScheme(ctx, ws, admin, routing.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if routingAgain.Name != "Copy 2 of Routing" {
+		t.Fatalf("the second copy is %q", routingAgain.Name)
 	}
 }
 

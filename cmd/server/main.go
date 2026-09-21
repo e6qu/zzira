@@ -590,6 +590,9 @@ func main() {
 	mux.HandleFunc("POST /settings/workflow-schemes/{id}/draft", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.FinishWorkflowSchemeDraft(w, r, r.PathValue("id"))
 	})
+	mux.HandleFunc("POST /settings/workflow-schemes/{id}/copy", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.CopyWorkflowScheme(w, r, r.PathValue("id"))
+	})
 	mux.HandleFunc("POST /settings/workflow-schemes/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.DeleteWorkflowScheme(w, r, r.PathValue("id"))
 	})

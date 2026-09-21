@@ -44,7 +44,7 @@ All paths are under `/rest/api/3/workflowscheme`.
 
 ## UI
 
-`/settings/workflow-schemes`: saving an inactive scheme publishes the change. Saving a scheme with projects creates a draft to review and publish. The page also assigns projects and deletes schemes.
+`/settings/workflow-schemes`: saving an inactive scheme publishes the change. Saving a scheme with projects creates a draft to review and publish. The page also assigns projects, deletes schemes, and copies one, which is how a change is tried without touching what projects are running: a copy takes the published default workflow and mappings, never a draft, belongs to no project, and is named `Copy of X`, then `Copy 2 of X`, as every other scheme copy is ([SCHEMES](PERMISSION_SCHEMES.md)).
 
 ## Code
 
