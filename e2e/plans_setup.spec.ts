@@ -55,6 +55,7 @@ test('a manager creates a plan, gives it sources, exclusions and access', async 
   const create = page.locator('form[action="/plans"]');
   await create.getByLabel('Plan name').fill(`Setup plan ${stamp}`);
   await create.getByRole('checkbox', { name: `Projects: Plan setup ${stamp} (${key})` }).check();
+  await create.getByLabel('Estimate work in').selectOption('Days');
   await accessible(page);
   await create.getByRole('button', { name: 'Create plan' }).click();
   await expect(page).toHaveURL(/\/plans\/\d+$/);
@@ -83,6 +84,17 @@ test('a manager creates a plan, gives it sources, exclusions and access', async 
   await page.goto(`/plans/${planID}`);
   await expect(page.locator('#main-content')).toContainText(epic);
   await expect(page.locator('#main-content')).not.toContainText(bug);
+
+  // The scheduling the plan was created with, and a change to it.
+  await page.goto(`/plans/${planID}/settings`);
+  const scheduling = page.locator('form').filter({ has: page.getByRole('button', { name: 'Save scheduling' }) });
+  await expect(scheduling.getByLabel('Estimate work in')).toHaveValue('Days');
+  await scheduling.getByLabel('Estimate work in').selectOption('StoryPoints');
+  await scheduling.getByLabel('End date field').selectOption('DueDate');
+  await scheduling.getByRole('button', { name: 'Save scheduling' }).click();
+  await expect(page.getByRole('status')).toContainText('Scheduling saved.');
+  await page.goto(`/plans/${planID}`);
+  await expect(page.locator('#main-content')).toContainText('estimated in story points');
 
   // Who may see it: a colleague cannot until they are given access.
   const colleague = await browser.newContext();

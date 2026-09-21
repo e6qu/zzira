@@ -1,6 +1,11 @@
 package main
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/e6qu/zzira/internal/demo"
@@ -77,5 +82,56 @@ func TestBlobDir(t *testing.T) {
 				t.Fatalf("blobDir = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// The routes are registered in main, where nothing but starting the server
+// exercises them: a pattern that conflicts with another makes ServeMux panic
+// at registration, and the only symptom is a server that never listens. This
+// reads the patterns main registers and registers them on a mux of its own,
+// so Go's own conflict rules answer before a deployment does.
+func TestRegisteredRoutesDoNotConflict(t *testing.T) {
+	file, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patterns := make([]string, 0, 512)
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok || len(call.Args) == 0 {
+			return true
+		}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != "HandleFunc" && selector.Sel.Name != "Handle" {
+			return true
+		}
+		receiver, ok := selector.X.(*ast.Ident)
+		if !ok || receiver.Name != "mux" {
+			return true
+		}
+		literal, ok := call.Args[0].(*ast.BasicLit)
+		if !ok || literal.Kind != token.STRING {
+			return true
+		}
+		pattern, err := strconv.Unquote(literal.Value)
+		if err != nil {
+			t.Fatalf("route pattern %s: %v", literal.Value, err)
+		}
+		patterns = append(patterns, pattern)
+		return true
+	})
+	if len(patterns) < 100 {
+		t.Fatalf("found %d route patterns in main.go, which is not the router", len(patterns))
+	}
+	mux := http.NewServeMux()
+	for _, pattern := range patterns {
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					t.Errorf("registering %q: %v", pattern, recovered)
+				}
+			}()
+			mux.Handle(pattern, http.NotFoundHandler())
+		}()
 	}
 }

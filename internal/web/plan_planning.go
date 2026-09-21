@@ -342,8 +342,10 @@ func (h *Handler) PlanCapacityChange(w http.ResponseWriter, r *http.Request) {
 	planBack(w, r, plan, scenario.ID, "", "notice", "Capacity set in "+scenario.Name+".")
 }
 
-// PlanSettingsChange sets whether dependent work may share an iteration.
-func (h *Handler) PlanSettingsChange(w http.ResponseWriter, r *http.Request) {
+// PlanSchedulingChange sets whether dependent work may share an iteration.
+// It is the one setting the plan page itself offers; the rest of a plan's
+// setup is on its settings page.
+func (h *Handler) PlanSchedulingChange(w http.ResponseWriter, r *http.Request) {
 	if !parseForm(w, r) {
 		return
 	}

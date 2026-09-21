@@ -100,12 +100,13 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
 
 **Browser pages**
 - `/plans` lists the active plans the viewer can open, and, for site
-  administrators, creates one: a name and the boards, projects and filters it
-  reads. The creator becomes the plan lead.
+  administrators, creates one: a name, the boards, projects and filters it
+  reads, and what it estimates in. The creator becomes the plan lead.
 - `/plans/{id}/settings` is the plan's setup, for anyone who may edit it: its
-  name and lead, its issue sources, its exclusion rules (how long completed
-  work stays visible, and the work types and statuses to leave out), and who
-  else may view or edit it.
+  name and lead, its scheduling (estimation unit and the fields its dates come
+  from), its issue sources, its exclusion rules (how long completed work stays
+  visible, and the work types and statuses to leave out), and who else may
+  view or edit it.
 - `/plans/{id}` shows the plan's work as a table (Work, Start, End, Team, Sprint, Estimate, Dependencies) beside a month timeline. Epics are nested with their child work items.
 - Who can open a plan: site administrators, the plan lead, and people or groups the plan grants access to.
 

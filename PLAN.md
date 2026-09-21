@@ -108,9 +108,9 @@ and dependency checks.
 
 - Auto-scheduler: schedule by rank, dependencies, team capacity, sprints and
   releases; preview and apply to a scenario.
-- Plan setup in the browser: scheduling fields, estimation unit, custom fields
-  and cross-project releases (create, sources, exclusions, permissions and
-  teams are there).
+- Plan setup in the browser: a date custom field as a plan's date, plan custom
+  fields and cross-project releases (create, scheduling, sources, exclusions,
+  permissions and teams are there).
 - Restore archived and trashed plans; duplicate copies scenarios.
 - Scenario edits: parent, rank, release, status, create work items.
 - Views: saved views, grouping, filters, rollups across the hierarchy.

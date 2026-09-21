@@ -531,7 +531,7 @@ func main() {
 	mux.HandleFunc("POST /plans/{id}/work", webHandler.PlanWorkChange)
 	mux.HandleFunc("POST /plans/{id}/scenarios", webHandler.PlanScenarioChange)
 	mux.HandleFunc("POST /plans/{id}/capacity", webHandler.PlanCapacityChange)
-	mux.HandleFunc("POST /plans/{id}/settings", webHandler.PlanSettingsChange)
+	mux.HandleFunc("POST /plans/{id}/scheduling", webHandler.PlanSchedulingChange)
 	mux.HandleFunc("POST /plans/{id}/teams", webHandler.PlanTeamSettings)
 	mux.HandleFunc("GET /plans/{id}/review", webHandler.PlanReview)
 	mux.HandleFunc("POST /plans/{id}/review", webHandler.PlanReview)

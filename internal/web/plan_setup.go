@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,6 +35,8 @@ type planPermissionRow struct {
 }
 
 type planSettingsData struct {
+	Estimations []string
+	DateFields  []struct{ Value, Label string }
 	Plan        store.Plan
 	Lead        string
 	Sources     []planSourceChoice
@@ -107,6 +110,47 @@ func planSources(values []string) ([]store.PlanIssueSource, error) {
 	return sources, nil
 }
 
+// planEstimations and planDateFields are the scheduling choices a plan makes:
+// what its estimates are counted in, and where it reads each of its dates.
+var planEstimations = []string{"StoryPoints", "Days", "Hours"}
+
+var planDateFields = []struct{ Value, Label string }{
+	{"TargetStartDate", "Target start"},
+	{"TargetEndDate", "Target end"},
+	{"DueDate", "Due date"},
+}
+
+// planScheduling reads the scheduling a form chose, leaving what it did not
+// name as it was.
+func planScheduling(r *http.Request, plan *store.Plan) error {
+	estimation := r.PostFormValue("estimation")
+	if estimation == "" {
+		estimation = plan.Scheduling.Estimation
+	}
+	if estimation == "" {
+		estimation = "StoryPoints"
+	}
+	if !slices.Contains(planEstimations, estimation) {
+		return errors.New("estimates are counted in story points, days or hours")
+	}
+	plan.Scheduling.Estimation = estimation
+	for name, field := range map[string]*store.PlanDateField{"startField": &plan.Scheduling.StartDate, "endField": &plan.Scheduling.EndDate} {
+		value := r.PostFormValue(name)
+		if value == "" {
+			continue
+		}
+		known := false
+		for _, choice := range planDateFields {
+			known = known || choice.Value == value
+		}
+		if !known {
+			return errors.New("a plan reads its dates from Target start, Target end or the due date")
+		}
+		field.Type, field.DateCustomFieldID = value, nil
+	}
+	return nil
+}
+
 // CreatePlan makes a plan from the plans directory. Creating one is site
 // administration, as it is over REST (/rest/api/3/plans/plan); who may then
 // configure and read it is the plan's own lead and permissions.
@@ -125,6 +169,10 @@ func (h *Handler) CreatePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	plan := store.Plan{Name: r.PostFormValue("name"), LeadAccountID: user.ID, IssueSources: sources}
+	if err := planScheduling(r, &plan); err != nil {
+		redirectLocal(w, r, "/plans?error="+url.QueryEscape(err.Error()))
+		return
+	}
 	id, err := h.Store.CreatePlan(r.Context(), workspaceID, user.ID, plan)
 	if err != nil {
 		if message := planErrorMessage(err); message != "" {
@@ -150,7 +198,7 @@ func (h *Handler) PlanSettingsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := planSettingsData{
-		Plan: plan, Excluded: map[int64]bool{},
+		Plan: plan, Excluded: map[int64]bool{}, Estimations: planEstimations, DateFields: planDateFields,
 		Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error"),
 	}
 	var err error
@@ -219,6 +267,12 @@ func (h *Handler) PlanSettingsSave(w http.ResponseWriter, r *http.Request) {
 			plan.LeadAccountID = lead
 		}
 		notice = "Plan details saved."
+	case "scheduling":
+		if err := planScheduling(r, &plan); err != nil {
+			planSettingsBack(w, r, plan, "error", err.Error())
+			return
+		}
+		notice = "Scheduling saved."
 	case "sources":
 		sources, err := planSources(r.Form["source"])
 		if err != nil {
