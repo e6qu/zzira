@@ -112,36 +112,39 @@ type projectIssuesData struct {
 	// project's own. BulkComponents and BulkVersions are the same for the
 	// two list fields a project owns.
 	BulkPriorities []models.Priority
-	BulkComponents []*models.ProjectComponent
-	BulkVersions   []*models.Version
-	BoardID        string
-	Issues         []*models.Issue
-	Selected       *models.Issue
-	Statuses       []models.Status
-	Members        []*models.User
-	Filters        []*models.Filter
-	ActiveFilter   string
-	Chips          []navigatorChip
-	SaveJQL        string
-	Mode           string
-	JQL            string
-	Text           string
-	Status         string
-	Assignee       string
-	Sort           string
-	Direction      string
-	Total          int
-	ResultStart    int
-	ResultEnd      int
-	Page           int
-	PageCount      int
-	PreviousURL    string
-	NextURL        string
-	BasicURL       string
-	AdvancedURL    string
-	SortURLs       map[string]string
-	JQLError       string
-	CanBulk        bool
+	// BulkCustomFields are the custom fields every work type in the project
+	// shares, which is what a selection of any of them can be given.
+	BulkCustomFields []bulkCustomField
+	BulkComponents   []*models.ProjectComponent
+	BulkVersions     []*models.Version
+	BoardID          string
+	Issues           []*models.Issue
+	Selected         *models.Issue
+	Statuses         []models.Status
+	Members          []*models.User
+	Filters          []*models.Filter
+	ActiveFilter     string
+	Chips            []navigatorChip
+	SaveJQL          string
+	Mode             string
+	JQL              string
+	Text             string
+	Status           string
+	Assignee         string
+	Sort             string
+	Direction        string
+	Total            int
+	ResultStart      int
+	ResultEnd        int
+	Page             int
+	PageCount        int
+	PreviousURL      string
+	NextURL          string
+	BasicURL         string
+	AdvancedURL      string
+	SortURLs         map[string]string
+	JQLError         string
+	CanBulk          bool
 }
 
 type bulkIssueTaskData struct {
@@ -1676,6 +1679,10 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		if data.BulkCustomFields, err = h.bulkCustomFields(r.Context(), wsID, user.ID, project.ID); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	}
 	h.writeWorkspacePage(w, r, "page_project", user, wsID, data, "issues", project.ID)
 }
@@ -1916,7 +1923,15 @@ func (h *Handler) SubmitBulkIssueEdit(w http.ResponseWriter, r *http.Request, pr
 	if !ok {
 		return
 	}
-	operations, err := bulkEditOperations(r)
+	// The custom fields are read from the project rather than from the form:
+	// what a field is, and whether it may be set at all, is the site's
+	// answer, not the submission's.
+	customFields, err := h.bulkCustomFields(r.Context(), workspaceID, user.ID, project.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	operations, err := bulkEditOperations(r, customFields)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1942,7 +1957,11 @@ func (h *Handler) SubmitBulkIssueEdit(w http.ResponseWriter, r *http.Request, pr
 // box is ticked, so the editor sets several at once the way Jira's does, and
 // an empty box clears the field -- except a priority, which Jira has no unset
 // value for.
-func bulkEditOperations(r *http.Request) ([]store.BulkIssueEditOperation, error) {
+func bulkEditOperations(r *http.Request, customFields []bulkCustomField) ([]store.BulkIssueEditOperation, error) {
+	byID := make(map[string]bulkCustomField, len(customFields))
+	for _, field := range customFields {
+		byID[field.ID] = field
+	}
 	encode := func(v any) json.RawMessage {
 		encoded, _ := json.Marshal(v)
 		return encoded
@@ -2000,7 +2019,15 @@ func bulkEditOperations(r *http.Request) ([]store.BulkIssueEditOperation, error)
 				FieldID: "fixVersions", Action: bulkListAction(r.FormValue("versionAction")), Value: encode(list("valueFixVersions")),
 			})
 		default:
-			return nil, fmt.Errorf("choose a field to change")
+			custom, known := byID[field]
+			if !known {
+				return nil, fmt.Errorf("choose a field to change")
+			}
+			operation, err := bulkCustomFieldOperation(r, custom)
+			if err != nil {
+				return nil, err
+			}
+			operations = append(operations, operation)
 		}
 	}
 	if len(operations) == 0 {

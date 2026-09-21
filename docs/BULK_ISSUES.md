@@ -127,10 +127,22 @@ without Bulk change. Progress is shown at
 
 See [PLAN.md](../PLAN.md).
 
-- The navigator's bulk edit offers the six fields above. The REST endpoint
-  takes any field on the shared edit metadata, including custom fields, and
-  work type and status, which the navigator changes through bulk move and
-  bulk transition instead.
+- The navigator's bulk edit offers the six built-in fields above and the
+  custom fields every work type in the project shares, as text, a number, a
+  date, a date and time, a URL, a single select, a multiple select or a list
+  of values. A cascading select, a user picker, a group picker and rich text
+  are REST-only, as are work type and status, which the navigator changes
+  through bulk move and bulk transition instead.
+
+## In the navigator
+
+**Edit selected** offers a field per fieldset: tick a field and fill its box.
+The custom fields are the ones shared by every work type in the project,
+because the selection is whatever is ticked -- a field only some types carry
+would fail for the rest. What a field is, and whether it may be set at all, is
+read from the project when the edit is submitted rather than taken from the
+form, so a form naming another field changes nothing. An emptied box clears
+the field, as the single-item editor does; a date and time is read as UTC.
 
 ## See also
 

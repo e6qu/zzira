@@ -795,13 +795,31 @@
   }
   let sectionsBeforeSwap = null;
   document.body.addEventListener('htmx:beforeSwap', (event) => {
-    const target = event.detail.target;
-    sectionsBeforeSwap = target && target.id === 'issue-root' ? openIssueSections() : null;
+    const detail = event.detail;
+    const target = detail.target;
+    const holder = target && (target.id === 'issue-view-holder' || target.id === 'issue-root');
+    if (holder) {
+      // Two saves can be in flight at once -- a field saved, then another
+      // before the first answer arrives -- and they answer in whichever
+      // order they finish. An answer rendered before what the page already
+      // shows is not a later view of anything: applying it would put the
+      // field that was just saved back to what it was.
+      const incoming = seqOf(detail.serverResponse || '');
+      if (incoming > 0 && incoming < seqOfDom()) {
+        event.preventDefault();
+        return;
+      }
+    }
+    sectionsBeforeSwap = holder ? openIssueSections() : null;
   });
   document.body.addEventListener('htmx:afterSwap', (event) => {
     const swapped = event.detail && event.detail.target;
-    if (swapped && (swapped.id === 'issue-root' || swapped.querySelector && swapped.querySelector('#issue-root'))) {
+    if (swapped && (swapped.id === 'issue-root' || swapped.id === 'issue-view-holder' || swapped.querySelector && swapped.querySelector('#issue-root'))) {
       rootRenderCount++;
+      // A render held back while somebody was typing is a picture of the work
+      // item taken before the save that just landed. It is not a later view
+      // of anything: drop it rather than letting it undo what was saved.
+      pendingRootHtml = null;
     }
     if (!sectionsBeforeSwap) return;
     reopenIssueSections(sectionsBeforeSwap);
@@ -836,15 +854,14 @@
 
   document.addEventListener('focusout', () => {
     if (!pendingRootHtml) return;
-    const active = document.activeElement;
-    const root = document.getElementById('issue-root');
-    const dirtyForm = root && root.querySelector('form[data-dirty="true"]');
-    if (root && !dirtyForm && !mutationAwaitingSync && (!active || !root.contains(active) ||
-        (!active.closest('[contenteditable]') && !['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)))) {
-      replaceIssueRoot(root, pendingRootHtml);
-      pendingRootHtml = null;
-      hydrate(document.getElementById('issue-root'));
-    }
+    // On the next tick, because focus has not landed anywhere yet: applying a
+    // held-back render goes through the same questions as any other one,
+    // including whether it is older than what the page already shows.
+    const held = pendingRootHtml;
+    setTimeout(() => {
+      if (pendingRootHtml !== held) return;
+      applyRootHtml(held);
+    }, 0);
   });
 
   document.addEventListener('input', (event) => {

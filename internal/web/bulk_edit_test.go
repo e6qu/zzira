@@ -29,7 +29,7 @@ func TestBulkEditOperationsChangeEveryTickedField(t *testing.T) {
 		"valueComponents":  {"cmp_runtime", "cmp_api"},
 		"componentAction":  {"add"},
 		"valueFixVersions": {"ver_1"},
-	}))
+	}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestBulkEditOperationsClearAndReject(t *testing.T) {
 		{name: "unknown field", form: url.Values{"field": {"nonesuch"}}, err: "choose a field"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			operations, err := bulkEditOperations(bulkEditRequest(tc.form))
+			operations, err := bulkEditOperations(bulkEditRequest(tc.form), nil)
 			if tc.err != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.err) {
 					t.Fatalf("err = %v, want %q", err, tc.err)
@@ -90,5 +90,80 @@ func TestBulkEditOperationsClearAndReject(t *testing.T) {
 				t.Fatalf("value = %s, want %s", operations[0].Value, tc.value)
 			}
 		})
+	}
+}
+
+// A custom field is set in the shapes the update command reads: an option by
+// id, options by id, a list of strings, a number, or text. What a field is
+// comes from the project, so a form naming a field the project does not share
+// changes nothing.
+func TestBulkEditOperationsSetCustomFields(t *testing.T) {
+	fields := []bulkCustomField{
+		{ID: "customfield_10100", Name: "Team", Kind: "singleSelect"},
+		{ID: "customfield_10101", Name: "Platforms", Kind: "multiSelect"},
+		{ID: "customfield_10102", Name: "Tags", Kind: "labels"},
+		{ID: "customfield_10103", Name: "Score", Kind: "number"},
+		{ID: "customfield_10104", Name: "Runbook", Kind: "url"},
+		{ID: "customfield_10105", Name: "Reviewed on", Kind: "date"},
+		{ID: "customfield_10106", Name: "Cutover at", Kind: "dateTime"},
+	}
+	operations, err := bulkEditOperations(bulkEditRequest(url.Values{
+		"field":                         {"customfield_10100", "customfield_10101", "customfield_10102", "customfield_10103", "customfield_10104", "customfield_10105", "customfield_10106"},
+		"valueCustom_customfield_10100": {"opt_platform"},
+		"valueCustom_customfield_10101": {"opt_ios", "opt_android"},
+		"valueCustom_customfield_10102": {" alpha , , beta "},
+		"valueCustom_customfield_10103": {"12.5"},
+		"valueCustom_customfield_10104": {"https://runbook.example/incident"},
+		"valueCustom_customfield_10105": {"2026-03-04"},
+		"valueCustom_customfield_10106": {"2026-03-04T09:30"},
+	}), fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		`"opt_platform"`,
+		`[{"id":"opt_ios"},{"id":"opt_android"}]`,
+		`["alpha","beta"]`,
+		`12.5`,
+		`"https://runbook.example/incident"`,
+		`"2026-03-04"`,
+		`"2026-03-04T09:30:00Z"`,
+	}
+	if len(operations) != len(want) {
+		t.Fatalf("operations = %+v", operations)
+	}
+	for index, expected := range want {
+		if operations[index].Action != "SET" || string(operations[index].Value) != expected {
+			t.Fatalf("operation %d = %+v, value %s, want %s", index, operations[index], operations[index].Value, expected)
+		}
+	}
+
+	// An emptied box clears the field, as the single-item editor does.
+	cleared, err := bulkEditOperations(bulkEditRequest(url.Values{
+		"field":                         {"customfield_10100", "customfield_10103"},
+		"valueCustom_customfield_10100": {""},
+		"valueCustom_customfield_10103": {""},
+	}), fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(cleared[0].Value) != `""` || string(cleared[1].Value) != `null` {
+		t.Fatalf("cleared = %s and %s", cleared[0].Value, cleared[1].Value)
+	}
+
+	// A number that is not one says so rather than being written as text.
+	if _, err := bulkEditOperations(bulkEditRequest(url.Values{
+		"field":                         {"customfield_10103"},
+		"valueCustom_customfield_10103": {"soon"},
+	}), fields); err == nil {
+		t.Fatal("a number field took text")
+	}
+
+	// A field the project does not share is not editable through the form.
+	if _, err := bulkEditOperations(bulkEditRequest(url.Values{
+		"field":                         {"customfield_99999"},
+		"valueCustom_customfield_99999": {"anything"},
+	}), fields); err == nil {
+		t.Fatal("a field outside the project was edited")
 	}
 }
