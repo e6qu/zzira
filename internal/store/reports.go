@@ -9,16 +9,23 @@ import (
 	"github.com/e6qu/zzira/internal/models"
 )
 
-// DORAReport derives a project report from current production deployments,
-// linked commits, and immutable issue transitions. Issue security is applied
-// before any event contributes to a metric.
+// DORAReport derives a project report from the deployments the project counts
+// as production, linked commits, and immutable issue transitions. Issue
+// security is applied before any event contributes to a metric.
 func (s *Store) DORAReport(ctx context.Context, workspaceID, projectID, userID string, days int, until time.Time) (models.DORAReport, error) {
 	if days != 7 && days != 30 && days != 90 {
 		return models.DORAReport{}, fmt.Errorf("DORA window must be 7, 30, or 90 days")
 	}
+	settings, err := s.DORASettingsFor(ctx, workspaceID, projectID)
+	if err != nil {
+		return models.DORAReport{}, err
+	}
 	until = until.UTC()
 	since := until.Add(-time.Duration(days) * 24 * time.Hour)
-	report := models.DORAReport{WindowDays: days, Since: since.Format("2006-01-02"), Until: until.Format("2006-01-02")}
+	report := models.DORAReport{
+		WindowDays: days, Since: since.Format("2006-01-02"), Until: until.Format("2006-01-02"),
+		EnvironmentTypes: settings.EnvironmentTypes, Pipelines: len(settings.PipelineIDs),
+	}
 	visible := `EXISTS (
 		SELECT 1 FROM issues i
 		WHERE i.workspace_id=$1 AND i.project_id=$2 AND i.key=ANY(d.issue_keys)
@@ -36,9 +43,11 @@ func (s *Store) DORAReport(ctx context.Context, workspaceID, projectID, userID s
 		)
 		SELECT d.pipeline_id,d.display_name,d.url,d.state,d.environment_name,d.environment_type,d.last_updated
 		FROM current_deployments d
-		WHERE d.workspace_id=$1 AND d.environment_type='production'
+		WHERE d.workspace_id=$1 AND d.environment_type=ANY($6)
+		  AND (COALESCE(cardinality($7::text[]),0)=0 OR d.pipeline_id=ANY($7))
 		  AND d.last_updated >= $4 AND d.last_updated < $5 AND `+visible+`
-		ORDER BY d.last_updated DESC,d.pipeline_id,d.entity_sequence_number DESC`, workspaceID, projectID, userID, since, until)
+		ORDER BY d.last_updated DESC,d.pipeline_id,d.entity_sequence_number DESC`,
+		workspaceID, projectID, userID, since, until, settings.EnvironmentTypes, settings.PipelineIDs)
 	if err != nil {
 		return models.DORAReport{}, err
 	}
@@ -111,7 +120,7 @@ func (s *Store) DORAReport(ctx context.Context, workspaceID, projectID, userID s
 	}
 	report.ChartWidth = 16 + days*22
 
-	leads, err := s.doraLeadTimes(ctx, workspaceID, projectID, userID, since, until)
+	leads, err := s.doraLeadTimes(ctx, workspaceID, projectID, userID, since, until, settings)
 	if err != nil {
 		return models.DORAReport{}, err
 	}
@@ -128,7 +137,7 @@ func (s *Store) DORAReport(ctx context.Context, workspaceID, projectID, userID s
 	return report, nil
 }
 
-func (s *Store) doraLeadTimes(ctx context.Context, workspaceID, projectID, userID string, since, until time.Time) ([]int64, error) {
+func (s *Store) doraLeadTimes(ctx context.Context, workspaceID, projectID, userID string, since, until time.Time, settings DORASettings) ([]int64, error) {
 	rows, err := s.Pool.Query(ctx, `
 		WITH visible_keys AS (
 		  SELECT i.key FROM issues i
@@ -138,17 +147,19 @@ func (s *Store) doraLeadTimes(ctx context.Context, workspaceID, projectID, userI
 		         workspace_id,issue_keys,state,environment_type,occurred_at AS last_updated
 		  FROM software_delivery_facts
 		  WHERE workspace_id=$1 AND fact_type='deployment'
+		    AND (COALESCE(cardinality($7::text[]),0)=0 OR pipeline_id=ANY($7))
 		  ORDER BY pipeline_id,environment_id,entity_sequence_number,update_sequence_number DESC
 		)
 		SELECT EXTRACT(EPOCH FROM (MIN(d.last_updated)-e.occurred_at))::bigint
 		FROM development_entities e
 		JOIN deployments d ON d.workspace_id=e.workspace_id
-		 AND d.environment_type='production' AND d.state='successful'
+		 AND d.environment_type=ANY($6) AND d.state='successful'
 		 AND d.last_updated >= e.occurred_at AND d.last_updated >= $4 AND d.last_updated < $5
 		 AND d.issue_keys && e.issue_keys
 		WHERE e.workspace_id=$1 AND e.entity_type='commit' AND e.occurred_at IS NOT NULL
 		  AND EXISTS (SELECT 1 FROM visible_keys v WHERE v.key=ANY(e.issue_keys) AND v.key=ANY(d.issue_keys))
-		GROUP BY e.repository_id,e.entity_id,e.occurred_at`, workspaceID, projectID, userID, since, until)
+		GROUP BY e.repository_id,e.entity_id,e.occurred_at`,
+		workspaceID, projectID, userID, since, until, settings.EnvironmentTypes, settings.PipelineIDs)
 	if err != nil {
 		return nil, err
 	}

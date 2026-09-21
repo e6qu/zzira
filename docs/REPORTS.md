@@ -38,7 +38,7 @@ A report draws only from data that already exists, so a site being filled for a 
 
 | Report | Needs |
 |---|---|
-| DORA metrics | Deployments submitted to `/rest/deployments/0.1/bulk` whose environment `type` is `production`, whose `issueKeys` name work items of this project the viewer can browse, and whose `lastUpdated` falls in the window. Lead time also needs commits submitted to `/rest/devinfo/0.10/bulk` with `issueKeys` that a production deployment shares. Time to restore also needs service desk incident requests ([SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md#operations-incidents-problems-changes)) that were given a resolution inside the window. |
+| DORA metrics | Deployments submitted to `/rest/deployments/0.1/bulk` whose environment `type` and pipeline the project counts (`production` and every pipeline by default), whose `issueKeys` name work items of this project the viewer can browse, and whose `lastUpdated` falls in the window. Lead time also needs commits submitted to `/rest/devinfo/0.10/bulk` with `issueKeys` that a production deployment shares. Time to restore also needs service desk incident requests ([SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md#operations-incidents-problems-changes)) that were given a resolution inside the window. |
 | Sprint report | A scrum board, and a sprint that has started. Future sprints are not offered, so the board needs an active or a completed sprint holding work items. |
 | Velocity chart | A scrum board with at least one completed sprint. Each bar needs work that was in the sprint at its start (commitment) and work done before it closed. |
 | Cumulative flow diagram | A board whose columns carry statuses, and work its filter shows. Work with no recorded status change counts in its current status from the day it was created. |
@@ -69,7 +69,7 @@ Builds, deployments and commits arrive through the [Jira Software DevOps APIs](J
 | Time to restore service | Median time from an incident's creation to the first change that gave it a resolution |
 
 **Which deployments count**
-- **Production:** the deployment's environment `type`, as sent by the provider, must be `production`. The environment name is ignored.
+- **Production:** the deployment's environment `type`, as sent by the provider, must be one the project counts as production. A project counts `production` until its administrators choose otherwise on the report itself (`POST /projects/{key}/reports/dora/mapping`), where they pick from `production`, `staging`, `testing`, `development` and `unmapped`, and may name the pipelines that count -- none named counts every pipeline. The environment name is ignored. The report says what it counted.
 - **Identity:** a deployment is its pipeline, environment and `deploymentSequenceNumber`.
 - **Latest update:** every accepted build and deployment update is stored and never changed. For each deployment, the report reads the update with the highest `updateSequenceNumber`, and dates it by that update's `lastUpdated`.
 - **Window:** that date must fall in the window, which ends at the moment the page is drawn and runs back 7, 30 or 90 days.
@@ -217,7 +217,7 @@ Service project agents and managers see, for the requests the desk received in t
 
 ## Gaps
 
-- The DORA mapping cannot be configured. You cannot choose which environments, pipelines or incident types count; production is fixed as environment type `production`.
+- DORA counts the incidents Jira Service Management raises; which work items count as incidents cannot be configured.
 - DORA has no excluded-period calendars.
 - Deployment frequency and cycle time have no page of their own; the DORA report carries deployment frequency as a number and the control chart carries cycle time as a distribution.
 

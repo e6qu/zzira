@@ -33,4 +33,9 @@ type DORAReport struct {
 	ChartWidth          int
 	Daily               []DORADay
 	Recent              []DeliveryItem
+	// EnvironmentTypes and Pipelines are the mapping the numbers were read
+	// through, so the report says what it counted rather than implying every
+	// deployment.
+	EnvironmentTypes []string
+	Pipelines        int
 }
