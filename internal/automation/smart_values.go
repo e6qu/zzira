@@ -77,6 +77,21 @@ func (r *Runner) renderSmartValues(ctx context.Context, run *claimedRun, issue *
 		if value, ok := run.Variables[name]; ok {
 			return value
 		}
+		// A path into a variable that holds an object: a branch over a list
+		// of them reads {{item.name}} as well as {{item}}.
+		if variable, path, found := strings.Cut(name, "."); found && path != "" {
+			if data, ok := run.VariableData[variable]; ok {
+				// How many a list holds, which is how a rule says "if the
+				// lookup found nothing" without branching over it.
+				if path == "size" {
+					var list []json.RawMessage
+					if json.Unmarshal(data, &list) == nil {
+						return strconv.Itoa(len(list))
+					}
+				}
+				return webhookValue(data, path)
+			}
+		}
 		if run.WebResponse != nil {
 			switch name {
 			case "webResponse", "webResponse.body":

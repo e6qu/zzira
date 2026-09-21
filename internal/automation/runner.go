@@ -49,6 +49,13 @@ type claimedRun struct {
 	// far, read as {{name}}. A branch keeps its own: what it sets belongs to
 	// the work item it is running for, not to whatever runs after it.
 	Variables map[string]string
+	// VariableData is the JSON behind a variable that holds an object or a
+	// list, so a branch over {{webResponse.body.items}} can read
+	// {{item.name}} and not only {{item}}.
+	VariableData map[string]json.RawMessage
+	// CreatedIssues are the work items this run has raised, in the order it
+	// raised them, which a branch over created work runs for.
+	CreatedIssues []string
 	// WebResponse is the answer the rule's last web request received, which
 	// later actions read as {{webResponse}}.
 	WebResponse *webResponse
@@ -75,6 +82,10 @@ type branchValue struct {
 	// JQL is what a "jql" branch runs for: the work the rule actor can see
 	// that the query matches, whether or not the rule has a work item.
 	JQL string `json:"jql"`
+	// SmartValue and VariableName are what a "smart-values" branch runs for:
+	// a list, and what each item is called inside the branch.
+	SmartValue   string `json:"smartValue"`
+	VariableName string `json:"variableName"`
 }
 
 func (r *Runner) Run(ctx context.Context, workspaceID string) {
@@ -349,10 +360,22 @@ func (r *Runner) runComponents(ctx context.Context, run *claimedRun, issue *mode
 	changed := false
 	for _, item := range components {
 		if item.Component == "BRANCH" {
+			// A branch over a list runs over values rather than over work,
+			// so it keeps the work item it was given, whatever that is.
+			if branchRelatedType(item) == listBranchType {
+				var value branchValue
+				_ = json.Unmarshal(decodeComponentValue(item.Value), &value)
+				didChange, err := r.runListBranch(ctx, run, issue, value, item.Children)
+				if err != nil {
+					return changed, fmt.Errorf("%s on %s: %w", item.Type, where, err)
+				}
+				changed = changed || didChange
+				continue
+			}
 			// A branch over related work needs the work item it is related
 			// to; a JQL branch asks the query, so it runs for a rule that
 			// never had one.
-			if issue == nil && branchRelatedType(item) != "jql" {
+			if issue == nil && branchRelatedType(item) != "jql" && branchRelatedType(item) != createdBranchType {
 				return changed, fmt.Errorf("%s on %s: a branch needs a work item, and the webhook named none", item.Type, where)
 			}
 			related, err := r.branchIssues(ctx, run, issue, item)
@@ -525,16 +548,21 @@ func validateExecutionActor(payload json.RawMessage, actorID string) error {
 var actionsWithoutWork = map[string]bool{
 	"jira.issue.create": true, WebRequestActionType: true, VariableActionType: true,
 	WikiPageActionType: true, WikiCommentActionType: true, WikiLabelActionType: true,
+	LookupActionType: true,
 }
 
 // Actions and conditions the runner executes.
 var (
-	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true, "jira.issue.delete": true, WikiPageActionType: true, VariableActionType: true, WikiCommentActionType: true, WikiLabelActionType: true}
+	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true, "jira.issue.delete": true, WikiPageActionType: true, VariableActionType: true, WikiCommentActionType: true, WikiLabelActionType: true, LookupActionType: true}
 	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true, "jira.issue.related.condition": true}
 )
 
 // relatedTypes are the related work items a branch can run for.
-var relatedTypes = map[string]bool{"sub-tasks": true, "parent": true, "linked": true, "jql": true}
+var relatedTypes = map[string]bool{"sub-tasks": true, "parent": true, "linked": true, "jql": true, listBranchType: true, createdBranchType: true}
+
+// createdBranchType is the branch over the work the rule has raised, which
+// Jira offers as "for all created issues".
+const createdBranchType = "created"
 
 // maxBranchIssues bounds how many related work items one branch runs for.
 const maxBranchIssues = 100
@@ -575,6 +603,11 @@ func validateComponents(items []component, inBranch bool) (int, error) {
 					return 0, err
 				}
 			}
+			if item.Type == LookupActionType {
+				if _, err := validateLookupAction(item.Value); err != nil {
+					return 0, err
+				}
+			}
 			actions++
 		case "BRANCH":
 			if inBranch {
@@ -585,7 +618,12 @@ func validateComponents(items []component, inBranch bool) (int, error) {
 			}
 			var value branchValue
 			if err := json.Unmarshal(decodeComponentValue(item.Value), &value); err != nil || !relatedTypes[value.RelatedType] {
-				return 0, errors.New("a related work items branch needs relatedType sub-tasks, parent, linked or jql")
+				return 0, errors.New("a branch needs relatedType sub-tasks, parent, linked, jql, created or smart-values")
+			}
+			if value.RelatedType == listBranchType {
+				if err := validateListBranch(value); err != nil {
+					return 0, err
+				}
 			}
 			if value.RelatedType == "jql" {
 				if strings.TrimSpace(value.JQL) == "" {
@@ -618,6 +656,16 @@ func branchRelatedType(branch component) string {
 	return value.RelatedType
 }
 
+// recordCreated remembers a work item the run raised, for a branch over
+// created work to run for. A create action that changed nothing -- the work
+// was already there -- raised nothing to branch over.
+func (run *claimedRun) recordCreated(created *models.Issue) {
+	if created == nil {
+		return
+	}
+	run.CreatedIssues = append(run.CreatedIssues, created.ID)
+}
+
 // cloneVariables copies what a rule has named so far, for a branch to add to
 // without the next work item inheriting it.
 func cloneVariables(variables map[string]string) map[string]string {
@@ -640,6 +688,20 @@ func (r *Runner) branchIssues(ctx context.Context, run *claimedRun, issue *model
 	_ = json.Unmarshal(decodeComponentValue(branch.Value), &value)
 	candidates := []*models.Issue{}
 	switch value.RelatedType {
+	case createdBranchType:
+		// What this run raised, in the order it raised it. A rule that raised
+		// nothing branches over nothing rather than failing: Jira's "for all
+		// created issues" simply has nothing to run for.
+		for _, id := range run.CreatedIssues {
+			created, err := r.Service.Store.IssueByIDOrKey(ctx, run.WorkspaceID, id)
+			if errors.Is(err, pgx.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			candidates = append(candidates, created)
+		}
 	case "jql":
 		// The query is rendered first, so a branch can run for what an
 		// earlier action found: assignee = {{issue.assignee.accountId}}.
@@ -767,6 +829,12 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 	valueRaw := decodeComponentValue(action.Value)
 	render := func(text string) (string, error) { return r.renderSmartValues(ctx, run, issue, text) }
 	switch action.Type {
+	case LookupActionType:
+		value, err := validateLookupAction(action.Value)
+		if err != nil {
+			return false, err
+		}
+		return r.lookupIssues(ctx, run, issue, value, render)
 	case WikiCommentActionType, WikiLabelActionType:
 		value, err := wikiPageActionValueOf(action.Value)
 		if err != nil {
@@ -995,6 +1063,7 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 			ActorID: run.ActorID, WorkspaceID: run.WorkspaceID, ProjectIDOrKey: projectID,
 			Summary: summary, IssueTypeID: wanted.ID,
 		})
+		run.recordCreated(created)
 		return created != nil, err
 	case "jira.issue.create-subtask":
 		var value struct {
@@ -1042,6 +1111,7 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 			ActorID: run.ActorID, WorkspaceID: run.WorkspaceID, ProjectIDOrKey: issue.ProjectID,
 			Summary: summary, IssueTypeID: subtaskTypeID, ParentIDOrKey: issue.ID,
 		})
+		run.recordCreated(created)
 		return created != nil, err
 	case "jira.issue.email":
 		var value struct {

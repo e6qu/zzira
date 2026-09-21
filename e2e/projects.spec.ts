@@ -125,8 +125,11 @@ test('create a project, use its board, and update settings through UI and API', 
   // A project's configuration is saved as a template a new project starts from.
   await page.goto(`/projects/${key}/settings`);
   const templates = page.locator('#project-templates');
-  await expect(templates).toContainText('No project templates yet');
   const templateName = `Delivery template ${Date.now()}`;
+  // Templates are the site's, not this project's, so what matters here is
+  // that this one is not there yet -- another spec's template being listed
+  // says nothing about this one.
+  await expect(templates).not.toContainText(templateName);
   await templates.getByLabel('Template name').fill(templateName);
   await templates.getByLabel('Description').fill('Starts from this project.');
   await templates.getByLabel('Configuration').selectOption('SNAPSHOT');

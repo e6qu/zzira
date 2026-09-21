@@ -70,6 +70,53 @@ func TestAutomationEditorKeepsWhatItCannotShow(t *testing.T) {
 	if action := queried.Actions[0]; action.Type != "jira.create.variable" || action.Variable != "note" || action.Value != "{{issue.key}}" {
 		t.Fatalf("variable action = %+v", action)
 	}
+	// A lookup keeps its query in the row's value and how many beside it.
+	lookup, err := automationFormActions(automationActionRows{
+		Types: []string{"jira.issue.lookup"}, Values: []string{"labels = late"}, Limits: []string{"25"},
+	})
+	if err != nil || len(lookup) != 1 {
+		t.Fatalf("lookup action = %+v, %v", lookup, err)
+	}
+	if value := lookup[0]["value"].(map[string]any); value["jql"] != "labels = late" || value["limit"] != 25 {
+		t.Fatalf("lookup value = %+v", value)
+	}
+	if _, err := automationFormActions(automationActionRows{
+		Types: []string{"jira.issue.lookup"}, Values: []string{"labels = late"}, Limits: []string{"1000"},
+	}); err == nil {
+		t.Fatal("a lookup of a thousand was accepted")
+	}
+	if read := parseAutomationActions(json.RawMessage(`{"components":[{"component":"ACTION","type":"jira.issue.lookup","value":{"jql":"labels = late","limit":25}}]}`)); len(read) != 1 || read[0].Value != "labels = late" || read[0].Limit != "25" {
+		t.Fatalf("lookup read back as %+v", read)
+	}
+
+	// A rule with two branches is one the editor shows, and one with a
+	// component after a branch is not: saving it would reorder the rule.
+	two := `{"trigger":{"type":"jira.issue.event.trigger:created"},"components":[{"component":"ACTION","type":"jira.issue.comment"},{"component":"BRANCH","type":"jira.issue.related","children":[{"component":"ACTION","type":"jira.issue.add-label"}]},{"component":"BRANCH","type":"jira.issue.related","children":[{"component":"ACTION","type":"jira.issue.comment"}]}]}`
+	if got := automationEditorUnsupported(json.RawMessage(two)); got != "" {
+		t.Fatalf("a rule with two branches = %q", got)
+	}
+	after := `{"trigger":{"type":"jira.issue.event.trigger:created"},"components":[{"component":"BRANCH","type":"jira.issue.related","children":[{"component":"ACTION","type":"jira.issue.add-label"}]},{"component":"ACTION","type":"jira.issue.comment"}]}`
+	if got := automationEditorUnsupported(json.RawMessage(after)); got != "its branches" {
+		t.Fatalf("a rule acting after a branch = %q, want %q", got, "its branches")
+	}
+	branches := parseAutomationBranches(json.RawMessage(two))
+	if len(branches) != 2 || len(branches[0].Actions) != 1 || len(branches[1].Actions) != 1 {
+		t.Fatalf("branches = %+v", branches)
+	}
+
+	// A branch over the work the rule created needs nothing else said.
+	raised := parseAutomationBranch(json.RawMessage(`{"components":[{"component":"BRANCH","type":"jira.issue.related","value":{"relatedType":"created"},"children":[{"component":"ACTION","type":"jira.issue.add-label","value":{"label":"new"}}]}]}`))
+	if raised.RelatedType != "created" || len(raised.Actions) != 1 {
+		t.Fatalf("created branch = %+v", raised)
+	}
+
+	// A branch over a list reads back what it runs over and what it calls
+	// each item.
+	listed := parseAutomationBranch(json.RawMessage(`{"components":[{"component":"BRANCH","type":"jira.issue.related","value":{"relatedType":"smart-values","smartValue":"{{issue.labels}}","variableName":"topic"},"children":[{"component":"ACTION","type":"jira.issue.comment","value":{"comment":"{{topic}}"}}]}]}`))
+	if listed.RelatedType != "smart-values" || listed.SmartValue != "{{issue.labels}}" || listed.Variable != "topic" {
+		t.Fatalf("list branch = %+v", listed)
+	}
+
 	// What a rule writes in the wiki round-trips: the page in its own column,
 	// and a blank page means the page the rule ran for.
 	wiki, err := automationFormActions(automationActionRows{
