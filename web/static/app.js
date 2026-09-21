@@ -826,18 +826,6 @@
     const detail = event.detail;
     const target = detail.target;
     const holder = target && (target.id === 'issue-view-holder' || target.id === 'issue-root');
-    if (holder) {
-      // Two saves can be in flight at once -- a field saved, then another
-      // before the first answer arrives -- and they answer in whichever
-      // order they finish. An answer rendered before what the page already
-      // shows is not a later view of anything: applying it would put the
-      // field that was just saved back to what it was.
-      const incoming = seqOf(detail.serverResponse || '');
-      if (incoming > 0 && incoming < seqOfDom()) {
-        event.preventDefault();
-        return;
-      }
-    }
     const view = holder ? document.getElementById('issue-root') : null;
     typedBeforeSwap = view ? typedValues(view) : null;
     sectionsBeforeSwap = holder ? openIssueSections() : null;
