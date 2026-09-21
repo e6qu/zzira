@@ -501,7 +501,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
-	editView, err := h.buildEditDialogView(r.Context(), wsID, issue)
+	editView, err := h.buildEditDialogView(r.Context(), wsID, user.ID, issue)
 	if err != nil {
 		return nil, err
 	}
@@ -817,7 +817,9 @@ func derefIssues(in []*models.Issue) []models.Issue {
 // buildEditDialogView produces the complete edit-command schema for the
 // online endpoint. The local replica renders the same fragment from its own
 // persisted issue state while offline.
-func (h *Handler) buildEditDialogView(ctx context.Context, wsID string, issue *models.Issue) (*models.EditDialogView, error) {
+// buildEditDialogView is the edit form's data. reader is who is reading it,
+// so the fields carry the names their language gives them.
+func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, issue *models.Issue) (*models.EditDialogView, error) {
 	members, err := h.Store.MembersByWorkspace(ctx, wsID)
 	if err != nil {
 		return nil, err
@@ -828,6 +830,9 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID string, issue *m
 	}
 	customFields, err := h.Store.CustomFieldsForProject(ctx, issue.ProjectID)
 	if err != nil {
+		return nil, err
+	}
+	if err := h.Store.TranslateFields(ctx, wsID, h.Store.LocaleForUser(ctx, wsID, reader), customFields); err != nil {
 		return nil, err
 	}
 	view := &models.EditDialogView{Issue: *issue}
@@ -2543,7 +2548,7 @@ func (h *Handler) EditDialog(w http.ResponseWriter, r *http.Request, key string)
 		http.NotFound(w, r)
 		return
 	}
-	view, err := h.buildEditDialogView(r.Context(), wsID, issue)
+	view, err := h.buildEditDialogView(r.Context(), wsID, user.ID, issue)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

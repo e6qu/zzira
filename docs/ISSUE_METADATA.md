@@ -136,6 +136,15 @@ Work types, priorities and resolutions need site administration. `/settings/hier
 
 `internal/api3/issue_metadata.go`, `internal/store/issue_metadata.go`, `internal/store/issue_metadata_tasks.go`, `internal/store/issue_schemes.go`, `internal/store/work_type_hierarchy.go`, `internal/web/issue_metadata_admin.go`, `internal/web/work_type_hierarchy.go`, `migrations/162_issue_metadata.sql`; tests in `internal/api3/issue_metadata_test.go`, `internal/store/priority_schemes_test.go`, `internal/store/work_type_hierarchy_test.go`, `e2e/priority_schemes.spec.ts`, `internal/commands/resolution_test.go` and `internal/commands/hierarchy_workflow_test.go`.
 
+## Field translations
+
+An administrator names a custom field once per language on
+`/settings/custom-fields`, with an IETF language tag (`es`, `pt-br`). Everyone
+reads the name their own language gives it -- on the create form, on the edit
+dialog, on the work item, and as `translatedName` over REST -- and the field
+keeps the name the site gave it everywhere the site speaks for itself. Removing
+a translation takes that language back to the site's name.
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
@@ -144,6 +153,7 @@ Tracked in [PLAN.md](../PLAN.md).
 - Team-managed scoping (`scope`, `entityId`) is not modelled; every type is company-managed.
 - A priority scheme update applies its mappings before answering, so the 202 has no `task`.
 - The system avatar catalogue has five work type icons; Jira's is larger.
+- Work types, priorities, resolutions and statuses are not translated; fields are.
 
 ## See also
 

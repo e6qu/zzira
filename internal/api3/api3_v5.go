@@ -8,6 +8,7 @@ import (
 	"regexp"
 
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 var customFieldIDPattern = regexp.MustCompile(`^customfield_[0-9]+$`)
@@ -80,7 +81,7 @@ func (h *Handler) fieldRoute(w http.ResponseWriter, r *http.Request, parts []str
 }
 
 func (h *Handler) getCustomField(w http.ResponseWriter, r *http.Request, id string) {
-	workspaceID, _, authErr := h.authWorkspace(r)
+	workspaceID, userID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -90,32 +91,59 @@ func (h *Handler) getCustomField(w http.ResponseWriter, r *http.Request, id stri
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	translations := h.callerFieldTranslations(r, workspaceID, userID)
 	for _, f := range fields {
 		if f.ID == id || (f.AppKey != "" && f.AppKey+"__"+f.AppModuleKey == id) {
-			writeJSON(w, http.StatusOK, h.customFieldBean(f))
+			writeJSON(w, http.StatusOK, h.customFieldBeanIn(f, translations))
 			return
 		}
 	}
 	jiraError(w, http.StatusNotFound, "The field does not exist.")
 }
 
+// callerFieldTranslations is what each field is called in the caller's
+// language: the one they chose, or the one their client asked for.
+func (h *Handler) callerFieldTranslations(r *http.Request, workspaceID, userID string) map[string]store.FieldTranslation {
+	locale := h.Store.LocaleForUser(r.Context(), workspaceID, userID)
+	if locale == "" {
+		locale = store.NormalizeLocale(acceptLanguageLocale(r))
+	}
+	names, err := h.Store.FieldNamesInLocale(r.Context(), workspaceID, locale)
+	if err != nil {
+		return nil
+	}
+	return names
+}
+
 func (h *Handler) customFieldBean(f *models.CustomField) map[string]any {
+	return h.customFieldBeanIn(f, nil)
+}
+
+// customFieldBeanIn reports a field with the caller's own names beside the
+// site's: Jira's `name` is what the site calls the field and
+// `translatedName` what this caller calls it.
+func (h *Handler) customFieldBeanIn(f *models.CustomField, translations map[string]store.FieldTranslation) map[string]any {
 	schema := customFieldSchema(f)
 	bean := map[string]any{
-		"id":          f.ID,
-		"key":         f.ID,
-		"name":        f.Name,
-		"custom":      true,
-		"orderable":   true,
-		"navigable":   true,
-		"searchable":  true,
-		"clauseNames": []string{f.ID, f.Name},
-		"schema":      schema,
-		"description": f.Description,
-		"self":        h.BaseURL + "/rest/api/3/field/" + f.ID,
-		// zzira serves one locale, so the translations are the field's own text.
+		"id":                    f.ID,
+		"key":                   f.ID,
+		"name":                  f.Name,
+		"custom":                true,
+		"orderable":             true,
+		"navigable":             true,
+		"searchable":            true,
+		"clauseNames":           []string{f.ID, f.Name},
+		"schema":                schema,
+		"description":           f.Description,
+		"self":                  h.BaseURL + "/rest/api/3/field/" + f.ID,
 		"translatedName":        f.Name,
 		"translatedDescription": f.Description,
+	}
+	if translation, ok := translations[f.ID]; ok {
+		bean["translatedName"] = translation.Name
+		if translation.Description != "" {
+			bean["translatedDescription"] = translation.Description
+		}
 	}
 	if f.AppKey != "" {
 		key := f.AppKey + "__" + f.AppModuleKey
@@ -126,11 +154,12 @@ func (h *Handler) customFieldBean(f *models.CustomField) map[string]any {
 }
 
 func (h *Handler) listFields(w http.ResponseWriter, r *http.Request) {
-	workspaceID, _, e := h.authWorkspace(r)
+	workspaceID, userID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
 	}
+	translations := h.callerFieldTranslations(r, workspaceID, userID)
 	fields, err := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
@@ -148,7 +177,7 @@ func (h *Handler) listFields(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	for _, f := range fields {
-		out = append(out, h.customFieldBean(f))
+		out = append(out, h.customFieldBeanIn(f, translations))
 	}
 	writeJSON(w, http.StatusOK, out)
 }

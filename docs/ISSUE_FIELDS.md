@@ -71,4 +71,9 @@ Short keys in the table are under `com.atlassian.jira.plugin.system.customfieldt
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- `translatedName` and `translatedDescription` echo the field's own text; per-language field translations are not stored.
+- `translatedName` and `translatedDescription` are what the caller's own
+  language calls the field: their chosen locale, or the one their client asked
+  for in `Accept-Language`. `name` stays what the site calls it. An
+  administrator writes the translations on the custom fields page; a locale
+  with a region falls back to the language alone, so a `pt-BR` reader sees a
+  `pt` name when nobody wrote a Brazilian one.

@@ -36,6 +36,9 @@ type optionView struct {
 type customFieldCard struct {
 	Field    *models.CustomField
 	Contexts []fieldContextView
+	// Translations are what this field is called in each language the site
+	// has been given a name for.
+	Translations []store.FieldTranslation
 }
 
 type customFieldsData struct {
@@ -85,7 +88,8 @@ func customFieldTypes() []customFieldTypeOption {
 func fieldContextMutationMessage(err error) string {
 	switch {
 	case errors.Is(err, store.ErrFieldContextValidation), errors.Is(err, store.ErrFieldContextConflict),
-		errors.Is(err, store.ErrFieldContextNotFound), errors.Is(err, store.ErrProjectPermission):
+		errors.Is(err, store.ErrFieldContextNotFound), errors.Is(err, store.ErrProjectPermission),
+		errors.Is(err, store.ErrFieldTranslation):
 		return err.Error()
 	default:
 		return "Could not update custom field contexts."
@@ -123,6 +127,9 @@ func (h *Handler) loadCustomFieldsPage(r *http.Request, workspaceID string) (cus
 			return data, contextErr
 		}
 		card := customFieldCard{Field: field}
+		if card.Translations, err = h.Store.FieldTranslations(r.Context(), workspaceID, field.ID); err != nil {
+			return data, err
+		}
 		for _, found := range contexts {
 			view := fieldContextView{Context: found}
 			for _, projectID := range found.ProjectIDs {
@@ -229,6 +236,14 @@ func (h *Handler) CustomFieldContextMutation(w http.ResponseWriter, r *http.Requ
 		}
 		err = h.Store.SetCustomFieldContextDefault(r.Context(), workspaceID, user.ID, fieldID, contextID, value)
 		notice = "Default value saved."
+	case "translate":
+		err = h.Store.SaveFieldTranslation(r.Context(), workspaceID, user.ID, fieldID, store.FieldTranslation{
+			Locale: r.PostFormValue("locale"), Name: r.PostFormValue("translatedName"), Description: r.PostFormValue("translatedDescription"),
+		})
+		notice = "Field translation saved."
+	case "remove-translation":
+		err = h.Store.DeleteFieldTranslation(r.Context(), workspaceID, user.ID, fieldID, r.PostFormValue("locale"))
+		notice = "Field translation removed."
 	case "assets-multiple":
 		err = h.Store.SetCustomFieldContextAssetsMultiple(r.Context(), workspaceID, user.ID, fieldID, contextID, r.PostFormValue("assetsMultiple") == "on")
 		notice = "Assets objects saved."
