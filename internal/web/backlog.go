@@ -151,7 +151,9 @@ func backlogURL(boardID, message string) string {
 }
 
 func redirectBacklog(w http.ResponseWriter, r *http.Request, boardID, message string) {
-	http.Redirect(w, r, backlogURL(boardID, message), http.StatusSeeOther)
+	// The board comes from the request, so the destination goes through the
+	// check every other built path goes through rather than straight out.
+	redirectLocal(w, r, backlogURL(boardID, message))
 }
 
 func (h *Handler) CreateBacklogSprint(w http.ResponseWriter, r *http.Request, boardID string) {

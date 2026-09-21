@@ -56,8 +56,17 @@ A mention is Confluence's user link in storage format:
 - **One item per change.** Someone who matches several watches gets one item.
   Someone who is also mentioned in the change gets only the mention.
 - **Visibility.** Watchers who cannot see the changed content or comment are
-  not notified.
-- **UI.** Pages, blog posts, spaces and labels have **Watch** buttons.
+  not notified, and one who loses access afterwards stops being told: a
+  notification names its content, so the inbox hides the items it already
+  holds about content that is no longer readable, and the sync stream stops
+  carrying them, including on a replica built from scratch.
+- **Autowatch.** Writing a page or blog post, or commenting on one, watches
+  it. A draft is watched when it is published, since there is nothing to
+  watch before that, and a comment on an attachment or on custom content
+  watches nothing, as there is no page to watch. It is a personal setting on
+  your profile, separate from Jira's, and Confluence keeps it on by default.
+- **UI.** Pages, blog posts, spaces and labels have **Watch** buttons, and
+  the profile page carries the autowatch setting.
 
 ## Email
 
@@ -79,7 +88,10 @@ its space.
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- **Autowatch.** Content you create or edit is not watched automatically.
+- **Withdrawing what was already sent.** A replica that already holds a
+  notification about content the reader has since lost access to keeps it
+  until that replica is rebuilt: the sync stream stops carrying the item,
+  but nothing retracts it the way a work item's tombstone does.
 - **Email preferences.** No per-user Confluence email settings, no daily or
   weekly digest, and no "notify me about my own actions" option.
 - **Likes and shares.** Likes do not notify the author. There is no

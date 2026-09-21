@@ -64,4 +64,28 @@ test('an administrator copies a scheme before changing it', async ({ page }) => 
     has: page.getByRole('heading', { name: `Copy of ${screenName}`, exact: true }),
   });
   await expect(screenCopy).toContainText('priority');
+
+  // A workflow scheme copies with its default workflow and its type
+  // mappings, and belongs to no project until someone assigns it.
+  await page.goto('/settings/workflow-schemes');
+  const workflowSchemeName = `Routing ${stamp}`;
+  const createScheme = page.locator('form.scheme-create');
+  await createScheme.getByLabel('Name').fill(workflowSchemeName);
+  await createScheme.getByLabel('Description').fill('Routes work to the default workflow');
+  await createScheme.getByRole('button', { name: 'Create scheme' }).click();
+  // Creating a scheme opens its editor, as the page that made it intends.
+  await expect(page.getByRole('heading', { name: workflowSchemeName, level: 1 })).toBeVisible();
+
+  await page.goto('/settings/workflow-schemes');
+  const schemeRow = () => page.locator('article.workflow-list-item')
+    .filter({ has: page.getByRole('link', { name: workflowSchemeName, exact: true }) });
+  await schemeRow().getByRole('button', { name: `Copy scheme ${workflowSchemeName}` }).click();
+  await expect(page.getByRole('heading', { name: `Copy of ${workflowSchemeName}`, level: 1 })).toBeVisible();
+  await expect(page.getByRole('status')).toContainText(`Copy of ${workflowSchemeName} created`);
+  await expect(page.locator('.assigned-projects')).toContainText('No projects use this scheme.');
+
+  // And again takes the next name, as every other copy does.
+  await page.goto('/settings/workflow-schemes');
+  await schemeRow().getByRole('button', { name: `Copy scheme ${workflowSchemeName}` }).click();
+  await expect(page.getByRole('heading', { name: `Copy 2 of ${workflowSchemeName}`, level: 1 })).toBeVisible();
 });

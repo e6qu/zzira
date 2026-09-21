@@ -653,6 +653,10 @@ func newControlChartView(chart models.ControlChart, days int, now time.Time, lay
 }
 
 type flowReportData struct {
+	// Comparable is whether this page offers the previous period, which the
+	// shared controls ask before they read Compare. A page without it does
+	// not have to carry a comparison it never makes.
+	Comparable      bool
 	Compare         bool
 	Comparison      map[string]string
 	PreviousSamples []models.CycleSample
@@ -684,7 +688,11 @@ func (h *Handler) flowReport(w http.ResponseWriter, r *http.Request, page string
 		http.Error(w, "Choose a 14, 30, or 90 day window.", http.StatusBadRequest)
 		return
 	}
-	data := flowReportData{agileReportBoards: boards, Days: days, Windows: flowWindows, Compare: page == "page_control_chart_report" && wantsComparison(r)}
+	data := flowReportData{
+		agileReportBoards: boards, Days: days, Windows: flowWindows,
+		Comparable: page == "page_control_chart_report",
+		Compare:    page == "page_control_chart_report" && wantsComparison(r),
+	}
 	if boards.Board != nil {
 		look := h.siteLook(r, workspaceID)
 		now := time.Now()

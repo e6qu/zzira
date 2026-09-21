@@ -9,6 +9,7 @@ import (
 	"github.com/e6qu/zzira/internal/apps"
 	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/commands"
+	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/jackc/pgx/v5"
 )
@@ -236,7 +237,7 @@ func (h *Handler) deselectAppFieldOption(w http.ResponseWriter, r *http.Request,
 		}
 		issues, _, searchErr := h.Store.Search(r.Context(), workspaceID, actorID, compiled, appFieldDeselectLimit, 0)
 		if searchErr != nil {
-			jiraError(w, http.StatusBadRequest, "Error in the JQL Query: "+searchErr.Error())
+			jiraError(w, http.StatusBadRequest, jql.QueryMessage(searchErr.Error()))
 			return
 		}
 		// An empty match must not read as "no filter at all", which would

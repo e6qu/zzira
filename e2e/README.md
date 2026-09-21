@@ -4,10 +4,11 @@ These browser specs prove the persona journeys listed in [docs/UI_PARITY.md](../
 
 ## Run
 
-Start from a freshly migrated and seeded database. The server embeds its templates and static files, so rebuild it after any UI change.
+Start from a freshly migrated and seeded database: `make reset` is that database, and running the whole suite against one a previous run left behind produces failures that belong to the leftovers rather than to the code. The server embeds its templates and static files, so rebuild it after any UI change.
 
 ```sh
 make build                     # server and wasm worker (bin/, web/static/)
+make reset                     # empty, migrated and seeded, as CI starts
 make dev                       # Postgres on :5433, migrate, seed, server on :8080
 cd e2e
 npm ci
@@ -40,9 +41,9 @@ CI (`.github/workflows/ci.yml`) runs the whole suite against a server configured
 | Area | Specs |
 |---|---|
 | Sign-in, shell, offline | `v0`, `identity-providers`, `session-isolation`, `revocation`, `v5`, `directories` |
-| Work items and search | `create`, `v1`, `v2`, `v3`, `triage`, `resolution`, `filters`, `issue_mentions`, `people` |
+| Work items and search | `create`, `v1`, `v2`, `v3`, `triage`, `resolution`, `filters`, `issue_mentions`, `navigator_bulk`, `people` |
 | Jira Software | `backlog`, `board_columns`, `board_swimlanes`, `v4`, `projects`, `software`, `timeline`, `plans_view`, `plans_teams`, `releases` |
-| Reports and dashboards | `reports_flow`, `reports_progress`, `report_subscriptions`, `dashboards`, `dashboard_reports`, `dashboard_subscriptions`, `v6` |
+| Reports and dashboards | `reports_flow`, `reports_progress`, `reports_burndown`, `reports_workload`, `report_subscriptions`, `dashboards`, `dashboard_reports`, `dashboard_subscriptions`, `v6` |
 | Administration | `admin`, `api_tokens`, `global_permissions`, `issue_metadata`, `hierarchy`, `project_roles`, `permission_schemes`, `permission_helper`, `notification_schemes`, `notification_helper`, `notification_preferences`, `notifications`, `issue_security_schemes`, `screens`, `screen_schemes`, `field_configurations`, `custom_field_contexts`, `custom_field_options`, `classification_levels` |
 | Automation and apps | `automation`, `apps` |
 | Service Management | `service`, `service_assets` |

@@ -189,8 +189,10 @@ func TestAPITokenRefusals(t *testing.T) {
 		form url.Values
 	}{
 		{"no label", url.Values{"label": {"  "}}},
-		{"expiry in the past", url.Values{"label": {"Old"}, "expiresOn": {time.Now().AddDate(0, 0, -1).Format("2006-01-02")}}},
-		{"expiry beyond a year", url.Values{"label": {"Forever"}, "expiresOn": {time.Now().AddDate(1, 0, 2).Format("2006-01-02")}}},
+		// A date is the end of that day in UTC, so a day that is past
+		// wherever the clock is set takes two days, not one.
+		{"expiry in the past", url.Values{"label": {"Old"}, "expiresOn": {time.Now().UTC().AddDate(0, 0, -2).Format("2006-01-02")}}},
+		{"expiry beyond a year", url.Values{"label": {"Forever"}, "expiresOn": {time.Now().UTC().AddDate(1, 0, 2).Format("2006-01-02")}}},
 		// The day exactly a year out is the date the form offers, so it has
 		// to be accepted; only a later one is refused.
 		{"expiry that is not a date", url.Values{"label": {"Whenever"}, "expiresOn": {"next tuesday"}}},
@@ -213,7 +215,7 @@ func TestAPITokenRefusals(t *testing.T) {
 		t.Fatalf("a refused request still made %d token(s)", len(tokens))
 	}
 	accepted := f.post(t, f.handler.CreateAPIToken, f.ownerID, "/profile/tokens", "",
-		url.Values{"label": {"A year out"}, "expiresOn": {time.Now().AddDate(1, 0, 0).Format("2006-01-02")}})
+		url.Values{"label": {"A year out"}, "expiresOn": {time.Now().UTC().AddDate(1, 0, 0).Format("2006-01-02")}})
 	if accepted.Code != http.StatusOK {
 		t.Fatalf("the date the form offers = %d, want 200: %s", accepted.Code, accepted.Body.String())
 	}

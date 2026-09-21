@@ -365,6 +365,9 @@ const UserPreferenceLocaleKey = "jira.user.locale"
 const (
 	UserPreferenceNotifyOwnChanges  = "user.notify.own.changes"
 	UserPreferenceAutowatchDisabled = "user.autowatch.disabled"
+	// UserPreferenceWikiAutowatchDisabled is Confluence's own autowatch,
+	// which is a separate setting there and so a separate one here.
+	UserPreferenceWikiAutowatchDisabled = "confluence.user.autowatch.disabled"
 )
 
 // UserPreferenceEnabled reads a true/false preference, falling back when the
@@ -403,6 +406,27 @@ func (s *Store) AutowatchIssue(ctx context.Context, workspaceID, accountID, issu
 	}
 	_, err = s.AddWatcher(ctx, accountID, workspaceID, issueID, accountID)
 	return err
+}
+
+// AutowatchWikiContent makes the person who wrote something a watcher of the
+// page or blog post it is on, which is what Confluence does unless they turn
+// autowatch off. The caller passes content that can be watched -- a current
+// page or blog post -- so anything refused here is a real failure and is
+// returned.
+func (s *Store) AutowatchWikiContent(ctx context.Context, workspaceID, actorID, contentID string) error {
+	if contentID == "" {
+		return nil
+	}
+	disabled, err := s.UserPreferenceEnabled(ctx, workspaceID, actorID, UserPreferenceWikiAutowatchDisabled, false)
+	if err != nil || disabled {
+		return err
+	}
+	// An app or a person who is no longer of this site watches nothing.
+	var member bool
+	if err = s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships WHERE workspace_id=$1 AND user_id=$2)`, workspaceID, actorID).Scan(&member); err != nil || !member {
+		return err
+	}
+	return s.SetWikiWatch(ctx, workspaceID, actorID, actorID, "content", contentID, true)
 }
 
 func validPreferenceKey(key string) error {

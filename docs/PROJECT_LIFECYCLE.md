@@ -60,8 +60,11 @@ Reads need Browse projects.
 
 See [PLAN.md](../PLAN.md).
 
-- Search refuses `includeArchivedProjects=true`, so work items in archived
-  projects cannot be searched.
+- Enhanced search takes `includeArchivedProjects=true` and returns the work
+  of archived projects with it, checking Browse projects as it would for a
+  live one. The choice is kept with the search, so its later pages answer
+  the question its first page was asked; a work item archived in its own
+  right stays out either way.
 - Anonymous callers get an empty recent list; Jira keeps a session-scoped
   history for them.
 

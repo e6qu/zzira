@@ -38,8 +38,11 @@ type planPageData struct {
 	Sources   []planSourceOption
 	Blocking  map[string][]store.PlanDependency
 	BlockedBy map[string][]store.PlanDependency
-	Notice    string
-	Error     string
+	// Releases are the plan's cross-project releases with the work behind
+	// each member version.
+	Releases []store.PlanReleaseView
+	Notice   string
+	Error    string
 }
 
 // planContext loads a plan the user may view, with whether they may edit it
@@ -134,6 +137,10 @@ func (h *Handler) PlanPage(w http.ResponseWriter, r *http.Request) {
 		Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
 	for _, capacity := range planning.Capacity {
 		data.Teams = append(data.Teams, planTeamOption{ID: capacity.Team.ID, Name: capacity.Name})
+	}
+	if data.Releases, err = h.Store.PlanReleaseViews(r.Context(), workspaceID, user.ID, plan); err != nil {
+		http.Error(w, "Could not load the plan's cross-project releases.", http.StatusInternalServerError)
+		return
 	}
 	names, err := h.Store.PlanSourceNames(r.Context(), workspaceID, plan)
 	if err != nil {
@@ -342,8 +349,10 @@ func (h *Handler) PlanCapacityChange(w http.ResponseWriter, r *http.Request) {
 	planBack(w, r, plan, scenario.ID, "", "notice", "Capacity set in "+scenario.Name+".")
 }
 
-// PlanSettingsChange sets whether dependent work may share an iteration.
-func (h *Handler) PlanSettingsChange(w http.ResponseWriter, r *http.Request) {
+// PlanSchedulingChange sets whether dependent work may share an iteration.
+// It is the one setting the plan page itself offers; the rest of a plan's
+// setup is on its settings page.
+func (h *Handler) PlanSchedulingChange(w http.ResponseWriter, r *http.Request) {
 	if !parseForm(w, r) {
 		return
 	}

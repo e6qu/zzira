@@ -2,7 +2,6 @@ package api3
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -55,11 +54,22 @@ func TestParseRemainingBulkEditFamilies(t *testing.T) {
 		}
 	}
 
-	// Type and status change through their own bulk operations.
-	for family, operation := range map[string]string{"issueType": "bulk move", "status": "bulk transition"} {
-		_, err := parseBulkEditOperations(map[string]json.RawMessage{family: json.RawMessage(`{"issueTypeId":"1","statusId":"1"}`)})
-		if err == nil || !strings.Contains(err.Error(), operation) {
-			t.Errorf("%s refusal = %v", family, err)
+	// The type and the status are fields of the edit, named as Jira names
+	// them, and each carries only its own id.
+	for family, want := range map[string]string{"issueType": `issuetype "10001"`, "status": `status "10002"`} {
+		body := `{"issueTypeId":"10001"}`
+		if family == "status" {
+			body = `{"statusId":"10002"}`
+		}
+		parsed, err := parseBulkEditOperations(map[string]json.RawMessage{family: json.RawMessage(body)})
+		if err != nil || len(parsed) != 1 {
+			t.Fatalf("%s = %v, %v", family, parsed, err)
+		}
+		if got := parsed[0].operation.FieldID + " " + string(parsed[0].operation.Value); got != want {
+			t.Errorf("%s operation = %q, want %q", family, got, want)
+		}
+		if _, err := parseBulkEditOperations(map[string]json.RawMessage{family: json.RawMessage(`{"issueTypeId":"1","statusId":"1"}`)}); err == nil {
+			t.Errorf("%s accepted the other field's id", family)
 		}
 	}
 	if _, err := parseBulkEditOperations(map[string]json.RawMessage{"datePickerFields": json.RawMessage(`[{"fieldId":"customfield_11","date":{"formattedDate":"20/Sep/26"}}]`)}); err == nil {

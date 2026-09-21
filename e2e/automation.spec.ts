@@ -664,6 +664,56 @@ test('admin builds a rule that starts when work is linked', async ({ page }) => 
   await expect(page).toHaveURL('/settings/automation');
 });
 
+test('admin builds rules that start when work is assigned and when a file arrives', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const issue = async (summary: string) => {
+    const created = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary, issuetype: { name: 'Task' } } } });
+    expect(created.status(), await created.text()).toBe(201);
+    return (await created.json()).key as string;
+  };
+  const assigned = await issue(`Assigned trigger ${stamp}`);
+  const attached = await issue(`Attachment trigger ${stamp}`);
+  const me = await (await page.request.get('/rest/api/3/myself', { headers })).json();
+
+  const rule = async (name: string, trigger: string, jql: string, label: string) => {
+    await page.goto('/settings/automation/new');
+    await page.getByLabel('Rule name').fill(name);
+    await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption(trigger);
+    await page.getByLabel('JQL query').fill(jql);
+    await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.add-label');
+    await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(label);
+    await page.getByRole('button', { name: 'Create rule' }).click();
+    await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+    await expect(page.getByRole('combobox', { name: 'Trigger', exact: true })).toHaveValue(trigger);
+    return page.url();
+  };
+  const assignedLabel = `assigned-${stamp}`;
+  const attachedLabel = `has-file-${stamp}`;
+  const assignedRule = await rule(`E2E assigned trigger ${stamp}`, 'jira.issue.event.trigger:assigned', `key = ${assigned}`, assignedLabel);
+  const attachedRule = await rule(`E2E attachment trigger ${stamp}`, 'jira.issue.attachment.added', `key = ${attached}`, attachedLabel);
+
+  const owned = await page.request.put(`/rest/api/3/issue/${assigned}/assignee`, { headers, data: { accountId: me.accountId } });
+  expect(owned.status(), await owned.text()).toBe(204);
+  await expect.poll(async () => (await (await page.request.get(`/rest/api/3/issue/${assigned}`, { headers })).json()).fields.labels, { timeout: 15_000 }).toContain(assignedLabel);
+
+  const upload = await page.request.post(`/rest/api/3/issue/${attached}/attachments`, {
+    headers: { Authorization: apiAuthHeader(), 'X-Atlassian-Token': 'no-check' },
+    multipart: { file: { name: `plan-${stamp}.txt`, mimeType: 'text/plain', buffer: Buffer.from('the plan') } },
+  });
+  expect(upload.status(), await upload.text()).toBe(200);
+  await expect.poll(async () => (await (await page.request.get(`/rest/api/3/issue/${attached}`, { headers })).json()).fields.labels, { timeout: 15_000 }).toContain(attachedLabel);
+
+  for (const url of [assignedRule, attachedRule]) {
+    await page.goto(url);
+    await page.getByRole('button', { name: 'Disable' }).click();
+    await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+    await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+    await expect(page).toHaveURL('/settings/automation');
+  }
+});
+
 test('admin builds a rule whose condition asks whether related work matches', async ({ page }) => {
   await login(page);
   const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };

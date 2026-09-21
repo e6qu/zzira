@@ -1,10 +1,11 @@
 SERVER_PORT ?= 8080
 DATABASE_URL ?= postgres://zzira:zzira@localhost:5433/zzira?sslmode=disable
 WORKSPACE_SLUG ?= zzira
+DATABASE_NAME ?= zzira
 VERSION ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 LDFLAGS = -s -w -X github.com/e6qu/zzira/internal/build.Version=$(VERSION)
 
-.PHONY: all assets server client-wasm test build migrate dev down seed demo conformance e2e clean
+.PHONY: all assets server client-wasm test build migrate dev down reset seed demo conformance e2e clean
 
 all: assets build test
 
@@ -36,6 +37,20 @@ dev:
 
 down:
 	docker compose down
+
+# reset puts the development database back to where CI starts: empty,
+# migrated and seeded. A drop that fails because something is still
+# connected would otherwise leave yesterday's data behind, and a browser run
+# reads whatever it finds as fact, so the connections are closed first and
+# psql stops on the first error rather than reporting it and carrying on.
+reset:
+	docker compose up -d --wait postgres
+	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U zzira -d postgres \
+		-c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$(DATABASE_NAME)' AND pid <> pg_backend_pid()"
+	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U zzira -d postgres -c 'DROP DATABASE IF EXISTS $(DATABASE_NAME)'
+	docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U zzira -d postgres -c 'CREATE DATABASE $(DATABASE_NAME)'
+	$(MAKE) migrate
+	$(MAKE) seed
 
 seed:
 	go run ./cmd/server -mode=seed

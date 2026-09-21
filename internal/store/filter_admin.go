@@ -204,6 +204,28 @@ func (s *Store) FilterByID(ctx context.Context, workspaceID, userID, id string) 
 	return filter, nil
 }
 
+// FilterJQLForSearch resolves a filter a query names -- by the id clients
+// see, by its stored id or by its name -- to the JQL it holds, and only for
+// someone who may see that filter. A query that could read a filter it has
+// no access to would read its results too.
+func (s *Store) FilterJQLForSearch(ctx context.Context, workspaceID, userID, nameOrID string) (string, bool) {
+	nameOrID = strings.TrimSpace(nameOrID)
+	if nameOrID == "" {
+		return "", false
+	}
+	var jqlText string
+	// A name is what a person writes; ties go to the filter they own, then
+	// to the oldest, so one query always means one filter.
+	err := s.Pool.QueryRow(ctx, `SELECT COALESCE(f.jql,'') FROM filters f
+		WHERE f.workspace_id=$1 AND (f.id=$3 OR f.jira_id::text=$3 OR lower(f.name)=lower($3)) AND `+filterAccess+`
+		ORDER BY (f.owner_id=$2) DESC, f.jira_id
+		LIMIT 1`, workspaceID, userID, nameOrID).Scan(&jqlText)
+	if err != nil {
+		return "", false
+	}
+	return jqlText, true
+}
+
 func (s *Store) Filters(ctx context.Context, workspaceID, userID string, search FilterSearch) ([]*models.Filter, error) {
 	access := filterAccess
 	if search.Override {

@@ -78,7 +78,7 @@ The release hub plans a project's versions, tracks their scope and delivery evid
 
 ## Gaps
 
-- No cross-project releases: a version belongs to exactly one project (`project_versions.project_id`). Plans store `crossProjectReleases` but do nothing with them (see [Jira Software](JIRA_SOFTWARE.md#gaps)).
+- A version still belongs to exactly one project (`project_versions.project_id`); a plan's cross-project release groups such versions and reads them back ([Jira Software](JIRA_SOFTWARE.md#plans)), but the release hub and the project release pages do not show the group.
 - No grouping of deployments across projects, no configurable release gates, and no environment promotion policies.
 - Dates are shown in fixed English format; the user's locale and the site time zone are not applied.
 - The release hub needs a connection. Versions are not stored in the offline replica.

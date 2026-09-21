@@ -13,10 +13,13 @@ import (
 // recorded change.
 type boardWork struct {
 	key, summary string
-	created      time.Time
-	statusID     string
-	category     string
-	changes      []statusChange
+	// issueType is the work type's name, which the cycle time report groups
+	// by: how long a bug takes is not how long a story takes.
+	issueType string
+	created   time.Time
+	statusID  string
+	category  string
+	changes   []statusChange
 }
 
 type statusChange struct {
@@ -62,7 +65,7 @@ func (s *Store) boardWorkHistory(ctx context.Context, board *models.Board, userI
 		return nil, compiled.Err
 	}
 	args := append([]any{board.ProjectID, userID}, compiled.Args...)
-	rows, err := s.Pool.Query(ctx, `SELECT i.id, i.key, i.summary, i.created_at, st.id, st.category `+issueJoinTables()+`
+	rows, err := s.Pool.Query(ctx, `SELECT i.id, i.key, i.summary, i.created_at, st.id, st.category, COALESCE(ito.name,it.name) `+issueJoinTables()+`
 		WHERE i.project_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` AND (`+compiled.Where+`)
 		ORDER BY i.created_at, i.id`, args...)
 	if err != nil {
@@ -74,7 +77,7 @@ func (s *Store) boardWorkHistory(ctx context.Context, board *models.Board, userI
 	for rows.Next() {
 		var id string
 		item := &boardWork{}
-		if err := rows.Scan(&id, &item.key, &item.summary, &item.created, &item.statusID, &item.category); err != nil {
+		if err := rows.Scan(&id, &item.key, &item.summary, &item.created, &item.statusID, &item.category, &item.issueType); err != nil {
 			rows.Close()
 			return nil, err
 		}

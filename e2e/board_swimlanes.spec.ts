@@ -99,3 +99,40 @@ test('board administrator groups the board by epic and by named queries', async 
   await page.goto('/board/brd_default');
   await expect(page.getByRole('region', { name: 'All work swimlane', exact: true })).toBeVisible();
 });
+
+// Jira's Stories grouping: a sub-task sits in the lane of the work it belongs
+// to, that work leads its own lane, and an epic the board shows has no story
+// above it so it stands in the catch-all.
+test('board administrator groups the board by stories', async ({ page, request }) => {
+  const auth = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const create = async (fields: Record<string, unknown>) => {
+    const created = await request.post('/rest/api/3/issue', { headers: auth, data: { fields: { project: { key: 'ZZ' }, ...fields } } });
+    expect(created.status()).toBe(201);
+    return (await created.json()).key as string;
+  };
+
+  const storyKey = await create({ summary: `Story lane ${stamp}`, issuetype: { name: 'Task' } });
+  const subtaskKey = await create({ summary: `Sub of the story ${stamp}`, issuetype: { name: 'Sub-task' }, parent: { key: storyKey } });
+  const epicKey = await create({ summary: `Above the stories ${stamp}`, issuetype: { name: 'Epic' } });
+
+  await login(page);
+  await page.goto('/board/brd_default/settings');
+  await page.getByLabel('Swimlanes').selectOption('stories');
+  await page.getByRole('button', { name: 'Save board settings' }).click();
+  await expect(page.getByRole('status')).toContainText('Board settings saved.');
+
+  await page.goto('/board/brd_default');
+  const storyLane = page.getByRole('region', { name: new RegExp(`^${storyKey}`) });
+  await expect(storyLane.getByRole('link', { name: new RegExp(`^${storyKey}`) })).toBeVisible();
+  await expect(storyLane.getByRole('link', { name: new RegExp(`^${subtaskKey}`) })).toBeVisible();
+  const everythingElse = page.getByRole('region', { name: /Everything else/ });
+  await expect(everythingElse.getByRole('link', { name: new RegExp(`^${epicKey}`) })).toBeVisible();
+  await accessible(page);
+
+  // Put the board back the way the other specs expect it.
+  await page.goto('/board/brd_default/settings');
+  await page.getByLabel('Swimlanes').selectOption('none');
+  await page.getByRole('button', { name: 'Save board settings' }).click();
+  await expect(page.getByRole('status')).toContainText('Board settings saved.');
+});

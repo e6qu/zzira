@@ -8,7 +8,7 @@ Boards show a project's work in columns. They also carry the board's backlog, sp
 |---|---|
 | `/board/{id}` | Columns with cards in rank order. Supports drag and keyboard moves, quick filters, assignee filters, WIP limit feedback, swimlanes and a work item preview. |
 | `/board/{id}/backlog` | Backlog and sprints: create, edit, start and complete sprints, and move and rank work items. |
-| `/board/{id}/settings` | For board administrators. The board's columns (add, rename, delete, reorder the statuses between them, and a WIP limit each), its filter and its estimate, swimlanes (`none` or `assignee`), card fields (priority, assignee, labels), up to 20 quick filters, and the board's administrators (users and groups). |
+| `/board/{id}/settings` | For board administrators. The board's columns (add, rename, delete, reorder the statuses between them, and a WIP limit each), its filter and its estimate, swimlanes (`none`, `assignee`, `epic`, `stories`, `project` or `query`), card fields (priority, assignee, labels), up to 20 quick filters, and the board's administrators (users and groups). |
 | `/projects/{key}/settings` | Create and delete the project's boards (`POST /projects/{key}/boards`). |
 
 ## Board REST API
@@ -63,7 +63,7 @@ The board, backlog and sprint issue reads take Jira's parameters:
 
 **Columns.** A column is a name and the statuses that stand in it, in order. Several statuses may share a column -- work in any of them appears there, ranked as one list -- and a status stands in at most one column, which the settings page enforces by asking each status once which column it belongs to. A status in no column is not on the board: its work items are out of the board's scope until a column takes them. A column's WIP limit counts the work in every status it gathers. Each board keeps at least one column.
 
-**Swimlanes.** A board groups its work by nothing, by assignee, by epic, by project, or by named queries, chosen in board settings.
+**Swimlanes.** A board groups its work by nothing, by assignee, by epic, by stories, by project, or by named queries, chosen in board settings. Grouping by stories names each lane after the nearest base-level work item -- for a sub-task the work it belongs to, for a story itself -- so a sub-task sits with its story; work above that level, such as an epic the board shows, stands in *Everything else*. A story is told from the epic above it by the work type hierarchy level, so the one parent link a work item carries is enough.
 
 - **Epic** puts a work item in the lane of the nearest ancestor whose work type sits at or above the epic level, walking the parent chain; what has no such ancestor stands in *Work under no epic*.
 - **Project** groups by the work item's project, which a board whose filter spans several projects shows apart.
@@ -96,8 +96,6 @@ Every write goes through the command layer, which asks for the project permissio
 The default permission scheme grants Schedule issues, Edit issues, Transition issues and Manage sprints to the project's Members role, which every workspace member joins. A project on a scheme that withholds them serves the board read-only. See [PROJECT_ROLES.md](PROJECT_ROLES.md).
 
 ## Gaps
-
-- Swimlanes do not offer Jira's Stories grouping: it needs an immediate parent distinguished from an ancestor epic, and a work item here carries one parent link.
 
 Remaining work is tracked in [PLAN.md](../PLAN.md).
 

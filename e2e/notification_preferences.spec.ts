@@ -35,25 +35,25 @@ test('a member chooses autowatch and own-change notifications from their profile
   await page.goto('/profile');
   const section = page.getByRole('region', { name: 'Email notifications' });
   await expect(section.getByRole('combobox', { name: 'My changes' })).toHaveValue('false');
-  await expect(section.getByRole('combobox', { name: 'Autowatch' })).toHaveValue('enabled');
+  await expect(section.getByRole('combobox', { name: 'Autowatch', exact: true })).toHaveValue('enabled');
   await accessible(page);
   expect(await createAndCheckWatching(`Autowatched ${Date.now()}`)).toBe(true);
 
   // Turning autowatch off stops new work from being watched.
   await section.getByRole('combobox', { name: 'My changes' }).selectOption('true');
-  await section.getByRole('combobox', { name: 'Autowatch' }).selectOption('disabled');
+  await section.getByRole('combobox', { name: 'Autowatch', exact: true }).selectOption('disabled');
   await section.getByRole('button', { name: 'Save notification preferences' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Notification preferences saved' })).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'My changes' })).toHaveValue('true');
-  await expect(page.getByRole('combobox', { name: 'Autowatch' })).toHaveValue('disabled');
+  await expect(page.getByRole('combobox', { name: 'Autowatch', exact: true })).toHaveValue('disabled');
   expect(await preference('user.notify.own.changes')).toBe('true');
   expect(await preference('user.autowatch.disabled')).toBe('true');
   expect(await createAndCheckWatching(`Not autowatched ${Date.now()}`)).toBe(false);
 
   // Restore the defaults for other journeys.
   await page.getByRole('combobox', { name: 'My changes' }).selectOption('false');
-  await page.getByRole('combobox', { name: 'Autowatch' }).selectOption('enabled');
+  await page.getByRole('combobox', { name: 'Autowatch', exact: true }).selectOption('enabled');
   await page.getByRole('button', { name: 'Save notification preferences' }).click();
-  await expect(page.getByRole('combobox', { name: 'Autowatch' })).toHaveValue('enabled');
+  await expect(page.getByRole('combobox', { name: 'Autowatch', exact: true })).toHaveValue('enabled');
   expect(await createAndCheckWatching(`Autowatched again ${Date.now()}`)).toBe(true);
 });

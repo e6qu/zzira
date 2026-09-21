@@ -144,7 +144,10 @@ test('create journey and createmeta share every supported field', async ({ page,
   await page.fill('#create-labels', 'validated');
   await page.getByRole('checkbox', { name: 'Create another' }).uncheck();
   await dialog.getByRole('button', { name: 'Create issue' }).click();
-  await expect(page).toHaveURL(/\/browse\/ZZ-\d+$/);
+  // Landing on the new work item is a whole page load, which boots the
+  // offline worker; on a machine running the rest of this suite that can
+  // take longer than the five seconds an expectation waits by default.
+  await page.waitForURL(/\/browse\/ZZ-\d+$/, { timeout: 30_000 });
   await expect(page.locator('.issue-summary')).toHaveText(retrySummary);
 
   await page.locator('#global-create-issue').click();

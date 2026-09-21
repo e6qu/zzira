@@ -8,14 +8,22 @@ Project reports chart delivery, sprint, flow and issue-analysis data. They count
 |---|---|---|---|
 | Report list | `/projects/{key}/reports` | all | The built-in reports, with the agile ones offered on software projects only, then a card for each `jira:report` app module labelled with its category ([APPS.md](APPS.md)) |
 | DORA metrics | `/projects/{key}/reports/dora` | all | `window` of 7, 30 (default) or 90 days |
+| Deployment frequency | `/projects/{key}/reports/deployment-frequency` | all | `window` of 7, 30 (default) or 90 days; `group` of day (default), week or month |
 | Sprint report | `/projects/{key}/reports/sprint` | software | A scrum board and one started sprint |
 | Velocity chart | `/projects/{key}/reports/velocity` | software | A scrum board |
 | Cumulative flow diagram | `/projects/{key}/reports/cumulative-flow` | software | Any board; 14, 30 (default) or 90 days |
 | Control chart | `/projects/{key}/reports/control-chart` | software | Any board; 14, 30 (default) or 90 days |
+| Cycle time | `/projects/{key}/reports/cycle-time` | software | Any board; 14, 30 (default) or 90 days |
 | Epic report | `/projects/{key}/reports/epic` | software | An epic and a board |
 | Version report | `/projects/{key}/reports/version` | software | An unarchived version and a board |
+| Epic burndown | `/projects/{key}/reports/epic-burndown` | software | An epic and a board with started sprints |
+| Release burndown | `/projects/{key}/reports/release-burndown` | software | An unarchived version and a board with started sprints |
 | Created vs. resolved | `/projects/{key}/reports/created-vs-resolved` | all | 7, 30 (default) or 90 days; `cumulative=true` shows running totals |
 | Resolution time | `/projects/{key}/reports/resolution-time` | all | 7, 30 (default) or 90 days |
+| User workload | `/projects/{key}/reports/user-workload` | all | Unresolved work in the project |
+| Version workload | `/projects/{key}/reports/version-workload` | all | An unarchived version |
+| Time tracking | `/projects/{key}/reports/time-tracking` | all | Unresolved work; `version` narrows it to one version |
+| Work by field | `/projects/{key}/reports/group-by` | all | `field` of assignee (default), issuetype, status, priority, resolution or reporter |
 | Service desk report | `/service/agent/{desk}/reports` | service | 7, 30 or 90 days |
 
 - A window value outside the allowed set returns 400.
@@ -32,18 +40,39 @@ A report draws only from data that already exists, so a site being filled for a 
 
 | Report | Needs |
 |---|---|
-| DORA metrics | Deployments submitted to `/rest/deployments/0.1/bulk` whose environment `type` is `production`, whose `issueKeys` name work items of this project the viewer can browse, and whose `lastUpdated` falls in the window. Lead time also needs commits submitted to `/rest/devinfo/0.10/bulk` with `issueKeys` that a production deployment shares. Time to restore also needs service desk incident requests ([SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md#operations-incidents-problems-changes)) that were given a resolution inside the window. |
+| DORA metrics | Deployments submitted to `/rest/deployments/0.1/bulk` whose environment `type` and pipeline the project counts (`production` and every pipeline by default), whose `issueKeys` name work items of this project the viewer can browse, and whose `lastUpdated` falls in the window. Lead time also needs commits submitted to `/rest/devinfo/0.10/bulk` with `issueKeys` that a production deployment shares. Time to restore also needs service desk incident requests ([SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md#operations-incidents-problems-changes)) that were given a resolution inside the window. |
 | Sprint report | A scrum board, and a sprint that has started. Future sprints are not offered, so the board needs an active or a completed sprint holding work items. |
 | Velocity chart | A scrum board with at least one completed sprint. Each bar needs work that was in the sprint at its start (commitment) and work done before it closed. |
 | Cumulative flow diagram | A board whose columns carry statuses, and work its filter shows. Work with no recorded status change counts in its current status from the day it was created. |
 | Control chart | Work that moved into an in-progress status and then into a done status, with the done move inside the window. Work created straight into a done status never has a cycle time. |
 | Epic report | A board, plus an epic with child work items. Sub-tasks are not counted. |
+| Epic burndown | A board with sprints that have started, and an epic with child work items. Each bar is one sprint: what it finished, and what arrived in the epic while it ran. |
+| Release burndown | The same, of the work whose fix version is the one chosen. |
+| User workload | Work in the project that nobody has resolved. The time each person holds is the sum of the remaining estimates, so work without one counts as a work item and adds no time; the summary says how many carry an estimate. |
+| Version workload | The same, of the work whose fix version is the one chosen. It is grouped twice: by the person holding it and by what kind of work it is. |
+| Time tracking | Unresolved work with an original estimate, a remaining estimate or logged time. Accuracy is the original estimate less what the work has cost and what it has left, so it is negative when the work has run over. |
+| Work by field | Any work in the project, resolved or not: the report is about how the work divides rather than what is left. |
 | Version report | A board, plus an unarchived version that work items name in `fixVersions`. |
 | Created vs. resolved | Work items created, or given a resolution, on days inside the window. |
 | Resolution time | Work items whose current resolution was set on a day inside the window. |
 | Service desk report | Requests created on the desk inside the window. CSAT also needs satisfaction ratings, and the breach count needs SLA cycles that have breached. |
 
 Each report also counts only work the viewer can browse, so a demo account needs Browse projects on the project (and, for the service report, agent access to the desk).
+
+## Deployment frequency and cycle time
+
+The DORA page totals four measures; two of them also answer a question of
+their own.
+
+- **Deployment frequency** buckets the deployments the project counts as
+  production (see the DORA mapping below) by day, week or month across the
+  window, with the weekly rate and the failed or rolled-back count beside it.
+  A week starts on Monday.
+- **Cycle time** reads a board's completed work the way the control chart
+  does -- first move into an in-progress status to the move into a done one --
+  and reports the 50th, 85th and 95th percentiles for the board and for each
+  work type, with the longest item of each type. Percentiles are nearest-rank,
+  so every one of them is a time some work item actually took.
 
 ## DORA metrics
 
@@ -56,8 +85,14 @@ Builds, deployments and commits arrive through the [Jira Software DevOps APIs](J
 | Change failure rate | Failed and rolled-back production deployments divided by all successful, failed and rolled-back production deployments |
 | Time to restore service | Median time from an incident's creation to the first change that gave it a resolution |
 
+**Excluded periods.** A project's administrators can leave stretches of days
+out of these numbers -- a code freeze, a shutdown, a drill -- on the report
+itself. A deployment made inside one is not counted, and neither is an incident
+opened inside one; the report says how many periods it left out. Lead time and
+time to restore read the same exclusions.
+
 **Which deployments count**
-- **Production:** the deployment's environment `type`, as sent by the provider, must be `production`. The environment name is ignored.
+- **Production:** the deployment's environment `type`, as sent by the provider, must be one the project counts as production. A project counts `production` until its administrators choose otherwise on the report itself (`POST /projects/{key}/reports/dora/mapping`), where they pick from `production`, `staging`, `testing`, `development` and `unmapped`, and may name the pipelines that count -- none named counts every pipeline. The environment name is ignored. The report says what it counted.
 - **Identity:** a deployment is its pipeline, environment and `deploymentSequenceNumber`.
 - **Latest update:** every accepted build and deployment update is stored and never changed. For each deployment, the report reads the update with the highest `updateSequenceNumber`, and dates it by that update's `lastUpdated`.
 - **Window:** that date must fall in the window, which ends at the moment the page is drawn and runs back 7, 30 or 90 days.
@@ -205,9 +240,7 @@ Service project agents and managers see, for the requests the desk received in t
 
 ## Gaps
 
-- The DORA mapping cannot be configured. You cannot choose which environments, pipelines or incident types count; production is fixed as environment type `production`.
-- DORA has no excluded-period calendars.
-- Several Jira reports are not built: release burndown, epic burndown, user workload, version workload, time tracking, single-level group-by, deployment frequency and cycle time.
+- DORA counts the incidents Jira Service Management raises; which work items count as incidents cannot be configured.
 
 Remaining work is tracked in [PLAN.md](../PLAN.md).
 

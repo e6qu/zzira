@@ -23,8 +23,13 @@ type timelineBar struct {
 }
 
 type timelineRow struct {
-	Item        models.TimelineItem
+	Item models.TimelineItem
+	// Child is whether this row hangs under another, and Depth how deep: a
+	// hierarchy can be taller than epic and story, so a row indents by how
+	// far down it sits rather than by being a child at all.
 	Child       bool
+	Depth       int
+	Indent      int
 	Bar         *timelineBar
 	StartLabel  string
 	DueLabel    string
@@ -72,12 +77,14 @@ func newTimelineData(project *models.Project, timeline models.ProjectTimeline, t
 			}
 		}
 	}
-	for _, epic := range timeline.Epics {
-		consider(epic.StartDate, epic.DueDate)
-		for _, child := range epic.Children {
-			consider(child.StartDate, child.DueDate)
+	var considerTree func(items []models.TimelineItem)
+	considerTree = func(items []models.TimelineItem) {
+		for _, item := range items {
+			consider(item.StartDate, item.DueDate)
+			considerTree(item.Children)
 		}
 	}
+	considerTree(timeline.Epics)
 	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
 	if earliest.IsZero() {
 		earliest, latest = today, today
@@ -98,8 +105,8 @@ func newTimelineData(project *models.Project, timeline models.ProjectTimeline, t
 	if !today.Before(first) && today.Before(end) {
 		data.ShowToday, data.TodayX = true, x(today)
 	}
-	row := func(item models.TimelineItem, child bool) timelineRow {
-		out := timelineRow{Item: item, Child: child}
+	row := func(item models.TimelineItem, depth int) timelineRow {
+		out := timelineRow{Item: item, Child: depth > 0, Depth: depth, Indent: depth * 20}
 		start, hasStart := parseTimelineDay(item.StartDate)
 		due, hasDue := parseTimelineDay(item.DueDate)
 		if hasStart {
@@ -123,12 +130,14 @@ func newTimelineData(project *models.Project, timeline models.ProjectTimeline, t
 		}
 		return out
 	}
-	for _, epic := range timeline.Epics {
-		data.Rows = append(data.Rows, row(epic, false))
-		for _, child := range epic.Children {
-			data.Rows = append(data.Rows, row(child, true))
+	var appendRows func(items []models.TimelineItem, depth int)
+	appendRows = func(items []models.TimelineItem, depth int) {
+		for _, item := range items {
+			data.Rows = append(data.Rows, row(item, depth))
+			appendRows(item.Children, depth+1)
 		}
 	}
+	appendRows(timeline.Epics, 0)
 	return data
 }
 
@@ -232,6 +241,13 @@ type planListRow struct {
 
 type plansPageData struct {
 	Plans []planListRow
+	// Sources are what a new plan can read, so a plan is created where plans
+	// are listed rather than only over REST. Creating one is site
+	// administration, as the REST resource is.
+	Sources     []planSourceChoice
+	Estimations []string
+	CanCreate   bool
+	Error       string
 }
 
 // PlansPage lists the active plans the user can view.
@@ -245,7 +261,17 @@ func (h *Handler) PlansPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load plans.", http.StatusInternalServerError)
 		return
 	}
-	data := plansPageData{}
+	data := plansPageData{Error: r.URL.Query().Get("error"), Estimations: planEstimations}
+	if data.CanCreate, err = h.Store.IsAdmin(r.Context(), workspaceID, user.ID); err != nil {
+		http.Error(w, "Could not load plans.", http.StatusInternalServerError)
+		return
+	}
+	if data.CanCreate {
+		if data.Sources, err = h.planSourceChoices(r, workspaceID, user.ID, store.Plan{}); err != nil {
+			http.Error(w, "Could not load what a plan can read.", http.StatusInternalServerError)
+			return
+		}
+	}
 	for _, plan := range plans {
 		if plan.Status != "" && plan.Status != "Active" {
 			continue

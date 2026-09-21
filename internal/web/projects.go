@@ -41,6 +41,13 @@ type projectSettingsData struct {
 	TemplateError      string
 	Creating           bool
 	Saved              bool
+	// SiteAdmin carries the site-level actions this page also hosts, so a
+	// project administrator is not shown a control their role cannot use.
+	SiteAdmin bool
+	// ProjectWorkflow reports that the project routes through a workflow of
+	// its own, which its administrators may edit. A shared workflow is a
+	// site administrator's to change, so the page offers to start one.
+	ProjectWorkflow bool
 }
 
 type projectPropertyView struct{ Key, Value string }
@@ -241,6 +248,17 @@ func (h *Handler) projectSettings(w http.ResponseWriter, r *http.Request, key st
 				return
 			}
 		}
+		if data.Project.WorkflowID != "" {
+			wf, workflowErr := h.Store.WorkflowByID(r.Context(), wsID, data.Project.WorkflowID)
+			if workflowErr == nil {
+				data.ProjectWorkflow = wf.ProjectID == data.Project.ID
+			}
+		}
+	}
+	data.SiteAdmin, err = h.Store.IsAdmin(r.Context(), wsID, user.ID)
+	if err != nil {
+		http.Error(w, "Could not read site administration.", 500)
+		return
 	}
 	active := "project-settings"
 	if data.Creating {
@@ -300,19 +318,15 @@ func (h *Handler) ProjectTemplateSettings(w http.ResponseWriter, r *http.Request
 	http.Redirect(w, r, target+"?template="+url.QueryEscape(notice), http.StatusSeeOther)
 }
 
+// ProjectGovernanceSettings saves the sender, features and app properties a
+// project's administrators own, which is what the settings page promises and
+// what the store enforces on each of these calls.
 func (h *Handler) ProjectGovernanceSettings(w http.ResponseWriter, r *http.Request) {
-	user, workspaceID, ok := h.requireAdminPage(w, r)
-	if !ok {
+	user, workspaceID, project, ok := h.requireProjectAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
 		return
 	}
-	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, r.PathValue("key"))
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	if !parseForm(w, r) {
-		return
-	}
+	var err error
 	action := r.PostFormValue("action")
 	notice := "Project configuration saved."
 	switch action {
@@ -468,4 +482,56 @@ func (h *Handler) ProjectBoards(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, settings+"?board="+url.QueryEscape(notice))
+}
+
+type projectConfigurationData struct {
+	Project *models.Project
+	Entries []store.ProjectConfigurationEntry
+	// Lead, Category and Sender repeat the project's own details, so the page
+	// answers "how is this project configured" without a second stop.
+	Lead     string
+	Category string
+	Sender   string
+	// SenderVerified reports that the site has verified the sender address's
+	// domain. Mail leaves as the site's own sender until it has, so the page
+	// says which is happening.
+	SenderVerified bool
+}
+
+// ProjectConfigurationPage names every scheme the project routes through and
+// where each one is changed. Jira calls this a project's summary; without it
+// a manager has to open each site directory and look for their project.
+func (h *Handler) ProjectConfigurationPage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, project, ok := h.requireProjectAdminPage(w, r)
+	if !ok {
+		return
+	}
+	entries, err := h.Store.ProjectConfigurationSummary(r.Context(), workspaceID, project.ID)
+	if err != nil {
+		http.Error(w, "Could not load the project configuration.", http.StatusInternalServerError)
+		return
+	}
+	data := projectConfigurationData{Project: project, Entries: entries, Sender: project.SenderEmail}
+	if at := strings.LastIndex(project.SenderEmail, "@"); at >= 0 {
+		if data.SenderVerified, err = h.Store.SenderDomainVerified(r.Context(), workspaceID, project.SenderEmail[at+1:]); err != nil {
+			http.Error(w, "Could not read the sender domain.", http.StatusInternalServerError)
+			return
+		}
+	}
+	if project.LeadAccountID != "" {
+		if lead, err := h.Store.UserByID(r.Context(), project.LeadAccountID); err == nil && lead != nil {
+			data.Lead = lead.DisplayName
+		}
+	}
+	categories, err := h.Store.ProjectCategories(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "Could not load project categories.", http.StatusInternalServerError)
+		return
+	}
+	for _, category := range categories {
+		if category.ID == project.CategoryID {
+			data.Category = category.Name
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_project_configuration", user, workspaceID, data, "project-configuration", project.Key)
 }

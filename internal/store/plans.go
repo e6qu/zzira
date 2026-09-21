@@ -703,7 +703,9 @@ func validatePlanTeamTx(ctx context.Context, tx pgx.Tx, workspaceID string, plan
 		return planInvalid("The planning style must be Scrum or Kanban.")
 	}
 	if team.SprintLength != nil && *team.SprintLength <= 0 {
-		return planInvalid("The sprint length must be a positive number of days.")
+		// Jira's plan team measures its sprint length in weeks, which is what
+		// the planning capacity, the browser form and the REST field all mean.
+		return planInvalid("The sprint length must be a positive number of weeks.")
 	}
 	if team.Capacity != nil && *team.Capacity < 0 {
 		return planInvalid("The capacity must not be negative.")

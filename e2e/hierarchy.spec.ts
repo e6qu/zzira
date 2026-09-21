@@ -92,4 +92,24 @@ test('an administrator adds a level above Epic and parents an epic under it', as
   await expect(page.getByRole('link', { name: new RegExp(initiativeKey) }).first()).toBeVisible();
   await page.goto(`/browse/${initiativeKey}`);
   await expect(page.getByRole('link', { name: new RegExp(epicKey) }).first()).toBeVisible();
+
+  // The roadmap rolls up through the new level: the initiative carries the
+  // epic, and the epic still carries its own work.
+  const task = await request.post('/rest/api/3/issue', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { fields: { project: { key: 'ZZ' }, summary: `Index ${stamp}`, issuetype: { name: 'Task' }, parent: { key: epicKey } } },
+  });
+  expect(task.status(), await task.text()).toBe(201);
+  const taskKey = (await task.json()).key as string;
+
+  await page.goto('/projects/ZZ/timeline');
+  await expect(page.getByRole('heading', { name: 'Timeline', level: 1 })).toBeVisible();
+  const indentOf = async (key: string) => {
+    const work = page.locator('tr').filter({ has: page.locator(`a[href="/browse/${key}"]`) }).locator('.timeline-work');
+    await expect(work).toHaveCount(1);
+    return work.evaluate(element => (element as HTMLElement).style.paddingLeft);
+  };
+  expect(await indentOf(initiativeKey)).toBe('0px');
+  expect(await indentOf(epicKey)).toBe('20px');
+  expect(await indentOf(taskKey)).toBe('40px');
 });

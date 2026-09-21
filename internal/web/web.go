@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/authn"
@@ -23,7 +24,6 @@ import (
 	"github.com/e6qu/zzira/internal/render"
 	"github.com/e6qu/zzira/internal/secretbox"
 	"github.com/e6qu/zzira/internal/store"
-	"github.com/e6qu/zzira/internal/workflow"
 )
 
 type Handler struct {
@@ -108,34 +108,40 @@ type projectIssuesData struct {
 	Projects        []*models.Project
 	IssueTypes      []models.IssueType
 	BulkTransitions []models.WorkflowTransition
-	BoardID         string
-	Issues          []*models.Issue
-	Selected        *models.Issue
-	Statuses        []models.Status
-	Members         []*models.User
-	Filters         []*models.Filter
-	ActiveFilter    string
-	Chips           []navigatorChip
-	SaveJQL         string
-	Mode            string
-	JQL             string
-	Text            string
-	Status          string
-	Assignee        string
-	Sort            string
-	Direction       string
-	Total           int
-	ResultStart     int
-	ResultEnd       int
-	Page            int
-	PageCount       int
-	PreviousURL     string
-	NextURL         string
-	BasicURL        string
-	AdvancedURL     string
-	SortURLs        map[string]string
-	JQLError        string
-	CanBulk         bool
+	// BulkPriorities are the priorities a bulk edit can set, which are the
+	// project's own. BulkComponents and BulkVersions are the same for the
+	// two list fields a project owns.
+	BulkPriorities []models.Priority
+	BulkComponents []*models.ProjectComponent
+	BulkVersions   []*models.Version
+	BoardID        string
+	Issues         []*models.Issue
+	Selected       *models.Issue
+	Statuses       []models.Status
+	Members        []*models.User
+	Filters        []*models.Filter
+	ActiveFilter   string
+	Chips          []navigatorChip
+	SaveJQL        string
+	Mode           string
+	JQL            string
+	Text           string
+	Status         string
+	Assignee       string
+	Sort           string
+	Direction      string
+	Total          int
+	ResultStart    int
+	ResultEnd      int
+	Page           int
+	PageCount      int
+	PreviousURL    string
+	NextURL        string
+	BasicURL       string
+	AdvancedURL    string
+	SortURLs       map[string]string
+	JQLError       string
+	CanBulk        bool
 }
 
 type bulkIssueTaskData struct {
@@ -491,24 +497,11 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		return nil, err
 	}
 	var transitions []models.WorkflowTransition
-	evaluation := workflow.ContextForIssue(user.ID, issue)
-	evaluation.StatusHistory, err = h.Store.IssueStatusHistory(r.Context(), wsID, issue.ID)
+	evaluation, err := h.Store.IssueWorkflowEvaluation(r.Context(), wsID, user.ID, issue)
 	if err != nil {
 		return nil, err
 	}
-	evaluation.Approvals, err = h.Store.IssueApprovalDecisions(r.Context(), issue.ID)
-	if err != nil {
-		return nil, err
-	}
-	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), wsID, issue.ID)
-	if err != nil {
-		return nil, err
-	}
-	evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(r.Context(), wsID, issue.ID)
-	if err != nil {
-		return nil, err
-	}
-	editView, err := h.buildEditDialogView(r.Context(), wsID, issue)
+	editView, err := h.buildEditDialogView(r.Context(), wsID, user.ID, issue)
 	if err != nil {
 		return nil, err
 	}
@@ -519,16 +512,25 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	for _, field := range editView.CustomFields {
 		customByID[field.ID] = field
 	}
-	for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
-		message, _, _ := t.ScreenReminder()
-		screenFields := t.ScreenFields()
-		asked := []models.CustomFieldView{}
-		for _, id := range screenFields {
-			if field, ok := customByID[id]; ok {
-				asked = append(asked, field)
+	// A transition is offered only to someone who may move the work, as the
+	// REST resource offers them: a control the server would refuse is not a
+	// control.
+	canTransition, err := h.Store.HasProjectPermission(r.Context(), wsID, user.ID, issue.ProjectID, issue.ID, "TRANSITION_ISSUES")
+	if err != nil {
+		return nil, err
+	}
+	if canTransition {
+		for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
+			message, _, _ := t.ScreenReminder()
+			screenFields := t.ScreenFields()
+			asked := []models.CustomFieldView{}
+			for _, id := range screenFields {
+				if field, ok := customByID[id]; ok {
+					asked = append(asked, field)
+				}
 			}
+			transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: screenFields, ScreenCustomFields: asked, ScreenMessage: message})
 		}
-		transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: screenFields, ScreenCustomFields: asked, ScreenMessage: message})
 	}
 	// Resolution is offered to people who may resolve work, as Jira ties the
 	// field to the Resolve issues permission.
@@ -815,7 +817,9 @@ func derefIssues(in []*models.Issue) []models.Issue {
 // buildEditDialogView produces the complete edit-command schema for the
 // online endpoint. The local replica renders the same fragment from its own
 // persisted issue state while offline.
-func (h *Handler) buildEditDialogView(ctx context.Context, wsID string, issue *models.Issue) (*models.EditDialogView, error) {
+// buildEditDialogView is the edit form's data. reader is who is reading it,
+// so the fields carry the names their language gives them.
+func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, issue *models.Issue) (*models.EditDialogView, error) {
 	members, err := h.Store.MembersByWorkspace(ctx, wsID)
 	if err != nil {
 		return nil, err
@@ -826,6 +830,9 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID string, issue *m
 	}
 	customFields, err := h.Store.CustomFieldsForProject(ctx, issue.ProjectID)
 	if err != nil {
+		return nil, err
+	}
+	if err := h.Store.TranslateFields(ctx, wsID, h.Store.LocaleForUser(ctx, wsID, reader), customFields); err != nil {
 		return nil, err
 	}
 	view := &models.EditDialogView{Issue: *issue}
@@ -1020,6 +1027,13 @@ func (h *Handler) serveIssue(w http.ResponseWriter, r *http.Request, user *model
 	if err != nil {
 		http.NotFound(w, r)
 		return
+	}
+	// Opening a work item is what puts it in your history, which the issue
+	// picker offers and lastViewed and issueHistory() search. The REST read
+	// asks for this with updateHistory=true; a person reading the page is
+	// saying the same thing by being here.
+	if err := h.Store.RecordIssueView(r.Context(), wsID, user.ID, view.Issue.ID); err != nil {
+		log.Printf("record issue view %s: %s", strconv.Quote(view.Issue.Key), strconv.Quote(err.Error()))
 	}
 	if isHX(r) {
 		writeFragment(w, "issue_view", view)
@@ -1625,6 +1639,18 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		if data.BulkPriorities, err = h.Store.PrioritiesForProject(r.Context(), wsID, project.ID); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if data.BulkComponents, err = h.Store.Components(r.Context(), wsID, project.ID, "", "name"); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if data.BulkVersions, err = h.Store.ProjectVersions(r.Context(), project.ID); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 	}
 	h.writeWorkspacePage(w, r, "page_project", user, wsID, data, "issues", project.ID)
 }
@@ -1636,20 +1662,7 @@ func (h *Handler) commonBulkTransitions(ctx context.Context, workspaceID, userID
 		if err != nil {
 			return nil, err
 		}
-		evaluation := workflow.ContextForIssue(userID, issue)
-		evaluation.StatusHistory, err = h.Store.IssueStatusHistory(ctx, workspaceID, issue.ID)
-		if err != nil {
-			return nil, err
-		}
-		evaluation.Approvals, err = h.Store.IssueApprovalDecisions(ctx, issue.ID)
-		if err != nil {
-			return nil, err
-		}
-		evaluation.Transitions, err = h.Store.IssueTransitionHistory(ctx, workspaceID, issue.ID)
-		if err != nil {
-			return nil, err
-		}
-		evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(ctx, workspaceID, issue.ID)
+		evaluation, err := h.Store.IssueWorkflowEvaluation(ctx, workspaceID, userID, issue)
 		if err != nil {
 			return nil, err
 		}
@@ -1694,23 +1707,11 @@ func (h *Handler) SubmitBulkIssueDelete(w http.ResponseWriter, r *http.Request, 
 		http.NotFound(w, r)
 		return
 	}
-	selected := r.Form["issue"]
-	if len(selected) < 1 || len(selected) > 1000 {
-		http.Error(w, "select between 1 and 1,000 work items", http.StatusBadRequest)
+	issues, ok := h.bulkSelection(w, r, user, workspaceID, project.ID)
+	if !ok {
 		return
 	}
-	seen := make(map[string]bool, len(selected))
-	items := make([]store.BulkIssueTaskItem, 0, len(selected))
-	for _, idOrKey := range selected {
-		issue, lookupErr := h.issueForUser(r, user, workspaceID, idOrKey)
-		if lookupErr != nil || issue.ProjectID != project.ID || seen[issue.ID] {
-			http.Error(w, "the selection contains an invalid or inaccessible work item", http.StatusBadRequest)
-			return
-		}
-		seen[issue.ID] = true
-		items = append(items, store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID})
-	}
-	task, err := h.Store.EnqueueBulkDeleteTask(r.Context(), workspaceID, user.ID, items, r.FormValue("sendNotification") == "true")
+	task, err := h.Store.EnqueueBulkDeleteTask(r.Context(), workspaceID, user.ID, bulkTaskItems(issues), r.FormValue("sendNotification") == "true")
 	if errors.Is(err, store.ErrBulkTaskLimit) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -1758,20 +1759,12 @@ func (h *Handler) SubmitBulkIssueMove(w http.ResponseWriter, r *http.Request, pr
 		http.Error(w, "a destination parent is required only for sub-task work types", http.StatusBadRequest)
 		return
 	}
-	selected := r.Form["issue"]
-	if len(selected) < 1 || len(selected) > 1000 {
-		http.Error(w, "select between 1 and 1,000 work items", http.StatusBadRequest)
+	selection, ok := h.bulkSelection(w, r, user, workspaceID, sourceProject.ID)
+	if !ok {
 		return
 	}
-	seen := map[string]bool{}
-	items := make([]store.BulkIssueMoveTaskItem, 0, len(selected))
-	for _, idOrKey := range selected {
-		issue, lookupErr := h.issueForUser(r, user, workspaceID, idOrKey)
-		if lookupErr != nil || issue.ProjectID != sourceProject.ID || seen[issue.ID] {
-			http.Error(w, "the selection contains an invalid or inaccessible work item", http.StatusBadRequest)
-			return
-		}
-		seen[issue.ID] = true
+	items := make([]store.BulkIssueMoveTaskItem, 0, len(selection))
+	for _, issue := range selection {
 		items = append(items, store.BulkIssueMoveTaskItem{
 			BulkIssueTaskItem: store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID},
 			ProjectID:         destination.ID, IssueTypeID: issueType.ID, ParentID: parentID, InferStatusDefaults: true,
@@ -1803,21 +1796,13 @@ func (h *Handler) SubmitBulkIssueTransition(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	transitionID := strings.TrimSpace(r.FormValue("transition"))
-	selected := r.Form["issue"]
-	if transitionID == "" || len(selected) < 1 || len(selected) > 1000 {
-		http.Error(w, "select between 1 and 1,000 work items and a transition", http.StatusBadRequest)
+	if transitionID == "" {
+		http.Error(w, "choose a transition", http.StatusBadRequest)
 		return
 	}
-	seen := map[string]bool{}
-	issues := make([]*models.Issue, 0, len(selected))
-	for _, idOrKey := range selected {
-		issue, lookupErr := h.issueForUser(r, user, workspaceID, idOrKey)
-		if lookupErr != nil || issue.ProjectID != project.ID || seen[issue.ID] {
-			http.Error(w, "the selection contains an invalid or inaccessible work item", http.StatusBadRequest)
-			return
-		}
-		seen[issue.ID] = true
-		issues = append(issues, issue)
+	issues, ok := h.bulkSelection(w, r, user, workspaceID, project.ID)
+	if !ok {
+		return
 	}
 	common, err := h.commonBulkTransitions(r.Context(), workspaceID, user.ID, issues)
 	if err != nil {
@@ -1840,6 +1825,199 @@ func (h *Handler) SubmitBulkIssueTransition(w http.ResponseWriter, r *http.Reque
 		items = append(items, store.BulkIssueTransitionTaskItem{BulkIssueTaskItem: store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID}, TransitionID: transitionID})
 	}
 	task, err := h.Store.EnqueueBulkTransitionTask(r.Context(), workspaceID, user.ID, items, r.FormValue("sendNotification") == "true")
+	if errors.Is(err, store.ErrBulkTaskLimit) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"/bulk/"+url.PathEscape(task.WireID()), http.StatusSeeOther)
+}
+
+// bulkSelection resolves the work items a navigator form selected, holding
+// them to Jira's bounds and to the reader's own access. Every bulk submission
+// starts here, so one selection cannot behave differently from another. The
+// caller has already reported anything else its own form is missing, so the
+// bound reported here is the selection's alone.
+func (h *Handler) bulkSelection(w http.ResponseWriter, r *http.Request, user *models.User, workspaceID, projectID string) ([]*models.Issue, bool) {
+	selected := r.Form["issue"]
+	if len(selected) < 1 || len(selected) > 1000 {
+		http.Error(w, "select between 1 and 1,000 work items", http.StatusBadRequest)
+		return nil, false
+	}
+	seen := make(map[string]bool, len(selected))
+	issues := make([]*models.Issue, 0, len(selected))
+	for _, idOrKey := range selected {
+		issue, lookupErr := h.issueForUser(r, user, workspaceID, idOrKey)
+		if lookupErr != nil || issue.ProjectID != projectID || seen[issue.ID] {
+			http.Error(w, "the selection contains an invalid or inaccessible work item", http.StatusBadRequest)
+			return nil, false
+		}
+		seen[issue.ID] = true
+		issues = append(issues, issue)
+	}
+	return issues, true
+}
+
+// bulkTaskItems names a selection the way a durable bulk task records it.
+func bulkTaskItems(issues []*models.Issue) []store.BulkIssueTaskItem {
+	items := make([]store.BulkIssueTaskItem, 0, len(issues))
+	for _, issue := range issues {
+		items = append(items, store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID})
+	}
+	return items
+}
+
+// SubmitBulkIssueEdit sets one field across the selection, through the same
+// durable task Jira's bulk edit endpoint queues. The navigator offers the
+// fields a reader can set on every work item without a screen: the assignee,
+// the priority, the due date and labels.
+func (h *Handler) SubmitBulkIssueEdit(w http.ResponseWriter, r *http.Request, projectKey string) {
+	if !parseForm(w, r) {
+		return
+	}
+	user, workspaceID, ok := h.requireBulkChange(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByKey(r.Context(), workspaceID, projectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	issues, ok := h.bulkSelection(w, r, user, workspaceID, project.ID)
+	if !ok {
+		return
+	}
+	operations, err := bulkEditOperations(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	task, err := h.Store.EnqueueBulkEditTask(r.Context(), workspaceID, user.ID, store.BulkIssueEditTaskPayload{
+		Issues: bulkTaskItems(issues), Operations: operations,
+		SendBulkNotification: r.FormValue("sendNotification") == "true",
+	})
+	if errors.Is(err, store.ErrBulkTaskLimit) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/issues/"+url.PathEscape(project.Key)+"/bulk/"+url.PathEscape(task.WireID()), http.StatusSeeOther)
+}
+
+// bulkEditOperations reads every field the navigator's editor was asked to
+// change, in the shapes the bulk edit command reads: a user or a priority by
+// id, labels, components and versions as lists. A field is changed when its
+// box is ticked, so the editor sets several at once the way Jira's does, and
+// an empty box clears the field -- except a priority, which Jira has no unset
+// value for.
+func bulkEditOperations(r *http.Request) ([]store.BulkIssueEditOperation, error) {
+	encode := func(v any) json.RawMessage {
+		encoded, _ := json.Marshal(v)
+		return encoded
+	}
+	list := func(name string) []string {
+		values := []string{}
+		for _, value := range r.Form[name] {
+			for _, part := range strings.Split(value, ",") {
+				if trimmed := strings.TrimSpace(part); trimmed != "" {
+					values = append(values, trimmed)
+				}
+			}
+		}
+		return values
+	}
+	operations := []store.BulkIssueEditOperation{}
+	for _, field := range r.Form["field"] {
+		value := strings.TrimSpace(r.FormValue(map[string]string{
+			"assignee": "valueAssignee", "priority": "valuePriority",
+			"duedate": "valueDueDate", "summary": "valueSummary",
+		}[field]))
+		switch field {
+		case "assignee":
+			// The command sets the assignee from an account id, and an empty
+			// one unassigns, as the single-item edit does.
+			operations = append(operations, store.BulkIssueEditOperation{FieldID: "assignee", Action: "SET", Value: encode(value)})
+		case "priority":
+			if value == "" {
+				return nil, fmt.Errorf("choose a priority")
+			}
+			operations = append(operations, store.BulkIssueEditOperation{FieldID: "priority", Action: "SET", Value: encode(value)})
+		case "duedate":
+			if value != "" {
+				if _, err := time.Parse("2006-01-02", value); err != nil {
+					return nil, fmt.Errorf("a due date is a date, as YYYY-MM-DD")
+				}
+			}
+			operations = append(operations, store.BulkIssueEditOperation{FieldID: "duedate", Action: "SET", Value: encode(value)})
+		case "labels":
+			labels := list("valueLabels")
+			if len(labels) == 0 {
+				return nil, fmt.Errorf("name at least one label")
+			}
+			action := "ADD"
+			if r.FormValue("labelAction") == "remove" {
+				action = "REMOVE"
+			}
+			operations = append(operations, store.BulkIssueEditOperation{FieldID: "labels", Action: action, Value: encode(labels)})
+		case "components":
+			operations = append(operations, store.BulkIssueEditOperation{
+				FieldID: "components", Action: bulkListAction(r.FormValue("componentAction")), Value: encode(list("valueComponents")),
+			})
+		case "fixVersions":
+			operations = append(operations, store.BulkIssueEditOperation{
+				FieldID: "fixVersions", Action: bulkListAction(r.FormValue("versionAction")), Value: encode(list("valueFixVersions")),
+			})
+		default:
+			return nil, fmt.Errorf("choose a field to change")
+		}
+	}
+	if len(operations) == 0 {
+		return nil, fmt.Errorf("choose a field to change")
+	}
+	return operations, nil
+}
+
+// bulkListAction reads what to do with a list field: replace what is there,
+// add to it, or take values out of it. An empty list with SET clears it.
+func bulkListAction(action string) string {
+	switch action {
+	case "add":
+		return "ADD"
+	case "remove":
+		return "REMOVE"
+	}
+	return "SET"
+}
+
+// SubmitBulkIssueWatch starts watching, or stops watching, every work item in
+// the selection as the reader themselves.
+func (h *Handler) SubmitBulkIssueWatch(w http.ResponseWriter, r *http.Request, projectKey string, watch bool) {
+	if !parseForm(w, r) {
+		return
+	}
+	// Watching is not a change to the work item, so it asks for no more than
+	// being able to see it -- as the single-item watch does.
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.ProjectByKey(r.Context(), workspaceID, projectKey)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	issues, ok := h.bulkSelection(w, r, user, workspaceID, project.ID)
+	if !ok {
+		return
+	}
+	task, err := h.Store.EnqueueBulkWatchTask(r.Context(), workspaceID, user.ID, bulkTaskItems(issues), watch)
 	if errors.Is(err, store.ErrBulkTaskLimit) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -2370,7 +2548,7 @@ func (h *Handler) EditDialog(w http.ResponseWriter, r *http.Request, key string)
 		http.NotFound(w, r)
 		return
 	}
-	view, err := h.buildEditDialogView(r.Context(), wsID, issue)
+	view, err := h.buildEditDialogView(r.Context(), wsID, user.ID, issue)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

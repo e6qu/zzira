@@ -25,7 +25,9 @@ status.
 
 ## Language
 
-- `AND`, `OR`, `NOT`, parentheses and bare-text search.
+- `AND`, `OR`, `NOT`, parentheses and bare-text search. A bare term is the
+  `text` field written without naming it, so it searches the work item's own
+  text and the text of its comments.
 - Operators `=`, `!=`, `~`, `!~`, `>`, `>=`, `<`, `<=`, `IN`, `NOT IN`,
   `IS EMPTY`, `IS NOT EMPTY`.
 - Fields: `key`/`issue`/`workItem`, `id`, `summary`, `description`,
@@ -33,17 +35,37 @@ status.
   `statusCategory`, `priority`, `assignee`, `reporter`, `creator`, `labels`,
   `fixVersion`, `affectedVersion`, `component(s)`, `sprint`, `parent`,
   `resolution`, `resolved`/`resolutionDate`, `created`, `updated`,
-  `due`/`dueDate`, `originalEstimate`, `remainingEstimate`, `timeSpent`,
-  `workRatio`, `approvals`, service SLA fields, typed custom fields (`cf[N]`,
-  id or name), app field aliases and indexed entity properties.
+  `due`/`dueDate`, `originalEstimate`/`timeOriginalEstimate`,
+  `remainingEstimate`/`timeEstimate`, `timeSpent`, `workRatio`, `approvals`,
+  `text`, `comment`, `watcher(s)`, `voter(s)`, `votes`, `attachments`,
+  `issueLinkType`, `level`, `category`, `hierarchyLevel`,
+  `statusCategoryChangedDate`, `lastViewed`, `filter` (and its aliases
+  `request`, `savedFilter` and `searchRequest`),
+  `"Request participants"`, `request-channel-type`, service SLA fields,
+  typed custom fields (`cf[N]`, id or name), app field aliases and indexed
+  entity properties. `issueKey` and `type` are Jira's aliases for `key` and
+  `issuetype`.
+- A saved filter is a query a query may name: `filter = "Open work"` matches
+  what that filter matches, by name or by either of its ids, and the filter's
+  own query is compiled where it is named. A filter the searcher may not see
+  is refused the way one that does not exist is, a filter that leads back to
+  itself is refused rather than followed, and a chain may lead through ten.
+- Fields that are things attached to the work rather than values on it ask
+  what Jira lets them ask: `text` and `comment` take `~` and `!~` alone --
+  `text` searches the work item's own text and its comments -- `attachments`
+  takes only `IS EMPTY` and `IS NOT EMPTY`, and `watcher`, `voter` and
+  `issueLinkType` take the equality and list operators. `issueLinkType`
+  matches a link type by its name or by either direction's wording.
 - Project clauses match key (any case), numeric ID or name.
 - Multi-value fields (labels, components, versions, current and past sprints)
   follow Jira's empty-field behavior for negated comparisons.
 - History: `WAS`, `WAS IN`, `WAS NOT`, `WAS NOT IN` and `CHANGED` with `FROM`,
   `TO`, `BY`, `BEFORE`, `AFTER` and `DURING`, for `status`, `assignee`,
   `reporter`, `priority`, `parent`, `labels`, `summary`, `description`,
-  `fixVersion` and `affectedVersion`. History reads the `actions` log and
-  compares both stored IDs and display names.
+  `fixVersion`, `affectedVersion` and `resolution`, which is every field
+  Jira's own history search covers. History reads the `actions` log and
+  compares both stored IDs and display names; `resolution WAS Unresolved`
+  matches having had no resolution, which the log records as an empty value.
 - Dates: Jira date literals, relative values (`-5d`) and date functions with
   increments (`startOfMonth(-1M)`, `startOfMonth(-1)`). Relative dates resolve
   once per compilation in UTC.
@@ -58,7 +80,7 @@ The catalog is `jqlFunctions` in `internal/api3/api3_jql.go`.
 |---|---|
 | Date | `now()`, `startOfDay/Week/Month/Year()`, `endOfDay/Week/Month/Year()`, `currentLogin()`, `lastLogin()` |
 | User | `currentUser()`, `membersOf()` |
-| Work item | `linkedIssues()`/`linkedWorkItems()` (optional link types), `watchedIssues()`/`watchedWorkItems()`, `votedIssues()`/`votedWorkItems()`, `updatedBy()` (optional date range) |
+| Work item | `linkedIssues()`/`linkedWorkItems()` (optional link types), `watchedIssues()`/`watchedWorkItems()`, `votedIssues()`/`votedWorkItems()`, `issueHistory()`/`workItemHistory()` (what you have opened), `issuesWithRemoteLinksByGlobalId()`/`workItemsWithRemoteLinksByGlobalId()` (1 to 100 global ids), `updatedBy()` (optional date range) |
 | Sprint | `openSprints()`, `closedSprints()`, `futureSprints()` |
 | Work type | `standardIssueTypes()`/`standardWorkTypes()`, `subtaskIssueTypes()`/`subtaskWorkTypes()` |
 | Version | `releasedVersions()`, `unreleasedVersions()`, `latestReleasedVersion()`, `earliestUnreleasedVersion()` |
@@ -94,6 +116,11 @@ matches nothing.
   invalid booleans are 400.
 - Numeric Jira issue IDs work wherever an ID or key is accepted; internal
   `iss_*` IDs stay stable for sync.
+- **Values:** a clause naming a status, priority, resolution or work type that
+  the site does not have answers Jira's `The value 'X' does not exist for the
+  field 'Y'.` -- as an error under `strict`, as a warning under `warn`, where
+  the clause then matches nothing. `Unresolved` stays the absence of a
+  resolution, and `EMPTY` is not a value.
 - `validateQuery`: `strict` (or `true`) answers 400 with every error; `warn`
   (or `false`) runs the query with failing clauses matching nothing, skips
   unsortable ordering and returns `warningMessages`; `none` does the same
@@ -184,21 +211,12 @@ advanced (`?mode=advanced`) modes and saves queries as
 
 See [PLAN.md](../PLAN.md).
 
-- System fields not searchable: `text`, `comment`, `watcher`/`watchers`,
-  `voter`/`votes`, `attachments`, `level` (security level), `lastViewed`,
-  `issueLinkType`, `category`, `filter`, `statusCategoryChangedDate`,
-  `hierarchyLevel`, and the aliases `issuekey`, `type`, `timeoriginalestimate`
-  and `timeestimate`.
-- JSM fields not searchable: `Request participants`, `Organizations`,
-  `request-channel-type`.
-- Functions missing: `issueHistory()`, `issuesWithRemoteLinksByGlobalId()`.
-- `WAS`/`CHANGED` not supported for `resolution` (or components and sprints).
-- `includeArchivedProjects=true` is refused although projects can be
-  archived.
+- JSM fields not searchable: `Organizations`, because a request is not shared
+  with an organization here; only a desk is.
 - `versionedRepresentations` carry only the current value, not field history.
-- No value validation: a clause naming a status, project or other value that
-  does not exist matches nothing instead of reporting Jira's "The value 'X'
-  does not exist for the field 'Y'" error.
+- Value validation covers status, priority, resolution and work type (by name
+  or id). A project, component, version, user or custom field option that does
+  not exist still matches nothing rather than reporting it.
 
 ## See also
 

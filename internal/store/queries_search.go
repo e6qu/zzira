@@ -43,7 +43,7 @@ SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.descri
 	       i.updated_seq, i.updated_at,
 	       it.jira_id, it.hierarchy_level, pr2.jira_id, COALESCE(pro.status_color, pr2.status_color), COALESCE(pro.icon_url, pr2.icon_url),
 	       res.id, res.jira_id, COALESCE(reso.name, res.name), COALESCE(reso.description, res.description), i.resolved_at,
-	       i.created_at, i.archived_at,
+	       i.created_at, i.archived_at, i.status_category_changed_at,
 	       i.original_estimate_seconds, i.remaining_estimate_seconds,
 	       (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id),
 	       (SELECT sum(t.original_estimate_seconds) FROM issues t WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask)),
@@ -438,7 +438,20 @@ func (s *Store) SecuritySchemes(ctx context.Context) ([]models.SecurityScheme, e
 // `userPlaceholder` (e.g. "$2"). Admins bypass issue security. Callers must
 // append userID to their args at that position.
 func VisibleIssuePredicate(alias string, userPlaceholder string) string {
-	return alias + ".archived_at IS NULL AND EXISTS (SELECT 1 FROM projects visible_project WHERE visible_project.id=" + alias + ".project_id AND visible_project.lifecycle_state='ACTIVE')" +
-		" AND jira_has_project_permission(" + alias + ".workspace_id," + alias + ".project_id," + userPlaceholder + "," + alias + ".id,'BROWSE_PROJECTS')" +
+	return VisibleIssuePredicateIn(alias, userPlaceholder, false)
+}
+
+// VisibleIssuePredicateIn is the same question asked of a search that was
+// told to include the work of archived projects, which Jira's enhanced
+// search offers. An archived work item stays out either way: the choice is
+// about the project it is in, not about the work item.
+func VisibleIssuePredicateIn(alias string, userPlaceholder string, includeArchivedProjects bool) string {
+	live := " AND EXISTS (SELECT 1 FROM projects visible_project WHERE visible_project.id=" + alias + ".project_id AND visible_project.lifecycle_state='ACTIVE')"
+	archived := "FALSE"
+	if includeArchivedProjects {
+		live, archived = "", "TRUE"
+	}
+	return alias + ".archived_at IS NULL" + live +
+		" AND jira_has_project_permission(" + alias + ".workspace_id," + alias + ".project_id," + userPlaceholder + "," + alias + ".id,'BROWSE_PROJECTS'," + archived + ")" +
 		" AND jira_issue_security_visible(" + alias + ".workspace_id," + alias + ".project_id," + alias + ".id," + userPlaceholder + "," + alias + ".security_level_id)"
 }

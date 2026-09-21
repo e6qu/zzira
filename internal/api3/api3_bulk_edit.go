@@ -2,6 +2,7 @@ package api3
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -70,6 +71,10 @@ func (h *Handler) submitBulkEdit(w http.ResponseWriter, r *http.Request) {
 		bulkOperationError(w, http.StatusBadRequest, validationErr.Error())
 		return
 	}
+	if err := h.resolveBulkEditTargets(r.Context(), workspaceID, issues, operations); err != nil {
+		bulkOperationError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	items := make([]store.BulkIssueTaskItem, 0, len(issues))
 	for _, issue := range issues {
 		items = append(items, store.BulkIssueTaskItem{ID: issue.ID, JiraID: issue.JiraID})
@@ -87,6 +92,53 @@ func (h *Handler) submitBulkEdit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"taskId": task.WireID()})
 }
 
+// resolveBulkEditTargets turns the ids a client names the work type and the
+// status by into the ones the task stores. Jira's ids are what a client
+// holds; the task carries this product's own, as every other bulk operation's
+// payload does, so the executor never has to guess which kind it was handed.
+func (h *Handler) resolveBulkEditTargets(ctx context.Context, workspaceID string, issues []*models.Issue, operations []store.BulkIssueEditOperation) error {
+	for index := range operations {
+		var named string
+		if err := json.Unmarshal(operations[index].Value, &named); err != nil {
+			continue
+		}
+		switch operations[index].FieldID {
+		case "issuetype":
+			issueType, err := h.Store.IssueTypeByIDOrName(ctx, workspaceID, named)
+			if err != nil {
+				return fmt.Errorf("issueType.issueTypeId %q is not a work type of this site", named)
+			}
+			operations[index].Value = mustJSON(issueType.ID)
+		case "status":
+			// A status can belong to one project, so the one named has to be
+			// the same status everywhere the selection reaches.
+			resolved := ""
+			for _, issue := range issues {
+				status, err := h.Store.StatusByIDForProject(ctx, named, issue.ProjectID)
+				if err != nil {
+					return fmt.Errorf("status.statusId %q is not a status of every selected work item's project", named)
+				}
+				if resolved != "" && resolved != status.ID {
+					return fmt.Errorf("status.statusId %q names a different status in each project of the selection", named)
+				}
+				resolved = status.ID
+			}
+			operations[index].Value = mustJSON(resolved)
+		}
+	}
+	return nil
+}
+
+// mustJSON encodes a value that cannot fail to encode: a string this package
+// has already read out of JSON.
+func mustJSON(value string) json.RawMessage {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return encoded
+}
+
 func parseBulkEditOperations(input map[string]json.RawMessage) ([]parsedBulkEditOperation, error) {
 	if input == nil {
 		return nil, errors.New("editedFieldsInput is required")
@@ -101,13 +153,7 @@ func parseBulkEditOperations(input map[string]json.RawMessage) ([]parsedBulkEdit
 		"multipleGroupPickerFields": true, "multipleSelectClearableUserPickerFields": true,
 		"multipleSelectFields": true, "originalEstimateField": true, "singleGroupPickerFields": true,
 		"singleVersionPickerFields": true, "timeTrackingField": true, "urlFields": true,
-	}
-	// A work item's type and status change through their own bulk operations.
-	if input["issueType"] != nil {
-		return nil, errors.New("editedFieldsInput.issueType is changed through the bulk move operation")
-	}
-	if input["status"] != nil {
-		return nil, errors.New("editedFieldsInput.status is changed through the bulk transition operation")
+		"issueType": true, "status": true,
 	}
 	for key := range input {
 		if !allowed[key] {
@@ -326,6 +372,40 @@ func parseBulkEditOperations(input map[string]json.RawMessage) ([]parsedBulkEdit
 			return nil, errors.New("priority.priorityId is required")
 		}
 		if err := appendOperation("priority", "SET", "priority", field.PriorityID); err != nil {
+			return nil, err
+		}
+	}
+	// A work item's type and its status are not values on a screen: changing
+	// the type re-homes the work item the way a move within its project does,
+	// and changing the status runs the transition that leads there. They are
+	// named here because Jira's editedFieldsInput names them, and each work
+	// item reports its own failure when its workflow or its project does not
+	// allow the change.
+	if raw := input["issueType"]; raw != nil {
+		var field struct {
+			IssueTypeID string `json:"issueTypeId"`
+		}
+		if err := decodeStrictBulkField(raw, &field); err != nil {
+			return nil, fmt.Errorf("issueType: %w", err)
+		}
+		if strings.TrimSpace(field.IssueTypeID) == "" {
+			return nil, errors.New("issueType.issueTypeId is required")
+		}
+		if err := appendOperation("issuetype", "SET", "issuetype", field.IssueTypeID); err != nil {
+			return nil, err
+		}
+	}
+	if raw := input["status"]; raw != nil {
+		var field struct {
+			StatusID string `json:"statusId"`
+		}
+		if err := decodeStrictBulkField(raw, &field); err != nil {
+			return nil, fmt.Errorf("status: %w", err)
+		}
+		if strings.TrimSpace(field.StatusID) == "" {
+			return nil, errors.New("status.statusId is required")
+		}
+		if err := appendOperation("status", "SET", "status", field.StatusID); err != nil {
 			return nil, err
 		}
 	}
@@ -634,11 +714,16 @@ func validateBulkEditActions(selected []string, parsed []parsedBulkEditOperation
 		if !selectedSet[fieldID] {
 			return nil, fmt.Errorf("edited field %s is not listed in selectedActions", fieldID)
 		}
-		if available[fieldID] == "" {
-			return nil, fmt.Errorf("field %s is not editable for every selected issue", fieldID)
-		}
-		if available[fieldID] != item.fieldType {
-			return nil, fmt.Errorf("field %s must use the %s bulk input", fieldID, available[fieldID])
+		// The type and the status are not on the editable field list: they
+		// are not fields on a screen, and whether one can change is the
+		// work item's own workflow and its project's work types to answer.
+		if fieldID != "issuetype" && fieldID != "status" {
+			if available[fieldID] == "" {
+				return nil, fmt.Errorf("field %s is not editable for every selected issue", fieldID)
+			}
+			if available[fieldID] != item.fieldType {
+				return nil, fmt.Errorf("field %s must use the %s bulk input", fieldID, available[fieldID])
+			}
 		}
 		if !validBulkMultiAction(item.operation.Action) {
 			return nil, fmt.Errorf("field %s has invalid bulk edit action %q", fieldID, item.operation.Action)

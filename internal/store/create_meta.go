@@ -263,6 +263,10 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 			ScreenFields: createScreenFields[project.ID], ScreenTabs: createScreenTabs[project.ID], FieldBehaviour: fieldBehaviour[project.ID],
 			DefaultPriorityID: priorityScheme.DefaultPriorityID, CustomFieldContexts: customFieldContexts[project.ID]})
 	}
+	// Every person reads a field by the name their language gives it.
+	if err := s.translateCreateMetadata(ctx, workspaceID, userID, meta); err != nil {
+		return nil, err
+	}
 	return meta, nil
 }
 
@@ -344,4 +348,28 @@ func (s *Store) createMetaProjectIssueTypes(ctx context.Context, workspaceID, pr
 		}
 	}
 	return ordered, nil
+}
+
+// translateCreateMetadata renames the custom fields of a create form into the
+// caller's language, leaving the ones nobody translated as the site names
+// them.
+func (s *Store) translateCreateMetadata(ctx context.Context, workspaceID, userID string, meta *models.IssueCreateMetadata) error {
+	names, err := s.FieldNamesInLocale(ctx, workspaceID, s.LocaleForUser(ctx, workspaceID, userID))
+	if err != nil || len(names) == 0 {
+		return err
+	}
+	for projectIndex := range meta.Projects {
+		fields := meta.Projects[projectIndex].Fields
+		for fieldIndex := range fields {
+			translation, ok := names[fields[fieldIndex].ID]
+			if !ok {
+				continue
+			}
+			fields[fieldIndex].Name = translation.Name
+			if translation.Description != "" {
+				fields[fieldIndex].Description = translation.Description
+			}
+		}
+	}
+	return nil
 }

@@ -64,6 +64,30 @@ type VelocityReport struct {
 	Sprints   []VelocitySprint
 }
 
+// BurndownSprint is one sprint in an epic or release burndown: what the
+// work looked like when the sprint ended.
+type BurndownSprint struct {
+	Sprint Sprint
+	// Added is the estimate of work that entered the scope during the
+	// sprint, Completed the estimate of what was finished in it, and
+	// Remaining what was left unfinished when it ended.
+	Added     float64
+	Completed float64
+	Remaining float64
+}
+
+// BurndownReport is Jira's epic burndown and release burndown: the scope
+// burning down sprint by sprint, with the scope changes that moved it.
+type BurndownReport struct {
+	Statistic string
+	Sprints   []BurndownSprint
+	// Remaining is where the work stands now, after the last sprint.
+	Remaining float64
+	// Unestimated is how much of the work carries no estimate, because a
+	// burndown that ignores it would read as progress.
+	Unestimated int
+}
+
 // FlowColumn is one board column in the cumulative flow diagram.
 type FlowColumn struct {
 	StatusID string
@@ -85,9 +109,12 @@ type CumulativeFlow struct {
 
 // CycleSample is one work item's trip from starting to done.
 type CycleSample struct {
-	Key          string
-	Summary      string
-	CompletedAt  string
+	Key         string
+	Summary     string
+	CompletedAt string
+	// IssueType is the work type's name, which the cycle time report groups
+	// by. The control chart leaves it empty.
+	IssueType    string
 	CycleSeconds int64
 }
 
@@ -137,6 +164,67 @@ type CreatedResolvedDay struct {
 type CreatedResolvedReport struct {
 	Days                        []CreatedResolvedDay
 	CreatedTotal, ResolvedTotal int
+}
+
+// WorkloadRow is one group of unresolved work in a workload report: a
+// person, a work type or a status, with what is left to do in it.
+type WorkloadRow struct {
+	// Key is the group's id, empty for work that belongs to no group --
+	// unassigned work, work with no version.
+	Key              string
+	Name             string
+	Issues           int
+	RemainingSeconds int64
+}
+
+// WorkloadReport is Jira's user and version workload reports: unresolved
+// work grouped by who has it, and for a version also by what type it is.
+type WorkloadReport struct {
+	Rows             []WorkloadRow
+	Types            []WorkloadRow
+	Issues           int
+	RemainingSeconds int64
+	// Estimated is how much of the unresolved work carries a remaining
+	// estimate, because a workload of zero means nothing without it.
+	Estimated int
+}
+
+// TimeTrackingRow is one work item in the time tracking report.
+type TimeTrackingRow struct {
+	Key, Summary     string
+	OriginalSeconds  int64
+	RemainingSeconds int64
+	SpentSeconds     int64
+	// AccuracySeconds is the original estimate less what the work has cost
+	// so far: negative when the work has run over.
+	AccuracySeconds int64
+}
+
+// TimeTrackingReport is Jira's time tracking report: the estimates and the
+// time spent on the work of a project or a version.
+type TimeTrackingReport struct {
+	Rows             []TimeTrackingRow
+	OriginalSeconds  int64
+	RemainingSeconds int64
+	SpentSeconds     int64
+	AccuracySeconds  int64
+}
+
+// GroupByRow is one group in the single level group by report.
+type GroupByRow struct {
+	Key, Name string
+	Issues    int
+	// Percent is the share of the report's work items in this group,
+	// rounded to a whole number.
+	Percent int
+}
+
+// GroupByReport is Jira's single level group by report: the work a project
+// holds, counted by one field.
+type GroupByReport struct {
+	Field  string
+	Rows   []GroupByRow
+	Issues int
 }
 
 // ResolutionDay is the work resolved on a day and how long it took on average.

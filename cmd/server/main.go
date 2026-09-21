@@ -75,7 +75,12 @@ func main() {
 	if err := store.Migrate(ctx, st.Pool); err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
+	// The one-shot modes leave tables the planner has never looked at, so
+	// each one hands over a database that can be planned for.
 	if *mode == "migrate" {
+		if err := st.AnalyzeForPlanner(ctx); err != nil {
+			log.Fatalf("analyze: %v", err)
+		}
 		fmt.Println("migrations applied")
 		return
 	}
@@ -83,11 +88,17 @@ func main() {
 		if err := applyDemoScenario(ctx, st, *scenario, *workspace, os.Getenv); err != nil {
 			log.Fatalf("demo: %v", err)
 		}
+		if err := st.AnalyzeForPlanner(ctx); err != nil {
+			log.Fatalf("analyze: %v", err)
+		}
 		return
 	}
 	if *mode == "seed" {
 		if err := seedUsers(ctx, st); err != nil {
 			log.Fatalf("seed: %v", err)
+		}
+		if err := st.AnalyzeForPlanner(ctx); err != nil {
+			log.Fatalf("analyze: %v", err)
 		}
 		return
 	}
@@ -473,16 +484,25 @@ func main() {
 	mux.HandleFunc("GET /projects/{key}/reports", webHandler.ProjectReports)
 	mux.HandleFunc("GET /projects/{key}/reports/apps/{module}", webHandler.ProjectAppReport)
 	mux.HandleFunc("GET /projects/{key}/reports/dora", webHandler.DORAReport)
+	mux.HandleFunc("POST /projects/{key}/reports/dora/mapping", webHandler.SaveDORAMapping)
 	mux.HandleFunc("GET /projects/{key}/reports/sprint", webHandler.SprintReport)
 	mux.HandleFunc("GET /projects/{key}/timeline", webHandler.ProjectTimeline)
 	mux.HandleFunc("POST /projects/{key}/timeline", webHandler.ScheduleTimelineItem)
 	mux.HandleFunc("GET /projects/{key}/reports/velocity", webHandler.VelocityReport)
 	mux.HandleFunc("GET /projects/{key}/reports/cumulative-flow", webHandler.CumulativeFlowReport)
 	mux.HandleFunc("GET /projects/{key}/reports/control-chart", webHandler.ControlChartReport)
+	mux.HandleFunc("GET /projects/{key}/reports/cycle-time", webHandler.CycleTimeReport)
+	mux.HandleFunc("GET /projects/{key}/reports/deployment-frequency", webHandler.DeploymentFrequencyReport)
 	mux.HandleFunc("GET /projects/{key}/reports/epic", webHandler.EpicReport)
 	mux.HandleFunc("GET /projects/{key}/reports/version", webHandler.VersionReport)
 	mux.HandleFunc("GET /projects/{key}/reports/created-vs-resolved", webHandler.CreatedVsResolvedReport)
 	mux.HandleFunc("GET /projects/{key}/reports/resolution-time", webHandler.ResolutionTimeReport)
+	mux.HandleFunc("GET /projects/{key}/reports/epic-burndown", webHandler.EpicBurndownReport)
+	mux.HandleFunc("GET /projects/{key}/reports/release-burndown", webHandler.ReleaseBurndownReport)
+	mux.HandleFunc("GET /projects/{key}/reports/user-workload", webHandler.UserWorkloadReport)
+	mux.HandleFunc("GET /projects/{key}/reports/version-workload", webHandler.VersionWorkloadReport)
+	mux.HandleFunc("GET /projects/{key}/reports/time-tracking", webHandler.TimeTrackingReport)
+	mux.HandleFunc("GET /projects/{key}/reports/group-by", webHandler.SingleLevelGroupByReport)
 	mux.HandleFunc("POST /reports/email", webHandler.ReportEmail)
 	mux.HandleFunc("GET /projects/new", webHandler.NewProject)
 	mux.HandleFunc("POST /projects/new", webHandler.NewProject)
@@ -493,6 +513,7 @@ func main() {
 	mux.HandleFunc("POST /projects/{key}/lifecycle", webHandler.ProjectLifecycleSettings)
 	mux.HandleFunc("POST /projects/{key}/components", webHandler.ProjectComponentSettings)
 	mux.HandleFunc("POST /projects/{key}/components/{id}", webHandler.ProjectComponentSettings)
+	mux.HandleFunc("GET /projects/{key}/settings/configuration", webHandler.ProjectConfigurationPage)
 	mux.HandleFunc("GET /projects/{key}/settings/roles", webHandler.ProjectRoleAssignmentsPage)
 	mux.HandleFunc("POST /projects/{key}/settings/roles/{id}", webHandler.ProjectRoleAssignmentMutation)
 	mux.HandleFunc("GET /projects/{key}/settings/permissions", webHandler.ProjectPermissionsPage)
@@ -505,11 +526,14 @@ func main() {
 	})
 	mux.HandleFunc("GET /people", webHandler.PeoplePage)
 	mux.HandleFunc("GET /plans", webHandler.PlansPage)
+	mux.HandleFunc("POST /plans", webHandler.CreatePlan)
 	mux.HandleFunc("GET /plans/{id}", webHandler.PlanPage)
+	mux.HandleFunc("GET /plans/{id}/settings", webHandler.PlanSettingsPage)
+	mux.HandleFunc("POST /plans/{id}/settings", webHandler.PlanSettingsSave)
 	mux.HandleFunc("POST /plans/{id}/work", webHandler.PlanWorkChange)
 	mux.HandleFunc("POST /plans/{id}/scenarios", webHandler.PlanScenarioChange)
 	mux.HandleFunc("POST /plans/{id}/capacity", webHandler.PlanCapacityChange)
-	mux.HandleFunc("POST /plans/{id}/settings", webHandler.PlanSettingsChange)
+	mux.HandleFunc("POST /plans/{id}/scheduling", webHandler.PlanSchedulingChange)
 	mux.HandleFunc("POST /plans/{id}/teams", webHandler.PlanTeamSettings)
 	mux.HandleFunc("GET /plans/{id}/review", webHandler.PlanReview)
 	mux.HandleFunc("POST /plans/{id}/review", webHandler.PlanReview)
@@ -573,6 +597,9 @@ func main() {
 	mux.HandleFunc("POST /settings/workflow-schemes/{id}/draft", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.FinishWorkflowSchemeDraft(w, r, r.PathValue("id"))
 	})
+	mux.HandleFunc("POST /settings/workflow-schemes/{id}/copy", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.CopyWorkflowScheme(w, r, r.PathValue("id"))
+	})
 	mux.HandleFunc("POST /settings/workflow-schemes/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.DeleteWorkflowScheme(w, r, r.PathValue("id"))
 	})
@@ -633,6 +660,15 @@ func main() {
 	})
 	mux.HandleFunc("POST /issues/{key}/bulk/move", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.SubmitBulkIssueMove(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("POST /issues/{key}/bulk/edit", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SubmitBulkIssueEdit(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("POST /issues/{key}/bulk/watch", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SubmitBulkIssueWatch(w, r, r.PathValue("key"), true)
+	})
+	mux.HandleFunc("POST /issues/{key}/bulk/unwatch", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.SubmitBulkIssueWatch(w, r, r.PathValue("key"), false)
 	})
 	mux.HandleFunc("POST /issues/{key}/bulk/transition", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.SubmitBulkIssueTransition(w, r, r.PathValue("key"))

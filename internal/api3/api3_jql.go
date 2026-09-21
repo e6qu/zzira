@@ -37,27 +37,42 @@ var jqlSystemFields = []jqlFieldReference{
 	{Value: "affectedVersion", DisplayName: "Affected version", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"VERSION"}},
 	{Value: "approvals", DisplayName: "Approvals", Auto: "false", Orderable: "false", Searchable: "true", Operators: []string{"=", "!="}, Types: []string{"APPROVAL"}},
 	{Value: "assignee", DisplayName: "Assignee", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not", "was", "was in", "was not", "was not in", "changed"}, Types: []string{"USER"}},
+	{Value: "attachments", DisplayName: "Attachments", Auto: "false", Orderable: "false", Searchable: "true", Operators: []string{"is", "is not"}, Types: []string{"ATTACHMENT"}},
+	{Value: "category", DisplayName: "Project category", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"CATEGORY"}},
+	{Value: "comment", DisplayName: "Comment", Auto: "false", Orderable: "false", Searchable: "true", Operators: []string{"~", "!~"}, Types: []string{"TEXT"}},
 	{Value: "component", DisplayName: "Component", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"COMPONENT"}},
 	{Value: "created", DisplayName: "Created", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", ">", ">=", "<", "<=", "is", "is not"}, Types: []string{"DATE"}},
 	{Value: "description", DisplayName: "Description", Auto: "false", Orderable: "false", Searchable: "true", Operators: []string{"~", "!~", "is", "is not", "changed"}, Types: []string{"TEXT"}},
 	{Value: "due", DisplayName: "Due date", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", ">", ">=", "<", "<=", "is", "is not"}, Types: []string{"DATE"}},
 	{Value: "environment", DisplayName: "Environment", Auto: "false", Orderable: "false", Searchable: "true", Operators: []string{"~", "!~", "is", "is not"}, Types: []string{"TEXT"}},
+	{Value: "filter", DisplayName: "Filter", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in"}, Types: []string{"FILTER"}},
 	{Value: "fixVersion", DisplayName: "Fix version", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"VERSION"}},
+	{Value: "hierarchyLevel", DisplayName: "Hierarchy level", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", ">", ">=", "<", "<=", "in", "not in"}, Types: []string{"NUMBER"}},
 	{Value: "id", DisplayName: "Issue ID", Auto: "false", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in"}, Types: []string{"NUMBER"}},
+	{Value: "issueLinkType", DisplayName: "Issue link type", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"ISSUE_LINK_TYPE"}},
 	{Value: "issueType", DisplayName: "Issue type", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"ISSUETYPE"}},
 	{Value: "key", DisplayName: "Key", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", ">", ">=", "<", "<="}, Types: []string{"ISSUE"}},
+	{Value: "lastViewed", DisplayName: "Last viewed", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", ">", ">=", "<", "<=", "is", "is not"}, Types: []string{"DATE"}},
 	{Value: "labels", DisplayName: "Labels", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "~", "!~", "is", "is not", "changed"}, Types: []string{"LABEL"}},
+	{Value: "level", DisplayName: "Security level", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"SECURITY_LEVEL"}},
 	{Value: "parent", DisplayName: "Parent", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not", "changed"}, Types: []string{"ISSUE"}},
 	{Value: "priority", DisplayName: "Priority", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not", "was", "changed"}, Types: []string{"PRIORITY"}},
 	{Value: "project", DisplayName: "Project", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in"}, Types: []string{"PROJECT"}},
 	{Value: "reporter", DisplayName: "Reporter", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"USER"}},
-	{Value: "resolution", DisplayName: "Resolution", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"RESOLUTION"}},
+	{Value: "Request participants", DisplayName: "Request participants", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"USER"}},
+	{Value: "request-channel-type", DisplayName: "Request channel type", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"STRING"}},
+	{Value: "resolution", DisplayName: "Resolution", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not", "was", "was in", "was not", "was not in", "changed"}, Types: []string{"RESOLUTION"}},
 	{Value: "resolutionDate", DisplayName: "Resolved", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", ">", ">=", "<", "<=", "is", "is not"}, Types: []string{"DATE"}},
 	{Value: "sprint", DisplayName: "Sprint", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"SPRINT"}},
 	{Value: "status", DisplayName: "Status", Auto: "true", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not", "was", "was in", "was not", "was not in", "changed"}, Types: []string{"STATUS"}},
 	{Value: "statusCategory", DisplayName: "Status category", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in"}, Types: []string{"STATUS_CATEGORY"}},
+	{Value: "statusCategoryChangedDate", DisplayName: "Status category changed", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", ">", ">=", "<", "<=", "is", "is not"}, Types: []string{"DATE"}},
 	{Value: "summary", DisplayName: "Summary", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"~", "!~", "=", "!=", "is", "is not", "changed"}, Types: []string{"TEXT"}},
+	{Value: "text", DisplayName: "Text", Auto: "false", Orderable: "false", Searchable: "true", Operators: []string{"~", "!~"}, Types: []string{"TEXT"}},
 	{Value: "updated", DisplayName: "Updated", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", ">", ">=", "<", "<=", "is", "is not"}, Types: []string{"DATE"}},
+	{Value: "voter", DisplayName: "Voter", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"USER"}},
+	{Value: "votes", DisplayName: "Votes", Auto: "false", Orderable: "true", Searchable: "true", Operators: []string{"=", "!=", ">", ">=", "<", "<=", "in", "not in"}, Types: []string{"NUMBER"}},
+	{Value: "watcher", DisplayName: "Watcher", Auto: "true", Orderable: "false", Searchable: "true", Operators: []string{"=", "!=", "in", "not in", "is", "is not"}, Types: []string{"USER"}},
 }
 
 var jqlFunctions = []jqlFunctionReference{
@@ -74,6 +89,10 @@ var jqlFunctions = []jqlFunctionReference{
 	{Value: "futureSprints()", DisplayName: "futureSprints()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"SPRINT"}},
 	{Value: "linkedIssues()", DisplayName: "linkedIssues(issueKey[, linkTypes...])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
 	{Value: "linkedWorkItems()", DisplayName: "linkedWorkItems(workItemKey[, linkTypes...])", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
+	{Value: "issueHistory()", DisplayName: "issueHistory()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
+	{Value: "workItemHistory()", DisplayName: "workItemHistory()", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
+	{Value: "issuesWithRemoteLinksByGlobalId()", DisplayName: "issuesWithRemoteLinksByGlobalId(globalIds...)", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
+	{Value: "workItemsWithRemoteLinksByGlobalId()", DisplayName: "workItemsWithRemoteLinksByGlobalId(globalIds...)", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"ISSUE"}},
 	{Value: "lastLogin()", DisplayName: "lastLogin()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"DATE"}},
 	{Value: "membersOf()", DisplayName: "membersOf(group)", IsList: "true", SupportsListAndSingleValueOperators: "true", Types: []string{"USER"}},
 	{Value: "myApproval()", DisplayName: "myApproval()", IsList: "false", SupportsListAndSingleValueOperators: "false", Types: []string{"APPROVAL"}},
@@ -828,7 +847,7 @@ func (h *Handler) jqlPersonalDataMigration(w http.ResponseWriter, r *http.Reques
 	for _, query := range request.QueryStrings {
 		operands, _, parseErr := jql.Operands(query)
 		if parseErr != nil {
-			jiraError(w, 400, "Error in the JQL Query: "+parseErr.Error())
+			jiraError(w, 400, jql.QueryMessage(parseErr.Error()))
 			return
 		}
 		edits, hasUnknown := []jql.Edit{}, false
@@ -934,7 +953,7 @@ func (h *Handler) jqlSanitize(w http.ResponseWriter, r *http.Request) {
 		}
 		sanitized, err := h.sanitizeJQL(r, workspaceID, viewer, item.Query)
 		if err != nil {
-			result["errors"] = map[string]any{"errorMessages": []string{"Error in the JQL Query: " + err.Error()}, "errors": map[string]string{}}
+			result["errors"] = map[string]any{"errorMessages": []string{jql.QueryMessage(err.Error())}, "errors": map[string]string{}}
 		} else {
 			result["sanitizedQuery"] = sanitized
 		}

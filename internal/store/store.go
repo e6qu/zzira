@@ -774,7 +774,7 @@ SELECT i.id, i.jira_id, i.workspace_id, i.project_id, i.key, i.summary, i.descri
 	       i.updated_seq, i.updated_at,
 	       it.jira_id, it.hierarchy_level, pr.jira_id, COALESCE(pro.status_color, pr.status_color), COALESCE(pro.icon_url, pr.icon_url),
 	       res.id, res.jira_id, COALESCE(reso.name, res.name), COALESCE(reso.description, res.description), i.resolved_at,
-	       i.created_at, i.archived_at,
+	       i.created_at, i.archived_at, i.status_category_changed_at,
 	       i.original_estimate_seconds, i.remaining_estimate_seconds,
 	       (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id),
 	       (SELECT sum(t.original_estimate_seconds) FROM issues t WHERE t.id=i.id OR t.parent_id=i.id AND EXISTS(SELECT 1 FROM issue_types tt WHERE tt.id=t.issuetype_id AND tt.subtask)),
@@ -811,6 +811,7 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 	var resolvedAt *time.Time
 	var createdAt time.Time
 	var archivedAt *time.Time
+	var statusCategoryChangedAt time.Time
 	var dueDate *string
 	err := row.Scan(&i.ID, &i.JiraID, &i.WorkspaceID, &i.ProjectID, &i.Key, &i.Summary, &i.Description,
 		&i.Status.ID, &i.Status.Name, &i.Status.Category, &i.Status.JiraID,
@@ -824,7 +825,7 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 		&i.UpdatedSeq, &updatedAt,
 		&i.IssueType.JiraID, &i.IssueType.HierarchyLevel, &priorityJiraID, &priorityColor, &priorityIcon,
 		&resolutionID, &resolutionJiraID, &resolutionName, &resolutionDescription, &resolvedAt,
-		&createdAt, &archivedAt,
+		&createdAt, &archivedAt, &statusCategoryChangedAt,
 		&i.OriginalEstimateSeconds, &i.RemainingEstimateSeconds, &i.TimeSpentSeconds,
 		&i.AggregateOriginalEstimateSeconds, &i.AggregateRemainingEstimateSeconds, &i.AggregateTimeSpentSeconds, &dueDate)
 	if err != nil {
@@ -834,6 +835,7 @@ func scanIssue(row pgx.Row) (*models.Issue, error) {
 		i.DueDate = *dueDate
 	}
 	i.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+	i.StatusCategoryChangedAt = statusCategoryChangedAt.UTC().Format(time.RFC3339)
 	if archivedAt != nil {
 		i.ArchivedAt = archivedAt.UTC().Format(time.RFC3339)
 	}
@@ -1188,7 +1190,86 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		}
 		out = append(out, a)
 	}
-	return out, to, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, since, err
+	}
+	// A notification names the content it is about, so it leaves the replica
+	// once that content stops being readable. It is asked here, once for each
+	// content a page mentions, rather than inside the scan above: that filter
+	// is already the largest predicate in the product, and this way a page
+	// pays for the question only when it carries notifications.
+	kept, err := s.withoutUnreadableNotifications(ctx, workspaceID, userID, out)
+	if err != nil {
+		return nil, since, err
+	}
+	return kept, to, nil
+}
+
+// withoutUnreadableNotifications drops the notification actions whose subject
+// the reader can no longer see.
+func (s *Store) withoutUnreadableNotifications(ctx context.Context, workspaceID, userID string, actions []models.Action) ([]models.Action, error) {
+	type subject struct{ entityType, entityID string }
+	subjectOf := func(a models.Action) (subject, bool) {
+		if a.EntityType != models.EntityNotification {
+			return subject{}, false
+		}
+		var payload struct {
+			Notification struct {
+				EntityType string `json:"entityType"`
+				EntityID   string `json:"entityId"`
+			} `json:"notification"`
+		}
+		if json.Unmarshal(a.Payload, &payload) != nil {
+			return subject{}, false
+		}
+		named := subject{entityType: payload.Notification.EntityType, entityID: payload.Notification.EntityID}
+		if named.entityID == "" {
+			return subject{}, false
+		}
+		switch named.entityType {
+		case "wiki_page", "wiki_blogpost", "wiki_content":
+			return named, true
+		}
+		return subject{}, false
+	}
+	readable := map[subject]bool{}
+	for _, action := range actions {
+		named, checkable := subjectOf(action)
+		if !checkable {
+			continue
+		}
+		if _, asked := readable[named]; asked {
+			continue
+		}
+		var visible bool
+		query := `SELECT ` + notificationSubjectReadable("$3", "$4")
+		if err := s.Pool.QueryRow(ctx, query, workspaceID, userID, named.entityType, named.entityID).Scan(&visible); err != nil {
+			return nil, err
+		}
+		readable[named] = visible
+	}
+	if len(readable) == 0 {
+		return actions, nil
+	}
+	kept := make([]models.Action, 0, len(actions))
+	for _, action := range actions {
+		if named, checkable := subjectOf(action); checkable && !readable[named] {
+			continue
+		}
+		kept = append(kept, action)
+	}
+	return kept, nil
+}
+
+// AnalyzeForPlanner refreshes the planner's statistics. A database that was
+// just migrated or seeded has none for the tables now full, and the planner
+// reads an empty table as one row: the sync page, whose filter is the largest
+// predicate in the product, then plans as if nothing existed and takes
+// seconds instead of milliseconds. Autovacuum gets there eventually; a
+// database handed straight to a client cannot wait for it.
+func (s *Store) AnalyzeForPlanner(ctx context.Context) error {
+	_, err := s.Pool.Exec(ctx, "ANALYZE")
+	return err
 }
 
 func DSNFromEnv() string {

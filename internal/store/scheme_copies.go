@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 // Jira's scheme pages all offer the same action: copy this one, so a change
@@ -53,6 +54,27 @@ func (s *Store) CopyPermissionScheme(ctx context.Context, workspaceID, actorID s
 	}
 	return s.CreatePermissionScheme(ctx, workspaceID, actorID,
 		copyName(original.Name, s.nameTaken(ctx, "permission_schemes", workspaceID)), original.Description, grants)
+}
+
+// CopyWorkflowScheme copies a scheme with the workflow each work type uses.
+// The copy takes the published mappings, never a draft's: a draft is a
+// change someone is still making, and a copy is made to try a change against
+// what the site runs today.
+func (s *Store) CopyWorkflowScheme(ctx context.Context, workspaceID, actorID, schemeID string) (workflow.Scheme, error) {
+	original, err := s.WorkflowSchemeByID(ctx, workspaceID, schemeID, false)
+	if err != nil {
+		return workflow.Scheme{}, err
+	}
+	mappings := make(map[string]string, len(original.IssueTypeMappings))
+	for issueTypeID, workflowID := range original.IssueTypeMappings {
+		mappings[issueTypeID] = workflowID
+	}
+	return s.CreateWorkflowScheme(ctx, workspaceID, actorID, workflow.Scheme{
+		Name:              copyName(original.Name, s.nameTaken(ctx, "workflow_schemes", workspaceID)),
+		Description:       original.Description,
+		DefaultWorkflowID: original.DefaultWorkflowID,
+		IssueTypeMappings: mappings,
+	})
 }
 
 // CopyNotificationScheme copies a scheme with who it notifies of what.

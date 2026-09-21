@@ -2,12 +2,15 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 type doraReportData struct {
@@ -16,6 +19,15 @@ type doraReportData struct {
 	Actions    reportActions
 	Compare    bool
 	Comparison map[string]string
+	// Mapping is which deployments the project counts. A project
+	// administrator changes it here; everyone else reads what it is.
+	Mapping          store.DORASettings
+	EnvironmentTypes []string
+	Pipelines        []store.DORAPipeline
+	Excluded         []store.DORAExcludedPeriod
+	CanConfigure     bool
+	MappingNotice    string
+	MappingError     string
 }
 
 type appReportView struct {
@@ -142,7 +154,64 @@ func (h *Handler) DORAReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Actions = actions
+	if data.Mapping, err = h.Store.DORASettingsFor(r.Context(), workspaceID, project.ID); err != nil {
+		http.Error(w, "Could not read the delivery mapping.", http.StatusInternalServerError)
+		return
+	}
+	if data.Pipelines, err = h.Store.DORAPipelines(r.Context(), workspaceID, project.ID); err != nil {
+		http.Error(w, "Could not read the delivery pipelines.", http.StatusInternalServerError)
+		return
+	}
+	if data.Excluded, err = h.Store.DORAExcludedPeriods(r.Context(), workspaceID, project.ID); err != nil {
+		http.Error(w, "Could not read the excluded periods.", http.StatusInternalServerError)
+		return
+	}
+	data.EnvironmentTypes = store.DORAEnvironmentTypes
+	data.MappingNotice, data.MappingError = r.URL.Query().Get("mapping"), r.URL.Query().Get("mappingError")
+	if data.CanConfigure, err = h.Store.CanAdministerProject(r.Context(), workspaceID, user.ID, project.ID); err != nil {
+		http.Error(w, "Could not read project administration.", http.StatusInternalServerError)
+		return
+	}
 	h.writeWorkspacePage(w, r, "page_dora_report", user, workspaceID, data, "reports", project.Key)
+}
+
+// SaveDORAMapping records which environments and pipelines count toward the
+// project's delivery metrics. Jira calls this the DORA mapping; until a
+// project chooses one it reads production deployments from every pipeline.
+func (h *Handler) SaveDORAMapping(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, project, ok := h.requireProjectAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	target := "/projects/" + url.PathEscape(project.Key) + "/reports/dora"
+	var err error
+	switch r.PostFormValue("action") {
+	case "exclude":
+		err = h.Store.AddDORAExcludedPeriod(r.Context(), workspaceID, user.ID, project.ID, store.DORAExcludedPeriod{
+			StartsOn: r.PostFormValue("startsOn"), EndsOn: r.PostFormValue("endsOn"), Reason: r.PostFormValue("reason"),
+		})
+	case "include":
+		id, parseErr := strconv.ParseInt(r.PostFormValue("period"), 10, 64)
+		if parseErr != nil {
+			redirectLocal(w, r, target+"?mappingError="+url.QueryEscape("That period is already gone.")+"#dora-mapping")
+			return
+		}
+		err = h.Store.RemoveDORAExcludedPeriod(r.Context(), workspaceID, user.ID, project.ID, id)
+	default:
+		err = h.Store.SaveDORASettings(r.Context(), workspaceID, user.ID, project.ID, store.DORASettings{
+			EnvironmentTypes: r.Form["environment"], PipelineIDs: r.Form["pipeline"],
+		})
+	}
+	if errors.Is(err, store.ErrDORASettings) {
+		message := strings.TrimSpace(strings.TrimPrefix(err.Error(), store.ErrDORASettings.Error()+":"))
+		redirectLocal(w, r, target+"?mappingError="+url.QueryEscape(message)+"#dora-mapping")
+		return
+	}
+	if err != nil {
+		http.Error(w, "Could not save the delivery mapping.", http.StatusInternalServerError)
+		return
+	}
+	redirectLocal(w, r, target+"?mapping="+url.QueryEscape("Delivery mapping saved")+"#dora-mapping")
 }
 
 func doraCSVRows(report models.DORAReport) [][]string {

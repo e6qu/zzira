@@ -64,9 +64,24 @@ per-item results. Part of the [Jira platform](JIRA_PLATFORM.md); see
   `multipleSelectFields`, `cascadingSelectFields`, `singleGroupPickerFields`,
   `multipleGroupPickerFields`, `singleVersionPickerFields`,
   `multipleVersionPickerFields`, `multiselectComponents`, `labelsFields`,
-  `colorFields`, `urlFields`, `priority`, `originalEstimateField` and
-  `timeTrackingField`. Each item goes through the ordinary update command
-  (validation, history, notifications, security, SLA reconciliation).
+  `colorFields`, `urlFields`, `priority`, `originalEstimateField`,
+  `timeTrackingField`, `issueType` and `status`. Each item goes through the
+  ordinary update command (validation, history, notifications, security, SLA
+  reconciliation).
+  - `issueType` and `status` are not values on a screen, so they are not on
+    the editable-field list; the ids a client names them by are resolved at
+    submission, and a status must name the same status in every project the
+    selection reaches.
+  - An item's type changes the way a move within its own project does: the
+    same status mapping, required fields and Move issues permission, and it
+    fires the Issue moved event.
+  - An item's status is reached by running the transition that leads there,
+    so conditions, validators and post-functions apply. A work item whose
+    workflow offers no such transition from where it stands fails and says
+    so, as does one that could only get there through a transition screen.
+  - Within one item the type is applied first, then the fields, then the
+    status, so the item ends where the edit asked rather than where its new
+    type's workflow put it.
 - **Notifications.** Delete, move, transition and edit accept
   `sendBulkNotification` (default true). In-app notifications still fire per
   event; email is collapsed into one bulk change email per recipient when the
@@ -99,16 +114,23 @@ described in [SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md#queues).
 The issue navigator (`/issues/{projectKey}`) shows its selection checkboxes and
 bulk forms only to people holding Bulk change. They select rows on the current
 page and bulk delete, move (project, type, parent) or transition them, choosing
-whether to notify watchers. Progress is shown at
+whether to notify watchers. "Edit selected" ticks the fields to change and
+changes every ticked one in a single task: the assignee, the priority, the due
+date, labels, components and fix versions. A list field replaces what is
+there, adds to it or takes values out of it; an empty box clears the field,
+except for a priority, which Jira has no unset value for. Watching and unwatching the selection ask only to
+be able to see the work items, as watching one does, so they are offered
+without Bulk change. Progress is shown at
 `/issues/{projectKey}/bulk/{taskId}` to the submitter and administrators.
 
 ## Gaps
 
 See [PLAN.md](../PLAN.md).
 
-- `editedFieldsInput.issueType` and `status` are refused (pointing to bulk
-  move and bulk transition) instead of being edited in place.
-- The navigator offers no bulk edit, watch or unwatch.
+- The navigator's bulk edit offers the six fields above. The REST endpoint
+  takes any field on the shared edit metadata, including custom fields, and
+  work type and status, which the navigator changes through bulk move and
+  bulk transition instead.
 
 ## See also
 

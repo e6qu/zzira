@@ -890,6 +890,13 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	update := map[string]any{"id": page.ID, "spaceId": public, "title": "Release guide updated", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<h2>Ready</h2>"}, "version": map[string]any{"number": 2, "message": "Updated release instructions"}}
 	call(member, "PUT", "/pages/"+page.ID, update, 200)
 	call(actor, "PUT", "/pages/"+page.ID, update, 409)
+	// Writing the page made the member a watcher of it, as Confluence's
+	// autowatch does. The rest of this test watches deliberately, so the
+	// automatic watch is taken off again first.
+	if status := callV1(member, "GET", "/user/watch/content/"+page.ID, nil, 200); !strings.Contains(status.Body.String(), `"watching":true`) {
+		t.Fatalf("editing a page did not watch it: %s", status.Body.String())
+	}
+	callV1NoCheck(member, "DELETE", "/user/watch/content/"+page.ID, nil, 204)
 	labelsResponse := callV1(member, "POST", "/content/"+page.ID+"/label", []map[string]string{{"prefix": "global", "name": "release-ready"}, {"prefix": "global", "name": "handbook"}, {"prefix": "team", "name": "engineering-content"}}, 200)
 	var labels struct{ Results []models.WikiLabel }
 	if err := json.Unmarshal(labelsResponse.Body.Bytes(), &labels); err != nil {
@@ -974,13 +981,31 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if err := json.Unmarshal(childResponse.Body.Bytes(), &child); err != nil || child.ID == "" {
 		t.Fatalf("unexpected watched child: %+v %v", child, err)
 	}
-	if notifications, err := st.NotificationsByUser(ctx, ws, member, 20); err != nil || len(notifications) != 1 || notifications[0].EntityID != child.ID {
-		t.Fatalf("expected one deduplicated child notification: %+v %v", notifications, err)
+	// The member follows other content of their own by now -- autowatch
+	// follows what you write -- so what is counted here is the child page
+	// alone: the page, label and space watches must deduplicate to one
+	// notification about it.
+	childNotifications := func() int {
+		t.Helper()
+		notifications, err := st.NotificationsByUser(ctx, ws, member, 20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		count := 0
+		for _, notification := range notifications {
+			if notification.EntityID == child.ID {
+				count++
+			}
+		}
+		return count
+	}
+	if count := childNotifications(); count != 1 {
+		t.Fatalf("expected one deduplicated child notification, got %d", count)
 	}
 	callV1(actor, "POST", "/content/"+child.ID+"/label", map[string]string{"prefix": "global", "name": "release-ready"}, 200)
 	call(actor, "PUT", "/pages/"+child.ID, map[string]any{"id": child.ID, "spaceId": public, "parentId": page.ID, "title": "Watched child updated", "status": "current", "body": models.WikiBody{Representation: "storage", Value: "<p>Ready</p>"}, "version": map[string]any{"number": 2}}, 200)
-	if notifications, err := st.NotificationsByUser(ctx, ws, member, 20); err != nil || len(notifications) != 2 {
-		t.Fatalf("expected label and space watches to deduplicate: %+v %v", notifications, err)
+	if count := childNotifications(); count != 2 {
+		t.Fatalf("expected label and space watches to deduplicate, got %d notifications about the child", count)
 	}
 	childPage, err := st.WikiPage(ctx, ws, actor, child.ID)
 	if err != nil {
@@ -992,8 +1017,8 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if _, err := h.Commands.SaveWikiPage(ctx, ws, actor, *childPage); err != nil {
 		t.Fatal(err)
 	}
-	if notifications, err := st.NotificationsByUser(ctx, ws, member, 20); err != nil || len(notifications) != 2 {
-		t.Fatalf("minor edit generated a notification: %+v %v", notifications, err)
+	if count := childNotifications(); count != 2 {
+		t.Fatalf("minor edit generated a notification: %d about the child", count)
 	}
 	callV1(member, "DELETE", "/user/watch/content/"+page.ID, nil, 403)
 	callV1NoCheck(member, "DELETE", "/user/watch/content/"+page.ID, nil, 204)
@@ -1444,6 +1469,22 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if spaceContentLabels := call(member, "GET", "/spaces/"+public+"/content/labels", nil, 200); strings.Contains(spaceContentLabels.Body.String(), "classified-file") {
 		t.Fatal("restricted attachment label leaked through the space content collection")
 	}
+	// The member edited the restricted page while they could, which watched
+	// it and told them about the comments that followed. The restriction is
+	// back, so neither the notifications nor what they said about the page
+	// may still be in their replica.
+	var stillWatching bool
+	if err := st.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_watches WHERE workspace_id=$1 AND user_id=$2 AND target_type='content' AND target_id=$3)`, ws, member, restricted.ID).Scan(&stillWatching); err != nil {
+		t.Fatal(err)
+	}
+	if !stillWatching {
+		t.Fatal("editing the restricted page did not watch it")
+	}
+	for _, notification := range mustNotifications(t, ctx, st, ws, member) {
+		if notification.EntityID == restricted.ID {
+			t.Fatalf("a notification about restricted content stayed in the inbox: %+v", notification)
+		}
+	}
 	actions, err := st.ActionsSince(ctx, ws, member, 0, 1000)
 	if err != nil {
 		t.Fatal(err)
@@ -1473,4 +1514,14 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if !publicBlogCommentVisible || !publicBlogInlineVisible {
 		t.Fatal("public blog discussion actions were not synchronized")
 	}
+}
+
+// mustNotifications reads someone's inbox or fails the test.
+func mustNotifications(t *testing.T, ctx context.Context, st *store.Store, ws, userID string) []*models.Notification {
+	t.Helper()
+	notifications, err := st.NotificationsByUser(ctx, ws, userID, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return notifications
 }

@@ -63,13 +63,14 @@ Each numbered item is one or more substantial PRs.
 
 ## 1. Work item model
 
-**Hierarchy rollups.** Levels above epic exist ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#work-type-hierarchy)). What remains:
-- Plans, roadmaps and reports roll up through every level.
-- Boards and backlogs still treat the epic level as the top.
-- `hierarchyLevel` in JQL (see [JQL and filters](#5-jql-and-filters)).
+**Hierarchy rollups.** Levels above epic exist ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#work-type-hierarchy)), and plans, roadmaps and `hierarchyLevel` in JQL read through all of them. What remains:
+- Reports still summarise an epic and its children, not a level above it.
+- Boards and backlogs treat the epic level as the top, as Jira's do; a board
+  above the epic level would be ours, not Jira's.
 
 **Metadata and configuration UI.**
-- Per-language field translations.
+- Per-language translations for work types, priorities, resolutions and
+  statuses (fields are translated).
 - The screen catalog includes Reporter, Environment, Attachment and Linked
   work items; `projectKey` honored on tab-field reads.
 - Issue security scheme form sends the level mapping for projects with secured
@@ -86,12 +87,14 @@ Each numbered item is one or more substantial PRs.
   project default, organization default; org admins only.
 
 **Platform odds and ends.**
-- Bulk edit of `issueType` and `status`; bulk edit, watch and unwatch in the
-  navigator.
+- Navigator bulk edit reaches only the six fields it offers; the REST endpoint
+  takes any field on the shared edit metadata, including custom fields.
 - Worklogs: `started`, real `updated`/`updateAuthor`, `issueId`, `self` with the
   work item; list paging and `startedAfter`/`startedBefore`/`expand=properties`;
   worklog visibility.
-- Project sender address used by the mailer, with bounce handling.
+- Bounce handling for the project sender address (the address itself is the
+  From header of the mail a project's work queues, once its domain is
+  verified).
 - Anonymous browsing in the UI (`/browse/{key}`), not only REST.
 - `atlassian-addons-project-access` role for installed apps.
 - Project templates: inline `REF` objects and team-managed projects.
@@ -108,13 +111,14 @@ and dependency checks.
 
 - Auto-scheduler: schedule by rank, dependencies, team capacity, sprints and
   releases; preview and apply to a scenario.
-- Plan setup in the browser: create, sources, exclusions, permissions, teams.
+- Plan setup in the browser: a date custom field as a plan's date, and plan
+  custom fields (create, scheduling, sources, exclusions, permissions, teams
+  and cross-project releases are there).
 - Restore archived and trashed plans; duplicate copies scenarios.
 - Scenario edits: parent, rank, release, status, create work items.
 - Views: saved views, grouping, filters, rollups across the hierarchy.
 - Capacity from velocity; `inferredDates` and plan `customFields` take effect.
 - Atlassian Teams REST API.
-- Fix sprint length: days in `store/plans.go`, weeks in `store/plan_planning.go`.
 
 ## 3. Cross-project releases
 
@@ -122,34 +126,25 @@ Jira Plans create a cross-project release that groups same-named versions across
 projects. ZZIRA stores `crossProjectReleases` on a plan and returns it over REST,
 but nothing shows or uses it.
 
-- Create, rename and delete cross-project releases in a plan; create or link the
-  member versions.
-- Release view across projects: progress, dates, warnings, auto-scheduler input.
+- Create the member versions from the plan (today they are linked, not created).
+- Cross-project releases as auto-scheduler input, and on the release hub.
 - Release hub: deployments grouped across projects, release gates, environment
   promotion, drag reordering, dates in the viewer's locale and site time zone.
 
 ## 4. Boards, reports and DORA
 
-- Boards: the Stories swimlane.
-- Reports: release burndown, epic burndown, user and version workload, time
-  tracking, single-level group-by, deployment frequency, cycle time.
-- DORA: configurable mappings (which environments, pipelines and incident types
-  count) and excluded periods.
+- DORA: which work items count as incidents (environments, pipelines and
+  excluded periods are configured per project).
 - Dashboards: layout and favourites over REST, inline gadget item properties,
   Jira system gadgets.
 - Load test at 1M actions with mixed reads and writes.
 
 ## 5. JQL and filters
 
-- Fields: `text`, `comment`, `watcher(s)`, `voter`/`votes`, `attachments`,
-  `level`, `lastViewed`, `issueLinkType`, `category`, `filter`,
-  `statusCategoryChangedDate`, `hierarchyLevel`, `Request participants`,
-  `Organizations`, `request-channel-type`.
-- Aliases: `issuekey`, `type`, `timeoriginalestimate`, `timeestimate`.
-- Functions: `issueHistory()`, `issuesWithRemoteLinksByGlobalId()`.
-- `WAS`/`CHANGED` on `resolution`; `includeArchivedProjects`; historical
-  `versionedRepresentations`.
-- Unknown values (`status = Nope`) return Jira's error instead of matching nothing.
+- Fields: JSM's `Organizations`, which needs a request to be shared with one.
+- `fields.lastViewed` on a work item read, which needs the reader threaded
+  through the bean.
+- Historical `versionedRepresentations`.
 - Filters: subscriptions by any viewer with permission, group subscriptions,
   `MANAGE_GROUP_FILTER_SUBSCRIPTIONS`, opt-in for empty results,
   `CREATE_SHARED_OBJECTS` on sharing.
@@ -240,8 +235,8 @@ links, the Assets portal field, and the workspace discovery endpoints.
 - CQL: relevance and stemming; whiteboards, databases, folders, Smart Links and
   custom content; `space.title`, `space.category`, content properties; a search
   page.
-- Notifications: autowatch, per-user email settings and digests, likes, Share,
-  watcher notifications for move, delete, archive and new attachments.
+- Notifications: per-user email settings and digests, likes, Share, watcher
+  notifications for move, delete, archive and new attachments.
 - Users and groups: `expand` on user reads, `user/bulk` paging, full CQL user
   search; `invite-by-email` sends mail.
 - Audit: site operations write records; `sysAdmin`/`superAdmin` derived; audit

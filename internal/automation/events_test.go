@@ -526,3 +526,75 @@ func TestRelatedWorkItemsCondition(t *testing.T) {
 		t.Fatalf("childless labels = %v, want the condition to have failed", got)
 	}
 }
+
+// Jira has triggers of its own for a work item being assigned and for an
+// attachment arriving; both start a run for the work item they happened to.
+func TestAssignedAndAttachmentTriggers(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID := store.NewID("prj")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id,lead_account_id) VALUES($1,$2,'TRIG','Trigger events','wf_default',$3)`, projectID, fx.ws, fx.admin); err != nil {
+		t.Fatal(err)
+	}
+	create := func(summary string) *models.Issue {
+		t.Helper()
+		issue, _, err := fx.store.CreateIssue(fx.ctx, fx.admin, projectID, summary, json.RawMessage(`{"type":"doc","version":1,"content":[]}`), "st_todo", "it_task", "pr_medium", "", nil, nil, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return issue
+	}
+	labels := func(issue *models.Issue) []string {
+		t.Helper()
+		fresh, err := fx.store.IssueByIDOrKey(fx.ctx, fx.ws, issue.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fresh.Labels
+	}
+	assigned, attached, untouched := create("Needs an owner"), create("Needs a file"), create("Left alone")
+
+	for _, rule := range []struct{ name, trigger, label string }{
+		{"Label assigned work", "jira.issue.event.trigger:assigned", "assigned"},
+		{"Label work with files", "jira.issue.attachment.added", "has-file"},
+	} {
+		body, _ := json.Marshal(map[string]any{"rule": map[string]any{
+			"actor": map[string]string{"actor": fx.admin, "type": "ACCOUNT_ID"}, "name": rule.name, "state": "ENABLED",
+			"components": []map[string]any{{"component": "ACTION", "type": "jira.issue.add-label", "value": map[string]string{"label": rule.label}}},
+			"trigger":    map[string]any{"component": "TRIGGER", "type": rule.trigger, "schemaVersion": 1, "value": map[string]any{}},
+		}, "connections": []any{}})
+		if _, err := fx.service.CreateRule(fx.ctx, fx.ws, fx.admin, body); err != nil {
+			t.Fatalf("%s: %v", rule.name, err)
+		}
+	}
+	runner := &Runner{Service: fx.service}
+	drain := func() {
+		t.Helper()
+		for range 25 {
+			if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// Work that existed before the rules is never replayed.
+	drain()
+
+	owner := fx.admin
+	if _, _, err := fx.store.UpdateIssue(fx.ctx, fx.admin, fx.ws, assigned.ID, store.IssueUpdate{AssigneeID: &owner}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := fx.store.CreateAttachment(fx.ctx, fx.admin, fx.ws, attached.ID, "plan.txt", "text/plain", 12, "blob_plan"); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+
+	if got := labels(assigned); len(got) != 1 || got[0] != "assigned" {
+		t.Fatalf("assigned work labels = %v", got)
+	}
+	if got := labels(attached); len(got) != 1 || got[0] != "has-file" {
+		t.Fatalf("work with a file labels = %v", got)
+	}
+	// Neither trigger touches work nothing happened to.
+	if got := labels(untouched); len(got) != 0 {
+		t.Fatalf("untouched work labels = %v", got)
+	}
+}

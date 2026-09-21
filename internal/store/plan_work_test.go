@@ -79,7 +79,11 @@ func TestPlanWorkGathersSourcesExclusionsDatesAndAccess(t *testing.T) {
 	dates := func(start, end string) map[string]json.RawMessage {
 		return map[string]json.RawMessage{targetStart: json.RawMessage(`"` + start + `"`), targetEnd: json.RawMessage(`"` + end + `"`)}
 	}
-	epic := create("Platform", "it_epic", "", dates("2026-10-01", "2026-12-31"))
+	// A level above the epic, so the plan has a hierarchy to roll up through.
+	initiativeType := NewID("it")
+	exec(`INSERT INTO issue_types(id,name,icon,subtask,workspace_id,hierarchy_level) VALUES($1,'Initiative','',false,$2,2)`, initiativeType, workspaceID)
+	initiative := create("Grow the platform", initiativeType, "", dates("2026-09-01", "2027-03-31"))
+	epic := create("Platform", "it_epic", initiative.ID, dates("2026-10-01", "2026-12-31"))
 	story := create("Migrate", "it_story", epic.ID, dates("2026-10-05", "2026-10-30"))
 	create("Detail", "it_subtask", story.ID, nil)
 	loose := create("Tidy", "it_task", "", nil)
@@ -141,11 +145,17 @@ func TestPlanWorkGathersSourcesExclusionsDatesAndAccess(t *testing.T) {
 	for _, item := range work.Items {
 		items[item.Issue.Key] = item
 	}
-	if len(work.Items) != 3 || items[epic.Key].Issue == nil || items[loose.Key].Issue == nil || items[filtered.Key].Issue == nil {
+	if len(work.Items) != 3 || items[initiative.Key].Issue == nil || items[loose.Key].Issue == nil || items[filtered.Key].Issue == nil {
 		t.Fatalf("plan items = %+v", work.Items)
 	}
-	top := items[epic.Key]
-	if top.StartDate != "2026-10-01" || top.DueDate != "2026-12-31" || len(top.Children) != 1 || top.Children[0].Issue.Key != story.Key || top.Children[0].StartDate != "2026-10-05" {
-		t.Fatalf("epic item = %+v", top)
+	// The plan nests through every level it was given, not only the epic's.
+	top := items[initiative.Key]
+	if len(top.Children) != 1 || top.Children[0].Issue.Key != epic.Key {
+		t.Fatalf("initiative item = %+v", top)
+	}
+	nested := top.Children[0]
+	if nested.StartDate != "2026-10-01" || nested.DueDate != "2026-12-31" || len(nested.Children) != 1 ||
+		nested.Children[0].Issue.Key != story.Key || nested.Children[0].StartDate != "2026-10-05" {
+		t.Fatalf("epic item = %+v", nested)
 	}
 }

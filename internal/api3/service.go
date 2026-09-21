@@ -19,7 +19,6 @@ import (
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
-	"github.com/e6qu/zzira/internal/workflow"
 )
 
 func (h *Handler) serviceDeskRoute(w http.ResponseWriter, r *http.Request) {
@@ -1513,28 +1512,21 @@ func (h *Handler) serviceRequestSLA(w http.ResponseWriter, r *http.Request, work
 }
 
 func (h *Handler) availableServiceTransitions(r *http.Request, workspaceID, actorID string, request *models.ServiceRequest) ([]map[string]any, error) {
+	// A request moves through the platform's Transition issues permission,
+	// the same as any other work item.
+	allowed, err := h.hasProjectPermission(r.Context(), workspaceID, actorID, request.Issue.ProjectID, request.Issue.ID, "TRANSITION_ISSUES")
+	if err != nil || !allowed {
+		return []map[string]any{}, err
+	}
 	wf, err := h.Store.WorkflowForProjectAndIssueType(r.Context(), request.Issue.ProjectID, request.Issue.IssueType.ID)
 	if err != nil {
 		return nil, err
 	}
-	evaluation := workflow.ContextForIssue(actorID, request.Issue)
+	evaluation, err := h.Store.IssueWorkflowEvaluation(r.Context(), workspaceID, actorID, request.Issue)
+	if err != nil {
+		return nil, err
+	}
 	evaluation.IsAPI = true
-	evaluation.StatusHistory, err = h.Store.IssueStatusHistory(r.Context(), workspaceID, request.Issue.ID)
-	if err != nil {
-		return nil, err
-	}
-	evaluation.Approvals, err = h.Store.IssueApprovalDecisions(r.Context(), request.Issue.ID)
-	if err != nil {
-		return nil, err
-	}
-	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), workspaceID, request.Issue.ID)
-	if err != nil {
-		return nil, err
-	}
-	evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(r.Context(), workspaceID, request.Issue.ID)
-	if err != nil {
-		return nil, err
-	}
 	evaluation.FormsAttached, evaluation.FormsSubmitted, err = h.Store.IssueFormState(r.Context(), workspaceID, request.Issue.ID)
 	if err != nil {
 		return nil, err

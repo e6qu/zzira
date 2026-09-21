@@ -14,7 +14,23 @@ type EmailDelivery struct {
 	// HTMLBody is the message's HTML alternative, or "" for plain text alone.
 	HTMLBody string
 	Attempt  int
+	// Sender is the address this message comes from: the sender a project
+	// chose, or "" for the site's own.
+	Sender string
 }
+
+// queueProjectEmailSQL queues mail about a project's work with the sender
+// address that project chose, provided the site has verified that address's
+// domain -- which is the answer the project's email resource already gives
+// its administrators. Anything else sends as the site's own sender.
+const queueProjectEmailSQL = `INSERT INTO email_outbox(workspace_id,recipient,subject,body,html_body,dedupe_key,sender)
+	VALUES($1,$2,$3,$4,$5,$6,COALESCE((
+	  SELECT p.sender_email FROM projects p
+	  WHERE p.id=$7 AND p.sender_email <> '' AND EXISTS (
+	    SELECT 1 FROM organization_domains d JOIN sites si ON si.organization_id=d.organization_id
+	    WHERE si.workspace_id=$1 AND lower(d.name)=lower(split_part(p.sender_email,'@',2)) AND d.claim_status='verified')
+	),''))
+	ON CONFLICT(dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`
 
 func (s *Store) ClaimEmailDelivery(ctx context.Context) (*EmailDelivery, error) {
 	tx, err := s.Pool.Begin(ctx)
@@ -33,8 +49,8 @@ func (s *Store) ClaimEmailDelivery(ctx context.Context) (*EmailDelivery, error) 
 		)
 		UPDATE email_outbox e SET state='delivering',locked_at=now()
 		FROM due WHERE e.id=due.id
-		RETURNING e.id,e.recipient,e.subject,e.body,e.html_body,e.attempt_count`).
-		Scan(&delivery.ID, &delivery.Recipient, &delivery.Subject, &delivery.Body, &delivery.HTMLBody, &delivery.Attempt)
+		RETURNING e.id,e.recipient,e.subject,e.body,e.html_body,e.attempt_count,e.sender`).
+		Scan(&delivery.ID, &delivery.Recipient, &delivery.Subject, &delivery.Body, &delivery.HTMLBody, &delivery.Attempt, &delivery.Sender)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil

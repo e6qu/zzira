@@ -19,7 +19,6 @@ import (
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/wikimarkup"
-	"github.com/e6qu/zzira/internal/workflow"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -1702,24 +1701,21 @@ func (h *Handler) serviceRequestForPage(r *http.Request, workspaceID, userID, is
 }
 
 func (h *Handler) servicePageTransitions(r *http.Request, workspaceID, actorID string, request *models.ServiceRequest) ([]serviceTransitionView, error) {
+	// Moving a request is the platform's Transition issues permission, as it
+	// is for any other work item, so a request shows none to someone the
+	// server would refuse.
+	canTransition, err := h.Store.HasProjectPermission(r.Context(), workspaceID, actorID, request.Issue.ProjectID, request.Issue.ID, "TRANSITION_ISSUES")
+	if err != nil {
+		return nil, err
+	}
+	if !canTransition {
+		return []serviceTransitionView{}, nil
+	}
 	wf, err := h.Store.WorkflowForProjectAndIssueType(r.Context(), request.Issue.ProjectID, request.Issue.IssueType.ID)
 	if err != nil {
 		return nil, err
 	}
-	evaluation := workflow.ContextForIssue(actorID, request.Issue)
-	evaluation.StatusHistory, err = h.Store.IssueStatusHistory(r.Context(), workspaceID, request.Issue.ID)
-	if err != nil {
-		return nil, err
-	}
-	evaluation.Approvals, err = h.Store.IssueApprovalDecisions(r.Context(), request.Issue.ID)
-	if err != nil {
-		return nil, err
-	}
-	evaluation.Transitions, err = h.Store.IssueTransitionHistory(r.Context(), workspaceID, request.Issue.ID)
-	if err != nil {
-		return nil, err
-	}
-	evaluation.ParentStatus, evaluation.ChildStatuses, err = h.Store.IssueHierarchyStatuses(r.Context(), workspaceID, request.Issue.ID)
+	evaluation, err := h.Store.IssueWorkflowEvaluation(r.Context(), workspaceID, actorID, request.Issue)
 	if err != nil {
 		return nil, err
 	}

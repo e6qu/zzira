@@ -149,6 +149,28 @@ type SyntaxError struct {
 
 func (e *SyntaxError) Error() string { return fmt.Sprintf("JQL syntax error at %d: %s", e.Pos, e.Msg) }
 
+// ValueError is a value a field cannot hold. The query parses; it just names
+// something that is not there. Jira answers it with this exact sentence, so
+// clients that show the message show Jira's.
+type ValueError struct {
+	Field string
+	Value string
+}
+
+// QueryMessage is how a client is told a query failed: Jira heads a syntax
+// error with "Error in the JQL Query", and answers a value that does not
+// exist with a sentence of its own, which is shown as it is.
+func QueryMessage(message string) string {
+	if strings.HasPrefix(message, "The value '") {
+		return message
+	}
+	return "Error in the JQL Query: " + message
+}
+
+func (e *ValueError) Error() string {
+	return "The value '" + e.Value + "' does not exist for the field '" + e.Field + "'."
+}
+
 // ---- Lexer ----
 
 type token struct {
@@ -632,6 +654,24 @@ func canonicalField(field string) string {
 		return "due"
 	case "resolved":
 		return "resolutiondate"
+	case "statuscategorychangedate":
+		return "statuscategorychangeddate"
+	case "issuekey":
+		return "key"
+	case "type":
+		return "issuetype"
+	case "timeoriginalestimate":
+		return "originalestimate"
+	case "timeestimate":
+		return "remainingestimate"
+	case "watchers":
+		return "watcher"
+	case "voters":
+		return "voter"
+	case "request participants", "request-participants":
+		return "requestparticipants"
+	case "request channel type", "request-channel-type":
+		return "requestchanneltype"
 	default:
 		// cf[10000] names a custom field by its number.
 		lower := strings.ToLower(field)
@@ -890,6 +930,22 @@ type FieldResolver struct {
 	// SLAFields are the lower-cased names of the site's SLAs, which the SLA
 	// functions search.
 	SLAFields map[string]bool
+	// KnownValues are the values a field can take, lower-cased, for the
+	// fields Jira checks a query against. A value that is not among them is
+	// an error rather than a query that matches nothing, because a typed
+	// status is a mistake and an empty result hides it.
+	KnownValues map[string]map[string]bool
+	// FilterJQL resolves a saved filter a query names -- by id or by name --
+	// to the JQL it holds, for the person searching. It answers false for a
+	// filter that does not exist or that they may not see, which are the
+	// same answer on purpose.
+	FilterJQL func(userID, nameOrID string) (string, bool)
+}
+
+// WithFilterJQL gives a resolver the saved filters a query may name.
+func WithFilterJQL(res FieldResolver, lookup func(userID, nameOrID string) (string, bool)) FieldResolver {
+	res.FilterJQL = lookup
+	return res
 }
 
 // WithSLAFields adds the names of a site's SLAs to the fields SLA functions
@@ -1065,40 +1121,59 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 	return res
 }
 
+// CurrentUserPlaceholder stands for the person searching inside a column
+// expression. A field that asks about them -- what they have opened, what
+// they follow -- is theirs alone, so the expression carries the reader
+// rather than being the same for everyone.
+const CurrentUserPlaceholder = "{{currentUser}}"
+
 func DefaultResolver() FieldResolver {
 	return FieldResolver{
 		// Every service desk has Jira's two built-in SLAs.
 		SLAFields: map[string]bool{"time to first response": true, "time to resolution": true},
 		Columns: map[string]string{
-			"key":            "i.key",
-			"issue":          "i.key",
-			"id":             "i.jira_id",
-			"summary":        "i.summary",
-			"description":    "i.description::text",
-			"status":         "st.name",
-			"statuscategory": "st.category",
-			"project":        "pr.key",
-			"assignee":       "i.assignee_id",
-			"reporter":       "i.reporter_id",
-			"creator":        "i.reporter_id",
-			"priority":       "COALESCE(pro.name, pr2.name)",
-			"issuetype":      "COALESCE(ito.name, it.name)",
-			"updated":        "i.updated_at",
-			"created":        "i.created_at",
-			"labels":         "i.labels",
-			"parent":         "parent.key",
-			"resolution":     "COALESCE(reso.name, res.name)",
-			"resolutiondate": "i.resolved_at",
-			"due":            `i.due_date::timestamptz`,
-			"environment":    `i.fields->>'environment'`,
-			"component":      `i.fields->>'component'`,
-			"sprint":         `i.fields->>'sprint'`,
+			"key":                       "i.key",
+			"issue":                     "i.key",
+			"id":                        "i.jira_id",
+			"summary":                   "i.summary",
+			"description":               "i.description::text",
+			"status":                    "st.name",
+			"statuscategory":            "st.category",
+			"project":                   "pr.key",
+			"assignee":                  "i.assignee_id",
+			"reporter":                  "i.reporter_id",
+			"creator":                   "i.reporter_id",
+			"priority":                  "COALESCE(pro.name, pr2.name)",
+			"issuetype":                 "COALESCE(ito.name, it.name)",
+			"updated":                   "i.updated_at",
+			"created":                   "i.created_at",
+			"labels":                    "i.labels",
+			"parent":                    "parent.key",
+			"resolution":                "COALESCE(reso.name, res.name)",
+			"resolutiondate":            "i.resolved_at",
+			"statuscategorychangeddate": "i.status_category_changed_at",
+			"due":                       `i.due_date::timestamptz`,
+			"environment":               `i.fields->>'environment'`,
+			"component":                 `i.fields->>'component'`,
+			"sprint":                    `i.fields->>'sprint'`,
 			// Time tracking, in seconds; work ratio is time spent as a
 			// percentage of the original estimate.
 			"originalestimate":  "i.original_estimate_seconds",
 			"remainingestimate": "i.remaining_estimate_seconds",
 			"timespent":         "(SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id)",
 			"workratio":         "CASE WHEN i.original_estimate_seconds > 0 THEN (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id) * 100 / i.original_estimate_seconds END",
+			// How many people voted, what level of the work type hierarchy
+			// the work item sits on, the security level it carries and the
+			// category of its project.
+			"votes":          "(SELECT count(*) FROM issue_votes vote_count WHERE vote_count.issue_id=i.id)",
+			"hierarchylevel": "COALESCE(ito.hierarchy_level, it.hierarchy_level)",
+			"level":          "(SELECT level_entry->>'name' FROM security_schemes level_scheme, jsonb_array_elements(level_scheme.levels) level_entry WHERE level_scheme.workspace_id=pr.workspace_id AND level_entry->>'id'=i.security_level_id LIMIT 1)",
+			"category":       "(SELECT project_category.name FROM project_categories project_category WHERE project_category.id=pr.category_id)",
+			// When the person searching last opened this work item.
+			"lastviewed": "(SELECT issue_view.viewed_at FROM issue_views issue_view WHERE issue_view.issue_id=i.id AND issue_view.user_id=" + CurrentUserPlaceholder + ")",
+			// The channel a service request came in on, which only a request
+			// has at all.
+			"requestchanneltype": "(SELECT service_request.channel FROM service_requests service_request WHERE service_request.issue_id=i.id)",
 		},
 		TextColumns: []string{"i.summary", "i.description::text"},
 		DefaultOrder: map[string]string{
@@ -1106,13 +1181,17 @@ func DefaultResolver() FieldResolver {
 			"status": "st.name", "priority": "COALESCE(pro.position, pr2.position)", "assignee": "a.display_name", "issuetype": "COALESCE(ito.name, it.name)",
 			"reporter": "r.display_name", "project": "pr.key", "parent": "parent.key", "resolution": "COALESCE(reso.position, res.position)",
 			"due": `i.due_date::timestamptz`, "resolutiondate": "i.resolved_at",
-			"originalestimate": "i.original_estimate_seconds", "remainingestimate": "i.remaining_estimate_seconds",
-			"timespent": "(SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id)",
-			"workratio": "CASE WHEN i.original_estimate_seconds > 0 THEN (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id) * 100 / i.original_estimate_seconds END",
+			"statuscategorychangeddate": "i.status_category_changed_at",
+			"lastviewed":                "(SELECT issue_view.viewed_at FROM issue_views issue_view WHERE issue_view.issue_id=i.id AND issue_view.user_id=" + CurrentUserPlaceholder + ")",
+			"originalestimate":          "i.original_estimate_seconds", "remainingestimate": "i.remaining_estimate_seconds",
+			"timespent":      "(SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id)",
+			"workratio":      "CASE WHEN i.original_estimate_seconds > 0 THEN (SELECT COALESCE(sum(w.time_spent_seconds),0) FROM worklogs w WHERE w.issue_id=i.id) * 100 / i.original_estimate_seconds END",
+			"votes":          "(SELECT count(*) FROM issue_votes vote_count WHERE vote_count.issue_id=i.id)",
+			"hierarchylevel": "COALESCE(ito.hierarchy_level, it.hierarchy_level)",
 		},
-		DateFields:     map[string]bool{"updated": true, "created": true, "due": true, "resolutiondate": true},
+		DateFields:     map[string]bool{"updated": true, "created": true, "due": true, "resolutiondate": true, "statuscategorychangeddate": true, "lastviewed": true},
 		DurationFields: map[string]bool{"originalestimate": true, "remainingestimate": true, "timespent": true},
-		NumberFields:   map[string]bool{"workratio": true},
+		NumberFields:   map[string]bool{"workratio": true, "votes": true, "hierarchylevel": true},
 	}
 }
 
@@ -1177,7 +1256,7 @@ func compileQuery(q *Query, currentUserID string, res FieldResolver, paramOffset
 			if requested.Desc {
 				dir = "DESC"
 			}
-			orderParts = append(orderParts, col+" "+dir)
+			orderParts = append(orderParts, c.forCurrentUser(col)+" "+dir)
 		}
 	}
 	// A stable final key prevents duplicate or skipped rows when requested sort
@@ -1198,6 +1277,20 @@ type compiler struct {
 	// lenient turns a failing clause into a warning and FALSE.
 	lenient  bool
 	warnings []string
+	// filters is the chain of saved filters being compiled, so a filter
+	// that names itself, directly or through others, is refused rather than
+	// followed for ever.
+	filters []string
+}
+
+// forCurrentUser binds the person searching into a column expression that
+// asks about them. The placeholder becomes an ordinary parameter, numbered
+// where it is used, so the expression carries no identity of its own.
+func (c *compiler) forCurrentUser(col string) string {
+	if !strings.Contains(col, CurrentUserPlaceholder) {
+		return col
+	}
+	return strings.ReplaceAll(col, CurrentUserPlaceholder, c.arg(c.user))
 }
 
 // terminal compiles one clause. In a lenient compile a clause that fails is
@@ -1245,10 +1338,15 @@ func (c *compiler) node(n Node) string {
 		if t.Value == "" {
 			return "TRUE" // empty query matches all
 		}
-		likes := make([]string, 0, len(c.res.TextColumns))
+		// A bare term is Jira's text field written without naming it, so it
+		// looks where that field looks: the work item's own text and the
+		// text of its comments.
+		term := c.arg("%" + t.Value + "%")
+		likes := make([]string, 0, len(c.res.TextColumns)+1)
 		for _, col := range c.res.TextColumns {
-			likes = append(likes, col+" ILIKE "+c.arg("%"+t.Value+"%"))
+			likes = append(likes, col+" ILIKE "+term)
 		}
+		likes = append(likes, commentTextMatch(term))
 		return "(" + strings.Join(likes, " OR ") + ")"
 	case Clause:
 		return c.terminal(func() string { return c.clause(t) })
@@ -1296,6 +1394,27 @@ func (c *compiler) clause(cl Clause) string {
 	if cl.Field == "labels" {
 		return c.labelsClause(cl)
 	}
+	// Fields that are not values on the work item but things attached to it:
+	// its text, its comments, the people watching or voting, its attachments
+	// and the links it takes part in.
+	switch cl.Field {
+	case "text":
+		return c.freeTextClause(cl)
+	case "comment":
+		return c.commentClause(cl)
+	case "watcher":
+		return c.userSetClause(cl, "watchers", "watcher_row", "issue_id")
+	case "voter":
+		return c.userSetClause(cl, "issue_votes", "voter_row", "issue_id")
+	case "requestparticipants":
+		return c.userSetClause(cl, "service_request_participants", "participant_row", "request_issue_id")
+	case "attachments":
+		return c.attachmentsClause(cl)
+	case "issuelinktype":
+		return c.issueLinkTypeClause(cl)
+	case "filter", "request", "savedfilter", "searchrequest":
+		return c.savedFilterClause(cl)
+	}
 	if field, ok := c.res.CustomValueFields[cl.Field]; ok {
 		return c.customValueClause(field, cl)
 	}
@@ -1318,7 +1437,9 @@ func (c *compiler) clause(cl Clause) string {
 		return c.projectFunctionClause(cl)
 	}
 	if (cl.Field == "issue" || cl.Field == "key" || cl.Field == "id") && containsJQLFunction(cl.Values,
-		"linkedIssues", "linkedWorkItems", "watchedIssues", "watchedWorkItems", "votedIssues", "votedWorkItems", "updatedBy") {
+		"linkedIssues", "linkedWorkItems", "watchedIssues", "watchedWorkItems", "votedIssues", "votedWorkItems",
+		"issueHistory", "workItemHistory", "issuesWithRemoteLinksByGlobalId", "workItemsWithRemoteLinksByGlobalId",
+		"updatedBy") {
 		return c.issueFunctionClause(cl)
 	}
 	if cl.Field == "project" && (cl.Op == "=" || cl.Op == "!=" || cl.Op == "in" || cl.Op == "notin") && !containsAnyFunction(cl.Values) {
@@ -1332,6 +1453,7 @@ func (c *compiler) clause(cl Clause) string {
 		c.err = &SyntaxError{0, "field does not exist or is not searchable: " + cl.Field}
 		return ""
 	}
+	col = c.forCurrentUser(col)
 	if containsJQLFunction(cl.Values, "currentLogin", "lastLogin", "now", "startOfDay", "endOfDay", "startOfWeek", "endOfWeek", "startOfMonth", "endOfMonth", "startOfYear", "endOfYear") {
 		if !c.res.DateFields[cl.Field] {
 			c.err = &SyntaxError{0, "date functions require a date field"}
@@ -1736,6 +1858,7 @@ func (c *compiler) historyClause(cl HistoryClause) string {
 		"priority": "priority", "parent": "parent", "labels": "labels",
 		"summary": "summary", "description": "description", "security": "security",
 		"fixversion": "fixVersions", "affectedversion": "versions",
+		"resolution": "resolution",
 	}
 	key, ok := keys[cl.Field]
 	if !ok {
@@ -1774,7 +1897,7 @@ func (c *compiler) historyClause(cl HistoryClause) string {
 	if current, present := c.res.Columns[cl.Field]; present && len(cl.Predicates) == 0 {
 		currentMatches := make([]string, 0, len(cl.Values))
 		for _, value := range cl.Values {
-			currentMatches = append(currentMatches, "lower(COALESCE("+current+"::text,''))=lower("+c.arg(c.fieldValue(cl.Field, value))+"::text)")
+			currentMatches = append(currentMatches, "lower(COALESCE("+current+"::text,''))=lower("+c.arg(c.historyValue(cl.Field, value))+"::text)")
 		}
 		exists = "(" + exists + " OR " + strings.Join(currentMatches, " OR ") + ")"
 	}
@@ -1784,10 +1907,21 @@ func (c *compiler) historyClause(cl HistoryClause) string {
 	return exists
 }
 
+// historyValue is a value as history compares it. Unresolved is the only
+// value a clause reads as the absence of one, and the log records that
+// absence as an empty value rather than as nothing at all.
+func (c *compiler) historyValue(field, value string) any {
+	compared := c.fieldValue(field, value)
+	if compared == nil {
+		return ""
+	}
+	return compared
+}
+
 func (c *compiler) historyValueMatch(key, side string, values []string) string {
 	parts := make([]string, 0, len(values))
 	for _, value := range values {
-		placeholder := c.arg(c.fieldValue(key, value))
+		placeholder := c.arg(c.historyValue(key, value))
 		var columns []string
 		switch side {
 		case "from":
@@ -1835,6 +1969,199 @@ func (c *compiler) labelsClause(cl Clause) string {
 	}
 	c.err = &SyntaxError{0, "unsupported operator " + cl.Op}
 	return ""
+}
+
+// remoteLinkMatch matches the work items carrying a remote link with one of
+// the global ids named, which is how Jira finds work by what another system
+// calls it.
+func (c *compiler) remoteLinkMatch(name string, args []string) string {
+	if len(args) == 0 || len(args) > 100 {
+		c.err = &SyntaxError{0, name + "() takes between 1 and 100 global ids"}
+		return ""
+	}
+	placeholders := make([]string, 0, len(args))
+	for _, id := range args {
+		trimmed := strings.Trim(strings.TrimSpace(id), `"'`)
+		if trimmed == "" {
+			c.err = &SyntaxError{0, name + "() global ids cannot be empty"}
+			return ""
+		}
+		placeholders = append(placeholders, c.arg(trimmed))
+	}
+	return "EXISTS (SELECT 1 FROM remote_issue_links remote_link WHERE remote_link.issue_id=i.id AND remote_link.global_id IN (" +
+		strings.Join(placeholders, ",") + "))"
+}
+
+// maxFilterDepth bounds how many saved filters one query may lead through.
+const maxFilterDepth = 10
+
+// savedFilterClause matches the work a saved filter matches, which is how
+// Jira's filter field searches: the filter's own query is compiled in place.
+func (c *compiler) savedFilterClause(cl Clause) string {
+	if c.res.FilterJQL == nil {
+		c.err = &SyntaxError{0, "saved filters are not searchable here"}
+		return ""
+	}
+	switch cl.Op {
+	case "=", "!=", "in", "notin":
+	default:
+		c.err = &SyntaxError{0, "filter supports =, !=, IN and NOT IN"}
+		return ""
+	}
+	if len(c.filters) >= maxFilterDepth {
+		c.err = &SyntaxError{0, "a filter leads through too many other filters"}
+		return ""
+	}
+	matches := make([]string, 0, len(cl.Values))
+	for _, value := range cl.Values {
+		named := strings.Trim(strings.TrimSpace(value), `"'`)
+		for _, seen := range c.filters {
+			if strings.EqualFold(seen, named) {
+				c.err = &SyntaxError{0, "filter " + strconv.Quote(named) + " leads back to itself"}
+				return ""
+			}
+		}
+		text, ok := c.res.FilterJQL(c.user, named)
+		if !ok {
+			c.err = &SyntaxError{0, "filter " + strconv.Quote(named) + " does not exist or you do not have permission to see it"}
+			return ""
+		}
+		parsed, parseErr := Parse(text)
+		if parseErr != nil {
+			c.err = &SyntaxError{0, "filter " + strconv.Quote(named) + " holds a query that no longer parses"}
+			return ""
+		}
+		c.filters = append(c.filters, named)
+		sql := c.node(parsed.Root)
+		c.filters = c.filters[:len(c.filters)-1]
+		if c.err != nil {
+			return ""
+		}
+		matches = append(matches, "("+sql+")")
+	}
+	match := "(" + strings.Join(matches, " OR ") + ")"
+	if cl.Op == "!=" || cl.Op == "notin" {
+		return "(NOT " + match + ")"
+	}
+	return match
+}
+
+// freeTextClause searches the text of a work item the way Jira's text field
+// does: its own text and the text of its comments, with ~ and !~ alone.
+func (c *compiler) freeTextClause(cl Clause) string {
+	if cl.Op != "~" && cl.Op != "!~" {
+		c.err = &SyntaxError{0, "text supports only ~ and !~"}
+		return ""
+	}
+	term := c.arg("%" + cl.Values[0] + "%")
+	parts := make([]string, 0, len(c.res.TextColumns)+1)
+	for _, col := range c.res.TextColumns {
+		parts = append(parts, col+" ILIKE "+term)
+	}
+	parts = append(parts, commentTextMatch(term))
+	match := "(" + strings.Join(parts, " OR ") + ")"
+	if cl.Op == "!~" {
+		return "(NOT " + match + ")"
+	}
+	return match
+}
+
+// commentTextMatch is one work item's comments holding a phrase.
+func commentTextMatch(term string) string {
+	return "EXISTS (SELECT 1 FROM comments comment_row WHERE comment_row.issue_id=i.id AND comment_row.body::text ILIKE " + term + ")"
+}
+
+// commentClause searches only the comments, as Jira's comment field does.
+func (c *compiler) commentClause(cl Clause) string {
+	if cl.Op != "~" && cl.Op != "!~" {
+		c.err = &SyntaxError{0, "comment supports only ~ and !~"}
+		return ""
+	}
+	match := commentTextMatch(c.arg("%" + cl.Values[0] + "%"))
+	if cl.Op == "!~" {
+		return "(NOT " + match + ")"
+	}
+	return match
+}
+
+// userSetClause matches the people attached to a work item rather than named
+// on it -- who watches it, who voted for it -- which is how Jira's watcher
+// and voter fields search.
+func (c *compiler) userSetClause(cl Clause, table, alias, issueColumn string) string {
+	any := "EXISTS (SELECT 1 FROM " + table + " " + alias + " WHERE " + alias + "." + issueColumn + "=i.id)"
+	switch cl.Op {
+	case "empty":
+		return "(NOT " + any + ")"
+	case "notempty":
+		return any
+	case "=", "!=", "in", "notin":
+	default:
+		c.err = &SyntaxError{0, cl.Field + " supports =, !=, IN, NOT IN, IS EMPTY and IS NOT EMPTY"}
+		return ""
+	}
+	matches := make([]string, 0, len(cl.Values))
+	for _, value := range cl.Values {
+		user := value
+		if name, args, ok := splitFunction(value); ok {
+			if !strings.EqualFold(name, "currentUser") || len(args) != 0 {
+				c.err = &SyntaxError{0, "unsupported function " + name + "() for " + cl.Field}
+				return ""
+			}
+			user = c.user
+		}
+		matches = append(matches, "EXISTS (SELECT 1 FROM "+table+" "+alias+" WHERE "+alias+"."+issueColumn+"=i.id AND "+alias+".user_id="+c.arg(user)+")")
+	}
+	match := "(" + strings.Join(matches, " OR ") + ")"
+	if cl.Op == "!=" || cl.Op == "notin" {
+		return "(NOT " + match + ")"
+	}
+	return match
+}
+
+// attachmentsClause answers whether a work item has files, which is all Jira
+// asks of the attachments field.
+func (c *compiler) attachmentsClause(cl Clause) string {
+	any := "EXISTS (SELECT 1 FROM attachments attachment_row WHERE attachment_row.issue_id=i.id)"
+	switch cl.Op {
+	case "empty":
+		return "(NOT " + any + ")"
+	case "notempty":
+		return any
+	}
+	c.err = &SyntaxError{0, "attachments supports only IS EMPTY and IS NOT EMPTY"}
+	return ""
+}
+
+// issueLinkTypeClause matches work items taking part in a link of a named
+// type, by the type's name or by either direction's wording.
+func (c *compiler) issueLinkTypeClause(cl Clause) string {
+	any := "EXISTS (SELECT 1 FROM issue_links link_row WHERE link_row.inward_id=i.id OR link_row.outward_id=i.id)"
+	switch cl.Op {
+	case "empty":
+		return "(NOT " + any + ")"
+	case "notempty":
+		return any
+	case "=", "!=", "in", "notin":
+	default:
+		c.err = &SyntaxError{0, "issueLinkType supports =, !=, IN, NOT IN, IS EMPTY and IS NOT EMPTY"}
+		return ""
+	}
+	matches := make([]string, 0, len(cl.Values))
+	for _, value := range cl.Values {
+		if _, _, ok := splitFunction(value); ok {
+			c.err = &SyntaxError{0, "issueLinkType takes link type names, not functions"}
+			return ""
+		}
+		name := c.arg(value)
+		matches = append(matches, "EXISTS (SELECT 1 FROM issue_links link_row JOIN issue_link_types link_type ON link_type.id=link_row.link_type_id"+
+			" WHERE (link_row.inward_id=i.id OR link_row.outward_id=i.id)"+
+			" AND (lower(link_type.name)=lower("+name+") OR lower(link_type.inward)=lower("+name+") OR lower(link_type.outward)=lower("+name+")))")
+	}
+	match := "(" + strings.Join(matches, " OR ") + ")"
+	if cl.Op == "!=" || cl.Op == "notin" {
+		return "(" + any + " AND NOT " + match + ")"
+	}
+	return match
 }
 
 func (c *compiler) componentClause(cl Clause) string {
@@ -1958,7 +2285,26 @@ func (c *compiler) fieldValue(field, value string) any {
 	case "project":
 		return strings.ToUpper(value)
 	}
+	if !c.knownValue(field, value) {
+		return value
+	}
 	return value
+}
+
+// knownValue reports whether a field can hold the value a query names, and
+// records Jira's own error when it cannot. A field the site has no catalogue
+// for is not checked.
+func (c *compiler) knownValue(field, value string) bool {
+	known, checked := c.res.KnownValues[field]
+	if !checked {
+		return true
+	}
+	text := strings.ToLower(strings.Trim(strings.TrimSpace(value), `"'`))
+	if text == "" || known[text] {
+		return true
+	}
+	c.err = &ValueError{Field: field, Value: strings.Trim(strings.TrimSpace(value), `"'`)}
+	return false
 }
 
 func (c *compiler) datePredicateSQL(value string) string {
@@ -2114,6 +2460,16 @@ func (c *compiler) issueFunctionClause(cl Clause) string {
 			return ""
 		}
 		match = "EXISTS (SELECT 1 FROM issue_votes voted WHERE voted.issue_id=i.id AND voted.user_id=" + c.arg(c.user) + ")"
+	case "issueswithremotelinksbyglobalid", "workitemswithremotelinksbyglobalid":
+		match = c.remoteLinkMatch(name, args)
+	case "issuehistory", "workitemhistory":
+		if len(args) != 0 {
+			c.err = &SyntaxError{0, name + "() does not accept arguments"}
+			return ""
+		}
+		// What the person searching has opened, which is what Jira's
+		// issueHistory() means by recently viewed.
+		match = "EXISTS (SELECT 1 FROM issue_views viewed WHERE viewed.issue_id=i.id AND viewed.user_id=" + c.arg(c.user) + ")"
 	case "updatedby":
 		match = c.updatedByMatch(args)
 	default:

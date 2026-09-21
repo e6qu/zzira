@@ -200,6 +200,36 @@ func TestNotificationSchemeContractAndDelivery(t *testing.T) {
 		t.Fatalf("restricted delivery leaked: inbox=%d email=%d", notificationCount, emailCount)
 	}
 
+	// A project's own sender address reaches the mail it queues only once the
+	// site has verified the address's domain, which is what the project's
+	// email resource tells its administrators.
+	call(adminID, http.MethodPut, "/rest/api/3/project/"+projectID+"/email", `{"emailAddress":"delivery@sender.example"}`, http.StatusNoContent)
+	unverified := call(adminID, http.MethodGet, "/rest/api/3/project/"+projectID+"/email", "", http.StatusOK)
+	if !strings.Contains(unverified.Body.String(), "not verified") {
+		t.Fatalf("unverified sender status = %s", unverified.Body.String())
+	}
+	senderOf := func(summary string) string {
+		call(adminID, http.MethodPost, "/rest/api/3/issue", `{"fields":{"project":{"key":"`+projectKey+`"},"summary":"`+summary+`","issuetype":{"name":"Task"}}}`, http.StatusCreated)
+		var sender string
+		if err := st.Pool.QueryRow(ctx, `SELECT sender FROM email_outbox WHERE workspace_id=$1 AND subject LIKE '%'||$2 ORDER BY id DESC LIMIT 1`, workspaceID, summary).Scan(&sender); err != nil {
+			t.Fatal(err)
+		}
+		return sender
+	}
+	if sender := senderOf("Unverified sender"); sender != "" {
+		t.Fatalf("unverified project sender was used: %q", sender)
+	}
+	domain, err := st.CreateOrganizationDomain(ctx, workspaceID, adminID, "sender.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.VerifyOrganizationDomain(ctx, workspaceID, adminID, domain.ID); err != nil {
+		t.Fatal(err)
+	}
+	if sender := senderOf("Verified sender"); sender != "delivery@sender.example" {
+		t.Fatalf("verified project sender = %q", sender)
+	}
+
 	// The notification helper explains the same decisions.
 	diagnosis, err := st.DiagnoseIssueNotification(ctx, workspaceID, recipientID, issueID, 1)
 	if err != nil || !diagnosis.Notified() || diagnosis.SchemeName != "Delivery notifications" || diagnosis.EventName != "Issue created" || len(diagnosis.Rules) != 1 || diagnosis.Rules[0].NotificationType != "User" {

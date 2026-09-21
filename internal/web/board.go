@@ -331,6 +331,24 @@ func (h *Handler) buildBoardView(r *http.Request, user *models.User, wsID string
 			}
 			return epic.ID, epic.Key + " " + epic.Summary, true
 		}, nil, nil, "Work under no epic")
+	case "stories":
+		ids := make([]string, 0)
+		for _, statusID := range board.StatusIDs() {
+			for _, issue := range columns[statusID] {
+				ids = append(ids, issue.ID)
+			}
+		}
+		stories, err := h.Store.BoardStoryLanes(r.Context(), board.WorkspaceID, ids)
+		if err != nil {
+			return boardViewData{}, err
+		}
+		group(func(issue *models.Issue) (string, string, bool) {
+			story, ok := stories[issue.ID]
+			if !ok {
+				return "", "", false
+			}
+			return story.ID, story.Key + " " + story.Summary, true
+		}, nil, nil, "Everything else")
 	case "project":
 		group(func(issue *models.Issue) (string, string, bool) {
 			if issue.ProjectID == "" {
@@ -515,6 +533,7 @@ func (h *Handler) boardSettingsData(r *http.Request, board *models.Board, messag
 		{"none", "No swimlanes"},
 		{"assignee", "Group by assignee"},
 		{"epic", "Group by epic"},
+		{"stories", "Group by stories"},
 		{"project", "Group by project"},
 		{"query", "Group by the queries below"},
 	} {

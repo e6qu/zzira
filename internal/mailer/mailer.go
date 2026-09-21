@@ -28,6 +28,11 @@ type Message struct {
 	Body      string
 	// HTMLBody, when set, is sent as an HTML alternative to Body.
 	HTMLBody string
+	// From, when set, is the address the message says it comes from: a
+	// project's own sender address. The envelope stays the site's, so a
+	// bounce comes back to the site rather than to a project mailbox that
+	// may not exist.
+	From string
 }
 
 type Sender interface {
@@ -74,6 +79,14 @@ func (s *SMTP) Send(ctx context.Context, message Message) error {
 	if strings.ContainsAny(message.Recipient+message.Subject+s.From, "\r\n") {
 		return errors.New("mail headers cannot contain newlines")
 	}
+	from := s.From
+	if message.From != "" {
+		address, err := mail.ParseAddress(message.From)
+		if err != nil || address.Address != message.From {
+			return fmt.Errorf("sender %q is not one plain email address", message.From)
+		}
+		from = message.From
+	}
 	connection, err := (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, "tcp", s.Address)
 	if err != nil {
 		return err
@@ -97,6 +110,8 @@ func (s *SMTP) Send(ctx context.Context, message Message) error {
 			return err
 		}
 	}
+	// The envelope sender stays the site's; only the From header carries a
+	// project's address.
 	if err := client.Mail(s.From); err != nil {
 		return err
 	}
@@ -107,7 +122,7 @@ func (s *SMTP) Send(ctx context.Context, message Message) error {
 	if err != nil {
 		return err
 	}
-	payload, err := messagePayload(s.From, message)
+	payload, err := messagePayload(from, message)
 	if err != nil {
 		_ = writer.Close()
 		return err
@@ -197,7 +212,7 @@ func (r *Runner) Run(ctx context.Context) {
 	for {
 		delivery, err := r.Store.ClaimEmailDelivery(ctx)
 		if err == nil && delivery != nil {
-			sendErr := r.Sender.Send(ctx, Message{Recipient: delivery.Recipient, Subject: delivery.Subject,
+			sendErr := r.Sender.Send(ctx, Message{Recipient: delivery.Recipient, Subject: delivery.Subject, From: delivery.Sender,
 				Body: absoluteLinks(r.BaseURL, delivery.Body, false), HTMLBody: absoluteLinks(r.BaseURL, delivery.HTMLBody, true)})
 			if err := r.Store.CompleteEmailDelivery(ctx, delivery.ID, sendErr); err != nil {
 				log.Printf("complete invitation email delivery %d: %v", delivery.ID, err)

@@ -77,5 +77,64 @@ func (s *Store) JQLResolver(ctx context.Context, workspaceID string) (jql.FieldR
 	for _, metric := range metrics {
 		slaNames = append(slaNames, metric.Name)
 	}
-	return jql.WithSLAFields(jql.WithEntityProperties(jql.WithCustomFields(jql.DefaultResolver(), fields), indexes), slaNames), nil
+	known, err := s.jqlKnownValues(ctx, workspaceID)
+	if err != nil {
+		return jql.FieldResolver{}, err
+	}
+	resolver := jql.WithSLAFields(jql.WithEntityProperties(jql.WithCustomFields(jql.DefaultResolver(), fields), indexes), slaNames)
+	resolver.KnownValues = known
+	// A query may name a saved filter, which is read when the query is
+	// compiled and only for the person compiling it.
+	return jql.WithFilterJQL(resolver, func(userID, nameOrID string) (string, bool) {
+		return s.FilterJQLForSearch(ctx, workspaceID, userID, nameOrID)
+	}), nil
+}
+
+// jqlKnownValuesQuery lists every value the fields a search validates can
+// hold: the name each entity answers to -- an override where the site set one,
+// as the search columns read them -- and its numeric id, which Jira also
+// accepts.
+const jqlKnownValuesQuery = `
+SELECT 'status', lower(s.name) FROM statuses s WHERE s.workspace_id IS NULL OR s.workspace_id=$1
+UNION ALL SELECT 'status', s.jira_id::text FROM statuses s WHERE s.workspace_id IS NULL OR s.workspace_id=$1
+UNION ALL SELECT 'priority', lower(COALESCE(o.name,p.name)) FROM priorities p
+  LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$1 AND o.entity_type='priority' AND o.entity_id=p.id
+  WHERE p.workspace_id IS NULL OR p.workspace_id=$1
+UNION ALL SELECT 'priority', p.jira_id::text FROM priorities p WHERE p.workspace_id IS NULL OR p.workspace_id=$1
+UNION ALL SELECT 'resolution', lower(COALESCE(o.name,r.name)) FROM resolutions r
+  LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$1 AND o.entity_type='resolution' AND o.entity_id=r.id
+  WHERE r.workspace_id IS NULL OR r.workspace_id=$1
+UNION ALL SELECT 'resolution', r.jira_id::text FROM resolutions r WHERE r.workspace_id IS NULL OR r.workspace_id=$1
+UNION ALL SELECT 'issuetype', lower(COALESCE(o.name,t.name)) FROM issue_types t
+  LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$1 AND o.entity_type='issuetype' AND o.entity_id=t.id
+  WHERE t.workspace_id IS NULL OR t.workspace_id=$1
+UNION ALL SELECT 'issuetype', t.jira_id::text FROM issue_types t WHERE t.workspace_id IS NULL OR t.workspace_id=$1`
+
+// jqlKnownValues reads the catalogue a search checks its values against.
+func (s *Store) jqlKnownValues(ctx context.Context, workspaceID string) (map[string]map[string]bool, error) {
+	rows, err := s.Pool.Query(ctx, jqlKnownValuesQuery, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	values := map[string]map[string]bool{}
+	for rows.Next() {
+		var field, value string
+		if err := rows.Scan(&field, &value); err != nil {
+			return nil, err
+		}
+		if values[field] == nil {
+			values[field] = map[string]bool{}
+		}
+		values[field][value] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// "Unresolved" is how Jira writes "no resolution", and the compiler reads
+	// it as the absence of one rather than as a resolution by that name.
+	if values["resolution"] != nil {
+		values["resolution"]["unresolved"] = true
+	}
+	return values, rows.Err()
 }

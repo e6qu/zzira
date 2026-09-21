@@ -22,7 +22,12 @@ A site's levels run Subtask (`-1`), Base (`0`), Epic (`1`) and any named levels 
 - **Parent:** a work item's parent is a work item exactly one level above it — a task under an epic, an epic under the level above it. Anything else is `Given parent work item does not belong to appropriate hierarchy.` (`internal/commands/commands_v1.go`, `hierarchyParent`). The parent may be in any project. The create form and the work item view offer only the work items of the level above (`ParentOptions`).
 - **Sub-tasks are the exception:** a sub-task's parent is any work item of a non-sub-task type in the sub-task's own project. Sub-tasks are refused entirely while the site switches them off ([JIRA_SITE_CONFIGURATION.md](JIRA_SITE_CONFIGURATION.md)).
 - **REST:** `POST /rest/api/3/issuetype` creates standard types at level 0 and subtask types at −1, as Jira's API does; higher levels are set in the settings page. `GET /rest/api/3/project/{projectId}/hierarchy` reports the site's levels with their names ([JIRA_PLATFORM.md](JIRA_PLATFORM.md#site-and-project-reads)).
-- Boards and backlogs use the epic level. Epic behavior is in [JIRA_SOFTWARE.md](JIRA_SOFTWARE.md).
+- **Rollups:** a project's roadmap (`/projects/{key}/timeline`) and a plan's
+  work both nest through every level the site has -- an initiative carries its
+  epics, an epic its work items -- and each row is indented by how deep it
+  sits. A parent whose level is not above its child's is not nested, so a
+  mis-typed hierarchy cannot make a cycle.
+- Boards and backlogs use the epic level, as Jira's do. Epic behavior is in [JIRA_SOFTWARE.md](JIRA_SOFTWARE.md).
 
 ## Work types
 
@@ -75,6 +80,7 @@ Deleting a resolution moves its work items to the replacement, so no resolved wo
 - A person chooses the resolution when a transition screen asks for it (the `system:transition-screen` rule lists `resolution`, [WORKFLOW_RULES.md](WORKFLOW_RULES.md#system-rules)), or edits it on the work item; both need the Resolve issues permission ([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md#enforcement)). `fields.resolution` takes an id or a name over REST, and `null` clears it. `resolution` is in the [screen](SCREENS.md#field-catalog) field catalog, so a screen can place it on a form.
 - Without a chosen resolution, entering a status in the done category applies the site's default and records the time. Leaving the done category clears both (`internal/store/mutations.go`). Every change is recorded in the changelog.
 - JQL ([JQL.md](JQL.md)): `resolution = Unresolved` and `resolution is EMPTY` match unresolved items; `resolution != Unresolved` matches resolved ones; `resolution in (Done, Unresolved)` matches either; `NOT IN` never matches an unresolved item; `resolutiondate` compares the resolve time.
+- `fields.statuscategorychangedate` is when the status last moved to a status of another category, which is what Jira dates: a move between two statuses of the same category leaves it alone. Work that existed before the column was added carries the last category-crossing change its log shows, or the moment it was created. It searches and orders as `statusCategoryChangedDate` ([JQL.md](JQL.md)).
 - `ORDER BY priority` and `ORDER BY resolution` use the site's order, not alphabetical order.
 
 ## Work type schemes
@@ -135,6 +141,15 @@ Work types, priorities and resolutions need site administration. `/settings/hier
 
 `internal/api3/issue_metadata.go`, `internal/store/issue_metadata.go`, `internal/store/issue_metadata_tasks.go`, `internal/store/issue_schemes.go`, `internal/store/work_type_hierarchy.go`, `internal/web/issue_metadata_admin.go`, `internal/web/work_type_hierarchy.go`, `migrations/162_issue_metadata.sql`; tests in `internal/api3/issue_metadata_test.go`, `internal/store/priority_schemes_test.go`, `internal/store/work_type_hierarchy_test.go`, `e2e/priority_schemes.spec.ts`, `internal/commands/resolution_test.go` and `internal/commands/hierarchy_workflow_test.go`.
 
+## Field translations
+
+An administrator names a custom field once per language on
+`/settings/custom-fields`, with an IETF language tag (`es`, `pt-br`). Everyone
+reads the name their own language gives it -- on the create form, on the edit
+dialog, on the work item, and as `translatedName` over REST -- and the field
+keeps the name the site gave it everywhere the site speaks for itself. Removing
+a translation takes that language back to the site's name.
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
@@ -143,6 +158,7 @@ Tracked in [PLAN.md](../PLAN.md).
 - Team-managed scoping (`scope`, `entityId`) is not modelled; every type is company-managed.
 - A priority scheme update applies its mappings before answering, so the 202 has no `task`.
 - The system avatar catalogue has five work type icons; Jira's is larger.
+- Work types, priorities, resolutions and statuses are not translated; fields are.
 
 ## See also
 

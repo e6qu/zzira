@@ -66,7 +66,12 @@ func TestCompileNavigatorBasicFiltersAndSort(t *testing.T) {
 	if compiled.OrderSQL != "a.display_name ASC, i.id ASC" {
 		t.Fatalf("order = %q", compiled.OrderSQL)
 	}
-	want := []any{"ZZ", "%release gate%", "%release gate%", "In Progress", "usr_me"}
+	// The phrase is one placeholder however many columns it is compared
+	// against, and the comments are among them.
+	if !strings.Contains(compiled.Where, "FROM comments comment_row") {
+		t.Fatalf("where = %q", compiled.Where)
+	}
+	want := []any{"ZZ", "%release gate%", "In Progress", "usr_me"}
 	if len(compiled.Args) != len(want) {
 		t.Fatalf("args = %#v", compiled.Args)
 	}
