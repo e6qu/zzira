@@ -5,9 +5,12 @@ package syncapi
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
+	"syscall"
 
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/authz"
@@ -125,7 +128,15 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	}
 	enc := json.NewEncoder(w)
 	w.WriteHeader(status)
-	if err := enc.Encode(body); err != nil {
+	if err := enc.Encode(body); err != nil && !clientGone(err) {
 		log.Printf("syncapi: encode response: %v", err)
 	}
+}
+
+// clientGone is a response nobody is listening to any more: a browser that
+// navigated away mid-page, or a replica that gave up waiting. It is the
+// ordinary end of a request, not a fault of this server's, and logging it as
+// one buries the faults that are.
+func clientGone(err error) bool {
+	return errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, net.ErrClosed)
 }

@@ -50,9 +50,31 @@ func (s *Store) SeedLoadWorkspace(ctx context.Context, slug string, n int) (toke
 	}
 
 	// Build rows in Go (payloads need real JSON snapshots), COPY into tables.
+	// They go in batches: a million rows held at once is a gigabyte of
+	// payloads, and the seeding of a large workspace is not what is being
+	// measured.
+	const copyBatch = 50000
 	now := time.Now().UTC().Format(time.RFC3339)
-	issues := make([][]any, 0, n)
-	actions := make([][]any, 0, n)
+	issues := make([][]any, 0, min(n, copyBatch))
+	actions := make([][]any, 0, min(n, copyBatch))
+	flush := func() error {
+		if len(issues) == 0 {
+			return nil
+		}
+		if _, err := tx.CopyFrom(ctx, pgx.Identifier{"issues"},
+			[]string{"id", "workspace_id", "project_id", "key", "summary", "description",
+				"status_id", "issuetype_id", "rank", "updated_seq", "updated_at"},
+			pgx.CopyFromRows(issues)); err != nil {
+			return err
+		}
+		if _, err := tx.CopyFrom(ctx, pgx.Identifier{"actions"},
+			[]string{"workspace_id", "seq", "entity_type", "entity_id", "op", "schema_v", "payload", "actor_id", "created_at"},
+			pgx.CopyFromRows(actions)); err != nil {
+			return err
+		}
+		issues, actions = issues[:0], actions[:0]
+		return nil
+	}
 	statuses := []string{"st_todo", "st_inprogress", "st_done"}
 	seq := int64(0)
 	for i := 1; i <= n; i++ {
@@ -81,17 +103,13 @@ func (s *Store) SeedLoadWorkspace(ctx context.Context, slug string, n int) (toke
 			wsID, seq, models.EntityIssue, issue.ID, models.OpUpsert,
 			models.SchemaVersion, payload, actorID, time.Now(),
 		})
+		if len(issues) == copyBatch {
+			if err := flush(); err != nil {
+				return "", "", err
+			}
+		}
 	}
-
-	if _, err := tx.CopyFrom(ctx, pgx.Identifier{"issues"},
-		[]string{"id", "workspace_id", "project_id", "key", "summary", "description",
-			"status_id", "issuetype_id", "rank", "updated_seq", "updated_at"},
-		pgx.CopyFromRows(issues)); err != nil {
-		return "", "", err
-	}
-	if _, err := tx.CopyFrom(ctx, pgx.Identifier{"actions"},
-		[]string{"workspace_id", "seq", "entity_type", "entity_id", "op", "schema_v", "payload", "actor_id", "created_at"},
-		pgx.CopyFromRows(actions)); err != nil {
+	if err := flush(); err != nil {
 		return "", "", err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE workspaces SET seq=$2 WHERE id=$1`, wsID, seq); err != nil {
