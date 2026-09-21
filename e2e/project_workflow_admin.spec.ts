@@ -14,7 +14,7 @@ async function login(page: import('@playwright/test').Page, email: string, passw
   await page.getByRole('button', { name: 'Log in' }).click();
 }
 
-test('a project administrator configures their own project workflow', async ({ page, browser }) => {
+test('a project administrator reads the whole project configuration and owns its workflow', async ({ page, browser }) => {
   await login(page, 'demo@zzira.dev', 'demo1234');
   const stamp = Date.now().toString(36);
   const key = `PW${stamp.toUpperCase().slice(-8)}`;
@@ -45,6 +45,8 @@ test('a project administrator configures their own project workflow', async ({ p
   await expect(ana.locator('body')).toContainText('forbidden');
   await ana.goto('/settings/workflows');
   await expect(ana.locator('form.workflow-create option').filter({ hasText: key })).toHaveCount(0);
+  await ana.goto(`/projects/${key}/settings/configuration`);
+  await expect(ana.locator('body')).toContainText('forbidden');
 
   await page.goto(`/projects/${key}/settings/roles`);
   const administrators = page.locator('.project-role-assignment-card[data-role-id="10000"]');
@@ -62,6 +64,18 @@ test('a project administrator configures their own project workflow', async ({ p
   await ana.goto('/settings/workflows');
   await expect(ana.locator('form.workflow-create option').filter({ hasText: key })).toHaveCount(1);
   await expect(ana.locator('form.workflow-create option').filter({ hasText: 'Global' })).toHaveCount(0);
+
+  // The configuration page names every scheme the project routes through.
+  await ana.goto(`/projects/${key}/settings/configuration`);
+  await expect(ana.getByRole('heading', { name: 'Configuration', level: 1 })).toBeVisible();
+  const schemes = ana.locator('.project-configuration-table tbody tr');
+  for (const label of ['Permission scheme', 'Notification scheme', 'Issue security scheme', 'Workflow', 'Work type scheme', 'Field configuration scheme', 'Priority scheme']) {
+    await expect(schemes.filter({ hasText: label })).not.toHaveCount(0);
+  }
+  await expect(schemes.filter({ hasText: 'Issue security scheme' })).toContainText('None');
+  await ana.setViewportSize({ width: 320, height: 740 });
+  expect(await ana.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await ana.setViewportSize({ width: 1280, height: 720 });
 
   // The shared workflow is read-only for them, in the browser and over HTTP.
   await ana.goto(`/settings/workflows/${globalWorkflowID}`);
@@ -97,6 +111,8 @@ test('a project administrator configures their own project workflow', async ({ p
   await expect(ana.locator('form.project-workflow-create')).toHaveCount(0);
   await expect(ana.getByRole('link', { name: 'Manage workflow' })).toHaveAttribute('href', `/settings/workflows/${workflowID}`);
 
+  await ana.goto(`/projects/${key}/settings/configuration`);
+  await expect(ana.locator('.project-configuration-table tbody tr').filter({ hasText: 'Workflow' }).last()).toContainText(`Project workflow ${stamp}`);
   await ana.setViewportSize({ width: 320, height: 740 });
   expect(await ana.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await collaborator.close();

@@ -510,6 +510,7 @@ func main() {
 	mux.HandleFunc("POST /projects/{key}/lifecycle", webHandler.ProjectLifecycleSettings)
 	mux.HandleFunc("POST /projects/{key}/components", webHandler.ProjectComponentSettings)
 	mux.HandleFunc("POST /projects/{key}/components/{id}", webHandler.ProjectComponentSettings)
+	mux.HandleFunc("GET /projects/{key}/settings/configuration", webHandler.ProjectConfigurationPage)
 	mux.HandleFunc("GET /projects/{key}/settings/roles", webHandler.ProjectRoleAssignmentsPage)
 	mux.HandleFunc("POST /projects/{key}/settings/roles/{id}", webHandler.ProjectRoleAssignmentMutation)
 	mux.HandleFunc("GET /projects/{key}/settings/permissions", webHandler.ProjectPermissionsPage)

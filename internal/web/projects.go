@@ -322,22 +322,11 @@ func (h *Handler) ProjectTemplateSettings(w http.ResponseWriter, r *http.Request
 // project's administrators own, which is what the settings page promises and
 // what the store enforces on each of these calls.
 func (h *Handler) ProjectGovernanceSettings(w http.ResponseWriter, r *http.Request) {
-	user, workspaceID, ok := h.pageContext(w, r)
-	if !ok {
+	user, workspaceID, project, ok := h.requireProjectAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
 		return
 	}
-	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, r.PathValue("key"))
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	if allowed, permissionErr := h.Store.CanAdministerProject(r.Context(), workspaceID, user.ID, project.ID); permissionErr != nil || !allowed {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-	if !parseForm(w, r) {
-		return
-	}
+	var err error
 	action := r.PostFormValue("action")
 	notice := "Project configuration saved."
 	switch action {
@@ -493,4 +482,46 @@ func (h *Handler) ProjectBoards(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectLocal(w, r, settings+"?board="+url.QueryEscape(notice))
+}
+
+type projectConfigurationData struct {
+	Project *models.Project
+	Entries []store.ProjectConfigurationEntry
+	// Lead, Category and Sender repeat the project's own details, so the page
+	// answers "how is this project configured" without a second stop.
+	Lead     string
+	Category string
+	Sender   string
+}
+
+// ProjectConfigurationPage names every scheme the project routes through and
+// where each one is changed. Jira calls this a project's summary; without it
+// a manager has to open each site directory and look for their project.
+func (h *Handler) ProjectConfigurationPage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, project, ok := h.requireProjectAdminPage(w, r)
+	if !ok {
+		return
+	}
+	entries, err := h.Store.ProjectConfigurationSummary(r.Context(), workspaceID, project.ID)
+	if err != nil {
+		http.Error(w, "Could not load the project configuration.", http.StatusInternalServerError)
+		return
+	}
+	data := projectConfigurationData{Project: project, Entries: entries, Sender: project.SenderEmail}
+	if project.LeadAccountID != "" {
+		if lead, err := h.Store.UserByID(r.Context(), project.LeadAccountID); err == nil && lead != nil {
+			data.Lead = lead.DisplayName
+		}
+	}
+	categories, err := h.Store.ProjectCategories(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "Could not load project categories.", http.StatusInternalServerError)
+		return
+	}
+	for _, category := range categories {
+		if category.ID == project.CategoryID {
+			data.Category = category.Name
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_project_configuration", user, workspaceID, data, "project-configuration", project.Key)
 }

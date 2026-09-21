@@ -76,7 +76,15 @@ of the [Jira platform](JIRA_PLATFORM.md); see
 - **Administration** (`/admin`): create, rename, describe and delete
   categories.
 - **Project settings** (`/projects/{key}/settings`): details, category,
-  features, sender address and properties.
+  features, sender address and properties. A project's administrators reach
+  it; saving the project as a site-wide template, and archiving or trashing
+  it, are site administration and are shown only to site administrators.
+  When the project shares a workflow, the page offers to start one of its own.
+- **Configuration** (`/projects/{key}/settings/configuration`): every scheme
+  the project routes through -- permission, notification, issue security,
+  workflow scheme and workflow, work type, work type screen, field
+  configuration and priority -- with the page that changes each one, and the
+  site default named where the project has no scheme of its own.
 - **Projects** (`/projects`, `/projects/new`): directory and creation.
 
 ## Gaps
@@ -90,7 +98,7 @@ See [PLAN.md](../PLAN.md).
 ## Tests
 
 `internal/api3/project_governance_test.go`, `internal/api3/projects_test.go`,
-`e2e/projects.spec.ts`.
+`e2e/projects.spec.ts`, `e2e/project_workflow_admin.spec.ts`.
 
 ## See also
 

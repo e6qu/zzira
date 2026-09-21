@@ -16,7 +16,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | Contributor plans and runs a sprint | ✅ | `backlog`, `board_columns`, `board_swimlanes`, `v4`, `projects` | — |
 | Contributor works offline | 🟡 | `v0`, `v5`, `revocation`, `session-isolation` | Only work items are available offline; other entities and richer edits need a connection |
 | Contributor follows code through release | 🟡 | `directories` (development information), `software`, `releases` | Cross-project releases; release gates; environment promotion ([RELEASES](RELEASES.md#gaps)) |
-| Manager configures a project | 🟡 | `projects`, `project_roles`, `permission_schemes`, `notification_schemes`, `issue_security_schemes` | Project templates and delegated administration do not cover every setting |
+| Manager configures a project | ✅ | `projects` (details, sender, features, properties, components), `project_workflow_admin` (what a project administrator owns, the configuration page, the project's own workflow), `project_roles`, `permission_schemes`, `notification_schemes`, `issue_security_schemes` | — |
 | Manager plans across teams | 🟡 | `timeline`, `plans_view`, `plans_teams` | Auto-scheduler; plan creation and configuration in the browser; rollups above epic; releases in plans; velocity-based capacity; plan views ([JIRA_SOFTWARE](JIRA_SOFTWARE.md#gaps)) |
 | Agile coach diagnoses delivery | ✅ | `backlog` (sprint report, velocity), `reports_flow`, `reports_progress`, `reports_burndown`, `reports_workload`, `report_subscriptions`, `dashboard_reports` | — |
 | Engineering manager reviews delivery | 🟡 | `releases` (DORA metrics), `report_subscriptions` | Choosing which environments and incidents count toward DORA metrics ([REPORTS](REPORTS.md#gaps)) |
