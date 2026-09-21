@@ -105,8 +105,14 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
 - `/plans/{id}/settings` is the plan's setup, for anyone who may edit it: its
   name and lead, its scheduling (estimation unit and the fields its dates come
   from), its issue sources, its exclusion rules (how long completed work stays
-  visible, and the work types and statuses to leave out), and who else may
-  view or edit it.
+  visible, and the work types and statuses to leave out), its cross-project
+  releases, and who else may view or edit it.
+- **Cross-project releases** group the versions that ship together across the
+  projects a plan reads: create one with a name and the versions it groups,
+  change or remove it later. The plan shows each one with its member versions,
+  their projects, release dates and the progress of the work the reader can
+  see, and says when the members do not share a release date or when one has
+  been deleted. Names are unique within a plan.
 - `/plans/{id}` shows the plan's work as a table (Work, Start, End, Team, Sprint, Estimate, Dependencies) beside a month timeline. Epics are nested with their child work items.
 - Who can open a plan: site administrators, the plan lead, and people or groups the plan grants access to.
 

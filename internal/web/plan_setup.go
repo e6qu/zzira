@@ -34,6 +34,21 @@ type planPermissionRow struct {
 	Name   string
 }
 
+// planVersionChoice is a version a cross-project release can take, named by
+// the project it belongs to.
+type planVersionChoice struct {
+	ID       int64
+	Label    string
+	Chosen   bool
+	Released bool
+}
+
+type planReleaseRow struct {
+	store.PlanReleaseView
+	Index    int
+	Versions []planVersionChoice
+}
+
 type planSettingsData struct {
 	Estimations []string
 	DateFields  []struct{ Value, Label string }
@@ -43,11 +58,15 @@ type planSettingsData struct {
 	IssueTypes  []models.IssueType
 	Statuses    []models.Status
 	Permissions []planPermissionRow
-	Members     []*models.User
-	Groups      []*models.Group
-	Excluded    map[int64]bool
-	Notice      string
-	Error       string
+	Releases    []planReleaseRow
+	// Versions are every version the plan's projects have, offered to a new
+	// cross-project release.
+	Versions []planVersionChoice
+	Members  []*models.User
+	Groups   []*models.Group
+	Excluded map[int64]bool
+	Notice   string
+	Error    string
 }
 
 // planSourceChoices lists every board, project and filter a plan can read,
@@ -151,6 +170,45 @@ func planScheduling(r *http.Request, plan *store.Plan) error {
 	return nil
 }
 
+// planReleaseIndex finds a cross-project release by name, which is what makes
+// one unique in a plan.
+func planReleaseIndex(plan store.Plan, name string) int {
+	for index, release := range plan.CrossProjectReleases {
+		if release.Name == name {
+			return index
+		}
+	}
+	return 0
+}
+
+// planVersionChoices lists the versions of the projects a plan reads, marking
+// the ones a release already groups.
+func (h *Handler) planVersionChoices(r *http.Request, workspaceID string, plan store.Plan, chosen map[int64]bool) ([]planVersionChoice, error) {
+	projects, err := h.Store.PlanProjects(r.Context(), workspaceID, plan)
+	if err != nil {
+		return nil, err
+	}
+	choices := make([]planVersionChoice, 0)
+	for _, project := range projects {
+		versions, err := h.Store.ProjectVersions(r.Context(), project.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, version := range versions {
+			id, err := strconv.ParseInt(version.ID, 10, 64)
+			if err != nil {
+				continue
+			}
+			label := project.Key + ": " + version.Name
+			if version.ReleaseDate != "" {
+				label += " (" + version.ReleaseDate + ")"
+			}
+			choices = append(choices, planVersionChoice{ID: id, Label: label, Chosen: chosen[id], Released: version.Released})
+		}
+	}
+	return choices, nil
+}
+
 // CreatePlan makes a plan from the plans directory. Creating one is site
 // administration, as it is over REST (/rest/api/3/plans/plan); who may then
 // configure and read it is the plan's own lead and permissions.
@@ -228,6 +286,27 @@ func (h *Handler) PlanSettingsPage(w http.ResponseWriter, r *http.Request) {
 	for _, id := range plan.ExclusionRules.WorkStatusIDs {
 		data.Excluded[id] = true
 	}
+	views, err := h.Store.PlanReleaseViews(r.Context(), workspaceID, user.ID, plan)
+	if err != nil {
+		http.Error(w, "Could not load the plan's cross-project releases.", http.StatusInternalServerError)
+		return
+	}
+	if data.Versions, err = h.planVersionChoices(r, workspaceID, plan, nil); err != nil {
+		http.Error(w, "Could not load the releases a plan can group.", http.StatusInternalServerError)
+		return
+	}
+	for index, view := range views {
+		chosen := map[int64]bool{}
+		for _, id := range plan.CrossProjectReleases[planReleaseIndex(plan, view.Name)].ReleaseIDs {
+			chosen[id] = true
+		}
+		versions, versionErr := h.planVersionChoices(r, workspaceID, plan, chosen)
+		if versionErr != nil {
+			http.Error(w, "Could not load the releases a plan can group.", http.StatusInternalServerError)
+			return
+		}
+		data.Releases = append(data.Releases, planReleaseRow{PlanReleaseView: view, Index: index, Versions: versions})
+	}
 	names := map[string]string{}
 	for _, member := range data.Members {
 		names[member.ID] = member.DisplayName
@@ -301,6 +380,37 @@ func (h *Handler) PlanSettingsSave(w http.ResponseWriter, r *http.Request) {
 		plan.ExclusionRules.IssueTypeIDs = types
 		plan.ExclusionRules.WorkStatusIDs = statuses
 		notice = "Exclusion rules saved."
+	case "release":
+		name := strings.TrimSpace(r.PostFormValue("name"))
+		if name == "" {
+			planSettingsBack(w, r, plan, "error", "A cross-project release needs a name.")
+			return
+		}
+		versions, versionErr := planExcludedIDs(r.Form["version"])
+		if versionErr != nil {
+			planSettingsBack(w, r, plan, "error", "Choose the releases to group from the list.")
+			return
+		}
+		index, indexErr := strconv.Atoi(r.PostFormValue("index"))
+		if indexErr != nil || index < 0 {
+			plan.CrossProjectReleases = append(plan.CrossProjectReleases, store.PlanRelease{Name: name, ReleaseIDs: versions})
+			notice = "Cross-project release created."
+		} else {
+			if index >= len(plan.CrossProjectReleases) {
+				planSettingsBack(w, r, plan, "error", "That cross-project release is gone.")
+				return
+			}
+			plan.CrossProjectReleases[index] = store.PlanRelease{Name: name, ReleaseIDs: versions}
+			notice = "Cross-project release saved."
+		}
+	case "delete-release":
+		index, indexErr := strconv.Atoi(r.PostFormValue("index"))
+		if indexErr != nil || index < 0 || index >= len(plan.CrossProjectReleases) {
+			planSettingsBack(w, r, plan, "error", "That cross-project release is gone.")
+			return
+		}
+		plan.CrossProjectReleases = append(plan.CrossProjectReleases[:index], plan.CrossProjectReleases[index+1:]...)
+		notice = "Cross-project release removed."
 	case "grant":
 		holder := strings.TrimSpace(r.PostFormValue("holder"))
 		holderType, access := r.PostFormValue("holderType"), r.PostFormValue("access")

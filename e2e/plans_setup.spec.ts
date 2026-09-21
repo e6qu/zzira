@@ -96,6 +96,53 @@ test('a manager creates a plan, gives it sources, exclusions and access', async 
   await page.goto(`/plans/${planID}`);
   await expect(page.locator('#main-content')).toContainText('estimated in story points');
 
+  // Cross-project releases: the versions that ship together across the
+  // projects the plan reads.
+  const otherKey = `PM${stamp.toString(36).toUpperCase().slice(-8)}`;
+  expect((await request.post('/rest/api/3/project', {
+    headers, data: { key: otherKey, name: `Plan partner ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' },
+  })).status()).toBe(201);
+  for (const [projectKey, date] of [[key, '2027-03-01'], [otherKey, '2027-03-15']] as const) {
+    expect((await request.post('/rest/api/3/version', { headers, data: { project: projectKey, name: `Autumn ${stamp}`, releaseDate: date } })).status()).toBe(201);
+  }
+  const partnerIssue = await request.post('/rest/api/3/issue', {
+    headers, data: { fields: { project: { key: otherKey }, summary: `Partner work ${stamp}`, issuetype: { name: 'Task' }, fixVersions: [{ name: `Autumn ${stamp}` }] } },
+  });
+  expect(partnerIssue.status(), await partnerIssue.text()).toBe(201);
+
+  await page.goto(`/plans/${planID}/settings`);
+  const addSource = page.locator('form').filter({ has: page.getByRole('button', { name: 'Save issue sources' }) });
+  await addSource.getByRole('checkbox', { name: `Projects: Plan partner ${stamp} (${otherKey})` }).check();
+  await addSource.getByRole('button', { name: 'Save issue sources' }).click();
+  await expect(page.getByRole('status')).toContainText('Issue sources saved.');
+
+  const newRelease = page.locator('form').filter({ has: page.getByRole('button', { name: 'Create cross-project release' }) });
+  await newRelease.getByLabel('Name').fill(`Autumn programme ${stamp}`);
+  for (const projectKey of [key, otherKey]) {
+    await newRelease.getByRole('checkbox', { name: new RegExp(`^${projectKey}: Autumn ${stamp}`) }).check();
+  }
+  await newRelease.getByRole('button', { name: 'Create cross-project release' }).click();
+  await expect(page.getByRole('status')).toContainText('Cross-project release created.');
+
+  // The plan says what ships together, and that the dates disagree.
+  await page.goto(`/plans/${planID}`);
+  const releases = page.getByRole('region', { name: 'Cross-project releases' });
+  await expect(releases).toContainText(`Autumn programme ${stamp}`);
+  await expect(releases).toContainText(key);
+  await expect(releases).toContainText(otherKey);
+  await expect(releases).toContainText('do not share a release date');
+  // The partner project's one work item is not done yet; the other version
+  // has no work at all.
+  await expect(releases).toContainText('0 of 1 done');
+  await expect(releases).toContainText('0 of 0 done');
+
+  // Two releases cannot share a name, and the plan says so.
+  await page.goto(`/plans/${planID}/settings`);
+  const duplicate = page.locator('form').filter({ has: page.getByRole('button', { name: 'Create cross-project release' }) });
+  await duplicate.getByLabel('Name').fill(`Autumn programme ${stamp}`);
+  await duplicate.getByRole('button', { name: 'Create cross-project release' }).click();
+  await expect(page.getByRole('alert')).toContainText('unique names');
+
   // Who may see it: a colleague cannot until they are given access.
   const colleague = await browser.newContext();
   const ana = await colleague.newPage();
@@ -133,7 +180,12 @@ test('a manager creates a plan, gives it sources, exclusions and access', async 
   await details.getByRole('button', { name: 'Save details' }).click();
   await expect(page.getByRole('status')).toContainText('Plan details saved.');
   const sources = page.locator('form').filter({ has: page.getByRole('button', { name: 'Save issue sources' }) });
-  await sources.getByRole('checkbox', { name: `Projects: Plan setup ${stamp} (${key})` }).uncheck();
+  // A plan that reads nothing is refused: every source off.
+  for (const box of await sources.getByRole('checkbox').all()) {
+    if (await box.isChecked()) {
+      await box.uncheck();
+    }
+  }
   await sources.getByRole('button', { name: 'Save issue sources' }).click();
   await expect(page.getByRole('alert')).toContainText('at least one board, project or filter');
   await expect(page.getByRole('heading', { name: 'Plan settings', level: 1 })).toBeVisible();
@@ -144,4 +196,5 @@ test('a manager creates a plan, gives it sources, exclusions and access', async 
 
   expect((await request.put(`/rest/api/3/plans/plan/${planID}/trash`, { headers })).status()).toBeLessThan(400);
   expect((await request.delete(`/rest/api/3/project/${key}?enableUndo=false`, { headers })).status()).toBe(204);
+  expect((await request.delete(`/rest/api/3/project/${otherKey}?enableUndo=false`, { headers })).status()).toBe(204);
 });

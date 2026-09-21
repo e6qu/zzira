@@ -110,9 +110,9 @@ and dependency checks.
 
 - Auto-scheduler: schedule by rank, dependencies, team capacity, sprints and
   releases; preview and apply to a scenario.
-- Plan setup in the browser: a date custom field as a plan's date, plan custom
-  fields and cross-project releases (create, scheduling, sources, exclusions,
-  permissions and teams are there).
+- Plan setup in the browser: a date custom field as a plan's date, and plan
+  custom fields (create, scheduling, sources, exclusions, permissions, teams
+  and cross-project releases are there).
 - Restore archived and trashed plans; duplicate copies scenarios.
 - Scenario edits: parent, rank, release, status, create work items.
 - Views: saved views, grouping, filters, rollups across the hierarchy.
@@ -125,9 +125,8 @@ Jira Plans create a cross-project release that groups same-named versions across
 projects. ZZIRA stores `crossProjectReleases` on a plan and returns it over REST,
 but nothing shows or uses it.
 
-- Create, rename and delete cross-project releases in a plan; create or link the
-  member versions.
-- Release view across projects: progress, dates, warnings, auto-scheduler input.
+- Create the member versions from the plan (today they are linked, not created).
+- Cross-project releases as auto-scheduler input, and on the release hub.
 - Release hub: deployments grouped across projects, release gates, environment
   promotion, drag reordering, dates in the viewer's locale and site time zone.
 
