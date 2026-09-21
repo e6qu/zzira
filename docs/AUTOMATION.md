@@ -56,10 +56,15 @@ Base paths (the Cloud ID comes from `GET /_edge/tenant_info`):
 - `/settings/automation/templates`: template gallery. It creates a rule for the
   site or a project, enabled or disabled, and validates parameters as the API
   does.
+- **Run automation** on a work item: the manual rules whose scope covers its
+  project, each with the questions it asks. The rules are read when the control
+  is opened rather than with the work item, which is read far more often than a
+  rule is run on it. A required question that was not answered refuses the run
+  and says so under the control; a rule that ran re-renders the work item,
+  because it has just changed it.
 
-The editor offers every trigger, condition and action in the tables below
-except the manual trigger, and one related-work branch placed last (its
-conditions, then its actions). If a rule holds anything the editor cannot show,
+The editor offers every trigger, condition and action in the tables below and
+one related-work branch placed last (its conditions, then its actions). If a rule holds anything the editor cannot show,
 saving is turned off; change such rules through the API.
 
 ## Triggers
@@ -79,7 +84,7 @@ saving is turned off; change such rules through the API.
 | `jira.issue.event.trigger:deleted` | none | A work item is deleted; the run has no work item and reads `{{deletedIssue.*}}` |
 | `jira.version.event.trigger:created`, `:updated`, `:released` | none | A version is created, changed, or released; the run has no work item and reads `{{version.*}}` |
 | `jira.sprint.event.trigger:started`, `:completed` | none | A sprint starts or completes; the run has no work item and reads `{{sprint.*}}` |
-| `jira.manual.trigger.issue.action` | `inputPrompts` (`displayName`, `inputType`, `required`, `variableName`) | Invoked through the API |
+| `jira.manual.trigger.issue.action` | `inputPrompts` (`displayName`, `inputType`, `required`, `variableName`) | Somebody runs it from a work item, through the API or **Run automation**; the answers are `{{userInputs.*}}` |
 
 **Scheduling.** Fixed intervals measure elapsed time, so they ignore
 daylight-saving shifts. A cron schedule is given as
@@ -202,6 +207,10 @@ An event with no work item carries what it happened to:
 `{{version.name}}`, `{{version.released}}`, `{{sprint.name}}`,
 `{{sprint.goal}}`, `{{sprint.state}}`, and any other path into them.
 
+A manual run carries what it was asked: `{{userInputs.<variableName>}}` is the
+answer to that rule's question, and is empty when the question was optional and
+went unanswered.
+
 The initiator is whoever made the change behind an event run, or whoever
 invoked a manual rule. Unknown values render empty. Rendered text is limited to
 32,768 characters.
@@ -238,7 +247,8 @@ See [PLAN.md](../PLAN.md).
 - Triggers for Confluence content.
 - The rest of Jira's trigger, condition, action and branch catalog, including
   JQL branches, for-each branches and lookup/create variables.
-- A manual-trigger editor in the UI.
+- Running a manual rule over a selection of work items: **Run automation** runs
+  it on the work item it is on, while the API takes up to fifty objects.
 
 ## See also
 

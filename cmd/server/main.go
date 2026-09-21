@@ -740,6 +740,12 @@ func main() {
 	mux.HandleFunc("POST /issues/{key}/app-content/{module}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.SetIssueAppContent(w, r, r.PathValue("key"), r.PathValue("module"))
 	})
+	mux.HandleFunc("GET /issues/{key}/automation", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.ManualRules(w, r, r.PathValue("key"))
+	})
+	mux.HandleFunc("POST /issues/{key}/automation/{ruleUuid}", func(w http.ResponseWriter, r *http.Request) {
+		webHandler.RunManualRule(w, r, r.PathValue("key"), r.PathValue("ruleUuid"))
+	})
 	mux.HandleFunc("POST /issues/{key}/watch", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.SetWatching(w, r, r.PathValue("key"))
 	})

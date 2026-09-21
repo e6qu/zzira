@@ -943,3 +943,69 @@ test('admin builds a rule that runs when a version is released', async ({ page }
   await expect(page).toHaveURL('/settings/automation');
   expect((await page.request.delete(`/rest/api/3/project/${projectKey}?enableUndo=false`, { headers })).status()).toBe(204);
 });
+
+// A manual rule is one somebody runs themselves, from the work item they are
+// looking at. The editor could not build one, and there was nowhere to run it.
+test('admin writes a rule to run by hand and runs it from a work item', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const created = await page.request.post('/rest/api/3/issue', {
+    headers, data: { fields: { project: { key: 'ZZ' }, summary: `Manual rule work ${stamp}`, issuetype: { name: 'Task' } } },
+  });
+  expect(created.status()).toBe(201);
+  const key = (await created.json()).key as string;
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E manual ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('jira.manual.trigger.issue.action');
+  // The rule asks one question, and reads the answer back in what it writes.
+  await page.getByLabel('Question').first().fill('Why are you escalating?');
+  await page.getByLabel('Variable').first().fill('reason');
+  await page.getByLabel('Needed').first().selectOption('required');
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.comment');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('Escalated by {{initiator.displayName}}: {{userInputs.reason}}');
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  // The editor shows the rule it saved rather than turning saving off.
+  await expect(page.getByRole('note')).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Trigger', exact: true })).toHaveValue('jira.manual.trigger.issue.action');
+  await expect(page.getByLabel('Variable').first()).toHaveValue('reason');
+  await page.goto('/settings/automation');
+  await expect(page.getByRole('article').filter({ hasText: name })).toContainText('Run manually from a work item');
+
+  // The work item offers it, and refuses to run it without an answer.
+  await page.goto(`/browse/${key}`);
+  await page.locator('.issue-automation > summary').click();
+  const rules = page.locator('.issue-automation-rules');
+  await expect(rules).toContainText(name);
+  await accessible(page);
+  // Spaces satisfy the browser but are not an answer: the rule is refused,
+  // and says so where it was started.
+  await rules.getByLabel('Why are you escalating?').fill('   ');
+  await rules.getByRole('button', { name: `Run ${name}` }).click();
+  await expect(page.locator('.issue-automation-rules')).toContainText('Answer Why are you escalating? before running this rule.');
+
+  // Answered, it runs, and what was typed is in what the rule wrote.
+  await page.locator('.issue-automation-rules').getByLabel('Why are you escalating?').fill('The customer is waiting');
+  await page.locator('.issue-automation-rules').getByRole('button', { name: `Run ${name}` }).click();
+  await expect.poll(async () => {
+    const comments = await (await page.request.get(`/rest/api/3/issue/${key}/comment`, { headers })).json();
+    return JSON.stringify(comments.comments.map((item: any) => item.body));
+  }, { timeout: 15_000 }).toContain('The customer is waiting');
+  // The rule ran as the person who started it, under the rule's actor.
+  await page.goto(`/browse/${key}`);
+  await expect(page.locator('.issue-activity')).toContainText('Escalated by Demo User: The customer is waiting');
+
+  // The run is in the rule's own audit log.
+  await page.goto(ruleURL);
+  await expect(page.locator('.automation-audit tbody')).toContainText('SUCCESS');
+
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});

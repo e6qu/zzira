@@ -18,8 +18,9 @@ import (
 	"github.com/e6qu/zzira/internal/store"
 )
 
-// manualTriggerType is the trigger of rules people run from an issue.
-const manualTriggerType = "jira.manual.trigger.issue.action"
+// ManualTriggerType is the trigger of rules people run from a work item
+// themselves, rather than a rule starting from an event or a schedule.
+const ManualTriggerType = "jira.manual.trigger.issue.action"
 
 const manualSearchLimit = 50
 
@@ -240,7 +241,7 @@ func (h *Handler) searchManualRules(w http.ResponseWriter, r *http.Request, work
 		automationError(w, http.StatusBadRequest, "automation.object.mixed", "Only one type of object is allowed in a request", "objects")
 		return
 	}
-	page, err := h.Service.Rules(r.Context(), workspaceID, SummaryFilter{States: []string{"ENABLED"}, Triggers: []string{manualTriggerType}, Limit: maxRulePage})
+	page, err := h.Service.Rules(r.Context(), workspaceID, SummaryFilter{States: []string{"ENABLED"}, Triggers: []string{ManualTriggerType}, Limit: maxRulePage})
 	if err != nil {
 		automationError(w, http.StatusInternalServerError, "automation.search.failed", "Rules could not be searched", "")
 		return
@@ -289,6 +290,12 @@ func (h *Handler) invokeManualRule(w http.ResponseWriter, r *http.Request, works
 		automationError(w, http.StatusNotFound, "automation.rule.not_found", "Rule not found", "ruleId")
 		return
 	}
+	// What was typed travels with the run: the rule's actions read it as
+	// {{userInputs.<name>}}, which is the point of asking.
+	inputs := map[string]string{}
+	for name, input := range request.UserInputs {
+		inputs[name] = fmt.Sprint(input.Value)
+	}
 	for _, prompt := range manualInputPrompts(rule) {
 		name, _ := prompt["variableName"].(string)
 		if prompt["required"] == true {
@@ -298,7 +305,7 @@ func (h *Handler) invokeManualRule(w http.ResponseWriter, r *http.Request, works
 			}
 		}
 	}
-	invocable := rule.State == "ENABLED" && triggerType(rule.Payload) == manualTriggerType
+	invocable := rule.State == "ENABLED" && triggerType(rule.Payload) == ManualTriggerType
 	components, componentErr := ruleComponents(rule.Payload)
 	results := map[string]string{}
 	runner := &Runner{Service: h.Service}
@@ -315,9 +322,10 @@ func (h *Handler) invokeManualRule(w http.ResponseWriter, r *http.Request, works
 			results[ari] = "INVALID_TARGET_SCOPE"
 			continue
 		}
-		run := &claimedRun{Run: Run{RuleUUID: rule.UUID}, WorkspaceID: workspaceID, ActorID: rule.ActorID, Payload: rule.Payload, InitiatorID: userID, RuleName: rule.Name}
+		run := &claimedRun{Run: Run{RuleUUID: rule.UUID}, WorkspaceID: workspaceID, ActorID: rule.ActorID,
+			Payload: rule.Payload, InitiatorID: userID, RuleName: rule.Name, UserInputs: inputs}
 		changed, executionErr := runner.runComponents(store.WithAutomationRule(r.Context(), rule.UUID), run, issue, components)
-		if err := h.recordManualRun(r.Context(), rule.UUID, changed, executionErr); err != nil {
+		if err := h.Service.recordManualRun(r.Context(), rule.UUID, changed, executionErr); err != nil {
 			automationError(w, http.StatusInternalServerError, "automation.run.failed", "The rule run could not be recorded", "")
 			return
 		}
@@ -326,8 +334,70 @@ func (h *Handler) invokeManualRule(w http.ResponseWriter, r *http.Request, works
 	writeJSON(w, http.StatusOK, results)
 }
 
+// ManualInput is one answer to a rule's prompt, in the shape the run reads.
+type ManualInput struct {
+	Name  string
+	Value string
+}
+
+// RunManualRule runs one manual rule for one work item as the rule's actor,
+// with what the person running it typed, and records the run. It is what both
+// the Automation API and the work item's own Run automation control do, so a
+// rule behaves the same whichever asked for it.
+func (s *Service) RunManualRule(ctx context.Context, workspaceID, initiatorID string, rule *Rule, issue *models.Issue, inputs map[string]string) error {
+	components, err := ruleComponents(rule.Payload)
+	if err != nil {
+		return err
+	}
+	runner := &Runner{Service: s}
+	run := &claimedRun{Run: Run{RuleUUID: rule.UUID}, WorkspaceID: workspaceID, ActorID: rule.ActorID,
+		Payload: rule.Payload, InitiatorID: initiatorID, RuleName: rule.Name, UserInputs: inputs}
+	changed, executionErr := runner.runComponents(store.WithAutomationRule(ctx, rule.UUID), run, issue, components)
+	if err := s.recordManualRun(ctx, rule.UUID, changed, executionErr); err != nil {
+		return err
+	}
+	return executionErr
+}
+
+// MissingManualInput names a prompt the rule requires that was not answered,
+// or is empty when every required prompt has one.
+func MissingManualInput(rule *Rule, inputs map[string]string) string {
+	for _, prompt := range manualInputPrompts(rule) {
+		name, _ := prompt["variableName"].(string)
+		if prompt["required"] != true {
+			continue
+		}
+		if value, ok := inputs[name]; !ok || strings.TrimSpace(value) == "" {
+			// The question as it was asked, because this is read by whoever
+			// was asked it; the variable name only if the rule has no question.
+			if display, _ := prompt["displayName"].(string); strings.TrimSpace(display) != "" {
+				return display
+			}
+			return name
+		}
+	}
+	return ""
+}
+
+// ManualPrompts are a rule's prompts, for a page that asks them.
+func (s *Service) ManualPrompts(rule *Rule) []map[string]any { return manualInputPrompts(rule) }
+
+// IsManualRule reports a rule people run themselves.
+func IsManualRule(rule *Rule) bool {
+	return rule != nil && rule.State == "ENABLED" && triggerType(rule.Payload) == ManualTriggerType
+}
+
+// AppliesToProject reports whether a rule's scope covers a project.
+func (s *Service) AppliesToProject(ctx context.Context, workspaceID string, rule *Rule, projectID string) (bool, error) {
+	cloudID, err := s.WorkspaceCloudID(ctx, workspaceID)
+	if err != nil {
+		return false, err
+	}
+	return ruleAppliesTo(rule, cloudID, projectID), nil
+}
+
 // recordManualRun keeps a completed run in the rule's audit history.
-func (h *Handler) recordManualRun(ctx context.Context, ruleUUID string, changed bool, executionErr error) error {
+func (s *Service) recordManualRun(ctx context.Context, ruleUUID string, changed bool, executionErr error) error {
 	id, err := NewUUIDv7()
 	if err != nil {
 		return err
@@ -340,7 +410,7 @@ func (h *Handler) recordManualRun(ctx context.Context, ruleUUID string, changed 
 		state, detail = "FAILED", executionErr.Error()
 	}
 	now := time.Now().UTC()
-	_, err = h.Service.Store.Pool.Exec(ctx, `
+	_, err = s.Store.Pool.Exec(ctx, `
 		INSERT INTO automation_runs(id,rule_uuid,scheduled_for,state,attempts,available_at,started_at,completed_at,matched_count,changed_count,detail)
 		VALUES($1,$2,$3,$4,1,$3,$3,$3,1,$5,$6)`, id, ruleUUID, now, state, changedCount, detail)
 	return err
@@ -420,9 +490,9 @@ var ruleTemplates = []ruleTemplate{
 		Description:  "From a work item, assign it to the rule's actor.",
 		Categories:   []string{"popular", "manual", "issue-management"},
 		Parameters:   []templateParameter{},
-		TriggerIcons: []string{manualTriggerType}, ActionIcons: []string{"jira.issue.assign"},
+		TriggerIcons: []string{ManualTriggerType}, ActionIcons: []string{"jira.issue.assign"},
 		Build: func(values map[string]any) (map[string]any, []map[string]any) {
-			return map[string]any{"component": "TRIGGER", "type": manualTriggerType, "schemaVersion": 1, "value": map[string]any{"inputPrompts": []any{}}},
+			return map[string]any{"component": "TRIGGER", "type": ManualTriggerType, "schemaVersion": 1, "value": map[string]any{"inputPrompts": []any{}}},
 				[]map[string]any{actionComponent("jira.issue.assign", map[string]any{"accountId": "ACTOR"})}
 		},
 	},
@@ -431,9 +501,9 @@ var ruleTemplates = []ruleTemplate{
 		Description:  "From a work item, move it to a chosen status.",
 		Categories:   []string{"jira-software.software", "manual", "issue-management"},
 		Parameters:   []templateParameter{{Type: "TEXT", Key: "statusId", Required: true}},
-		TriggerIcons: []string{manualTriggerType}, ActionIcons: []string{"jira.issue.transition"},
+		TriggerIcons: []string{ManualTriggerType}, ActionIcons: []string{"jira.issue.transition"},
 		Build: func(values map[string]any) (map[string]any, []map[string]any) {
-			return map[string]any{"component": "TRIGGER", "type": manualTriggerType, "schemaVersion": 1, "value": map[string]any{"inputPrompts": []any{}}},
+			return map[string]any{"component": "TRIGGER", "type": ManualTriggerType, "schemaVersion": 1, "value": map[string]any{"inputPrompts": []any{}}},
 				[]map[string]any{actionComponent("jira.issue.transition", map[string]any{"statusId": textValue(values, "statusId", "")})}
 		},
 	},

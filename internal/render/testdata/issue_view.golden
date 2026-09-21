@@ -16,6 +16,7 @@
     <div class="issue-transitions" role="group" aria-label="Issue actions">
 
 
+      <details class="issue-automation"><summary class="btn">Run automation</summary><div class="issue-automation-rules" hx-get="/issues/ZZ-1/automation" hx-trigger="toggle from:closest details once" hx-target="this" hx-swap="innerHTML"><p class="manual-rules-empty">Reading the rules…</p></div></details>
 
       <form method="post" action="/issues/ZZ-1/watch" hx-post="/issues/ZZ-1/watch" hx-target="#issue-view-holder" hx-swap="innerHTML">
         <input type="hidden" name="watching" value="false">

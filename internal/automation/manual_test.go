@@ -40,7 +40,7 @@ func TestManualRulesAndTemplatesGateway(t *testing.T) {
 		body := map[string]any{"rule": map[string]any{
 			"actor": map[string]string{"actor": fx.admin, "type": "ACCOUNT_ID"}, "name": name, "state": "ENABLED",
 			"ruleScopeARIs": scope,
-			"trigger": map[string]any{"component": "TRIGGER", "type": manualTriggerType, "schemaVersion": 1, "value": map[string]any{
+			"trigger": map[string]any{"component": "TRIGGER", "type": ManualTriggerType, "schemaVersion": 1, "value": map[string]any{
 				"inputPrompts": []map[string]any{{"displayName": "Reason", "inputType": "TEXT", "required": true, "variableName": "reason"}},
 			}},
 			"components": []map[string]any{{"component": "ACTION", "type": "jira.issue.add-label", "value": map[string]string{"label": "manual"}}},
