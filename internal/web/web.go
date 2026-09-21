@@ -1025,7 +1025,7 @@ func (h *Handler) serveIssue(w http.ResponseWriter, r *http.Request, user *model
 	// asks for this with updateHistory=true; a person reading the page is
 	// saying the same thing by being here.
 	if err := h.Store.RecordIssueView(r.Context(), wsID, user.ID, view.Issue.ID); err != nil {
-		log.Printf("record issue view %s: %s", view.Issue.Key, strconv.Quote(err.Error()))
+		log.Printf("record issue view %s: %s", strconv.Quote(view.Issue.Key), strconv.Quote(err.Error()))
 	}
 	if isHX(r) {
 		writeFragment(w, "issue_view", view)
