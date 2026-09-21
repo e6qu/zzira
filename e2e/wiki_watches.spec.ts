@@ -69,6 +69,13 @@ test('writing or commenting on wiki content watches it, until autowatch is turne
   await login(demo, 'demo@zzira.dev', 'demo1234');
   const stamp = Date.now().toString(36).toUpperCase();
 
+  // The setting this journey turns off is turned on first, so a run that
+  // follows one which stopped halfway starts where this one expects to.
+  await demo.goto('/profile');
+  await demo.getByLabel('Wiki autowatch').selectOption('enabled');
+  await demo.getByRole('button', { name: 'Save notification preferences', exact: true }).click();
+  await expect(demo.getByRole('status')).toContainText('Notification preferences saved');
+
   await demo.goto('/wiki');
   await demo.locator('.wiki-create-space > summary').click();
   await demo.getByLabel('Space name').fill(`Autowatch ${stamp}`);
