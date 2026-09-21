@@ -97,6 +97,10 @@ type workflowsPageData struct {
 	Workflows []workflowDirectoryCard
 	Projects  []*models.Project
 	CanCreate bool
+	// CanCreateGlobal is a site administrator's scope: a workflow every
+	// company-managed project can use. A project administrator creates a
+	// workflow only inside a project they administer.
+	CanCreateGlobal bool
 }
 
 type workflowTransitionView struct {
@@ -153,6 +157,9 @@ type workflowEditorData struct {
 	Screens   []*models.Screen
 	CanEdit   bool
 	CanAssign bool
+	// Saved carries what the last action did, which the page's own redirects
+	// pass back the way the scheme editor's do.
+	Saved string
 }
 
 type statusDirectoryData struct {
@@ -642,8 +649,14 @@ func (h *Handler) WorkflowsPage(w http.ResponseWriter, r *http.Request) {
 		}
 		cards = append(cards, card)
 	}
-	admin, _ := h.Store.IsAdmin(r.Context(), wsID, user.ID)
-	h.writeWorkspacePage(w, r, "page_workflows", user, wsID, workflowsPageData{Workflows: cards, Projects: projects, CanCreate: admin}, "workflows", "")
+	administered, admin, err := h.administeredProjects(r, wsID, user.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_workflows", user, wsID, workflowsPageData{
+		Workflows: cards, Projects: administered, CanCreate: admin || len(administered) > 0, CanCreateGlobal: admin,
+	}, "workflows", "")
 }
 
 func (h *Handler) StatusesPage(w http.ResponseWriter, r *http.Request) {
@@ -1065,7 +1078,7 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 			assigned = append(assigned, project)
 		}
 	}
-	admin, _ := h.Store.IsAdmin(r.Context(), wsID, user.ID)
+	canAdminister := h.canAdministerWorkflow(r, wsID, user.ID, wf)
 	fields, err := h.Store.CustomFieldsForWorkspace(r.Context(), wsID)
 	if err != nil {
 		http.Error(w, "Could not load custom fields.", http.StatusInternalServerError)
@@ -1089,28 +1102,19 @@ func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string
 	}
 	h.writeWorkspacePage(w, r, "page_workflow", user, wsID, workflowEditorData{
 		Workflow: wf, Initial: initial, Global: global, Nodes: nodes, Edges: edges, MapWidth: mapWidth, MapHeight: mapHeight, Statuses: statuses, Projects: projects, Assigned: assigned, Webhooks: activeWebhooks, Events: events, ApproverFields: approverFields, TransitionFields: fields, Screens: screens, AgentAccounts: agentAccounts,
-		CanEdit: admin && wf.ID != workflow.Default().ID, CanAssign: admin,
+		CanEdit: canAdminister && wf.ID != workflow.Default().ID, CanAssign: canAdminister, Saved: r.URL.Query().Get("saved"),
 	}, "workflows", "")
 }
 
 func (h *Handler) SaveWorkflowLayout(w http.ResponseWriter, r *http.Request, workflowID string) {
-	_, workspaceID, ok := h.requireAdminPage(w, r)
+	_, workspaceID, wf, ok := h.requireWorkflowAdminPage(w, r, workflowID)
 	if !ok || !parseForm(w, r) {
-		return
-	}
-	if workflowID == workflow.Default().ID {
-		http.Error(w, "the built-in workflow is read-only", http.StatusBadRequest)
 		return
 	}
 	x, xErr := strconv.ParseFloat(r.PostFormValue("x"), 64)
 	y, yErr := strconv.ParseFloat(r.PostFormValue("y"), 64)
 	if xErr != nil || yErr != nil || math.IsNaN(x) || math.IsInf(x, 0) || math.IsNaN(y) || math.IsInf(y, 0) || x < 0 || x > 10000 || y < 0 || y > 10000 {
 		http.Error(w, "workflow coordinates must be between 0 and 10000", http.StatusBadRequest)
-		return
-	}
-	wf, err := h.Store.WorkflowDraftByID(r.Context(), workspaceID, workflowID)
-	if err != nil {
-		http.NotFound(w, r)
 		return
 	}
 	statusID := r.PostFormValue("status")
@@ -1140,17 +1144,8 @@ func (h *Handler) SaveWorkflowLayout(w http.ResponseWriter, r *http.Request, wor
 // SaveWorkflowStatusEditable sets whether work items in a workflow status can
 // be edited, through Jira's jira.issue.editable status property, on the draft.
 func (h *Handler) SaveWorkflowStatusEditable(w http.ResponseWriter, r *http.Request, workflowID, statusID string) {
-	_, workspaceID, ok := h.requireAdminPage(w, r)
+	_, workspaceID, wf, ok := h.requireWorkflowAdminPage(w, r, workflowID)
 	if !ok || !parseForm(w, r) {
-		return
-	}
-	if workflowID == workflow.Default().ID {
-		http.Error(w, "the built-in workflow is read-only", http.StatusBadRequest)
-		return
-	}
-	wf, err := h.Store.WorkflowDraftByID(r.Context(), workspaceID, workflowID)
-	if err != nil {
-		http.NotFound(w, r)
 		return
 	}
 	if !workflowStatusIDs(wf)[statusID] {
@@ -1185,17 +1180,8 @@ func (h *Handler) SaveWorkflowStatusEditable(w http.ResponseWriter, r *http.Requ
 // SaveWorkflowStatusApproval sets or removes the Jira Service Management
 // approval a workflow status configures, on the draft.
 func (h *Handler) SaveWorkflowStatusApproval(w http.ResponseWriter, r *http.Request, workflowID, statusID string) {
-	_, workspaceID, ok := h.requireAdminPage(w, r)
+	_, workspaceID, wf, ok := h.requireWorkflowAdminPage(w, r, workflowID)
 	if !ok || !parseForm(w, r) {
-		return
-	}
-	if workflowID == workflow.Default().ID {
-		http.Error(w, "the built-in workflow is read-only", http.StatusBadRequest)
-		return
-	}
-	wf, err := h.Store.WorkflowDraftByID(r.Context(), workspaceID, workflowID)
-	if err != nil {
-		http.NotFound(w, r)
 		return
 	}
 	if !workflowStatusIDs(wf)[statusID] {
@@ -1227,9 +1213,17 @@ func (h *Handler) SaveWorkflowStatusApproval(w http.ResponseWriter, r *http.Requ
 	http.Redirect(w, r, "/settings/workflows/"+workflowID+"#status-approvals", http.StatusSeeOther)
 }
 
+// CreateWorkflow starts a workflow from the default. A site administrator
+// creates one in any scope; a project administrator creates one scoped to a
+// project they administer.
 func (h *Handler) CreateWorkflow(w http.ResponseWriter, r *http.Request) {
-	_, wsID, ok := h.requireAdminPage(w, r)
+	user, wsID, ok := h.pageContext(w, r)
 	if !ok || !parseForm(w, r) {
+		return
+	}
+	admin, err := h.Store.IsAdmin(r.Context(), wsID, user.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	name := strings.TrimSpace(r.PostFormValue("name"))
@@ -1240,11 +1234,23 @@ func (h *Handler) CreateWorkflow(w http.ResponseWriter, r *http.Request) {
 	wf := workflow.Default()
 	wf.ID = store.NewID("workflow")
 	wf.Name = name
-	if projectID := r.PostFormValue("project"); projectID != "" {
+	projectID := r.PostFormValue("project")
+	if projectID == "" && !admin {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if projectID != "" {
 		project, err := h.Store.ProjectByIDOrKey(r.Context(), wsID, projectID)
 		if err != nil {
 			http.Error(w, "workflow project does not exist", http.StatusBadRequest)
 			return
+		}
+		if !admin {
+			allowed, err := h.Store.CanAdministerProject(r.Context(), wsID, user.ID, project.ID)
+			if err != nil || !allowed {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
 		}
 		wf.ProjectID = project.ID
 	}
@@ -1262,17 +1268,8 @@ func (h *Handler) CreateWorkflow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AddWorkflowTransition(w http.ResponseWriter, r *http.Request, workflowID string) {
-	_, wsID, ok := h.requireAdminPage(w, r)
+	_, wsID, wf, ok := h.requireWorkflowAdminPage(w, r, workflowID)
 	if !ok || !parseForm(w, r) {
-		return
-	}
-	if workflowID == workflow.Default().ID {
-		http.Error(w, "the built-in workflow is read-only; create a copy to edit it", http.StatusBadRequest)
-		return
-	}
-	wf, err := h.Store.WorkflowDraftByID(r.Context(), wsID, workflowID)
-	if err != nil {
-		http.NotFound(w, r)
 		return
 	}
 	transition := workflow.Transition{
@@ -1539,17 +1536,8 @@ func formBool(r *http.Request, name string) string {
 }
 
 func (h *Handler) DeleteWorkflowTransition(w http.ResponseWriter, r *http.Request, workflowID, transitionID string) {
-	_, wsID, ok := h.requireAdminPage(w, r)
+	_, wsID, wf, ok := h.requireWorkflowAdminPage(w, r, workflowID)
 	if !ok {
-		return
-	}
-	if workflowID == workflow.Default().ID {
-		http.Error(w, "the built-in workflow is read-only", http.StatusBadRequest)
-		return
-	}
-	wf, err := h.Store.WorkflowDraftByID(r.Context(), wsID, workflowID)
-	if err != nil {
-		http.NotFound(w, r)
 		return
 	}
 	if initial := wf.Initial(); initial != nil && initial.ID == transitionID {
@@ -1575,12 +1563,8 @@ func (h *Handler) DeleteWorkflowTransition(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *Handler) FinishWorkflowDraft(w http.ResponseWriter, r *http.Request, workflowID string) {
-	user, wsID, ok := h.requireAdminPage(w, r)
+	user, wsID, _, ok := h.requireWorkflowAdminPage(w, r, workflowID)
 	if !ok || !parseForm(w, r) {
-		return
-	}
-	if workflowID == workflow.Default().ID {
-		http.Error(w, "the built-in workflow is read-only", http.StatusBadRequest)
 		return
 	}
 	action := r.PostFormValue("action")
@@ -1605,12 +1589,16 @@ func (h *Handler) FinishWorkflowDraft(w http.ResponseWriter, r *http.Request, wo
 	http.Redirect(w, r, "/settings/workflows/"+workflowID+"?saved="+url.QueryEscape("Workflow "+map[string]string{"publish": "published", "discard": "draft discarded"}[action]), http.StatusSeeOther)
 }
 
+// AssignProjectWorkflow routes a project through a workflow. A project
+// administrator may route their own project through a workflow that belongs
+// to it; every other assignment is a site administrator's.
 func (h *Handler) AssignProjectWorkflow(w http.ResponseWriter, r *http.Request, workflowID string) {
-	_, wsID, ok := h.requireAdminPage(w, r)
+	user, wsID, ok := h.pageContext(w, r)
 	if !ok || !parseForm(w, r) {
 		return
 	}
-	if _, err := h.Store.WorkflowByID(r.Context(), wsID, workflowID); err != nil {
+	wf, err := h.Store.WorkflowByID(r.Context(), wsID, workflowID)
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -1618,6 +1606,18 @@ func (h *Handler) AssignProjectWorkflow(w http.ResponseWriter, r *http.Request, 
 	if err != nil {
 		http.Error(w, "project not found", http.StatusBadRequest)
 		return
+	}
+	admin, err := h.Store.IsAdmin(r.Context(), wsID, user.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !admin {
+		allowed, err := h.Store.CanAdministerProject(r.Context(), wsID, user.ID, project.ID)
+		if err != nil || !allowed || wf.ProjectID != project.ID {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 	}
 	if err := h.Store.AssignWorkflowToProject(r.Context(), wsID, project.ID, workflowID); err != nil {
 		http.Error(w, "could not assign workflow", http.StatusInternalServerError)

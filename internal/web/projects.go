@@ -41,6 +41,13 @@ type projectSettingsData struct {
 	TemplateError      string
 	Creating           bool
 	Saved              bool
+	// SiteAdmin carries the site-level actions this page also hosts, so a
+	// project administrator is not shown a control their role cannot use.
+	SiteAdmin bool
+	// ProjectWorkflow reports that the project routes through a workflow of
+	// its own, which its administrators may edit. A shared workflow is a
+	// site administrator's to change, so the page offers to start one.
+	ProjectWorkflow bool
 }
 
 type projectPropertyView struct{ Key, Value string }
@@ -241,6 +248,17 @@ func (h *Handler) projectSettings(w http.ResponseWriter, r *http.Request, key st
 				return
 			}
 		}
+		if data.Project.WorkflowID != "" {
+			wf, workflowErr := h.Store.WorkflowByID(r.Context(), wsID, data.Project.WorkflowID)
+			if workflowErr == nil {
+				data.ProjectWorkflow = wf.ProjectID == data.Project.ID
+			}
+		}
+	}
+	data.SiteAdmin, err = h.Store.IsAdmin(r.Context(), wsID, user.ID)
+	if err != nil {
+		http.Error(w, "Could not read site administration.", 500)
+		return
 	}
 	active := "project-settings"
 	if data.Creating {
@@ -300,14 +318,21 @@ func (h *Handler) ProjectTemplateSettings(w http.ResponseWriter, r *http.Request
 	http.Redirect(w, r, target+"?template="+url.QueryEscape(notice), http.StatusSeeOther)
 }
 
+// ProjectGovernanceSettings saves the sender, features and app properties a
+// project's administrators own, which is what the settings page promises and
+// what the store enforces on each of these calls.
 func (h *Handler) ProjectGovernanceSettings(w http.ResponseWriter, r *http.Request) {
-	user, workspaceID, ok := h.requireAdminPage(w, r)
+	user, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
 		return
 	}
 	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, r.PathValue("key"))
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	if allowed, permissionErr := h.Store.CanAdministerProject(r.Context(), workspaceID, user.ID, project.ID); permissionErr != nil || !allowed {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	if !parseForm(w, r) {
