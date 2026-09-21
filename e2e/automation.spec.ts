@@ -1148,3 +1148,57 @@ test('admin builds a rule that runs when a page is written in the wiki', async (
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
 });
+
+// A rule the wiki starts answers in the wiki: under the page that asked.
+test('admin builds a rule that answers a page in the wiki', async ({ page }) => {
+  await login(page);
+  const stamp = Date.now();
+  const spaceKey = `WAC${String(stamp).slice(-6)}`;
+  await page.goto('/wiki');
+  await page.locator('.wiki-create-space > summary').click();
+  await page.getByLabel('Space name').fill(`Answered pages ${stamp}`);
+  await page.getByLabel('Space key').fill(spaceKey);
+  await page.getByRole('button', { name: 'Create space', exact: true }).click();
+  await expect(page).toHaveURL(/\/wiki\/spaces\/\d+$/);
+  const spaceURL = page.url();
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E page answer ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('confluence.page.created');
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('confluence.page.comment');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('Read by {{rule.name}}: {{page.title}}');
+  await page.locator('.automation-action-empty').first().getByLabel('Additional action').selectOption('confluence.page.label');
+  await page.locator('.automation-action-empty').first().getByRole('combobox', { name: 'Value', exact: true }).fill(`read-${stamp}`);
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  await expect(page.getByRole('note')).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue('confluence.page.comment');
+
+  // Writing a page is what starts it, and the answer lands on that page.
+  const title = `Design review ${stamp}`;
+  await page.goto(spaceURL);
+  await page.getByRole('link', { name: 'Create page', exact: true }).click();
+  await page.getByLabel('Page title').fill(title);
+  await page.getByRole('textbox', { name: 'Page content' }).fill('Please read this before Friday.');
+  await page.getByRole('button', { name: 'Save page', exact: true }).click();
+  await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
+  const pageURL = page.url();
+
+  await expect.poll(async () => {
+    await page.goto(pageURL);
+    return await page.locator('body').innerText();
+  }, { timeout: 20_000 }).toContain(`Read by ${name}: ${title}`);
+  await expect(page.getByText(`read-${stamp}`).first()).toBeVisible();
+
+  await expect.poll(async () => {
+    await page.goto(ruleURL);
+    return await page.locator('.automation-audit tbody').innerText();
+  }, { timeout: 15_000 }).toContain('SUCCESS');
+  await page.getByRole('button', { name: 'Disable' }).click();
+  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+  await expect(page).toHaveURL('/settings/automation');
+});

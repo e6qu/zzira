@@ -42,6 +42,9 @@ type automationActionView struct {
 	// Variable is what a create variable action names its value, which the
 	// rest of the rule reads as {{name}}.
 	Variable string
+	// Page is the wiki page a comment or label action writes on, when it
+	// names one rather than answering the page the rule ran for.
+	Page string
 }
 
 // automationFormPrompts reads the questions a manual rule asks. A row with
@@ -193,6 +196,7 @@ var (
 	}
 	automationActionTypes = []automationOption{
 		{automation.VariableActionType, "Create variable"},
+		{automation.WikiCommentActionType, "Comment on a page"}, {automation.WikiLabelActionType, "Label a page"},
 		{"jira.issue.add-label", "Add label"}, {"jira.issue.remove-label", "Remove label"}, {"jira.issue.assign", "Assign work item"},
 		{"jira.issue.assign:round-robin", "Assign work item (round-robin)"}, {"jira.issue.assign:balanced", "Assign work item (balanced workload)"},
 		{"jira.issue.assign:random", "Assign work item (random)"}, {"jira.issue.transition", "Transition work item"},
@@ -625,6 +629,7 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 	actionComponents, err := automationFormActions(automationActionRows{
 		Types: r.PostForm["action_type"], Values: r.PostForm["action_value"], Projects: r.PostForm["action_project"],
 		Bodies: r.PostForm["action_body"], HeaderLines: r.PostForm["action_headers"], Variables: r.PostForm["action_variable"],
+		Pages: r.PostForm["action_page"],
 	})
 	if err != nil {
 		return nil, err
@@ -643,6 +648,7 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 		}
 		branchActions, err := automationFormActions(automationActionRows{
 			Types: r.PostForm["branch_action_type"], Values: r.PostForm["branch_action_value"], Variables: r.PostForm["branch_action_variable"],
+			Pages: r.PostForm["branch_action_page"],
 		})
 		if err != nil {
 			return nil, err
@@ -683,7 +689,7 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 // automationActionRows are the editor's action columns as the form posts
 // them, one entry per row: an action reads the columns it uses.
 type automationActionRows struct {
-	Types, Values, Projects, Bodies, HeaderLines, Variables []string
+	Types, Values, Projects, Bodies, HeaderLines, Variables, Pages []string
 }
 
 // automationFormActions reads the editor's action rows into rule components.
@@ -744,6 +750,7 @@ func automationFormConditions(fields, operators, values []string) ([]map[string]
 // brings no work item to take one from; it is empty for every other action.
 func automationFormActions(rows automationActionRows) ([]map[string]any, error) {
 	types, values, projects, bodies, headerLines, variables := rows.Types, rows.Values, rows.Projects, rows.Bodies, rows.HeaderLines, rows.Variables
+	pages := rows.Pages
 	components := []map[string]any{}
 	at := func(list []string, index int) string {
 		if index < len(list) {
@@ -771,6 +778,23 @@ func automationFormActions(rows automationActionRows) ([]map[string]any, error) 
 			components = append(components, map[string]any{
 				"component": "ACTION", "schemaVersion": 1, "type": automation.VariableActionType,
 				"value": map[string]string{"variableName": at(variables, index), "variableValue": value},
+			})
+			continue
+		}
+		// What a rule writes in the wiki: the page it writes on is the one
+		// the rule ran for unless the action names another.
+		if actionType == automation.WikiCommentActionType || actionType == automation.WikiLabelActionType {
+			if value == "" {
+				return nil, fmt.Errorf("every action needs a value")
+			}
+			wiki := map[string]string{"pageId": at(pages, index)}
+			if actionType == automation.WikiCommentActionType {
+				wiki["comment"] = value
+			} else {
+				wiki["label"] = value
+			}
+			components = append(components, map[string]any{
+				"component": "ACTION", "schemaVersion": 1, "type": actionType, "value": wiki,
 			})
 			continue
 		}
@@ -852,6 +876,7 @@ func automationFormActions(rows automationActionRows) ([]map[string]any, error) 
 			actionValue = map[string]string{"duration": value}
 		case automation.WikiPageActionType:
 			actionValue = map[string]string{"spaceKey": value}
+
 		case "jira.issue.edit:summary", "jira.issue.edit:duedate", "jira.issue.edit:priority", "jira.issue.edit:description", "jira.issue.edit:labels":
 			actionValue = map[string]string{"field": strings.TrimPrefix(actionType, "jira.issue.edit:"), "value": value}
 			actionType = "jira.issue.edit"
@@ -1063,6 +1088,10 @@ func automationActionViews(components []automationComponentJSON) []automationAct
 			view.Value = ""
 		case automation.VariableActionType:
 			view.Value, view.Variable = fields["variableValue"], fields["variableName"]
+		case automation.WikiCommentActionType:
+			view.Value, view.Page = fields["comment"], fields["pageId"]
+		case automation.WikiLabelActionType:
+			view.Value, view.Page = fields["label"], fields["pageId"]
 		case "jira.issue.edit":
 			view.Type, view.Value = "jira.issue.edit:"+fields["field"], fields["value"]
 		case "jira.issue.link":

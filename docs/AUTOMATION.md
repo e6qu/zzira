@@ -64,10 +64,12 @@ Base paths (the Cloud ID comes from `GET /_edge/tenant_info`):
   because it has just changed it.
 
 The editor offers every trigger, condition and action in the tables below and
-one branch placed last (its conditions, then its actions). A create variable
-action names its variable in the row's **More for this action** fold; a branch
-over work matching JQL takes its query beside the link types. If a rule holds anything the editor cannot show,
-saving is turned off; change such rules through the API.
+one branch placed last (its conditions, then its actions). The row's **More for
+this action** fold holds what only some actions use: a create variable action's
+name, and the wiki page a comment or a label writes on (blank is the page the
+rule ran for). A branch over work matching JQL takes its query beside the link
+types. If a rule holds anything the editor cannot show, saving is turned off;
+change such rules through the API.
 
 ## Triggers
 
