@@ -179,6 +179,9 @@ type SprintIssuePayload struct {
 	IssueID  string `json:"issueId"`
 	Rank     string `json:"rank"`
 	Removed  bool   `json:"removed,omitempty"`
+	// Added tells a work item joining the sprint from one that was already in
+	// it being ranked again, which writes the same kind of action.
+	Added bool `json:"added,omitempty"`
 }
 
 // RankUpdatePayload: rank changes materialize but stay out of the changelog.

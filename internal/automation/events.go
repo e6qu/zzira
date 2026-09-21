@@ -66,6 +66,7 @@ func (r *Runner) enqueueEvents(ctx context.Context, workspaceID string) error {
 		    (a.entity_type IN ('comment','issue_link','attachment') AND a.op='upsert')
 		    OR (a.entity_type='issue' AND a.op IN ('upsert','delete'))
 		    OR (a.entity_type IN ('version','sprint') AND a.op='upsert')
+		    OR (a.entity_type='sprint_issue' AND a.op IN ('upsert','delete'))
 		  )
 		ORDER BY a.seq LIMIT $3`, workspaceID, last, eventBatch)
 	if err != nil {
@@ -209,6 +210,25 @@ func actionEvent(action loggedAction) (string, string, map[string]models.ChangeI
 			return "version_created", "", nil
 		default:
 			return "version_updated", "", nil
+		}
+	case models.EntitySprintIssue:
+		// Jira treats the sprint a work item is in as one of its fields, so
+		// joining or leaving one is a change to that field rather than an
+		// event of its own -- and the rule runs for the work item, which is
+		// there to act on.
+		var payload models.SprintIssuePayload
+		if json.Unmarshal(action.Payload, &payload) != nil || payload.IssueID == "" {
+			return "", "", nil
+		}
+		switch {
+		case payload.Removed:
+			return "updated", payload.IssueID, map[string]models.ChangeItem{
+				"sprint": {Field: "sprint", FieldType: "array", From: payload.SprintID},
+			}
+		case payload.Added:
+			return "updated", payload.IssueID, map[string]models.ChangeItem{
+				"sprint": {Field: "sprint", FieldType: "array", To: payload.SprintID},
+			}
 		}
 	case models.EntitySprint:
 		var payload models.SprintUpsertPayload

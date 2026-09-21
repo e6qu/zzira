@@ -69,7 +69,7 @@ saving is turned off; change such rules through the API.
 | `jira.jql.scheduled`, `jira.issue.scheduled` | `intervalMinutes` (1–43,200) or a cron schedule; `timezone`; `jql` | On schedule, for each matching work item (at most 1,000, else the run fails before acting) |
 | `jira.issue.event.trigger:created` | optional `jql` | A work item is created |
 | `jira.issue.event.trigger:transitioned` | optional `fromStatusIds`, `toStatusIds`, `jql` | Status changes (between the listed statuses, if given) |
-| `jira.issue.field.changed` | `fields` (1–20, e.g. `summary`, `priority`, `assignee`, `labels`), optional `jql` | Any listed field changes |
+| `jira.issue.field.changed` | `fields` (1–20, e.g. `summary`, `priority`, `assignee`, `labels`, `sprint`), optional `jql` | Any listed field changes. `sprint` changes when work joins or leaves a sprint, as it does in Jira; ranking work already in one is not a change |
 | `jira.issue.event.trigger:commented` | optional `jql` | A comment is added |
 | `jira.issue.event.trigger:linked` | optional `jql` | A link is added; one run, for the outward work item |
 | `jira.issue.event.trigger:assigned` | optional `jql` | The assignee changes, including to nobody |
@@ -235,8 +235,7 @@ See [PLAN.md](../PLAN.md).
 - Connections: stored, returned and redacted by the API, but no action uses
   them.
 - Usage limits: no monthly execution quota or per-rule usage tracking.
-- Triggers for Confluence content, and for work items entering or leaving a
-  sprint.
+- Triggers for Confluence content.
 - The rest of Jira's trigger, condition, action and branch catalog, including
   JQL branches, for-each branches, lookup/create variables and custom web
   request bodies and headers.

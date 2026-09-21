@@ -760,6 +760,12 @@ func TestEventRulesRunOnWhatHappensAroundWork(t *testing.T) {
 		t.Fatalf("saving a released version again released it again: %d notes", count)
 	}
 
+	// Work joining a sprint is a change to the sprint field, which is how
+	// Jira names it, so a field value changed rule catches it.
+	joinRule := mustRule("Label sprint work", "jira.issue.field.changed", map[string]any{"fields": []string{"sprint"}},
+		map[string]any{"component": "ACTION", "type": "jira.issue.add-label", "value": map[string]string{"label": "in-sprint"}})
+	drain()
+
 	// A sprint says when it starts, and a rename while it runs does not.
 	board, err := fx.store.CreateBoard(fx.ctx, fx.admin, fx.ws, store.BoardCreate{Name: "Around board", Type: "scrum", ProjectID: projectID})
 	if err != nil {
@@ -795,6 +801,32 @@ func TestEventRulesRunOnWhatHappensAroundWork(t *testing.T) {
 	}
 	if starts != 1 {
 		t.Fatalf("renaming a running sprint started it again: %d notes", starts)
+	}
+
+	// Work joining the sprint changes its sprint field; ranking it again in
+	// the same sprint does not.
+	planned := create("Work for the sprint")
+	drain()
+	if _, err := fx.store.AddIssueToSprint(fx.ctx, fx.admin, fx.ws, sprint.ID, planned.ID, "u1000"); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	inSprint, err := fx.store.IssueByIDOrKey(fx.ctx, fx.ws, planned.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(inSprint.Labels, "in-sprint") {
+		t.Fatalf("joining the sprint did not start the rule: %v", inSprint.Labels)
+	}
+	if runs, err := fx.service.Runs(fx.ctx, fx.ws, joinRule, 10); err != nil || len(runs) != 1 {
+		t.Fatalf("sprint field rule runs = %+v, %v", runs, err)
+	}
+	if _, err := fx.store.AddIssueToSprint(fx.ctx, fx.admin, fx.ws, sprint.ID, planned.ID, "u2000"); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	if runs, err := fx.service.Runs(fx.ctx, fx.ws, joinRule, 10); err != nil || len(runs) != 1 {
+		t.Fatalf("ranking work already in the sprint started the rule again: %+v, %v", runs, err)
 	}
 }
 
