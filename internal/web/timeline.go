@@ -232,6 +232,12 @@ type planListRow struct {
 
 type plansPageData struct {
 	Plans []planListRow
+	// Sources are what a new plan can read, so a plan is created where plans
+	// are listed rather than only over REST. Creating one is site
+	// administration, as the REST resource is.
+	Sources   []planSourceChoice
+	CanCreate bool
+	Error     string
 }
 
 // PlansPage lists the active plans the user can view.
@@ -245,7 +251,17 @@ func (h *Handler) PlansPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load plans.", http.StatusInternalServerError)
 		return
 	}
-	data := plansPageData{}
+	data := plansPageData{Error: r.URL.Query().Get("error")}
+	if data.CanCreate, err = h.Store.IsAdmin(r.Context(), workspaceID, user.ID); err != nil {
+		http.Error(w, "Could not load plans.", http.StatusInternalServerError)
+		return
+	}
+	if data.CanCreate {
+		if data.Sources, err = h.planSourceChoices(r, workspaceID, user.ID, store.Plan{}); err != nil {
+			http.Error(w, "Could not load what a plan can read.", http.StatusInternalServerError)
+			return
+		}
+	}
 	for _, plan := range plans {
 		if plan.Status != "" && plan.Status != "Active" {
 			continue

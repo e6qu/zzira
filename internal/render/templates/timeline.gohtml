@@ -26,13 +26,54 @@
 <header class="page-header"><div><span class="eyebrow">Plan</span><h1>Plans</h1><p>Plan work across projects, boards and filters, with the teams that deliver it.</p></div></header>
 {{if .Data.Plans}}<section class="surface-card" aria-labelledby="plans-heading"><h2 class="sr-only" id="plans-heading">Your plans</h2><div class="table-scroll" tabindex="0" aria-label="Plans"><table><caption class="sr-only">Plans you can view</caption><thead><tr><th scope="col">Plan</th><th scope="col">Sources</th><th scope="col">Access</th></tr></thead><tbody>{{range .Data.Plans}}<tr><th scope="row"><a href="/plans/{{.Plan.ID}}">{{.Plan.Name}}</a></th><td>{{len .Plan.IssueSources}}</td><td>{{if .Edit}}Can edit{{else}}Can view{{end}}</td></tr>{{end}}</tbody></table></div></section>
 {{else}}<section class="surface-card empty-state"><strong>No plans to show</strong><small>Plans that you lead, or that share view or edit access with you or your groups, appear here.</small></section>{{end}}
+{{if .Data.CanCreate}}<section class="surface-card plan-create" aria-labelledby="plan-create-heading"><h2 id="plan-create-heading">Create a plan</h2>
+{{if .Data.Error}}<p class="form-error" role="alert">{{.Data.Error}}</p>{{end}}
+<p>A plan reads the work of the boards, projects and filters you give it. You lead the plan you create, and choose who else may see or change it.</p>
+<form class="project-details-form" method="post" action="/plans">
+<label for="plan-name">Plan name</label><input id="plan-name" name="name" maxlength="255" required placeholder="For example: Autumn delivery">
+<fieldset><legend>What the plan reads</legend>{{range .Data.Sources}}<label><input type="checkbox" name="source" value="{{.Value}}"> {{.Group}}: {{.Label}}</label>{{end}}</fieldset>
+<button class="btn btn-primary" type="submit">Create plan</button></form></section>{{end}}
+</main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
+{{end}}
+
+{{define "page_plan_settings"}}
+<!doctype html><html lang="en"><head><title>Settings · {{.Data.Plan.Name}} · {{(site $).Title}}</title>{{template "head" .}}</head><body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
+<nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/plans">Plans</a><span aria-hidden="true">/</span><a href="/plans/{{.Data.Plan.ID}}">{{.Data.Plan.Name}}</a><span aria-hidden="true">/</span><span aria-current="page">Settings</span></nav>
+<header class="page-header"><div><span class="eyebrow">Plan</span><h1>Plan settings</h1><p>What {{.Data.Plan.Name}} reads, what it leaves out, and who may see it.</p></div><a class="btn" href="/plans/{{.Data.Plan.ID}}">Back to the plan</a></header>
+{{if .Data.Notice}}<p class="form-success" role="status">{{.Data.Notice}}</p>{{end}}{{if .Data.Error}}<p class="form-error" role="alert">{{.Data.Error}}</p>{{end}}
+<section class="surface-card" aria-labelledby="plan-details-heading"><h2 id="plan-details-heading">Details</h2>
+<form class="project-details-form" method="post" action="/plans/{{.Data.Plan.ID}}/settings"><input type="hidden" name="action" value="details">
+<label for="plan-settings-name">Name</label><input id="plan-settings-name" name="name" value="{{.Data.Plan.Name}}" maxlength="255" required>
+<label for="plan-settings-lead">Plan lead</label><select id="plan-settings-lead" name="lead">{{range .Data.Members}}<option value="{{.ID}}" {{if eq .ID $.Data.Plan.LeadAccountID}}selected{{end}}>{{.DisplayName}}</option>{{end}}</select>
+<button class="btn btn-primary" type="submit">Save details</button></form></section>
+<section class="surface-card" aria-labelledby="plan-sources-heading"><h2 id="plan-sources-heading">Issue sources</h2>
+<p>The plan reads the work of everything ticked here.</p>
+<form class="project-details-form" method="post" action="/plans/{{.Data.Plan.ID}}/settings"><input type="hidden" name="action" value="sources">
+<fieldset><legend>Boards, projects and filters</legend>{{range .Data.Sources}}<label><input type="checkbox" name="source" value="{{.Value}}" {{if .Chosen}}checked{{end}}> {{.Group}}: {{.Label}}</label>{{end}}</fieldset>
+<button class="btn btn-primary" type="submit">Save issue sources</button></form></section>
+<section class="surface-card" aria-labelledby="plan-exclusions-heading"><h2 id="plan-exclusions-heading">Exclusion rules</h2>
+<p>Work the plan leaves out, however its sources answer.</p>
+<form class="project-details-form" method="post" action="/plans/{{.Data.Plan.ID}}/settings"><input type="hidden" name="action" value="exclusions">
+<label for="plan-completed-days">Show completed work for</label><input id="plan-completed-days" name="completedDays" type="number" min="0" max="3650" value="{{.Data.Plan.ExclusionRules.NumberOfDaysToShowCompletedIssues}}" required><small>Days after it was completed. 0 leaves completed work out.</small>
+<fieldset><legend>Work types to leave out</legend>{{$excluded := .Data.Excluded}}{{range .Data.IssueTypes}}<label><input type="checkbox" name="issueType" value="{{.JiraID}}" {{if index $excluded .JiraID}}checked{{end}}> {{.Name}}</label>{{end}}</fieldset>
+<fieldset><legend>Statuses to leave out</legend>{{range .Data.Statuses}}<label><input type="checkbox" name="status" value="{{.JiraID}}" {{if index $excluded .JiraID}}checked{{end}}> {{.Name}}</label>{{end}}</fieldset>
+<button class="btn btn-primary" type="submit">Save exclusion rules</button></form></section>
+<section class="surface-card" aria-labelledby="plan-access-heading"><h2 id="plan-access-heading">Access</h2>
+<p>{{.Data.Lead}} leads this plan, and site administrators can always change it.</p>
+<table class="report-table"><caption class="sr-only">Who else may see or change this plan</caption><thead><tr><th scope="col">Who</th><th scope="col">Holder</th><th scope="col">Access</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+<tbody>{{range .Data.Permissions}}<tr><th scope="row">{{.Name}}</th><td>{{if eq .Holder "Group"}}Group{{else}}Person{{end}}</td><td>{{.Type}}</td><td><form method="post" action="/plans/{{$.Data.Plan.ID}}/settings"><input type="hidden" name="action" value="revoke"><input type="hidden" name="index" value="{{.Index}}"><button class="btn" type="submit">Remove<span class="sr-only"> {{.Type}} access for {{.Name}}</span></button></form></td></tr>{{else}}<tr><td colspan="4">Only the lead and site administrators can see this plan.</td></tr>{{end}}</tbody></table>
+<form class="project-details-form" method="post" action="/plans/{{.Data.Plan.ID}}/settings"><input type="hidden" name="action" value="grant"><h3>Give access</h3>
+<label for="plan-holder-type">Person or group</label><select id="plan-holder-type" name="holderType"><option value="AccountId">Person</option><option value="Group">Group</option></select>
+<label for="plan-holder-person">Person</label><select id="plan-holder-person" name="holder">{{range .Data.Members}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}{{range .Data.Groups}}<option value="{{.ID}}">Group: {{.Name}}</option>{{end}}</select>
+<label for="plan-access">Access</label><select id="plan-access" name="access"><option value="View">Can view</option><option value="Edit">Can edit</option></select>
+<button class="btn btn-primary" type="submit">Give access</button></form></section>
 </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
 {{end}}
 
 {{define "page_plan"}}
 <!doctype html><html lang="en"><head><title>{{.Data.Plan.Name}} · Plans · {{(site $).Title}}</title>{{template "head" .}}</head><body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
 <nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/plans">Plans</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Plan.Name}}</span></nav>
-<header class="page-header"><div><span class="eyebrow">Plan · {{if .Data.Edit}}Can edit{{else}}Can view{{end}}</span><h1>{{.Data.Plan.Name}}</h1><p>Scheduled by {{if .Data.Work.StartFieldName}}{{.Data.Work.StartFieldName}}{{else}}no start field{{end}} and {{if .Data.Work.EndFieldName}}{{.Data.Work.EndFieldName}}{{else}}no end field{{end}}, estimated in {{.Data.Planning.Unit}}.</p></div>{{if .Data.Edit}}<a class="btn btn-primary" href="/plans/{{.Data.Plan.ID}}/review?scenario={{.Data.Scenario.ID}}">Review changes ({{.Data.Planning.Changes}})</a>{{end}}</header>
+<header class="page-header"><div><span class="eyebrow">Plan · {{if .Data.Edit}}Can edit{{else}}Can view{{end}}</span><h1>{{.Data.Plan.Name}}</h1><p>Scheduled by {{if .Data.Work.StartFieldName}}{{.Data.Work.StartFieldName}}{{else}}no start field{{end}} and {{if .Data.Work.EndFieldName}}{{.Data.Work.EndFieldName}}{{else}}no end field{{end}}, estimated in {{.Data.Planning.Unit}}.</p></div>{{if .Data.Edit}}<a class="btn" href="/plans/{{.Data.Plan.ID}}/settings">Plan settings</a><a class="btn btn-primary" href="/plans/{{.Data.Plan.ID}}/review?scenario={{.Data.Scenario.ID}}">Review changes ({{.Data.Planning.Changes}})</a>{{end}}</header>
 {{if .Data.Notice}}<p class="form-success" role="status">{{.Data.Notice}}</p>{{end}}{{if .Data.Error}}<p class="form-error" role="alert">{{.Data.Error}}</p>{{end}}
 <section class="surface-card plan-scenarios" aria-labelledby="plan-scenario-title"><h2 id="plan-scenario-title">Scenario</h2>
 <form method="get" class="plan-inline-form"><label for="plan-scenario">Scenario</label><select id="plan-scenario" name="scenario">{{range .Data.Scenarios}}<option value="{{.ID}}" {{if eq .ID $.Data.Scenario.ID}}selected{{end}}>{{.Name}}{{if .Default}} (default){{end}}, {{.Changes}} unsaved</option>{{end}}</select><button class="btn" type="submit">Show scenario</button></form>

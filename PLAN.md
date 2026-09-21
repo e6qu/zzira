@@ -86,7 +86,8 @@ Each numbered item is one or more substantial PRs.
   project default, organization default; org admins only.
 
 **Platform odds and ends.**
-- More than one field per navigator bulk edit.
+- Navigator bulk edit reaches only the six fields it offers; the REST endpoint
+  takes any field on the shared edit metadata, including custom fields.
 - Worklogs: `started`, real `updated`/`updateAuthor`, `issueId`, `self` with the
   work item; list paging and `startedAfter`/`startedBefore`/`expand=properties`;
   worklog visibility.
@@ -107,13 +108,14 @@ and dependency checks.
 
 - Auto-scheduler: schedule by rank, dependencies, team capacity, sprints and
   releases; preview and apply to a scenario.
-- Plan setup in the browser: create, sources, exclusions, permissions, teams.
+- Plan setup in the browser: scheduling fields, estimation unit, custom fields
+  and cross-project releases (create, sources, exclusions, permissions and
+  teams are there).
 - Restore archived and trashed plans; duplicate copies scenarios.
 - Scenario edits: parent, rank, release, status, create work items.
 - Views: saved views, grouping, filters, rollups across the hierarchy.
 - Capacity from velocity; `inferredDates` and plan `customFields` take effect.
 - Atlassian Teams REST API.
-- Fix sprint length: days in `store/plans.go`, weeks in `store/plan_planning.go`.
 
 ## 3. Cross-project releases
 
@@ -130,8 +132,8 @@ but nothing shows or uses it.
 ## 4. Boards, reports and DORA
 
 - Reports: deployment frequency and cycle time as pages of their own.
-- DORA: configurable mappings (which environments, pipelines and incident types
-  count) and excluded periods.
+- DORA: which work items count as incidents (environments and pipelines are
+  configured per project), and excluded periods.
 - Dashboards: layout and favourites over REST, inline gadget item properties,
   Jira system gadgets.
 - Load test at 1M actions with mixed reads and writes.
