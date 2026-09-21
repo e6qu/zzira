@@ -30,6 +30,9 @@ type adminAuthenticationPolicy struct {
 	store.AuthenticationConfig
 	MemberIDs []string
 	Members   []*models.User
+	// PasswordMinimum is the rule this policy applies, which is the site's
+	// own shortest password when the policy asks for nothing longer.
+	PasswordMinimum int
 }
 
 type adminPageData struct {
@@ -61,13 +64,25 @@ type adminPageData struct {
 	TimeTrackingProviders             []store.InstalledTimeTrackingProvider
 	ApplicationProperties             []models.ApplicationProperty
 	NavigatorColumns                  []adminNavigatorColumn
-	ProjectCategories                 []*models.ProjectCategory
-	IssueEvents                       []adminIssueEvent
-	GlobalPermissions                 []adminGlobalPermission
-	FilterSubscriptions               []store.WorkspaceFilterSubscription
-	ClassificationLevels              []models.DataClassificationLevel
-	ClassificationColors              []string
-	LastClassificationIndex           int
+	// SignInLink is a sign-in link just issued, shown once on the response to
+	// the request that made it: it is a credential, so it is never carried in
+	// a redirect or written to the audit detail. SignInLinkAbsolute says
+	// whether the site knows its own address; without ZZIRA_EXTERNAL_URL the
+	// link is a path an administrator has to prefix themselves.
+	SignInLink         string
+	SignInLinkAbsolute bool
+	SignInLinkPerson   string
+	SignInLinkExpires  string
+	// SignInLinkEmailed says the person was sent the link as well as shown
+	// it, which needs both SMTP and the site's own address.
+	SignInLinkEmailed       bool
+	ProjectCategories       []*models.ProjectCategory
+	IssueEvents             []adminIssueEvent
+	GlobalPermissions       []adminGlobalPermission
+	FilterSubscriptions     []store.WorkspaceFilterSubscription
+	ClassificationLevels    []models.DataClassificationLevel
+	ClassificationColors    []string
+	LastClassificationIndex int
 }
 
 type adminNavigatorColumn struct {
@@ -171,10 +186,12 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		if err != nil {
 			return adminPageData{}, err
 		}
+		config := store.AuthenticationConfigFromRule(policy.Rule)
 		authenticationPolicies = append(authenticationPolicies, adminAuthenticationPolicy{
 			OrganizationPolicy:   policy,
-			AuthenticationConfig: store.AuthenticationConfigFromRule(policy.Rule),
+			AuthenticationConfig: config,
 			MemberIDs:            members,
+			PasswordMinimum:      store.AuthenticationPolicy{AuthenticationConfig: config, Enforced: true}.PasswordMinimum(),
 		})
 	}
 	policies = access
@@ -974,13 +991,23 @@ func authenticationConfigFromForm(r *http.Request) (*store.AuthenticationConfig,
 	duration := strings.TrimSpace(r.FormValue("sessionDurationMinutes"))
 	if duration == "" {
 		config.SessionDurationMinutes = store.MaximumSessionMinutes
+	} else {
+		minutes, err := strconv.Atoi(duration)
+		if err != nil {
+			return nil, errors.New("session duration must be a number of minutes")
+		}
+		config.SessionDurationMinutes = minutes
+	}
+	length := strings.TrimSpace(r.FormValue("passwordMinimumLength"))
+	if length == "" {
+		config.PasswordMinimumLength = store.MinimumPasswordLength
 		return &config, nil
 	}
-	minutes, err := strconv.Atoi(duration)
+	characters, err := strconv.Atoi(length)
 	if err != nil {
-		return nil, errors.New("session duration must be a number of minutes")
+		return nil, errors.New("the shortest password must be a number of characters")
 	}
-	config.SessionDurationMinutes = minutes
+	config.PasswordMinimumLength = characters
 	return &config, nil
 }
 
@@ -1416,11 +1443,15 @@ func (h *Handler) UpdateAdminUserStatus(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	action := r.FormValue("action")
-	if action != "suspend" && action != "restore" && action != "remove" {
+	if action != "suspend" && action != "restore" && action != "remove" && action != "sign-in-link" {
 		http.Error(w, "unsupported user action", http.StatusBadRequest)
 		return
 	}
 	accountID := r.PathValue("accountId")
+	if action == "sign-in-link" {
+		h.issueSignInLink(w, r, user, workspaceID, data, accountID)
+		return
+	}
 	if action == "remove" {
 		err = h.Store.RemoveDirectoryUser(r.Context(), workspaceID, user.ID, data.Directory.ID, accountID)
 	} else {
@@ -1438,6 +1469,49 @@ func (h *Handler) UpdateAdminUserStatus(w http.ResponseWriter, r *http.Request) 
 	}
 	messages := map[string]string{"suspend": "User suspended", "restore": "User restored", "remove": "User removed"}
 	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(messages[action]), http.StatusSeeOther)
+}
+
+// issueSignInLink gives an administrator a one-time link that lets a person
+// set their own password: how an invited account, whose password nobody knows,
+// is first signed in to, and how a forgotten one is replaced. The link is
+// shown on this response and emailed when the site can send mail; it is never
+// redirected to, because a redirect would leave the credential in history.
+func (h *Handler) issueSignInLink(w http.ResponseWriter, r *http.Request, actor *models.User, workspaceID string, data adminPageData, accountID string) {
+	var person *models.User
+	for _, member := range data.Users {
+		if member.ID == accountID {
+			person = member
+			break
+		}
+	}
+	if person == nil {
+		http.Error(w, "that person is not in this directory", http.StatusNotFound)
+		return
+	}
+	token, expires, err := authn.NewPasswordLink(r.Context(), h.Store, accountID)
+	if err != nil {
+		if errors.Is(err, store.ErrPasswordInactive) {
+			http.Error(w, "a suspended account cannot set a password", http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	data.CurrentUserID = actor.ID
+	data.SignInLinkAbsolute = h.IdentityExternalURL != ""
+	data.SignInLink = h.IdentityExternalURL + "/password/set?token=" + url.QueryEscape(token)
+	data.SignInLinkPerson = person.DisplayName
+	data.SignInLinkExpires = expires.UTC().Format("2006-01-02 15:04 UTC")
+	if h.InvitationNotificationsConfigured && data.SignInLinkAbsolute {
+		body := "Set the password for your " + data.Site.Name + " account:\n\n" + data.SignInLink +
+			"\n\nThe link works once and expires on " + data.SignInLinkExpires + "."
+		if err := h.Store.QueueEmail(r.Context(), workspaceID, person.Email, "Set your password", body); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		data.SignInLinkEmailed = true
+	}
+	h.writeWorkspacePage(w, r, "page_admin", actor, workspaceID, data, "admin", "")
 }
 
 func (h *Handler) UpdateAdminUserProfile(w http.ResponseWriter, r *http.Request) {

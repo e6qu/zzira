@@ -139,6 +139,9 @@ func TestAuthenticationPolicyJourney(t *testing.T) {
 		"config": map[string]any{"sessionDurationMinutes": 60}, "rule": map[string]any{"in": []string{"192.0.2.0/24"}},
 	}}}, http.StatusBadRequest)
 	call(http.MethodPost, policiesPath, authenticationPolicy("Too short", map[string]any{"sessionDurationMinutes": 1}, "enabled"), http.StatusBadRequest)
+	call(http.MethodPost, policiesPath, authenticationPolicy("Weak passwords", map[string]any{
+		"sessionDurationMinutes": 60, "passwordMinimumLength": 4,
+	}, "enabled"), http.StatusBadRequest)
 
 	created := call(http.MethodPost, policiesPath, authenticationPolicy("Contractors", map[string]any{
 		"enforceSSO": true, "sessionDurationMinutes": 30,
@@ -218,6 +221,26 @@ func TestAuthenticationPolicyJourney(t *testing.T) {
 		t.Fatalf("sign-in after leaving every policy: ttl=%s err=%v", ttl, err)
 	}
 
+	// A policy can ask for longer passwords than the site does, and that is
+	// read where a password is set rather than at sign-in.
+	longer := call(http.MethodPost, policiesPath, authenticationPolicy("Longer passwords", map[string]any{
+		"sessionDurationMinutes": 60, "passwordMinimumLength": 16,
+	}, "enabled"), http.StatusAccepted)
+	longerID := longer["data"].(map[string]any)["id"].(string)
+	call(http.MethodPost, policiesPath+"/"+longerID+"/members/"+outsiderID, nil, http.StatusAccepted)
+	var refused authn.ErrPasswordRefused
+	if err := authn.ChangePassword(ctx, st, outsiderID, password, "still-too-short", ""); !errors.As(err, &refused) {
+		t.Fatalf("a password under the policy's rule: %v, want ErrPasswordRefused", err)
+	}
+	if err := authn.ChangePassword(ctx, st, outsiderID, password, "a-password-long-enough", ""); err != nil {
+		t.Fatalf("a password that meets the policy's rule: %v", err)
+	}
+	// Someone the policy does not cover keeps the site's own rule.
+	if err := authn.ChangePassword(ctx, st, memberID, password, "nine12345", ""); err != nil {
+		t.Fatalf("a password under the site's own rule was refused: %v", err)
+	}
+	call(http.MethodDelete, policiesPath+"/"+longerID+"/members/"+outsiderID, nil, http.StatusNoContent)
+
 	// Members belong to authentication policies alone.
 	accessPolicy := call(http.MethodPost, policiesPath, map[string]any{"data": map[string]any{"type": "policy", "attributes": map[string]any{
 		"type": "ip-allowlist", "name": "Office network", "status": "disabled", "rule": map[string]any{"in": []string{"192.0.2.0/24"}},
@@ -231,7 +254,7 @@ func TestAuthenticationPolicyJourney(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 2 {
-		t.Fatalf("policy member additions in the audit log: %d, want 2", len(events))
+	if len(events) != 3 {
+		t.Fatalf("policy member additions in the audit log: %d, want 3", len(events))
 	}
 }

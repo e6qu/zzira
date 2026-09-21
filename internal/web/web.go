@@ -1055,7 +1055,11 @@ func (h *Handler) LoginForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/auth/shauth", http.StatusSeeOther)
 		return
 	}
-	writePage(w, "page_login", loginPageData{Providers: providers, Password: !authn.LocalCredentialsRefused(r.Context())})
+	notice := ""
+	if r.URL.Query().Get("saved") == "password" {
+		notice = "Your password is set. Sign in with it."
+	}
+	writePage(w, "page_login", loginPageData{Notice: notice, Providers: providers, Password: !authn.LocalCredentialsRefused(r.Context())})
 }
 
 func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
@@ -1134,7 +1138,12 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 // gives an anonymous caller (and Shauth's own SSO validator, which asserts
 // on that exact accessible name) no visible way back into the app.
 type loginPageData struct {
-	Error     string
+	Error string
+	// Notice is what just happened somewhere else that the person needs to
+	// read here, such as a password they have set and can now sign in with.
+	// It is chosen from a fixed set, never taken from the URL: the page is
+	// public, and text carried in a link is text an attacker writes.
+	Notice    string
 	Providers []LoginProvider
 	// Password says whether this installation still accepts the credentials
 	// it issued itself. With ZZIRA_LOCAL_CREDENTIALS=off it does not, so the

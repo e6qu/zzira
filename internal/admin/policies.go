@@ -37,6 +37,7 @@ type policyConfigRequest struct {
 	EnforceSSO             bool `json:"enforceSSO"`
 	SessionDurationMinutes int  `json:"sessionDurationMinutes"`
 	Default                bool `json:"default"`
+	PasswordMinimumLength  int  `json:"passwordMinimumLength"`
 }
 
 type policyDataRequest struct {
@@ -71,6 +72,7 @@ func policyStoreInput(input policyDataRequest) (store.PolicyInput, error) {
 			EnforceSSO:             config.EnforceSSO,
 			SessionDurationMinutes: config.SessionDurationMinutes,
 			Default:                config.Default,
+			PasswordMinimumLength:  config.PasswordMinimumLength,
 		}
 	}
 	return result, nil

@@ -80,22 +80,10 @@ func SecureCookies() bool {
 	return err == nil && strings.EqualFold(externalURL.Scheme, "https") && externalURL.Host != ""
 }
 
-// SetSessionCookie issues the opaque session cookie for the site's own
-// duration.
-func SetSessionCookie(w http.ResponseWriter, token string) {
-	SetSessionCookieFor(w, token, sessionTTL)
-}
-
-// SetSessionCookieFor issues the cookie for as long as the session lasts,
-// which an authentication policy can make shorter than the site's own.
+// SetSessionCookieFor issues the opaque session cookie for as long as the
+// session it carries lasts, which an authentication policy can make shorter
+// than the site's own duration.
 func SetSessionCookieFor(w http.ResponseWriter, token string, ttl time.Duration) {
-	if ttl <= 0 {
-		ttl = sessionTTL
-	}
-	setSessionCookie(w, token, ttl)
-}
-
-func setSessionCookie(w http.ResponseWriter, token string, ttl time.Duration) {
 	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure is deployment-configured via COOKIE_SECURE
 
 		Name:     sessionCookie,
@@ -195,6 +183,97 @@ func LoginIdentityProvider(ctx context.Context, st *store.Store, userID, idToken
 		return "", 0, err
 	}
 	return token, ttl, nil
+}
+
+// ErrPasswordRefused is a new password the rules refuse. It carries what the
+// rule is, because the person is about to type another one.
+type ErrPasswordRefused struct{ Reason string }
+
+func (err ErrPasswordRefused) Error() string { return err.Reason }
+
+// ChangePassword replaces the signed-in person's own password. They prove
+// they know the current one, the new one meets the rules their authentication
+// policy applies, and every other session of theirs ends -- a session opened
+// with the old password does not outlive it.
+func ChangePassword(ctx context.Context, st *store.Store, userID, current, next, sessionToken string) error {
+	if LocalCredentialsRefused(ctx) {
+		return ErrUnauthorized
+	}
+	hash, err := st.UserPasswordHash(ctx, userID)
+	if err != nil {
+		return ErrUnauthorized
+	}
+	if !CheckPassword(hash, current) {
+		return ErrUnauthorized
+	}
+	policy, err := st.AuthenticationPolicyForUser(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if policy.Enforced && policy.EnforceSSO {
+		return ErrSSORequired
+	}
+	if reason := policy.PasswordRefused(next); reason != "" {
+		return ErrPasswordRefused{Reason: reason}
+	}
+	if CheckPassword(hash, next) {
+		return ErrPasswordRefused{Reason: "That is the password already in use."}
+	}
+	replacement, err := HashPassword(next)
+	if err != nil {
+		return err
+	}
+	return st.SetUserPassword(ctx, userID, replacement, hashToken(sessionToken))
+}
+
+// NewPasswordLink mints a sign-in link's secret and the hash kept for it. The
+// secret is shown once, to whoever will pass it on; only its hash is stored.
+func NewPasswordLink(ctx context.Context, st *store.Store, userID string) (string, time.Time, error) {
+	token, err := randomToken()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	expires, err := st.CreatePasswordLink(ctx, userID, hashToken(token))
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return token, expires, nil
+}
+
+// PasswordLinkPolicy is whom a sign-in link is for and the rules their
+// authentication policy applies, which the page asks for before showing a
+// form nobody could fill in.
+func PasswordLinkPolicy(ctx context.Context, st *store.Store, token string) (string, store.AuthenticationPolicy, error) {
+	userID, err := st.PasswordLinkUser(ctx, hashToken(token))
+	if err != nil {
+		return "", store.AuthenticationPolicy{}, err
+	}
+	policy, err := st.AuthenticationPolicyForUser(ctx, userID)
+	if err != nil {
+		return "", store.AuthenticationPolicy{}, err
+	}
+	if policy.Enforced && policy.EnforceSSO {
+		return "", store.AuthenticationPolicy{}, ErrSSORequired
+	}
+	return userID, policy, nil
+}
+
+// SetPasswordWithLink spends a sign-in link on a new password. Every session
+// that account had ends with it.
+func SetPasswordWithLink(ctx context.Context, st *store.Store, token, next string) error {
+	_, policy, err := PasswordLinkPolicy(ctx, st, token)
+	if err != nil {
+		return err
+	}
+	if reason := policy.PasswordRefused(next); reason != "" {
+		return ErrPasswordRefused{Reason: reason}
+	}
+	hash, err := HashPassword(next)
+	if err != nil {
+		return err
+	}
+	_, err = st.UsePasswordLink(ctx, hashToken(token), hash)
+	return err
 }
 
 var ErrUnauthorized = unauthorized{}
@@ -337,9 +416,15 @@ func IdentifyBearer(ctx context.Context, st *store.Store, r *http.Request) (stri
 
 // ProtectCookieMutations rejects cross-origin unsafe requests authenticated by
 // a browser session. API-token clients use Authorization and therefore do not
-// depend on ambient browser credentials. Requiring an explicit same-origin
-// Origin header avoids accepting a request merely because a session cookie was
-// attached to it.
+// depend on ambient browser credentials.
+//
+// Where the browser says what kind of request this is, that answer decides:
+// Sec-Fetch-Site is set by the browser, cannot be written by a page, and is
+// the only thing a form on the sign-in page carries. That page asks for no
+// referrer, so Chrome serializes its Origin as "null" -- and a browser still
+// holding the cookie of a session that has ended (a password changed on
+// another device, an account suspended and restored) could then not sign in
+// again at all. Without Fetch Metadata, the Origin must match this host.
 func ProtectCookieMutations(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !unsafeMethod(r.Method) || r.Header.Get("Authorization") != "" {
@@ -348,6 +433,18 @@ func ProtectCookieMutations(next http.Handler) http.Handler {
 		}
 		if _, err := r.Cookie(sessionCookie); err != nil {
 			next.ServeHTTP(w, r)
+			return
+		}
+		switch r.Header.Get("Sec-Fetch-Site") {
+		case "same-origin", "none":
+			// Same document origin, or no initiator at all: a typed address
+			// or a bookmark, neither of which another site can arrange.
+			next.ServeHTTP(w, r)
+			return
+		case "same-site", "cross-site":
+			// A sibling host is another origin here: this site is served
+			// from one.
+			http.Error(w, "cross-origin request blocked", http.StatusForbidden)
 			return
 		}
 		origin, err := url.Parse(r.Header.Get("Origin"))

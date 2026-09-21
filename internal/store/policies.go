@@ -42,12 +42,24 @@ type AuthenticationConfig struct {
 	SessionDurationMinutes int `json:"sessionDurationMinutes"`
 	// Default marks the policy everyone who is in no other one gets.
 	Default bool `json:"default"`
+	// PasswordMinimumLength is the shortest password the people this policy
+	// covers may set. It is read where a password is set, not at sign-in: a
+	// password already in use goes on working until it is replaced.
+	PasswordMinimumLength int `json:"passwordMinimumLength"`
 }
 
 // Session durations an authentication policy can ask for, in minutes.
 const (
 	MinimumSessionMinutes = 5
 	MaximumSessionMinutes = 30 * 24 * 60
+)
+
+// Password lengths a policy can ask for. The shortest is what a site with no
+// policy asks for, and the longest is where bcrypt stops reading: a longer
+// password would be accepted and then silently truncated.
+const (
+	MinimumPasswordLength = 8
+	MaximumPasswordLength = 72
 )
 
 func normalizePolicyInput(input PolicyInput) (PolicyInput, error) {
@@ -78,6 +90,12 @@ func normalizePolicyInput(input PolicyInput) (PolicyInput, error) {
 		}
 		if input.Config.SessionDurationMinutes < MinimumSessionMinutes || input.Config.SessionDurationMinutes > MaximumSessionMinutes {
 			return input, fmt.Errorf("%w: a session lasts between %d minutes and %d minutes", ErrAdminValidation, MinimumSessionMinutes, MaximumSessionMinutes)
+		}
+		if input.Config.PasswordMinimumLength == 0 {
+			input.Config.PasswordMinimumLength = MinimumPasswordLength
+		}
+		if input.Config.PasswordMinimumLength < MinimumPasswordLength || input.Config.PasswordMinimumLength > MaximumPasswordLength {
+			return input, fmt.Errorf("%w: a password is between %d and %d characters", ErrAdminValidation, MinimumPasswordLength, MaximumPasswordLength)
 		}
 		return input, nil
 	}

@@ -161,3 +161,30 @@ func AuthenticationConfigFromRule(rule map[string]any) AuthenticationConfig {
 	}
 	return config
 }
+
+// PasswordRefused says why a new password does not meet the rules the policy
+// applies, or is empty when it does. A site with no policy still asks for the
+// shortest password anyone may set, and no site accepts one past where bcrypt
+// stops reading.
+func (policy AuthenticationPolicy) PasswordRefused(password string) string {
+	minimum := MinimumPasswordLength
+	if policy.Enforced && policy.PasswordMinimumLength > minimum {
+		minimum = policy.PasswordMinimumLength
+	}
+	if len(password) < minimum {
+		return fmt.Sprintf("A password is at least %d characters.", minimum)
+	}
+	if len(password) > MaximumPasswordLength {
+		return fmt.Sprintf("A password is at most %d characters.", MaximumPasswordLength)
+	}
+	return ""
+}
+
+// PasswordMinimum is the shortest password the people this policy covers may
+// set, which a page shows before they type one.
+func (policy AuthenticationPolicy) PasswordMinimum() int {
+	if policy.Enforced && policy.PasswordMinimumLength > MinimumPasswordLength {
+		return policy.PasswordMinimumLength
+	}
+	return MinimumPasswordLength
+}

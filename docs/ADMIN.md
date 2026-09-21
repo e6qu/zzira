@@ -67,6 +67,28 @@ the request, so the form carries the id of the creation it makes; a second
 arrival of that id creates nothing and the page says the token was already
 made.
 
+**Passwords** belong to the person who signs in with them. An invitation
+provisions an account whose password is a value nobody typed, so a new person
+is reached by a **sign-in link**: an administrator issues one from the person's
+row on `/admin`, and the page shows it once, on the answer to the request that
+made it -- it is a credential, so it is never redirected to or written into an
+audit detail. Only the link's hash is stored. It works once, expires after 24
+hours, and issuing another retires the one before it. When SMTP is configured
+and `ZZIRA_EXTERNAL_URL` is set, it is emailed to the person as well.
+
+Opening the link asks for a new password and nothing else, so a link that has
+been used, has expired, or was never issued shows no form. Setting a password
+through a link ends every session that account had, because whoever set it is
+the only one who should now be signed in. A person under a policy that enforces
+single sign-on has no password to set, and the page says so.
+
+Anyone signed in changes their own password on their profile, under
+**Password**: the current password, then the new one twice. The new password
+meets the rule their authentication policy applies (at least 8 characters, or
+longer where the policy says so, and at most 72 -- where bcrypt stops reading).
+The change ends every other session they left open and keeps the one they
+changed it from.
+
 **Suspension and removal** revoke the account's sessions and API tokens when it has no other active directory. On reconnect, the affected browser checks access before replaying its outbox, purges its private replica and page cache, and goes to the signed-out page.
 
 ## Organizations REST API
@@ -118,7 +140,7 @@ All operations of the pinned Organizations API (`api/specs/organization-admin.js
 - **Events:** the same immutable records as the audit log. Query by text, action, actor, IP, product, location, millisecond time bounds, limit (max 500). Each event records the request's client address and user agent (set on the database connection and merged in by a trigger). Filtered queries are limited to 10 per user per minute (429 with `Retry-After`); `events-stream` is not limited, defaults to ascending order and always returns a reusable cursor.
 - **Domains:** names are normalized to lowercase FQDNs. Verification looks up `_zzira-challenge.<domain>` for the exact `zzira-domain-verification=<token>` TXT value. A verified domain is required for a project's custom sender email ([PROJECT_GOVERNANCE.md](PROJECT_GOVERNANCE.md)).
 - **Policies:** types `ip-allowlist` and `data-residency` can be created; `type=data-security` is accepted as a list filter only. IP values must be addresses or CIDR ranges; resources must be product ARIs of the organization. Enabled IP allowlists are enforced: a Jira Software, Jira Service Management or Confluence request from outside every enabled allowlist covering that product gets 403 (`internal/store/ip_allowlist.go`). Administration and sign-in stay reachable. Data residency policies are recorded only; all data lives in one PostgreSQL database.
-- **Authentication policies:** `type=authentication-policy` carries `config` instead of `rule.in`: `enforceSSO`, `sessionDurationMinutes` (5 minutes to 30 days, default 30 days) and `default`. `GET/POST/DELETE .../policies/{policyId}/members[/{accountId}]` list, add and remove the people it covers; a person belongs to one policy, so adding them to a second leaves the first, and anyone in none gets the enabled policy marked `default`. An enabled policy is applied at sign-in: `enforceSSO` refuses a password (403 with a page that names the identity provider) and admits only the OIDC flow, and every session the policy covers -- password or SSO -- expires after its duration. A disabled policy, or no policy, leaves the site's own 30-day session. See **Authentication policies** below.
+- **Authentication policies:** `type=authentication-policy` carries `config` instead of `rule.in`: `enforceSSO`, `sessionDurationMinutes` (5 minutes to 30 days, default 30 days), `passwordMinimumLength` (8 to 72, default 8) and `default`. `GET/POST/DELETE .../policies/{policyId}/members[/{accountId}]` list, add and remove the people it covers; a person belongs to one policy, so adding them to a second leaves the first, and anyone in none gets the enabled policy marked `default`. An enabled policy is applied at sign-in: `enforceSSO` refuses a password (403 with a page that names the identity provider) and admits only the OIDC flow, and every session the policy covers -- password or SSO -- expires after its duration. A disabled policy, or no policy, leaves the site's own 30-day session. See **Authentication policies** below.
 - **Plans and invitations:** inviting needs at least one enabled paid product (402). An invitation that takes a free product past its limit (10 users; 3 agents for Jira Service Management) is 409. Each account's access, groups, optional email and audit event commit atomically. A multi-account request with failures returns `206 Partial Content` with per-assignment `ERROR` results and keeps the successes.
 - **Email:** invitation email needs SMTP (503 otherwise). Delivery uses a leased PostgreSQL outbox with exponential backoff (capped at one hour); a message is dead after eight failed attempts.
 
@@ -138,7 +160,7 @@ All operations of the pinned Organizations API (`api/specs/organization-admin.js
 | IP allowlists | Built and enforced. |
 | SAML SSO | Missing. |
 | SCIM user provisioning | `/scim/directory/{directoryId}` serves SCIM 2.0 Users and Groups ([SCIM.md](SCIM.md)). The organization bean reports `scimManaged: true` once a provider has written to the directory. |
-| Authentication policies (enforced SSO, session duration, policy membership) | Built and enforced at sign-in; see **Authentication policies** below. Two-step verification and password rules are not: `mfaEnabled` is stored and reported but nothing enrolls or enforces it, and there is no password-change flow to hold rules. |
+| Authentication policies (enforced SSO, session duration, shortest password, policy membership) | Built and enforced where each applies; see **Authentication policies** below. Two-step verification is not: `mfaEnabled` is stored and reported but nothing enrolls or enforces it. |
 | Data security policies | Missing. |
 
 ## Authentication policies
@@ -158,9 +180,13 @@ one and a button to remove one, and the settings are editable in place.
 - A disabled policy enforces nothing, which is how a policy is retired without
   deleting it.
 - `enforceSSO` refuses `POST /login` for its members with 403 and a page saying
-  the organization signs that account in through its identity provider. API
-  tokens are unaffected; `ZZIRA_LOCAL_CREDENTIALS=off` is the site-wide switch
-  that closes those too.
+  the organization signs that account in through its identity provider. It also
+  refuses a password change and a sign-in link, which would both be setting a
+  password nothing would accept. API tokens are unaffected;
+  `ZZIRA_LOCAL_CREDENTIALS=off` is the site-wide switch that closes those too.
+- `passwordMinimumLength` is read where a password is set, not at sign-in: a
+  password already in use goes on working until it is replaced. It is between
+  8 and 72 characters, and a site with no policy asks for 8.
 - The session duration applies to the session cookie and the stored session
   alike, for password and single sign-on alike.
 - Adding and removing members is audited as `policy.member-added` and
@@ -174,7 +200,8 @@ Tracked in [PLAN.md](../PLAN.md).
 - One server serves one site; an organization cannot hold several sites, and organization discovery returns only that site's organization.
 - SAML single sign-on.
 - SCIM provisions people and groups ([SCIM.md](SCIM.md)); product access is not provisioned with them, and a provider authenticates as an organization administrator rather than with a directory-scoped key.
-- Authentication policies enforce single sign-on and session duration; two-step verification enrolment and password requirements are missing, and a policy covers people one at a time rather than a whole group.
+- Authentication policies enforce single sign-on, session duration and the shortest password; two-step verification enrolment is missing, as are password expiry and the rest of Atlassian's password strength rules, and a policy covers people one at a time rather than a whole group.
+- A person who has forgotten their password asks an administrator for a sign-in link; there is no self-service "forgot password" page, which would need SMTP to be configured.
 - Account claiming from verified domains (managed vs unmanaged accounts), and domain ownership checks across organizations.
 - The Atlassian user management API (`/users/{account_id}/manage/...`: profile, email, lifecycle, API tokens).
 - Organization API keys distinct from user API tokens.
@@ -185,5 +212,7 @@ Tracked in [PLAN.md](../PLAN.md).
 
 - `internal/store/admin_test.go`: provisioning, membership mirroring, direct and group roles, managed profiles, directory-scoped suspension, credential revocation, audit events.
 - `internal/admin/http_test.go`: every Organizations API operation, auth, errors, partial results, conflicts, expansions, audit persistence.
-- `internal/admin/authentication_policies_test.go`: settings validation, membership moving with the person, the default policy, a disabled policy enforcing nothing, and what sign-in does under each.
+- `internal/admin/authentication_policies_test.go`: settings validation, membership moving with the person, the default policy, a disabled policy enforcing nothing, and what sign-in and a password change do under each.
+- `internal/authn/password_test.go`: changing a password, the rules that refuse one, the sessions a change ends, and the sign-in link's single use and expiry.
+- `e2e/password.spec.ts`: an invited person reached by a sign-in link, setting a password, replacing it from their profile, and the session that ends with it.
 - `e2e/admin.spec.ts`: group and product access, invitations, product activity, domains, policies, authentication policies (a member refused a password sign-in and admitted again once the policy goes), managed profiles, ordinary-user denial, accessibility, themes and 320px reflow.
