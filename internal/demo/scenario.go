@@ -893,6 +893,12 @@ func validateEvents(where string, createdDay int, events []Event, people, items 
 		if event.Day < createdDay {
 			return fmt.Errorf("%s has a %s before it existed", where, event.Kind)
 		}
+		// Day zero is the day the site is built, and nothing has happened
+		// after it: a history that runs into tomorrow dates work, comments
+		// and clocks in the future.
+		if event.Day > 0 {
+			return fmt.Errorf("%s has a %s on day %d, which is after the day the site is built", where, event.Kind, event.Day)
+		}
 		if event.Day < previous {
 			return fmt.Errorf("%s has events out of order", where)
 		}
@@ -995,10 +1001,20 @@ func NewClock(today time.Time) Clock {
 	return Clock{origin: time.Date(year, month, day, 9, 0, 0, 0, time.UTC)}
 }
 
+// WritesPerDay is how many writes one day of a scenario spreads through its
+// working hours before they start sharing a moment. A day holds far fewer than
+// this in practice; the cap is what keeps a busy day inside itself.
+const WritesPerDay = 4096
+
 // At is the timestamp of a day offset, spread through the working day so that
-// events on one day keep their order.
+// events on one day keep their order. The spread stays inside the day: a
+// history whose writes ran into the days after it would put work, comments and
+// SLA clocks in the future, which is where they were until this was capped.
 func (c Clock) At(day, ordinal int) time.Time {
-	return c.origin.AddDate(0, 0, day).Add(time.Duration(ordinal) * 7 * time.Minute)
+	if ordinal >= WritesPerDay {
+		ordinal = WritesPerDay - 1
+	}
+	return c.origin.AddDate(0, 0, day).Add(time.Duration(ordinal) * 7 * time.Second)
 }
 
 // Day is the date of a day offset, for fields that hold a day rather than a

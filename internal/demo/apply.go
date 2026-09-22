@@ -67,9 +67,11 @@ type Applier struct {
 	// so a re-run keeps it rather than raising it twice.
 	existing map[string]string
 	spaces   map[string]string
-	// ordinal orders the writes that share a day, so a day's history reads
-	// in the order it happened.
-	ordinal int
+	// ordinals count the writes each day already carries, so a day's history
+	// reads in the order it happened and stays inside that day. A single
+	// counter across the whole scenario spread three years of writes seven
+	// minutes apart, which put the last months of it in the future.
+	ordinals map[int]int
 	// mutex guards what several projects' histories touch at once: the work
 	// they have raised, and the ordinal that orders a day.
 	mutex sync.Mutex
@@ -99,6 +101,7 @@ func Apply(ctx context.Context, st *store.Store, cmds *commands.Service, scenari
 		sprints:  map[string]*models.Sprint{}, boards: map[string]*models.Board{}, fields: map[string]string{},
 		fieldTypes: map[string]string{},
 		items:      map[string]*models.Issue{}, existing: map[string]string{}, spaces: map[string]string{},
+		ordinals: map[int]int{},
 	}
 	return applier.run(ctx, scenario, slug)
 }
@@ -199,8 +202,8 @@ func (a *Applier) run(ctx context.Context, scenario *Scenario, slug string) (*Re
 // retiming pass can move its action log entries into the past.
 func (a *Applier) at(ctx context.Context, day int, write func(context.Context) error) error {
 	a.mutex.Lock()
-	a.ordinal++
-	ordinal := a.ordinal
+	ordinal := a.ordinals[day]
+	a.ordinals[day] = ordinal + 1
 	a.mutex.Unlock()
 	// The write carries the moment it happened into the action log, so the
 	// history reads correctly as it is written. Bracketing each write with

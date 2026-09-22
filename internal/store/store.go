@@ -1026,14 +1026,10 @@ func (s *Store) CreateEstimatedIssueForReporter(ctx context.Context, actorID, re
 		WorkspaceID: wsID, Seq: seq, EntityType: models.EntityIssue, EntityID: issueID,
 		Op: models.OpUpsert, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID,
 	}
-	_, err = tx.Exec(ctx, `
-		INSERT INTO actions (workspace_id, seq, entity_type, entity_id, op, schema_v, payload, actor_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		wsID, seq, action.EntityType, action.EntityID, action.Op, action.SchemaV, payload, actorID)
-	if err != nil {
-		return nil, nil, err
-	}
-	if _, err = tx.Exec(ctx, `SELECT pg_notify('zzira_actions', $1 || '|' || $2)`, wsID, fmt.Sprintf("%d", seq)); err != nil {
+	// The log is written through the same seam as every other action, so
+	// raising work with an estimate is dated by the history that raised it
+	// rather than by the wall clock.
+	if err = appendAction(ctx, tx, action); err != nil {
 		return nil, nil, err
 	}
 

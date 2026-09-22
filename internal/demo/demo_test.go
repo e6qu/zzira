@@ -324,6 +324,25 @@ func TestApplyDemoCompany(t *testing.T) {
 		t.Fatalf("the desk has %d requests on the first page, want %d of %d", len(requestValues), wanted, len(scenario.Service.Requests))
 	}
 
+	// Nothing a history writes happens after the day the site was built. The
+	// action log is where a report reads a history from, and a scenario whose
+	// writes ran past today filled it with work that has not happened yet.
+	// Setting the site up -- its projects, fields and request types -- is done
+	// at the wall clock, as an administrator would; what the history writes is
+	// dated by the history.
+	var ahead int
+	var latest *time.Time
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE created_at > $2), max(created_at) FILTER (WHERE created_at > $2)
+		FROM actions WHERE workspace_id=$1 AND entity_type IN
+		  ('issue','comment','worklog','watcher','issue_link','wiki_page','wiki_blogpost','sprint_issue','notification')`,
+		result.WorkspaceID, today).Scan(&ahead, &latest); err != nil {
+		t.Fatalf("read the action log: %v", err)
+	}
+	if ahead > 0 {
+		t.Fatalf("%d of the actions the history wrote are after %s, the latest at %s",
+			ahead, today.Format(time.DateOnly), latest.Format(time.RFC3339))
+	}
+
 	// The desk's inventory, and the incidents connected to it: an asset
 	// nothing is ever about is a topology nobody reads.
 	adminID, _, _, err := st.UserByEmail(ctx, admin)
@@ -349,20 +368,27 @@ func TestApplyDemoCompany(t *testing.T) {
 		t.Fatalf("the inventory holds %d relationships, the scenario declared %d",
 			len(inventory.Relationships), len(scenario.Service.Assets.Relationships))
 	}
+	// Every request the scenario says is about an asset is about it on the
+	// site, and what depends on that asset is reached through the topology.
 	about, reached := 0, 0
-	for _, raw := range requestValues {
-		request, _ := raw.(map[string]any)
-		key, _ := request["issueKey"].(string)
-		if key == "" {
+	for _, request := range scenario.Service.Requests {
+		named := ""
+		for _, event := range request.Events {
+			if event.Kind == "asset" {
+				named = event.Asset
+			}
+		}
+		if named == "" {
 			continue
 		}
-		issue, err := st.IssueByIDOrKey(ctx, result.WorkspaceID, key)
-		if err != nil {
-			t.Fatalf("read %s: %v", key, err)
+		var issueID string
+		if err := st.Pool.QueryRow(ctx, `SELECT id FROM issues WHERE workspace_id=$1 AND summary=$2 LIMIT 1`,
+			result.WorkspaceID, request.Summary).Scan(&issueID); err != nil {
+			t.Fatalf("find the request %q: %v", request.Summary, err)
 		}
-		impact, err := st.ServiceRequestAssetImpact(ctx, result.WorkspaceID, adminID, issue.ID)
+		impact, err := st.ServiceRequestAssetImpact(ctx, result.WorkspaceID, adminID, issueID)
 		if err != nil {
-			t.Fatalf("read the impact of %s: %v", key, err)
+			t.Fatalf("read the impact of %s: %v", request.ID, err)
 		}
 		for _, entry := range impact {
 			if entry.Direct {
@@ -373,7 +399,7 @@ func TestApplyDemoCompany(t *testing.T) {
 		}
 	}
 	if about == 0 {
-		t.Fatal("no request on the desk's first page is about an asset, so the topology is connected to nothing")
+		t.Fatal("no request is about an asset, so the topology is connected to nothing")
 	}
 	if reached == 0 {
 		t.Fatal("no request reaches an asset through the topology, so the relationships carry nothing")

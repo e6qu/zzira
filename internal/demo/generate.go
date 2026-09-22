@@ -335,6 +335,15 @@ func releaseSeries(project *Project) int {
 	return highest + 1
 }
 
+// until holds a generated day at today: day zero is the day the site is built,
+// and a scenario that runs past it dates work in the future.
+func until(day int) int {
+	if day > 0 {
+		return 0
+	}
+	return day
+}
+
 // growWorkItem writes one piece of work and the life it had: picked up, worked
 // on, talked about, and usually finished before the sprint ended. Some of it
 // is still open, because a backlog with nothing left in it is not a backlog.
@@ -399,17 +408,19 @@ func (s *Scenario) growWorkItem(project *Project, generated GeneratedProject, sp
 	}
 	// What happened to it, in order: a day cursor walks forward so a comment
 	// never lands before the work was picked up, and the applier replays the
-	// timeline exactly as it reads.
-	day := item.CreatedDay + 1 + random.Intn(3)
+	// timeline exactly as it reads. Nothing happens after today: work in the
+	// sprint running now was picked up and talked about up to this morning,
+	// not next week.
+	day := until(item.CreatedDay + 1 + random.Intn(3))
 	item.Events = append(item.Events, Event{Day: day, Kind: "transition", Status: "In Progress", Actor: assignee})
 	if random.Float64() < 0.7 {
-		day += random.Intn(2)
+		day = until(day + random.Intn(2))
 		item.Events = append(item.Events, Event{
 			Day: day, Kind: "worklog", Actor: assignee, Seconds: 1800 * (1 + random.Intn(12)),
 		})
 	}
 	if random.Float64() < 0.45 {
-		day += random.Intn(3)
+		day = until(day + random.Intn(3))
 		item.Events = append(item.Events, Event{Day: day, Kind: "comment", Actor: pick(people), Body: pick(generatedComments)})
 	}
 	// Work in a sprint that has ended is nearly all done; work in the sprint
@@ -423,7 +434,7 @@ func (s *Scenario) growWorkItem(project *Project, generated GeneratedProject, sp
 		if bug && random.Float64() < 0.15 {
 			resolution = "Won't Do"
 		}
-		day += 1 + random.Intn(3)
+		day = until(day + 1 + random.Intn(3))
 		if endDay <= 0 && day > endDay {
 			// A closed sprint's work finished inside it, or the sprint report
 			// would show work completed after the sprint ended.
@@ -454,7 +465,7 @@ func linkSprintWork(work []WorkItem, generated GeneratedProject, people []string
 				// A link is recorded on the work item that acts: the one that
 				// blocks, as the applier reads it.
 				work[index].Events = append(work[index].Events, Event{
-					Day: work[index].CreatedDay + 1, Kind: "link",
+					Day: until(work[index].CreatedDay + 1), Kind: "link",
 					LinkType: generatedLinks[random.Intn(len(generatedLinks))],
 					Target:   work[other].ID, Actor: work[index].Reporter,
 				})
@@ -462,7 +473,7 @@ func linkSprintWork(work []WorkItem, generated GeneratedProject, people []string
 		}
 		if generated.WatchShare > 0 && random.Float64() < generated.WatchShare && len(people) > 0 {
 			work[index].Events = append(work[index].Events, Event{
-				Day: work[index].CreatedDay + 1, Kind: "watch", Actor: people[random.Intn(len(people))],
+				Day: until(work[index].CreatedDay + 1), Kind: "watch", Actor: people[random.Intn(len(people))],
 			})
 		}
 	}
@@ -573,7 +584,7 @@ func (s *Scenario) growService(plan *Generation, random *rand.Rand) error {
 		// next day and breach it. A desk whose SLAs are all met, or all
 		// breached, shows nothing about what an SLA is for.
 		day := at
-		if random.Float64() < 0.3 {
+		if at < 0 && random.Float64() < 0.3 {
 			day = at + 1
 		}
 		// Agents talk among themselves before they answer, and a note is not
@@ -619,18 +630,27 @@ func (s *Scenario) growService(plan *Generation, random *rand.Rand) error {
 		// A refused request is closed as soon as it is refused: nobody is
 		// getting the access, and the request does not sit in the queue.
 		if refused {
-			day++
+			if day < 0 {
+				day++
+			}
 			request.Events = append(request.Events, Event{
 				Day: day, Kind: "transition", Status: "Done", Resolution: "Won't Do", Actor: agent,
 			})
 		}
 		// An incident is answered in hours and a question in days, which is
-		// what makes the two read differently in the reports.
+		// what makes the two read differently in the reports. Most are
+		// resolved the day they were answered, so the desk's time to
+		// resolution is met more often than it is missed.
 		if approved && random.Float64() < 0.85 {
-			if incident {
+			switch {
+			case incident || random.Float64() < 0.65:
+			case random.Float64() < 0.5:
 				day++
-			} else {
+			default:
 				day += 1 + random.Intn(4)
+			}
+			if day > 0 {
+				day = 0
 			}
 			request.Events = append(request.Events, Event{
 				Day: day, Kind: "transition", Status: "Done", Resolution: "Done", Actor: agent,
