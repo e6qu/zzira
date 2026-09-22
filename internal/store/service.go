@@ -528,9 +528,9 @@ func (s *Store) createServiceApproval(ctx context.Context, workspaceID, requestI
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var id string
-	err = tx.QueryRow(ctx, `INSERT INTO service_request_approvals(request_issue_id,name,created_by,automation_key,status_id,condition_type,condition_value,transition_approved,transition_rejected)
-		SELECT sr.issue_id,$3,$4,NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),NULLIF($8::int,0),NULLIF($9,''),NULLIF($10,'') FROM service_requests sr WHERE sr.workspace_id=$1 AND sr.issue_id=$2
-		ON CONFLICT (request_issue_id,automation_key) WHERE automation_key IS NOT NULL DO NOTHING RETURNING id`, workspaceID, requestIssueID, name, actorID, automationKey, rule.StatusID, rule.ConditionType, rule.ConditionValue, rule.TransitionApproved, rule.TransitionRejected).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO service_request_approvals(request_issue_id,name,created_by,automation_key,status_id,condition_type,condition_value,transition_approved,transition_rejected,created_at)
+		SELECT sr.issue_id,$3,$4,NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),NULLIF($8::int,0),NULLIF($9,''),NULLIF($10,''),$11 FROM service_requests sr WHERE sr.workspace_id=$1 AND sr.issue_id=$2
+		ON CONFLICT (request_issue_id,automation_key) WHERE automation_key IS NOT NULL DO NOTHING RETURNING id`, workspaceID, requestIssueID, name, actorID, automationKey, rule.StatusID, rule.ConditionType, rule.ConditionValue, rule.TransitionApproved, rule.TransitionRejected, ActionTimeOr(ctx, time.Now().UTC())).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) && automationKey != "" {
 		if err := tx.QueryRow(ctx, `SELECT id FROM service_request_approvals WHERE request_issue_id=$1 AND automation_key=$2`, requestIssueID, automationKey).Scan(&id); err != nil {
 			return nil, false, err
@@ -648,7 +648,10 @@ func (s *Store) AnswerServiceApproval(ctx context.Context, requestIssueID, appro
 	if final != "pending" {
 		return nil, fmt.Errorf("approval has already been completed")
 	}
-	result, err := tx.Exec(ctx, `UPDATE service_request_approvers SET decision=$4,decided_at=now() WHERE approval_id=$1 AND user_id=$2 AND decision='pending' AND EXISTS(SELECT 1 FROM service_request_approvals WHERE id=$1 AND request_issue_id=$3)`, approvalID, actorID, requestIssueID, decision)
+	// An approval is answered when the write says it was, so a site built
+	// with history behind it has approvals decided on the day they were.
+	decidedAt := ActionTimeOr(ctx, time.Now().UTC())
+	result, err := tx.Exec(ctx, `UPDATE service_request_approvers SET decision=$4,decided_at=$5 WHERE approval_id=$1 AND user_id=$2 AND decision='pending' AND EXISTS(SELECT 1 FROM service_request_approvals WHERE id=$1 AND request_issue_id=$3)`, approvalID, actorID, requestIssueID, decision, decidedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -683,7 +686,7 @@ func (s *Store) AnswerServiceApproval(ctx context.Context, requestIssueID, appro
 		}
 	}
 	if final != "pending" {
-		if _, err := tx.Exec(ctx, `UPDATE service_request_approvals SET final_decision=$2,completed_at=now() WHERE id=$1`, approvalID, final); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE service_request_approvals SET final_decision=$2,completed_at=$3 WHERE id=$1`, approvalID, final, decidedAt); err != nil {
 			return nil, err
 		}
 	}

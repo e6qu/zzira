@@ -848,7 +848,9 @@ func (a *Applier) generatedWork(ctx context.Context, order []string, byProject m
 // stops time to first response. Everything else happens to a request as it
 // happens to any work item.
 func (a *Applier) requestEvent(ctx context.Context, issue *models.Issue, event Event) error {
-	if event.Kind != "comment" {
+	switch event.Kind {
+	case "comment", "approval", "approve", "decline":
+	default:
 		return a.event(ctx, issue, event)
 	}
 	actor := a.people[event.Actor]
@@ -856,9 +858,38 @@ func (a *Applier) requestEvent(ctx context.Context, issue *models.Issue, event E
 		actor = a.admin
 	}
 	return a.at(ctx, event.Day, func(ctx context.Context) error {
-		_, err := a.Commands.AddServiceRequestComment(ctx, actor, a.workspaceID, issue.ID,
-			adf.ParagraphDoc(event.Body), event.Body, !event.Internal)
-		return err
+		switch event.Kind {
+		case "comment":
+			_, err := a.Commands.AddServiceRequestComment(ctx, actor, a.workspaceID, issue.ID,
+				adf.ParagraphDoc(event.Body), event.Body, !event.Internal)
+			return err
+		case "approval":
+			approvers := make([]string, 0, len(event.Approvers))
+			for _, approver := range event.Approvers {
+				approvers = append(approvers, a.people[approver])
+			}
+			_, err := a.Commands.CreateServiceApproval(ctx, actor, a.workspaceID, issue.ID, event.Body, approvers)
+			return err
+		default:
+			// The approval being answered is the one still waiting; a request
+			// with none waiting is a scenario that answered twice.
+			approvals, err := a.Store.ServiceApprovals(ctx, issue.ID)
+			if err != nil {
+				return err
+			}
+			pending := ""
+			for _, approval := range approvals {
+				if approval.FinalDecision == "pending" {
+					pending = approval.ID
+					break
+				}
+			}
+			if pending == "" {
+				return fmt.Errorf("no approval is waiting to be answered")
+			}
+			_, err = a.Commands.AnswerServiceApproval(ctx, actor, a.workspaceID, issue.ID, pending, event.Kind)
+			return err
+		}
 	})
 }
 

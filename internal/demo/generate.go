@@ -76,6 +76,11 @@ type GeneratedService struct {
 	// IncidentType the one incidents use.
 	RequestTypes []string `json:"requestTypes,omitempty"`
 	IncidentType string   `json:"incidentType,omitempty"`
+	// ApprovalType is the request type somebody has to approve before it is
+	// done -- asking for access, in most companies -- and Approvers are the
+	// people who answer. Without approvers the agents answer.
+	ApprovalType string   `json:"approvalType,omitempty"`
+	Approvers    []string `json:"approvers,omitempty"`
 	// Subjects are what customers write in about.
 	Subjects []string `json:"subjects,omitempty"`
 }
@@ -575,9 +580,41 @@ func (s *Scenario) growService(plan *Generation, random *rand.Rand) error {
 			})
 		}
 		request.Events = append(request.Events, Event{Day: day, Kind: "comment", Actor: agent, Body: pick(generatedServiceReplies)})
+		// Asking for access is answered by a person, not by the agent who
+		// took the request: most are approved, a few are refused, and a few
+		// are still waiting, which is what an approval queue looks like.
+		approved, refused := true, false
+		if declared.ApprovalType != "" && requestType == declared.ApprovalType {
+			approvers := declared.Approvers
+			if len(approvers) == 0 {
+				approvers = declared.Agents
+			}
+			approver := pick(approvers)
+			request.Events = append(request.Events, Event{
+				Day: day, Kind: "approval", Actor: agent, Body: "Manager approval", Approvers: []string{approver},
+			})
+			switch answer := random.Float64(); {
+			case answer < 0.75:
+				request.Events = append(request.Events, Event{Day: day, Kind: "approve", Actor: approver})
+			case answer < 0.9:
+				approved, refused = false, true
+				request.Events = append(request.Events, Event{Day: day, Kind: "decline", Actor: approver})
+			default:
+				// Still waiting, so the request waits with it.
+				approved = false
+			}
+		}
+		// A refused request is closed as soon as it is refused: nobody is
+		// getting the access, and the request does not sit in the queue.
+		if refused {
+			day++
+			request.Events = append(request.Events, Event{
+				Day: day, Kind: "transition", Status: "Done", Resolution: "Won't Do", Actor: agent,
+			})
+		}
 		// An incident is answered in hours and a question in days, which is
 		// what makes the two read differently in the reports.
-		if random.Float64() < 0.85 {
+		if approved && random.Float64() < 0.85 {
 			if incident {
 				day++
 			} else {

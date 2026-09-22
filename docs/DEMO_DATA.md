@@ -174,13 +174,23 @@ An event is one thing that happened on one day:
 { "day": -60, "kind": "transition", "actor": "ravi", "status": "Done", "resolution": "Done" }
 { "day": -59, "kind": "comment", "actor": "ines", "body": "Reviewed and merged." }
 { "day": -58, "kind": "worklog", "actor": "ravi", "seconds": 7200 }
+{ "day": -57, "kind": "approval", "actor": "sara", "body": "Manager approval", "approvers": ["nora"] }
+{ "day": -56, "kind": "approve", "actor": "nora" }
 ```
 
-The kinds are `transition`, `comment`, `worklog`, `assign`, `link`, `watch` and
-`vote`. A transition names the status it moves to; the applier runs the workflow
+The kinds are `transition`, `comment`, `worklog`, `assign`, `link`, `watch`,
+`vote`, and, on a service request only, `approval`, `approve` and `decline`. A
+transition names the status it moves to; the applier runs the workflow
 transition that leads there, so conditions, validators and post functions all
 run. A resolution is taken from the transition screen when it asks for one, and
 recorded as an edit when it does not.
+
+A comment on a service request is a reply through the desk: public unless the
+event says `"internal": true`, which is an agent's note the customer never sees.
+A public reply stops the desk's time to first response; a note leaves it
+running, as it does in the product. `approval` asks the people it names to
+approve, and `approve` or `decline` is one of them answering, so the actor has
+to be one of the approvers.
 
 ## What is checked before anything is written
 
@@ -188,7 +198,9 @@ Applying a scenario that contradicts itself is refused rather than half-built:
 unknown people, projects, sprints, versions, components or fields; duplicate
 ids; events before the work existed or out of order; a released version with no
 release date; a satisfaction rating outside 1 to 5; a sprint that ends before it
-starts.
+starts; an estimate that is not a duration; work due before it was raised; a
+queue whose query does not parse; a request answered by somebody who is not an
+agent of that desk; an approval answered before anybody asked for one.
 
 ## Tests
 

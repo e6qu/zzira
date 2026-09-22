@@ -469,7 +469,10 @@
         "portalName": "Northwind support",
         "agents": [
           "sara",
-          "dan"
+          "dan",
+          "gita",
+          "lucas",
+          "fatima"
         ],
         "queues": [
           {
@@ -2799,6 +2802,12 @@
         "access"
       ],
       "incidentType": "incident",
+      "approvalType": "access",
+      "approvers": [
+        "nora",
+        "maya",
+        "omar"
+      ],
       "subjects": [
         "a refund",
         "the checkout page",

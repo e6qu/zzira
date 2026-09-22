@@ -230,6 +230,10 @@ type Event struct {
 	Assignee string `json:"assignee,omitempty"`
 	LinkType string `json:"linkType,omitempty"`
 	Target   string `json:"target,omitempty"`
+	// Approvers are the people an "approval" event asks to approve a service
+	// request. An "approve" or "decline" event afterwards is one of them
+	// answering, and the actor is which one.
+	Approvers []string `json:"approvers,omitempty"`
 }
 
 // Deployment is one delivery to an environment, and what it carried.
@@ -441,7 +445,7 @@ func Write(w io.Writer, scenario *Scenario) error {
 var (
 	projectKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,9}$`)
 	spaceKeyPattern   = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,9}$`)
-	eventKinds        = []string{"transition", "comment", "worklog", "assign", "link", "watch", "vote"}
+	eventKinds        = []string{"transition", "comment", "worklog", "assign", "link", "watch", "vote", "approval", "approve", "decline"}
 	projectTypes      = []string{"software", "business", "service_desk"}
 	sprintStates      = []string{"future", "active", "closed"}
 )
@@ -485,6 +489,7 @@ func (s *Scenario) Validate() error {
 	}
 	projects, versions, sprints, components := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
 	requestTypes := map[string]bool{}
+	deskAgents := map[string]bool{}
 	for _, project := range s.Projects {
 		if projects[project.ID] {
 			return fmt.Errorf("two projects share the id %q", project.ID)
@@ -533,6 +538,7 @@ func (s *Scenario) Validate() error {
 				if err := knownPerson("service desk of "+project.ID, agent); err != nil {
 					return err
 				}
+				deskAgents[project.ID+"\x00"+agent] = true
 			}
 			// A queue whose query does not compile is a queue that breaks the
 			// agent view it is on, and the store takes the JQL as given.
@@ -617,7 +623,7 @@ func (s *Scenario) Validate() error {
 		if item.Due != nil && *item.Due < item.CreatedDay {
 			return fmt.Errorf("work item %q is due on day %d, before it was raised on day %d", item.ID, *item.Due, item.CreatedDay)
 		}
-		if err := validateEvents("work item "+item.ID, item.CreatedDay, item.Events, people, items); err != nil {
+		if err := validateEvents("work item "+item.ID, item.CreatedDay, item.Events, people, items, false); err != nil {
 			return err
 		}
 	}
@@ -656,8 +662,25 @@ func (s *Scenario) Validate() error {
 			if request.Satisfaction < 0 || request.Satisfaction > 5 {
 				return fmt.Errorf("request %q rates satisfaction %d, which is not 1 to 5", request.ID, request.Satisfaction)
 			}
-			if err := validateEvents("request "+request.ID, request.CreatedDay, request.Events, people, items); err != nil {
+			if err := validateEvents("request "+request.ID, request.CreatedDay, request.Events, people, items, true); err != nil {
 				return err
+			}
+			// Answering a request is something an agent of that desk does. A
+			// person who is not one cannot see the request at all, so a
+			// scenario that has them reply builds a site that refuses it.
+			for _, event := range request.Events {
+				switch event.Kind {
+				case "comment", "approval":
+				default:
+					continue
+				}
+				if event.Actor == "" || event.Actor == request.Customer {
+					continue
+				}
+				if !deskAgents[request.Project+"\x00"+event.Actor] {
+					return fmt.Errorf("request %q is answered by %q, who is not an agent of the %s desk",
+						request.ID, event.Actor, request.Project)
+				}
 			}
 		}
 	}
@@ -770,8 +793,11 @@ func (s *Scenario) Validate() error {
 
 // validateEvents checks one timeline: known kinds, known people, and days that
 // do not run backwards or start before the work existed.
-func validateEvents(where string, createdDay int, events []Event, people, items map[string]bool) error {
-	previous := createdDay
+// validateEvents checks a timeline is one the applier can replay. request says
+// whether it belongs to a service request, because asking for an approval is
+// something only a request has.
+func validateEvents(where string, createdDay int, events []Event, people, items map[string]bool, request bool) error {
+	previous, asked := createdDay, false
 	for _, event := range events {
 		if !slices.Contains(eventKinds, event.Kind) {
 			return fmt.Errorf("%s has the unknown event kind %q", where, event.Kind)
@@ -809,6 +835,29 @@ func validateEvents(where string, createdDay int, events []Event, people, items 
 			}
 			if !items[event.Target] {
 				return fmt.Errorf("%s links to the unknown work item %q", where, event.Target)
+			}
+		case "approval":
+			if !request {
+				return fmt.Errorf("%s asks for an approval, which only a service request has", where)
+			}
+			if len(event.Approvers) == 0 {
+				return fmt.Errorf("%s asks for an approval from nobody", where)
+			}
+			for _, approver := range event.Approvers {
+				if !people[approver] {
+					return fmt.Errorf("%s asks the unknown person %q to approve", where, approver)
+				}
+			}
+			if event.Body == "" {
+				return fmt.Errorf("%s asks for an approval with no name", where)
+			}
+			asked = true
+		case "approve", "decline":
+			if !asked {
+				return fmt.Errorf("%s answers an approval nobody asked for", where)
+			}
+			if event.Actor == "" {
+				return fmt.Errorf("%s has an approval answered by nobody", where)
 			}
 		}
 	}

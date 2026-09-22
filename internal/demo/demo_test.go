@@ -205,7 +205,7 @@ func TestApplyDemoCompany(t *testing.T) {
 	tracked := get(jira, "/rest/api/3/search/jql?jql="+
 		"project%20%3D%20PAY&maxResults=100&fields=timeoriginalestimate,timeestimate,timespent,duedate")
 	trackedIssues, _ := tracked["issues"].([]any)
-	estimated, logged, due := 0, 0, 0
+	estimated, logged, due, overran := 0, 0, 0, 0
 	for _, raw := range trackedIssues {
 		item, _ := raw.(map[string]any)
 		itemFields, _ := item["fields"].(map[string]any)
@@ -225,9 +225,18 @@ func TestApplyDemoCompany(t *testing.T) {
 		if !hasOriginal || !hasRemaining {
 			t.Fatalf("%v logged %v seconds with no estimate to move", item["key"], spent)
 		}
-		if remaining > original-spent+1 {
+		// Work that logs more than it estimated has nothing left rather than
+		// a negative estimate, which is what over-run reads as.
+		left := original - spent
+		if left < 0 {
+			left = 0
+		}
+		if remaining > left+1 {
 			t.Fatalf("%v logged %v seconds against an estimate of %v and has %v left, so logging work did not move the estimate",
 				item["key"], spent, original, remaining)
+		}
+		if left == 0 {
+			overran++
 		}
 	}
 	if estimated != len(trackedIssues) {
@@ -238,6 +247,9 @@ func TestApplyDemoCompany(t *testing.T) {
 	}
 	if due == 0 {
 		t.Fatal("no work in PAY is due on a day, so the calendar gadget has nothing to show")
+	}
+	if overran == 0 {
+		t.Fatal("no work in PAY cost more than it was estimated at, so the time tracking report's accuracy column is all one colour")
 	}
 
 	// Jira Software: the board and its sprints, including closed ones.
