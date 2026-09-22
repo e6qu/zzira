@@ -396,7 +396,7 @@ func (h *Handler) WikiSpaceImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.Store.ImportWikiSpace(r.Context(), ws, user.ID,
-		strings.TrimSpace(r.FormValue("key")), strings.TrimSpace(r.FormValue("name")), archive)
+		strings.TrimSpace(r.FormValue("key")), strings.TrimSpace(r.FormValue("name")), archive, h.Commands.Blobs)
 	if err != nil {
 		_, message := wikiWebError(err)
 		redirectLocal(w, r, "/wiki?importError="+url.QueryEscape(message)+"#wiki-import-space")

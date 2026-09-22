@@ -19,7 +19,7 @@ func TestBuildWikiSpaceExport(t *testing.T) {
 		{ID: "32", PageID: "11", Filename: "disk.iso"},
 		{ID: "33", BlogPostID: "21", Filename: "notes.txt", Content: []byte("shipped notes"), Included: true},
 	}
-	content, err := buildWikiSpaceExport(space, pages, posts, attachments)
+	content, err := buildWikiSpaceExport(space, pages, posts, attachments, wikiSpaceExtras{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -51,6 +52,15 @@ func TestASpaceExportCanBeReadBackIn(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("write the child page: %v", err)
 	}
+	// What the parent carries beside its body: a label and a comment.
+	if _, err := st.AddWikiPageLabels(ctx, workspaceID, actorID, parent.ID, []models.WikiLabel{{Name: "runbook", Prefix: "global"}}); err != nil {
+		t.Fatalf("label the page: %v", err)
+	}
+	if _, err := st.CreateWikiFooterComment(ctx, workspaceID, actorID, models.WikiFooterComment{
+		PageID: parent.ID, Body: models.WikiBody{Representation: "storage", Value: "<p>Say who is on call.</p>"},
+	}); err != nil {
+		t.Fatalf("comment on the page: %v", err)
+	}
 	if _, err := st.SaveWikiBlogPost(ctx, workspaceID, actorID, models.WikiBlogPost{
 		SpaceID: space.ID, Title: "What we learned", Status: "current",
 		Body: models.WikiBody{Representation: "storage", Value: "<p>Write it down.</p>"},
@@ -66,19 +76,30 @@ func TestASpaceExportCanBeReadBackIn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	archive, err := buildWikiSpaceExport(space, pages, posts, nil)
+	// The export carries what the pages hold beside their bodies, and one
+	// file, so the import has all three to bring back.
+	extras, err := st.wikiSpaceExportExtras(ctx, workspaceID, actorID, pages, posts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	carried := []wikiExportAttachment{{
+		ID: "9001", PageID: pages[0].ID, Filename: "runbook.txt", MediaType: "text/plain",
+		Content: []byte("drain, restart, watch"), Included: true,
+	}}
+	archive, err := buildWikiSpaceExport(space, pages, posts, carried, extras)
 	if err != nil {
 		t.Fatalf("build the export: %v", err)
 	}
 
 	// Something that is not an export says so rather than making a space.
-	if _, err := st.ImportWikiSpace(ctx, workspaceID, actorID, "NOTAZIP", "Not a zip", []byte("hello")); err == nil ||
+	if _, err := st.ImportWikiSpace(ctx, workspaceID, actorID, "NOTAZIP", "Not a zip", []byte("hello"), nil); err == nil ||
 		!strings.Contains(err.Error(), "not a space export") {
 		t.Fatalf("importing a file that is not an export = %v", err)
 	}
 
 	copyKey := "CPY" + strings.ToUpper(NewID("s")[len(NewID("s"))-5:])
-	result, err := st.ImportWikiSpace(ctx, workspaceID, actorID, copyKey, "Imported "+copyKey, archive)
+	blobs := memoryBlobs{}
+	result, err := st.ImportWikiSpace(ctx, workspaceID, actorID, copyKey, "Imported "+copyKey, archive, blobs)
 	if err != nil {
 		t.Fatalf("import the export: %v", err)
 	}
@@ -103,4 +124,38 @@ func TestASpaceExportCanBeReadBackIn(t *testing.T) {
 	if !strings.Contains(byTitle["Restarting the queue"].Body.Value, "Drain, restart, watch") {
 		t.Fatalf("the page came back as %q", byTitle["Restarting the queue"].Body.Value)
 	}
+	// What the pages carried came with them.
+	if result.Labels != 1 || result.Comments != 1 {
+		t.Fatalf("the import brought %d labels and %d comments", result.Labels, result.Comments)
+	}
+	labels, err := st.WikiPageLabels(ctx, workspaceID, actorID, byTitle["Runbooks"].ID)
+	if err != nil || len(labels) != 1 || labels[0].Name != "runbook" {
+		t.Fatalf("the imported page is labelled %+v, %v", labels, err)
+	}
+	comments, err := st.WikiFooterComments(ctx, workspaceID, actorID, byTitle["Runbooks"].ID)
+	if err != nil || len(comments) != 1 || !strings.Contains(comments[0].Body.Value, "Say who is on call") {
+		t.Fatalf("the imported page carries %d comments, %v", len(comments), err)
+	}
+	if result.Attachments != 1 || len(blobs) != 1 {
+		t.Fatalf("the import brought %d attachments and wrote %d files", result.Attachments, len(blobs))
+	}
+	files, err := st.WikiAttachments(ctx, workspaceID, actorID, byTitle["Runbooks"].ID, "", "", "current")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0].Filename != "runbook.txt" {
+		t.Fatalf("the imported page holds %+v", files)
+	}
+}
+
+// memoryBlobs keeps the files an import writes, so a test can count them.
+type memoryBlobs map[string][]byte
+
+func (b memoryBlobs) Put(ctx context.Context, key string, r io.Reader) (int64, error) {
+	content, err := io.ReadAll(r)
+	if err != nil {
+		return 0, err
+	}
+	b[key] = content
+	return int64(len(content)), nil
 }

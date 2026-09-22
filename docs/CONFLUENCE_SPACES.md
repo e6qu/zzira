@@ -116,7 +116,8 @@ The space page (`/wiki/spaces/{space}`) links to the following tools:
     included.
 
   - `space.json`: the same pages and blog posts in the storage the site keeps,
-    with each page's parent, which is what an import reads. The HTML is for
+    with each page's parent, its labels, the comments under it and the files
+    the archive carries for it. It is what an import reads. The HTML is for
     reading; the manifest is for moving.
 
   The space page lists the exporter's five latest exports and their status.
@@ -127,8 +128,12 @@ The space page (`/wiki/spaces/{space}`) links to the following tools:
   from the wiki home page. It reads an export's `space.json` and makes a new
   space from it: every page in the tree it was in, then the blog posts. The key
   and name are the importer's -- a space is usually read back beside the one it
-  came from -- and default to the export's. Attachments, comments, labels and
-  restrictions are not carried. An archive with no manifest, or one written by
+  came from -- and default to the export's. A page's labels, the comments under
+  it and the files the archive carries come back with it; a comment is written
+  by the person importing, under a line naming who wrote it where it came from,
+  because the site it came from is not this one. Restrictions, page history and
+  the drafts nobody published are not carried, and neither is a file the export
+  left out for being too large. An archive with no manifest, or one written by
   a later version of the site, is refused rather than making an empty space.
   Code: `internal/store/wiki_space_import.go`.
 
