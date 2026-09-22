@@ -136,6 +136,17 @@ test('a manager creates a plan, gives it sources, exclusions and access', async 
   await expect(releases).toContainText('0 of 1 done');
   await expect(releases).toContainText('0 of 0 done');
 
+  // The release hub says the same from the other end: a version belongs to
+  // one project, so what ships with it is only knowable through the plan.
+  await page.goto(`/projects/${key}/releases`);
+  await expect(page.getByText(`Ships with Autumn programme ${stamp}`)).toBeVisible();
+  await page.getByRole('link', { name: `Autumn ${stamp}`, exact: true }).first().click();
+  const shipsWith = page.getByRole('region', { name: 'Ships with' });
+  await expect(shipsWith).toContainText(`Autumn programme ${stamp}`);
+  await expect(shipsWith).toContainText(`${otherKey} · Autumn ${stamp}`);
+  await expect(shipsWith).toContainText('Dates differ');
+  await expect(shipsWith.getByRole('link', { name: `Autumn programme ${stamp}` })).toHaveAttribute('href', `/plans/${planID}`);
+
   // Two releases cannot share a name, and the plan says so.
   await page.goto(`/plans/${planID}/settings`);
   const duplicate = page.locator('form').filter({ has: page.getByRole('button', { name: 'Create cross-project release' }) });

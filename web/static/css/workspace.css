@@ -495,6 +495,16 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 
 .release-filters input,.release-filters select,.release-add input { min-height:40px; padding:8px 10px; border:1px solid var(--ds-border); border-radius:var(--ds-radius); color:var(--ds-text); background:var(--ds-surface); font:inherit; }
 .release-side dt { color:var(--ds-text-subtle); font-size:12px; margin-top:12px; }.release-side dd { margin:4px 0 0; font-family:var(--utility-font); font-size:13px; }
+/* A cross-project release: the versions that ship together, each with where
+   it stands, so the group reads as one delivery rather than a list of links. */
+.release-ships-with h3 { margin:16px 0 4px; font-size:14px; }
+.release-ships-with h3 small { color:var(--ds-text-subtle); font-weight:400; }
+.release-ships-with-list { list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+.release-ships-with-list li { display:grid; grid-template-columns:1fr auto; gap:2px 8px; align-items:center; padding:8px 10px; border:1px solid var(--ds-border); border-radius:var(--ds-radius); }
+.release-ships-with-list li small { grid-column:1; color:var(--ds-text-subtle); font-size:12px; }
+.release-ships-with-list li .lozenge { grid-column:2; grid-row:1 / span 2; }
+.release-dates-differ,.release-missing { font-size:12px; color:var(--ds-text-subtle); }
+.release-ships-with-note { display:block; margin-top:2px; font-size:12px; color:var(--ds-text-subtle); }
 /* Keep board filters usable when keyboard focus scrolls a long board. */
 .board-toolbar { position:sticky; top:var(--topbar-height); z-index:10; }
 
