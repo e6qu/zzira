@@ -169,6 +169,11 @@ func TestSearchByAttachedFields(t *testing.T) {
 	// answer for them as absent rather than failing.
 	both(`"Request participants" IS EMPTY`)
 	both(`request-channel-type IS EMPTY`)
+	both(`Organizations IS EMPTY`)
+	both(`"Request Type" IS EMPTY`)
+	if keys := keysFor(`Organizations = "Riverbank"`); len(keys) != 0 {
+		t.Fatalf("Organizations = matched %v, and neither work item is a request", keys)
+	}
 	if keys := keysFor(`project = ` + key + ` ORDER BY votes DESC`); len(keys) != 2 || keys[0] != subject {
 		t.Fatalf("order by votes = %v, want the voted work item first", keys)
 	}
