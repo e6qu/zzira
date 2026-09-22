@@ -178,7 +178,10 @@ const bulkManualRuleLimit = 50
 // here it is the same run as the work item's own Run automation control, one
 // item at a time, so a rule that is refused on one item does not stop the rest.
 func (h *Handler) SubmitBulkIssueAutomation(w http.ResponseWriter, r *http.Request, projectKey string) {
-	user, workspaceID, ok := h.pageContext(w, r)
+	// Running a rule over a selection changes every one of them at once, so
+	// it needs Bulk change, as moving, editing and transitioning a selection
+	// do.
+	user, workspaceID, ok := h.requireBulkChange(w, r)
 	if !ok || !parseForm(w, r) {
 		return
 	}
