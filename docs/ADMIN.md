@@ -173,7 +173,7 @@ All operations of the pinned Organizations API (`api/specs/organization-admin.js
 - **Events:** the same immutable records as the audit log. Query by text, action, actor, IP, product, location, millisecond time bounds, limit (max 500). Each event records the request's client address and user agent (set on the database connection and merged in by a trigger). Filtered queries are limited to 10 per user per minute (429 with `Retry-After`); `events-stream` is not limited, defaults to ascending order and always returns a reusable cursor.
 - **Domains:** names are normalized to lowercase FQDNs. Verification looks up `_zzira-challenge.<domain>` for the exact `zzira-domain-verification=<token>` TXT value. A verified domain is required for a project's custom sender email ([PROJECT_GOVERNANCE.md](PROJECT_GOVERNANCE.md)).
 - **Policies:** types `ip-allowlist` and `data-residency` can be created; `type=data-security` is accepted as a list filter only. IP values must be addresses or CIDR ranges; resources must be product ARIs of the organization. Enabled IP allowlists are enforced: a Jira Software, Jira Service Management or Confluence request from outside every enabled allowlist covering that product gets 403 (`internal/store/ip_allowlist.go`). Administration and sign-in stay reachable. Data residency policies are recorded only; all data lives in one PostgreSQL database.
-- **Authentication policies:** `type=authentication-policy` carries `config` instead of `rule.in`: `enforceSSO`, `requireTwoStep`, `sessionDurationMinutes` (5 minutes to 30 days, default 30 days), `passwordMinimumLength` (8 to 72, default 8) and `default`. `GET/POST/DELETE .../policies/{policyId}/members[/{accountId}]` list, add and remove the people it covers; a person belongs to one policy, so adding them to a second leaves the first, and anyone in none gets the enabled policy marked `default`. An enabled policy is applied at sign-in: `enforceSSO` refuses a password (403 with a page that names the identity provider) and admits only the OIDC flow, and every session the policy covers -- password or SSO -- expires after its duration. A disabled policy, or no policy, leaves the site's own 30-day session. See **Authentication policies** below.
+- **Authentication policies:** `type=authentication-policy` carries `config` instead of `rule.in`: `enforceSSO`, `requireTwoStep`, `sessionDurationMinutes` (5 minutes to 30 days, default 30 days), `passwordMinimumLength` (8 to 72, default 8) and `default`. `GET/POST/DELETE .../policies/{policyId}/members[/{accountId}]` list, add and remove the people it covers; a person belongs to one policy, so adding them to a second leaves the first, and anyone in none -- and in no group the policies cover -- gets the enabled policy marked `default`. Groups are covered from `/admin`; the admin API covers people. An enabled policy is applied at sign-in: `enforceSSO` refuses a password (403 with a page that names the identity provider) and admits only the OIDC flow, and every session the policy covers -- password or SSO -- expires after its duration. A disabled policy, or no policy, leaves the site's own 30-day session. See **Authentication policies** below.
 - **Plans and invitations:** inviting needs at least one enabled paid product (402). An invitation that takes a free product past its limit (10 users; 3 agents for Jira Service Management) is 409. Each account's access, groups, optional email and audit event commit atomically. A multi-account request with failures returns `206 Partial Content` with per-assignment `ERROR` results and keeps the successes.
 - **Email:** invitation email needs SMTP (503 otherwise). Delivery uses a leased PostgreSQL outbox with exponential backoff (capped at one hour); a message is dead after eight failed attempts.
 
@@ -192,7 +192,7 @@ All operations of the pinned Organizations API (`api/specs/organization-admin.js
 | OpenID Connect SSO (Google, Microsoft Entra ID, Atlassian, any discovered OIDC provider) | Built; see [shauth-sso.md](shauth-sso.md). |
 | IP allowlists | Built and enforced. |
 | SAML SSO | Missing. |
-| SCIM user provisioning | `/scim/directory/{directoryId}` serves SCIM 2.0 Users and Groups ([SCIM.md](SCIM.md)). The organization bean reports `scimManaged: true` once a provider has written to the directory. |
+| SCIM user provisioning | `/scim/directory/{directoryId}` serves SCIM 2.0 Users and Groups ([SCIM.md](SCIM.md)). The organization bean reports `scimManaged: true` once a provider has written to the directory, and `/admin` shows where to point a provider, whether one has written, and who it manages. |
 | Authentication policies (enforced SSO, required two-step verification, session duration, shortest password, policy membership) | Built and enforced where each applies; see **Authentication policies** below. |
 | Two-step verification | Built: enrolment, recovery codes, the code at sign-in, a policy that requires it, and an administrator's reset. The key is shown as text and a setup link; there is no QR image. |
 | Data security policies | Missing. |
@@ -202,13 +202,21 @@ All operations of the pinned Organizations API (`api/specs/organization-admin.js
 An authentication policy says how the people it covers sign in. `/admin` writes
 them under **Authentication policies**: name, session duration in minutes,
 **Single sign-on only**, and **Covers everyone in no other policy**, which marks
-the organization's default. Each policy lists its members with a select to add
-one and a button to remove one, and the settings are editable in place.
+the organization's default. Each policy lists the people and the groups it
+covers, with a select to add one and a button to remove one, and the settings
+are editable in place.
 
 - A person belongs to one policy. Adding them to a second takes them out of the
   first (`authentication_policy_members` is unique on the person), so one policy
   always answers for them.
-- Anyone in no policy of their own gets the enabled policy marked default. With
+- A policy also covers groups, which is how a site puts its contractors under
+  one policy once rather than naming every contractor and the next one to
+  arrive. A group belongs to one policy for the same reason a person does.
+- Being named on a policy wins over being in a group under one, because naming
+  somebody is the more particular statement. Somebody in two covered groups
+  gets the policy of the group they joined first, so two reads agree.
+- Anyone in no policy of their own, and in no covered group, gets the enabled
+  policy marked default. With
   no default policy, nothing is enforced: that is every site until an
   administrator writes one.
 - A disabled policy enforces nothing, which is how a policy is retired without
@@ -236,7 +244,7 @@ Tracked in [PLAN.md](../PLAN.md).
 
 - One server serves one site; an organization cannot hold several sites, and organization discovery returns only that site's organization.
 - SAML single sign-on.
-- SCIM provisions people and groups ([SCIM.md](SCIM.md)); product access is not provisioned with them, and a provider authenticates as an organization administrator rather than with a directory-scoped key.
+- SCIM provisions people and groups ([SCIM.md](SCIM.md)); product access is not provisioned with them, and a provider authenticates as an organization administrator rather than with a directory-scoped key. The browser page reads what a provider has written rather than connecting one.
 - Authentication policies enforce single sign-on, two-step verification, session duration and the shortest password; password expiry and the rest of Atlassian's password strength rules are missing, and a policy covers people one at a time rather than a whole group.
 - Two-step verification shows its key as text and a setup link rather than a QR image, and the authenticator app is the only second factor: no WebAuthn, no passkeys, no SMS.
 - Account claiming from verified domains (managed vs unmanaged accounts), and domain ownership checks across organizations.

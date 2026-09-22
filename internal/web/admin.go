@@ -30,22 +30,30 @@ type adminAuthenticationPolicy struct {
 	store.AuthenticationConfig
 	MemberIDs []string
 	Members   []*models.User
+	// GroupIDs and Groups are the groups this policy covers: a site puts the
+	// contractors' group under a policy once rather than naming every
+	// contractor, and the one after them.
+	GroupIDs []string
+	Groups   []*models.Group
 	// PasswordMinimum is the rule this policy applies, which is the site's
 	// own shortest password when the policy asks for nothing longer.
 	PasswordMinimum int
 }
 
 type adminPageData struct {
-	Organization                      *models.Organization
-	Site                              *models.Site
-	Products                          []*models.Product
-	Domains                           []*models.OrganizationDomain
-	Policies                          []*models.OrganizationPolicy
-	AuthenticationPolicies            []adminAuthenticationPolicy
-	IdentityProviders                 []LoginProvider
-	Apps                              []*models.AppInstallation
-	Transfers                         map[string][]store.AppMigrationTransfer
-	Directory                         *models.Directory
+	Organization           *models.Organization
+	Site                   *models.Site
+	Products               []*models.Product
+	Domains                []*models.OrganizationDomain
+	Policies               []*models.OrganizationPolicy
+	AuthenticationPolicies []adminAuthenticationPolicy
+	IdentityProviders      []LoginProvider
+	Apps                   []*models.AppInstallation
+	Transfers              map[string][]store.AppMigrationTransfer
+	Directory              *models.Directory
+	// Provisioning is what an identity provider has written into the
+	// directory over SCIM, and where one is pointed.
+	Provisioning                      adminProvisioning
 	Groups                            []adminGroupRow
 	Users                             []*models.User
 	Audit                             []*models.OrganizationAuditEvent
@@ -187,11 +195,16 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		if err != nil {
 			return adminPageData{}, err
 		}
+		coveredGroups, err := h.Store.AuthenticationPolicyGroups(r.Context(), organization.ID, policy.ID)
+		if err != nil {
+			return adminPageData{}, err
+		}
 		config := store.AuthenticationConfigFromRule(policy.Rule)
 		authenticationPolicies = append(authenticationPolicies, adminAuthenticationPolicy{
 			OrganizationPolicy:   policy,
 			AuthenticationConfig: config,
 			MemberIDs:            members,
+			GroupIDs:             coveredGroups,
 			PasswordMinimum:      store.AuthenticationPolicy{AuthenticationConfig: config, Enforced: true}.PasswordMinimum(),
 		})
 	}
@@ -281,6 +294,10 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	if err != nil {
 		return adminPageData{}, err
 	}
+	data.Provisioning, err = h.provisioning(r.Context(), workspaceID, data.Directory, h.siteLook(r, workspaceID).DateComplete)
+	if err != nil {
+		return adminPageData{}, err
+	}
 	knownUsers := make(map[string]*models.User, len(data.Users))
 	for _, member := range data.Users {
 		knownUsers[member.ID] = member
@@ -295,6 +312,18 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	groups, err := h.Store.GroupsByDirectory(r.Context(), data.Directory.ID)
 	if err != nil {
 		return adminPageData{}, err
+	}
+	// A policy names the groups it covers; the page shows them by name.
+	knownGroups := make(map[string]*models.Group, len(groups))
+	for _, group := range groups {
+		knownGroups[group.ID] = group
+	}
+	for index := range data.AuthenticationPolicies {
+		for _, groupID := range data.AuthenticationPolicies[index].GroupIDs {
+			if group, ok := knownGroups[groupID]; ok {
+				data.AuthenticationPolicies[index].Groups = append(data.AuthenticationPolicies[index].Groups, group)
+			}
+		}
 	}
 	for _, group := range groups {
 		memberIDs, err := h.Store.GroupMemberIDs(r.Context(), group.ID)
@@ -1165,11 +1194,17 @@ func (h *Handler) UpdateAdminPolicyMembers(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	accountID := strings.TrimSpace(r.FormValue("accountId"))
-	if accountID == "" {
-		http.Error(w, "accountId is required", http.StatusBadRequest)
+	groupID := strings.TrimSpace(r.FormValue("groupId"))
+	if accountID == "" && groupID == "" {
+		http.Error(w, "accountId or groupId is required", http.StatusBadRequest)
 		return
 	}
-	err := h.Store.SetAuthenticationPolicyMember(r.Context(), workspaceID, user.ID, r.PathValue("policyId"), accountID, action == "add")
+	var err error
+	if groupID != "" {
+		err = h.Store.SetAuthenticationPolicyGroup(r.Context(), workspaceID, user.ID, r.PathValue("policyId"), groupID, action == "add")
+	} else {
+		err = h.Store.SetAuthenticationPolicyMember(r.Context(), workspaceID, user.ID, r.PathValue("policyId"), accountID, action == "add")
+	}
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {
@@ -1181,9 +1216,13 @@ func (h *Handler) UpdateAdminPolicyMembers(w http.ResponseWriter, r *http.Reques
 		http.Error(w, err.Error(), status)
 		return
 	}
-	message := "Policy member added"
+	subject := "member"
+	if groupID != "" {
+		subject = "group"
+	}
+	message := "Policy " + subject + " added"
 	if action == "remove" {
-		message = "Policy member removed"
+		message = "Policy " + subject + " removed"
 	}
 	http.Redirect(w, r, "/admin?saved="+url.QueryEscape(message), http.StatusSeeOther)
 }
