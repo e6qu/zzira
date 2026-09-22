@@ -469,10 +469,11 @@ See [PLAN.md](../PLAN.md).
 - Customizable customer notification email templates.
 - Knowledge base ranking and article analytics.
 - Incident review templates.
-- `Organizations` as a JQL field, which needs a request to be shared with an
-  organization rather than only a desk ([JQL.md](JQL.md#gaps)). Everything
-  else a queue, an SLA goal or an automation rule may write is the site's
-  own JQL.
+- Sharing a request with one organization when it is raised. `Organizations`
+  is searchable ([JQL.md](JQL.md)) and reads the organizations the customer
+  belongs to that the desk serves, which is what the portal shows their
+  colleagues; picking one request at a time is what remains. Everything a
+  queue, an SLA goal or an automation rule may write is the site's own JQL.
 
 ## See also
 
