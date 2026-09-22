@@ -52,7 +52,7 @@ func TestASavedPlanViewKeepsHowThePlanIsRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	saved, err := st.SavePlanView(ctx, workspaceID, leadID, planID, PlanView{Name: "By team", GroupBy: "team", Query: "PAY"})
+	saved, err := st.SavePlanView(ctx, workspaceID, leadID, planID, PlanView{Name: "By team", GroupBy: "team", Query: "PAY", RollUp: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,11 +69,11 @@ func TestASavedPlanViewKeepsHowThePlanIsRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(views) != 1 || views[0].GroupBy != "sprint" || views[0].Query != "" {
+	if len(views) != 1 || views[0].GroupBy != "sprint" || views[0].Query != "" || views[0].RollUp {
 		t.Fatalf("views = %+v", views)
 	}
 	read, err := st.PlanViewByID(ctx, workspaceID, planID, saved.ID)
-	if err != nil || read.Name != "By team" {
+	if err != nil || read.Name != "By team" || read.RollUp {
 		t.Fatalf("read back %+v, %v", read, err)
 	}
 

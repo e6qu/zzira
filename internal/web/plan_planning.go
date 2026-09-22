@@ -51,8 +51,14 @@ type planPageData struct {
 	Groupings []string
 	Views     []store.PlanView
 	View      *store.PlanView
-	Notice    string
-	Error     string
+	// RollUp says the page is adding the work under each parent onto it.
+	// RolledEstimate is what each item's work adds up to, and OwnDates the
+	// dates the item itself carries, which is what its form edits.
+	RollUp         bool
+	RolledEstimate map[string]float64
+	OwnDates       map[string][2]string
+	Notice         string
+	Error          string
 }
 
 // planGroup is a heading in the plan's work, and the rows under it.
@@ -265,6 +271,7 @@ func (h *Handler) PlanPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Groupings = store.PlanGroupings
 	data.GroupBy, data.Query = r.URL.Query().Get("group"), strings.TrimSpace(r.URL.Query().Get("q"))
+	data.RollUp = r.URL.Query().Get("rollup") == "true"
 	// A named view sets the grouping and the filter, so a link to one opens
 	// the plan the way it was saved.
 	if value := r.URL.Query().Get("view"); value != "" {
@@ -278,7 +285,7 @@ func (h *Handler) PlanPage(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "That view is not in this plan.", http.StatusNotFound)
 			return
 		}
-		data.View, data.GroupBy, data.Query = view, view.GroupBy, view.Query
+		data.View, data.GroupBy, data.Query, data.RollUp = view, view.GroupBy, view.Query, view.RollUp
 	}
 	if !store.ValidPlanGrouping(data.GroupBy) {
 		http.Error(w, "A plan is grouped by a team, a sprint, a project, a status or an assignee.", http.StatusBadRequest)
@@ -286,6 +293,22 @@ func (h *Handler) PlanPage(w http.ResponseWriter, r *http.Request) {
 	}
 	if len([]rune(data.Query)) > 200 {
 		data.Query = string([]rune(data.Query)[:200])
+	}
+	if data.RollUp {
+		// The timeline is drawn from what the work adds up to, while every
+		// form on the page still edits the item's own dates.
+		spans, totals := planRollUp(planning.Work.Items, planning.Items)
+		data.OwnDates = map[string][2]string{}
+		var own func(items []models.TimelineItem)
+		own = func(items []models.TimelineItem) {
+			for _, item := range items {
+				data.OwnDates[item.Issue.ID] = [2]string{item.StartDate, item.DueDate}
+				own(item.Children)
+			}
+		}
+		own(planning.Work.Items)
+		data.RolledEstimate = totals
+		data.Timeline = newTimelineData(nil, models.ProjectTimeline{Epics: rolledTimeline(planning.Work.Items, spans)}, now, h.siteLook(r, workspaceID).DateDay)
 	}
 	data.Groups = planGroups(data.Timeline.Rows, planning.Items, data.GroupBy, data.Query)
 	h.writeWorkspacePage(w, r, "page_plan", user, workspaceID, data, "plans", "")
@@ -317,6 +340,7 @@ func (h *Handler) PlanViewSave(w http.ResponseWriter, r *http.Request) {
 	}
 	view, err := h.Store.SavePlanView(r.Context(), workspaceID, user.ID, plan.ID, store.PlanView{
 		Name: r.PostFormValue("name"), GroupBy: r.PostFormValue("group"), Query: r.PostFormValue("q"),
+		RollUp: r.PostFormValue("rollup") == "true",
 	})
 	if err != nil {
 		redirectLocal(w, r, back+"&error="+url.QueryEscape(err.Error()))
@@ -912,4 +936,62 @@ func (h *Handler) PlanTeamSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	planBack(w, r, plan, scenario.ID, "", "notice", "Team settings saved.")
+}
+
+// planRollUp is what the work under each item adds up to: the span of its own
+// dates and every descendant's, and the sum of their estimates. A plan that
+// rolls up reads a parent by what is under it, which is where the dates and
+// the estimates actually are; the parent's own values are untouched, and they
+// are still what its form edits and what a save writes to Jira.
+func planRollUp(items []models.TimelineItem, planned map[string]*store.PlanItem) (map[string][2]string, map[string]float64) {
+	dates, totals := map[string][2]string{}, map[string]float64{}
+	var walk func(item models.TimelineItem) ([2]string, float64)
+	walk = func(item models.TimelineItem) ([2]string, float64) {
+		span := [2]string{item.StartDate, item.DueDate}
+		total := 0.0
+		if planned != nil {
+			if entry, ok := planned[item.Issue.ID]; ok && entry.Estimate != nil {
+				total = *entry.Estimate
+			}
+		}
+		for _, child := range item.Children {
+			childSpan, childTotal := walk(child)
+			span = widerSpan(span, childSpan)
+			total += childTotal
+		}
+		dates[item.Issue.ID] = span
+		totals[item.Issue.ID] = total
+		return span, total
+	}
+	for _, item := range items {
+		walk(item)
+	}
+	return dates, totals
+}
+
+// widerSpan is the earliest start and the latest end of two spans, where an
+// empty date is one that says nothing rather than one that is early or late.
+func widerSpan(left, right [2]string) [2]string {
+	span := left
+	if span[0] == "" || (right[0] != "" && right[0] < span[0]) {
+		span[0] = right[0]
+	}
+	if span[1] == "" || (right[1] != "" && right[1] > span[1]) {
+		span[1] = right[1]
+	}
+	return span
+}
+
+// rolledTimeline is the plan's work with each item's span in place of its own
+// dates, which is what the timeline draws when a plan rolls up.
+func rolledTimeline(items []models.TimelineItem, dates map[string][2]string) []models.TimelineItem {
+	rolled := make([]models.TimelineItem, 0, len(items))
+	for _, item := range items {
+		if span, ok := dates[item.Issue.ID]; ok {
+			item.StartDate, item.DueDate = span[0], span[1]
+		}
+		item.Children = rolledTimeline(item.Children, dates)
+		rolled = append(rolled, item)
+	}
+	return rolled
 }

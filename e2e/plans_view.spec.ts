@@ -246,17 +246,24 @@ test('a planner groups and filters a plan, and keeps the view', async ({ page, r
   await expect(page.locator('.timeline-table')).not.toContainText(second);
   await accessible(page);
 
+  // Rolled up, a parent reads as the work under it: the epic carries the
+  // story's dates and estimate, while the form still edits its own.
+  await views.getByLabel('Filter').fill('');
+  await views.getByLabel(/Add the work under a parent/).check();
+  await views.getByRole('button', { name: 'Show' }).click();
+  await expect(page.locator('.plan-table')).toContainText(first);
+
   // Kept under a name, the same reading comes back from its link.
   await views.getByLabel('Keep this view as').fill(`Mine ${stamp}`);
   await views.getByRole('button', { name: 'Save view' }).click();
   await expect(page.getByRole('status')).toContainText(`Saved the view Mine ${stamp}`);
   await expect(page.locator('.plan-view-list')).toContainText(`grouped by status`);
+  await expect(page.locator('.plan-view-list')).toContainText('rolled up');
   await page.goto(`/plans/${planID}`);
   await expect(page.locator('.timeline-table')).toContainText(second);
   await page.locator('.plan-view-list').getByRole('link', { name: `Mine ${stamp}` }).click();
   await expect(page.locator('.timeline-table')).toContainText(first);
-  await expect(page.locator('.timeline-table')).not.toContainText(second);
-  await expect(page.getByLabel('Filter')).toHaveValue(first);
+  await expect(page.getByLabel(/Add the work under a parent/)).toBeChecked();
 
   // A filter that matches nothing says so rather than showing an empty table.
   await page.goto(`/plans/${planID}?q=nothing-matches-${stamp}`);

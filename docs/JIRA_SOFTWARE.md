@@ -120,8 +120,14 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
   it to work whose key or summary contains what was typed; a filter that
   matches nothing says so rather than showing an empty table. Anyone who may
   edit the plan can keep the pair under a name, and the saved views are links
-  that open the plan that way (`?group=`, `?q=`, `?view=`). Saving over a name
-  changes that view rather than adding another.
+  that open the plan that way (`?group=`, `?q=`, `?rollup=`, `?view=`). Saving
+  over a name changes that view rather than adding another.
+- **Rolling up** reads a parent by the work under it: its bar spans the
+  earliest start and latest end anywhere beneath it, and its estimate is what
+  that work adds up to. The item's own dates and estimate are untouched --
+  they are what its form edits and what **Review changes** writes to Jira --
+  so a rolled-up plan says when the work runs without anybody typing a date on
+  an epic.
 - Who can open a plan: site administrators, the plan lead, and people or groups the plan grants access to.
 
 **Scenarios**
@@ -206,7 +212,7 @@ Errors use the module format, `[{"message": …}]`. Provider rate limits are des
   - No restoring an archived or trashed plan.
   - `inferredDates` and plan `customFields` are stored but not used.
   - No capacity derived from velocity.
-  - No rollups of estimates or dates onto a parent, and no saved view of the timeline's zoom or columns.
+  - No saved view of the timeline's zoom or columns, and no rollup of anything but dates and estimates.
 - Scenarios cannot change parent, rank, release or status, and cannot create work items.
 - Cross-project releases: the plan's `crossProjectReleases` list is validated and stored, but nothing shows it or plans against it. There is no multi-project release in the plan or the release hub.
 - No REST teams API (Atlassian's public teams API).
