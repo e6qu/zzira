@@ -81,6 +81,9 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
   await page.locator('[data-theme-toggle]').click();
   await accessible(page);
   await page.locator('[data-theme-toggle]').click();
+  // A narrow screen fits, whatever the site's projects are called: the home
+  // picker holds every project name, and a long one used to widen the card
+  // past the viewport.
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await accessible(page);

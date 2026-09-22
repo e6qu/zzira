@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
+	"github.com/e6qu/zzira/internal/aql"
 	"github.com/e6qu/zzira/internal/models"
 )
 
@@ -14,7 +16,7 @@ func (s *Store) ServiceRequestTypeFields(ctx context.Context, workspaceID, servi
 		  CASE f.field_id WHEN 'summary' THEN 'Summary' WHEN 'description' THEN 'Description' ELSE cf.name END,
 		  CASE f.field_id WHEN 'summary' THEN 'text' WHEN 'description' THEN 'text' ELSE cf.type END,
 		  CASE f.field_id WHEN 'summary' THEN rt.description WHEN 'description' THEN 'Describe the request.' ELSE COALESCE(cf.description,'') END,
-		  f.help_text,f.required,(f.field_id LIKE 'customfield_%'),f.position,NOT f.visible,f.preset_value,COALESCE(f.condition_field_id,''),f.condition_option_ids,COALESCE(f.asset_schema_id::text,''),COALESCE((SELECT cx.assets_multiple FROM custom_field_contexts cx WHERE cx.id=jira_custom_field_context(cf.id,sd.project_id,NULL)),FALSE)
+		  f.help_text,f.required,(f.field_id LIKE 'customfield_%'),f.position,NOT f.visible,f.preset_value,COALESCE(f.condition_field_id,''),f.condition_option_ids,COALESCE(f.asset_schema_id::text,''),f.asset_filter,COALESCE((SELECT cx.assets_multiple FROM custom_field_contexts cx WHERE cx.id=jira_custom_field_context(cf.id,sd.project_id,NULL)),FALSE)
 		FROM service_request_type_fields f
 		JOIN service_request_types rt ON rt.id=f.request_type_id
 		JOIN service_desks sd ON sd.id=rt.service_desk_id
@@ -30,7 +32,7 @@ func (s *Store) ServiceRequestTypeFields(ctx context.Context, workspaceID, servi
 	fields := make([]models.ServiceRequestTypeField, 0)
 	for rows.Next() {
 		var field models.ServiceRequestTypeField
-		if err := rows.Scan(&field.ID, &field.RequestTypeID, &field.Name, &field.Type, &field.Description, &field.HelpText, &field.Required, &field.Custom, &field.Position, &field.Hidden, &field.PresetValue, &field.ConditionFieldID, &field.ConditionOptionIDs, &field.AssetSchemaID, &field.AssetsMultiple); err != nil {
+		if err := rows.Scan(&field.ID, &field.RequestTypeID, &field.Name, &field.Type, &field.Description, &field.HelpText, &field.Required, &field.Custom, &field.Position, &field.Hidden, &field.PresetValue, &field.ConditionFieldID, &field.ConditionOptionIDs, &field.AssetSchemaID, &field.AssetFilter, &field.AssetsMultiple); err != nil {
 			return nil, err
 		}
 		fields = append(fields, field)
@@ -63,7 +65,16 @@ func (s *Store) SetServiceRequestTypeFields(ctx context.Context, workspaceID, ac
 		if conditionOptions == nil {
 			conditionOptions = []string{}
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO service_request_type_fields(request_type_id,field_id,required,help_text,position,visible,preset_value,condition_field_id,condition_option_ids,asset_schema_id) VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''),$9,NULLIF($10,'')::uuid)`, requestTypeID, field.ID, field.Required, field.HelpText, position, !field.Hidden, preset, field.ConditionFieldID, conditionOptions, field.AssetSchemaID); err != nil {
+		// A filter the site cannot read would leave the form offering
+		// everything or nothing without saying why, so it is read here and
+		// refused now rather than when somebody opens the portal.
+		filter := strings.TrimSpace(field.AssetFilter)
+		if filter != "" {
+			if _, err := aql.Parse(filter); err != nil {
+				return fmt.Errorf("%s: the Assets filter %q: %w", field.Name, filter, err)
+			}
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO service_request_type_fields(request_type_id,field_id,required,help_text,position,visible,preset_value,condition_field_id,condition_option_ids,asset_schema_id,asset_filter) VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''),$9,NULLIF($10,'')::uuid,$11)`, requestTypeID, field.ID, field.Required, field.HelpText, position, !field.Hidden, preset, field.ConditionFieldID, conditionOptions, field.AssetSchemaID, filter); err != nil {
 			return err
 		}
 	}
@@ -123,6 +134,12 @@ func (s *Store) ServiceRequestFieldOptions(ctx context.Context, workspaceID, ser
 // project's versions that are not archived, and the site's teams. Other field
 // types offer nothing.
 func (s *Store) ServicePortalPickerChoices(ctx context.Context, workspaceID, serviceDeskID, userID, fieldType, assetSchemaID string) ([]ServiceRequestFieldOption, error) {
+	return s.ServicePortalPickerChoicesFiltered(ctx, workspaceID, serviceDeskID, userID, fieldType, assetSchemaID, "")
+}
+
+// ServicePortalPickerChoicesFiltered is the same, with an Assets object field
+// narrowed by the AQL filter its form carries.
+func (s *Store) ServicePortalPickerChoicesFiltered(ctx context.Context, workspaceID, serviceDeskID, userID, fieldType, assetSchemaID, assetFilter string) ([]ServiceRequestFieldOption, error) {
 	choices := []ServiceRequestFieldOption{}
 	switch fieldType {
 	case models.CustomFieldGroup, models.CustomFieldMultiGroup:
@@ -142,7 +159,7 @@ func (s *Store) ServicePortalPickerChoices(ctx context.Context, workspaceID, ser
 			choices = append(choices, ServiceRequestFieldOption{ID: project.ID, Value: project.Name})
 		}
 	case models.CustomFieldAsset:
-		return s.ServicePortalAssetObjects(ctx, workspaceID, serviceDeskID, assetSchemaID)
+		return s.ServicePortalFilteredAssetObjects(ctx, workspaceID, serviceDeskID, assetSchemaID, assetFilter)
 	case models.CustomFieldTeam:
 		teams, err := s.AtlassianTeams(ctx, workspaceID)
 		if err != nil {
@@ -177,9 +194,31 @@ func (s *Store) ServicePortalPickerChoices(ctx context.Context, workspaceID, ser
 // those of the schema the field is scoped to, or the desk's whole inventory
 // when it names no schema.
 func (s *Store) ServicePortalAssetObjects(ctx context.Context, workspaceID, serviceDeskID, assetSchemaID string) ([]ServiceRequestFieldOption, error) {
+	return s.servicePortalAssetObjects(ctx, workspaceID, serviceDeskID, assetSchemaID, "")
+}
+
+// ServicePortalFilteredAssetObjects is the same, narrowed by the field's own
+// AQL filter: the laptops of one team rather than every laptop. A filter the
+// site cannot read offers nothing rather than everything, because a form that
+// quietly ignores its filter offers a customer objects they should not see.
+func (s *Store) ServicePortalFilteredAssetObjects(ctx context.Context, workspaceID, serviceDeskID, assetSchemaID, filter string) ([]ServiceRequestFieldOption, error) {
+	return s.servicePortalAssetObjects(ctx, workspaceID, serviceDeskID, assetSchemaID, filter)
+}
+
+func (s *Store) servicePortalAssetObjects(ctx context.Context, workspaceID, serviceDeskID, assetSchemaID, filter string) ([]ServiceRequestFieldOption, error) {
+	where, args := "TRUE", []any{workspaceID, serviceDeskID, assetSchemaID}
+	if strings.TrimSpace(filter) != "" {
+		query, err := aql.Parse(filter)
+		if err != nil {
+			return nil, fmt.Errorf("the Assets filter %q: %w", filter, err)
+		}
+		compiled := query.Compile(aql.DefaultColumns(), len(args)+1)
+		where, args = compiled.Where, append(args, compiled.Args...)
+	}
 	rows, err := s.Pool.Query(ctx, `SELECT o.id::text,o.label,s.name
 		FROM service_asset_objects o JOIN service_asset_schemas s ON s.id=o.schema_id JOIN service_desks sd ON sd.id=s.service_desk_id
-		WHERE sd.workspace_id=$1 AND sd.id=$2 AND ($3='' OR s.id::text=$3) ORDER BY lower(s.name),lower(o.label),o.id`, workspaceID, serviceDeskID, assetSchemaID)
+		WHERE sd.workspace_id=$1 AND sd.id=$2 AND ($3='' OR s.id::text=$3) AND (`+where+`)
+		ORDER BY lower(s.name),lower(o.label),o.id`, args...)
 	if err != nil {
 		return nil, err
 	}
