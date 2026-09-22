@@ -98,6 +98,42 @@ func TestWikiActionsWriteOnThePageTheRuleRanFor(t *testing.T) {
 		func(text string) (string, error) { return text, nil }); err == nil {
 		t.Fatal("a label action with no page was accepted")
 	}
+
+	// Writing at the end of a page keeps what was already on it, in a new
+	// version, and archiving it takes it out of the space.
+	plain := func(text string) (string, error) { return text, nil }
+	changed, err = runner.appendToWikiPage(fx.ctx, run, wikiPageActionValue{Body: "Checked by {{rule.name}}"}, plain)
+	if err != nil || !changed {
+		t.Fatalf("appending reported changed=%v, err=%v", changed, err)
+	}
+	after, err := fx.store.WikiPage(fx.ctx, fx.ws, fx.admin, page.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(after.Body.Value, "Steps") || !strings.Contains(after.Body.Value, "Checked by") {
+		t.Fatalf("the page now reads %q", after.Body.Value)
+	}
+	if after.Version.Number <= fresh.Version.Number {
+		t.Fatalf("appending left the page at version %d", after.Version.Number)
+	}
+	if _, err := runner.appendToWikiPage(fx.ctx, run, wikiPageActionValue{Body: "   "}, plain); err == nil {
+		t.Fatal("appending nothing was accepted")
+	}
+	changed, err = runner.archiveWikiPage(fx.ctx, run, wikiPageActionValue{}, plain)
+	if err != nil || !changed {
+		t.Fatalf("archiving reported changed=%v, err=%v", changed, err)
+	}
+	archived, err := fx.store.WikiPage(fx.ctx, fx.ws, fx.admin, page.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if archived.Status != "archived" {
+		t.Fatalf("the page is %q after the rule archived it", archived.Status)
+	}
+	// Archiving an archived page is not a change.
+	if changed, err := runner.archiveWikiPage(fx.ctx, run, wikiPageActionValue{}, plain); err != nil || changed {
+		t.Fatalf("archiving again reported changed=%v, err=%v", changed, err)
+	}
 }
 
 // A rule that no work item started can still write a page -- which the docs
@@ -187,7 +223,7 @@ func TestRunSubjectNamesWhatTheRunWasAbout(t *testing.T) {
 // must agree with it: a page rule has no work item and still writes a page.
 func TestActionsThatRunWithoutAWorkItem(t *testing.T) {
 	for _, actionType := range []string{"jira.issue.create", WebRequestActionType, VariableActionType,
-		WikiPageActionType, WikiCommentActionType, WikiLabelActionType} {
+		WikiPageActionType, WikiCommentActionType, WikiLabelActionType, WikiAppendActionType, WikiArchiveActionType} {
 		if !actionsWithoutWork[actionType] {
 			t.Fatalf("%s needs a work item, and the docs say it does not", actionType)
 		}
