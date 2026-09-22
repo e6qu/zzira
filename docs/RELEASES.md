@@ -76,6 +76,16 @@ The release hub plans a project's versions, tracks their scope and delivery evid
 **Project ids**
 - Projects with legacy non-numeric ids leave out `projectId` in version responses. To create a version in one of these projects, send the project key in `project`.
 
+## Environments
+
+The hub opens with what the project's deliveries have put where: one line per
+environment the project has deployed to, in the order work travels
+(development, testing, staging, production, then anything else a provider
+named), with the last successful deployment's pipeline and time, how much work
+is there, and what reached an earlier environment and not this one -- the work
+a promotion would carry. Only deployments naming work the reader can browse
+are counted.
+
 ## Release conditions
 
 A project can say what has to be true before one of its versions ships, in
@@ -96,7 +106,7 @@ browser answers 409 with the same sentence, and so does `PUT
 ## Gaps
 
 - A version still belongs to exactly one project (`project_versions.project_id`); a plan's cross-project release groups such versions ([Jira Software](JIRA_SOFTWARE.md#plans)). The hub and the version page read the group back from the plans the viewer may see: the list notes what a version ships with, and the version page lists the other projects' versions with their dates, progress and release state, and says when they are not all due on the same day.
-- No grouping of deployments across projects, and no environment promotion policies.
+- No grouping of deployments across projects. The hub says what each environment is running and what is waiting to be promoted into it; promotion itself is the provider's, and there are no promotion policies.
 - Dates are shown in fixed English format; the user's locale and the site time zone are not applied.
 - The release hub needs a connection. Versions are not stored in the offline replica.
 - Versions are paged by offset, so pages can shift when versions change between requests.

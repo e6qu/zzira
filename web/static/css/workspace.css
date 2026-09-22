@@ -853,3 +853,12 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 
 /* A project's release conditions, said on the version they gate. */
 .release-gate-list { margin:0 0 8px; padding-left:18px; display:grid; gap:4px; font-size:13px; }
+
+/* What is running where, above the versions: one line per environment, with
+   the work that has reached an earlier one and not this. */
+.release-environment-list { list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+.release-environment-list li { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; align-items:center; padding:10px 12px; border:1px solid var(--ds-border); border-radius:var(--ds-radius); }
+.release-environment-list li small { display:block; color:var(--ds-text-subtle); font-size:12px; }
+.release-environment-list li details { grid-column:1 / -1; }
+.release-environment-counts { text-align:right; }
+.release-environment-waiting { list-style:none; margin:6px 0 0; padding:0; display:flex; flex-wrap:wrap; gap:6px; font-size:12px; }

@@ -63,9 +63,12 @@ type releasesData struct {
 	// refuse this version today, so the page says it before the button does.
 	Gates       store.ReleaseGates
 	GateRefusal string
-	Error       string
-	Query       string
-	Status      string
+	// Environments are what the project's deployments have put where, and
+	// what is waiting to be promoted into each.
+	Environments []store.EnvironmentState
+	Error        string
+	Query        string
+	Status       string
 }
 
 // releaseApproval is an approval request with the approver's name.
@@ -145,6 +148,12 @@ func (h *Handler) Releases(w http.ResponseWriter, r *http.Request) {
 	versions, err := h.Store.ProjectVersions(r.Context(), project.ID)
 	if err != nil {
 		http.Error(w, "Could not load releases.", 500)
+		return
+	}
+	// What is running where: the release hub is where somebody asks whether
+	// what they are about to ship has been anywhere yet.
+	if data.Environments, err = h.Store.ProjectEnvironments(r.Context(), ws, project.ID, user.ID); err != nil {
+		http.Error(w, "Could not load the project's environments.", 500)
 		return
 	}
 	data.Reorderable = data.Status == "" && data.Query == ""
