@@ -324,6 +324,61 @@ func TestApplyDemoCompany(t *testing.T) {
 		t.Fatalf("the desk has %d requests on the first page, want %d of %d", len(requestValues), wanted, len(scenario.Service.Requests))
 	}
 
+	// The desk's inventory, and the incidents connected to it: an asset
+	// nothing is ever about is a topology nobody reads.
+	adminID, _, _, err := st.UserByEmail(ctx, admin)
+	if err != nil {
+		t.Fatalf("read the administrator: %v", err)
+	}
+	desks, err := st.ServiceDesks(ctx, result.WorkspaceID)
+	if err != nil || len(desks) == 0 {
+		t.Fatalf("read the service desks: %v (%d desks)", err, len(desks))
+	}
+	inventory, err := st.ServiceAssetInventory(ctx, result.WorkspaceID, adminID, desks[0].ID)
+	if err != nil {
+		t.Fatalf("read the asset inventory: %v", err)
+	}
+	declaredObjects := 0
+	for _, schema := range scenario.Service.Assets.Schemas {
+		declaredObjects += len(schema.Objects)
+	}
+	if len(inventory.Objects) != declaredObjects {
+		t.Fatalf("the inventory holds %d objects, the scenario declared %d", len(inventory.Objects), declaredObjects)
+	}
+	if len(inventory.Relationships) != len(scenario.Service.Assets.Relationships) {
+		t.Fatalf("the inventory holds %d relationships, the scenario declared %d",
+			len(inventory.Relationships), len(scenario.Service.Assets.Relationships))
+	}
+	about, reached := 0, 0
+	for _, raw := range requestValues {
+		request, _ := raw.(map[string]any)
+		key, _ := request["issueKey"].(string)
+		if key == "" {
+			continue
+		}
+		issue, err := st.IssueByIDOrKey(ctx, result.WorkspaceID, key)
+		if err != nil {
+			t.Fatalf("read %s: %v", key, err)
+		}
+		impact, err := st.ServiceRequestAssetImpact(ctx, result.WorkspaceID, adminID, issue.ID)
+		if err != nil {
+			t.Fatalf("read the impact of %s: %v", key, err)
+		}
+		for _, entry := range impact {
+			if entry.Direct {
+				about++
+			} else {
+				reached++
+			}
+		}
+	}
+	if about == 0 {
+		t.Fatal("no request on the desk's first page is about an asset, so the topology is connected to nothing")
+	}
+	if reached == 0 {
+		t.Fatal("no request reaches an asset through the topology, so the relationships carry nothing")
+	}
+
 	// Confluence: the pages, with their tree.
 	pages := get(wiki, "/wiki/api/v2/pages?limit=100")
 	pageValues, _ := pages["results"].([]any)

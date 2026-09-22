@@ -81,6 +81,10 @@ type GeneratedService struct {
 	// people who answer. Without approvers the agents answer.
 	ApprovalType string   `json:"approvalType,omitempty"`
 	Approvers    []string `json:"approvers,omitempty"`
+	// Assets are the scenario ids of the objects an incident is about, so
+	// the inventory is connected to the incidents that hit it rather than
+	// sitting on its own.
+	Assets []string `json:"assets,omitempty"`
 	// Subjects are what customers write in about.
 	Subjects []string `json:"subjects,omitempty"`
 }
@@ -580,6 +584,14 @@ func (s *Scenario) growService(plan *Generation, random *rand.Rand) error {
 			})
 		}
 		request.Events = append(request.Events, Event{Day: day, Kind: "comment", Actor: agent, Body: pick(generatedServiceReplies)})
+		// An incident is about something the company runs, and connecting it
+		// is what makes the topology worth having: the request shows what
+		// else depends on what broke.
+		if incident && len(declared.Assets) > 0 {
+			request.Events = append(request.Events, Event{
+				Day: day, Kind: "asset", Actor: agent, Asset: pick(declared.Assets),
+			})
+		}
 		// Asking for access is answered by a person, not by the agent who
 		// took the request: most are approved, a few are refused, and a few
 		// are still waiting, which is what an approval queue looks like.

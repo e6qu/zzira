@@ -2229,7 +2229,205 @@
           }
         ]
       }
-    ]
+    ],
+    "assets": {
+      "project": "help",
+      "schemas": [
+        {
+          "id": "svc",
+          "key": "SVC",
+          "name": "Business services",
+          "description": "What customers use, and what the company answers for.",
+          "attributes": [
+            "Owner",
+            "Tier",
+            "Runbook"
+          ],
+          "objects": [
+            {
+              "id": "svc-checkout",
+              "key": "SVC-1",
+              "label": "Checkout",
+              "values": {
+                "Owner": "Payments",
+                "Tier": "1",
+                "Runbook": "ENG/Checkout runbook"
+              }
+            },
+            {
+              "id": "svc-payouts",
+              "key": "SVC-2",
+              "label": "Payouts",
+              "values": {
+                "Owner": "Payments",
+                "Tier": "1",
+                "Runbook": "ENG/Payout runbook"
+              }
+            },
+            {
+              "id": "svc-portal",
+              "key": "SVC-3",
+              "label": "Customer portal",
+              "values": {
+                "Owner": "Storefront",
+                "Tier": "2",
+                "Runbook": "ENG/Portal runbook"
+              }
+            },
+            {
+              "id": "svc-reporting",
+              "key": "SVC-4",
+              "label": "Monthly reporting",
+              "values": {
+                "Owner": "Data",
+                "Tier": "3",
+                "Runbook": "ENG/Reporting runbook"
+              }
+            },
+            {
+              "id": "svc-mobile",
+              "key": "SVC-5",
+              "label": "Mobile app",
+              "values": {
+                "Owner": "Mobile",
+                "Tier": "2",
+                "Runbook": "ENG/Mobile runbook"
+              }
+            }
+          ]
+        },
+        {
+          "id": "inf",
+          "key": "INF",
+          "name": "Infrastructure",
+          "description": "The databases, queues and clusters the services run on.",
+          "attributes": [
+            "Environment",
+            "Region",
+            "Owner"
+          ],
+          "objects": [
+            {
+              "id": "inf-payments-db",
+              "key": "INF-1",
+              "label": "payments-db (primary)",
+              "values": {
+                "Environment": "production",
+                "Region": "eu-west-1",
+                "Owner": "Platform"
+              }
+            },
+            {
+              "id": "inf-queue",
+              "key": "INF-2",
+              "label": "events-queue",
+              "values": {
+                "Environment": "production",
+                "Region": "eu-west-1",
+                "Owner": "Platform"
+              }
+            },
+            {
+              "id": "inf-web",
+              "key": "INF-3",
+              "label": "web-cluster",
+              "values": {
+                "Environment": "production",
+                "Region": "eu-west-1",
+                "Owner": "Platform"
+              }
+            },
+            {
+              "id": "inf-warehouse",
+              "key": "INF-4",
+              "label": "analytics-warehouse",
+              "values": {
+                "Environment": "production",
+                "Region": "eu-central-1",
+                "Owner": "Data"
+              }
+            }
+          ]
+        },
+        {
+          "id": "vnd",
+          "key": "VND",
+          "name": "Vendors",
+          "description": "The companies the services depend on.",
+          "attributes": [
+            "Contact",
+            "Contract"
+          ],
+          "objects": [
+            {
+              "id": "vnd-processor",
+              "key": "VND-1",
+              "label": "Card processor",
+              "values": {
+                "Contact": "support@processor.test",
+                "Contract": "Renews each January"
+              }
+            },
+            {
+              "id": "vnd-bank",
+              "key": "VND-2",
+              "label": "Payout bank",
+              "values": {
+                "Contact": "ops@bank.test",
+                "Contract": "Renews each April"
+              }
+            }
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "from": "svc-checkout",
+          "to": "inf-payments-db",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-checkout",
+          "to": "vnd-processor",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-payouts",
+          "to": "inf-payments-db",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-payouts",
+          "to": "vnd-bank",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-portal",
+          "to": "inf-web",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-portal",
+          "to": "svc-checkout",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-mobile",
+          "to": "svc-checkout",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-reporting",
+          "to": "inf-warehouse",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-reporting",
+          "to": "inf-queue",
+          "type": "depends on"
+        }
+      ]
+    }
   },
   "wiki": {
     "spaces": [
@@ -2817,6 +3015,13 @@
         "logging in",
         "a failed card",
         "the monthly report"
+      ],
+      "assets": [
+        "svc-checkout",
+        "svc-payouts",
+        "svc-portal",
+        "svc-reporting",
+        "svc-mobile"
       ]
     },
     "knowledge": {

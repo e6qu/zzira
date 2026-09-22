@@ -234,6 +234,10 @@ type Event struct {
 	// request. An "approve" or "decline" event afterwards is one of them
 	// answering, and the actor is which one.
 	Approvers []string `json:"approvers,omitempty"`
+	// Asset is the object a service request is about, by scenario id, on an
+	// "asset" event. Role is "affected" or "depends_on"; empty is affected.
+	Asset string `json:"asset,omitempty"`
+	Role  string `json:"role,omitempty"`
 }
 
 // Deployment is one delivery to an environment, and what it carried.
@@ -264,6 +268,45 @@ type Commit struct {
 type Service struct {
 	Organizations []Organization   `json:"organizations,omitempty"`
 	Requests      []ServiceRequest `json:"requests,omitempty"`
+	// Assets is the inventory the desk runs on: what the company owns, what
+	// depends on what, and which of it a request is about.
+	Assets *Assets `json:"assets,omitempty"`
+}
+
+// Assets is a service desk's configuration management database: the schemas
+// its objects are described by, the objects themselves, and how they depend
+// on one another.
+type Assets struct {
+	// Project is the scenario id of the service project whose desk owns it.
+	Project string        `json:"project"`
+	Schemas []AssetSchema `json:"schemas,omitempty"`
+	// Relationships say what an object depends on, by object id.
+	Relationships []AssetRelationship `json:"relationships,omitempty"`
+}
+
+// AssetSchema is one kind of thing the company keeps track of.
+type AssetSchema struct {
+	ID          string   `json:"id"`
+	Key         string   `json:"key"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Attributes  []string `json:"attributes,omitempty"`
+	Objects     []Asset  `json:"objects,omitempty"`
+}
+
+// Asset is one thing the company owns or runs.
+type Asset struct {
+	ID     string            `json:"id"`
+	Key    string            `json:"key"`
+	Label  string            `json:"label"`
+	Values map[string]string `json:"values,omitempty"`
+}
+
+// AssetRelationship is what one object needs from another.
+type AssetRelationship struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	Type string `json:"type"`
 }
 
 // Organization groups customers, as Jira Service Management does.
@@ -445,7 +488,7 @@ func Write(w io.Writer, scenario *Scenario) error {
 var (
 	projectKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,9}$`)
 	spaceKeyPattern   = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,9}$`)
-	eventKinds        = []string{"transition", "comment", "worklog", "assign", "link", "watch", "vote", "approval", "approve", "decline"}
+	eventKinds        = []string{"transition", "comment", "worklog", "assign", "link", "watch", "vote", "approval", "approve", "decline", "asset"}
 	projectTypes      = []string{"software", "business", "service_desk"}
 	sprintStates      = []string{"future", "active", "closed"}
 )
@@ -649,6 +692,48 @@ func (s *Scenario) Validate() error {
 				}
 			}
 		}
+		assets := map[string]bool{}
+		if inventory := s.Service.Assets; inventory != nil {
+			if !projects[inventory.Project] {
+				return fmt.Errorf("the asset inventory is on the unknown project %q", inventory.Project)
+			}
+			schemaKeys := map[string]bool{}
+			for _, schema := range inventory.Schemas {
+				if schema.ID == "" || schema.Key == "" || schema.Name == "" {
+					return fmt.Errorf("an asset schema needs an id, a key and a name")
+				}
+				if schemaKeys[schema.Key] {
+					return fmt.Errorf("two asset schemas share the key %q", schema.Key)
+				}
+				schemaKeys[schema.Key] = true
+				attributes := map[string]bool{}
+				for _, attribute := range schema.Attributes {
+					attributes[attribute] = true
+				}
+				for _, object := range schema.Objects {
+					if object.ID == "" || object.Key == "" || object.Label == "" {
+						return fmt.Errorf("an object of %q needs an id, a key and a label", schema.Name)
+					}
+					if assets[object.ID] {
+						return fmt.Errorf("two assets share the id %q", object.ID)
+					}
+					assets[object.ID] = true
+					for name := range object.Values {
+						if !attributes[name] {
+							return fmt.Errorf("asset %q sets %q, which %q does not describe", object.ID, name, schema.Name)
+						}
+					}
+				}
+			}
+			for _, relation := range inventory.Relationships {
+				if !assets[relation.From] || !assets[relation.To] {
+					return fmt.Errorf("a relationship names an unknown asset (%q to %q)", relation.From, relation.To)
+				}
+				if relation.Type == "" {
+					return fmt.Errorf("the relationship from %q to %q has no type", relation.From, relation.To)
+				}
+			}
+		}
 		for _, request := range s.Service.Requests {
 			if !projects[request.Project] {
 				return fmt.Errorf("request %q is in the unknown project %q", request.ID, request.Project)
@@ -669,8 +754,11 @@ func (s *Scenario) Validate() error {
 			// person who is not one cannot see the request at all, so a
 			// scenario that has them reply builds a site that refuses it.
 			for _, event := range request.Events {
+				if event.Kind == "asset" && !assets[event.Asset] {
+					return fmt.Errorf("request %q is about the unknown asset %q", request.ID, event.Asset)
+				}
 				switch event.Kind {
-				case "comment", "approval":
+				case "comment", "approval", "asset":
 				default:
 					continue
 				}
@@ -858,6 +946,16 @@ func validateEvents(where string, createdDay int, events []Event, people, items 
 			}
 			if event.Actor == "" {
 				return fmt.Errorf("%s has an approval answered by nobody", where)
+			}
+		case "asset":
+			if !request {
+				return fmt.Errorf("%s connects an asset, which only a service request has", where)
+			}
+			if event.Asset == "" {
+				return fmt.Errorf("%s connects an asset with no id", where)
+			}
+			if event.Role != "" && event.Role != "affected" && event.Role != "depends_on" {
+				return fmt.Errorf("%s connects an asset as %q, which is neither affected nor depends_on", where, event.Role)
 			}
 		}
 	}

@@ -52,10 +52,12 @@ type Applier struct {
 	projects    map[string]*models.Project
 	desks       map[string]string
 	requestType map[string]string
-	versions    map[string]*models.Version
-	sprints     map[string]*models.Sprint
-	boards      map[string]*models.Board
-	fields      map[string]string
+	// assets maps a scenario asset id to the object the site holds.
+	assets   map[string]string
+	versions map[string]*models.Version
+	sprints  map[string]*models.Sprint
+	boards   map[string]*models.Board
+	fields   map[string]string
 	// fieldTypes is what each declared custom field is, because a value is
 	// written differently for each kind: an option is named by its value,
 	// and everything else is written as it stands.
@@ -92,8 +94,9 @@ func Apply(ctx context.Context, st *store.Store, cmds *commands.Service, scenari
 	applier := &Applier{
 		Store: st, Commands: cmds, Clock: clock,
 		people: map[string]string{}, groups: map[string]string{}, projects: map[string]*models.Project{},
-		desks: map[string]string{}, requestType: map[string]string{}, versions: map[string]*models.Version{},
-		sprints: map[string]*models.Sprint{}, boards: map[string]*models.Board{}, fields: map[string]string{},
+		desks: map[string]string{}, requestType: map[string]string{}, assets: map[string]string{},
+		versions: map[string]*models.Version{},
+		sprints:  map[string]*models.Sprint{}, boards: map[string]*models.Board{}, fields: map[string]string{},
 		fieldTypes: map[string]string{},
 		items:      map[string]*models.Issue{}, existing: map[string]string{}, spaces: map[string]string{},
 	}
@@ -849,7 +852,7 @@ func (a *Applier) generatedWork(ctx context.Context, order []string, byProject m
 // happens to any work item.
 func (a *Applier) requestEvent(ctx context.Context, issue *models.Issue, event Event) error {
 	switch event.Kind {
-	case "comment", "approval", "approve", "decline":
+	case "comment", "approval", "approve", "decline", "asset":
 	default:
 		return a.event(ctx, issue, event)
 	}
@@ -863,6 +866,12 @@ func (a *Applier) requestEvent(ctx context.Context, issue *models.Issue, event E
 			_, err := a.Commands.AddServiceRequestComment(ctx, actor, a.workspaceID, issue.ID,
 				adf.ParagraphDoc(event.Body), event.Body, !event.Internal)
 			return err
+		case "asset":
+			role := event.Role
+			if role == "" {
+				role = "affected"
+			}
+			return a.Store.SetServiceRequestAsset(ctx, a.workspaceID, actor, issue.ID, a.assets[event.Asset], role, true)
 		case "approval":
 			approvers := make([]string, 0, len(event.Approvers))
 			for _, approver := range event.Approvers {
@@ -1253,6 +1262,9 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 			}
 		}
 	}
+	if err := a.assetInventory(ctx, declared.Assets); err != nil {
+		return err
+	}
 	for _, request := range declared.Requests {
 		deskID := a.desks[request.Project]
 		if deskID == "" {
@@ -1306,6 +1318,87 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 			}); err != nil {
 				return fmt.Errorf("request %s feedback: %w", request.ID, err)
 			}
+		}
+	}
+	return nil
+}
+
+// assetInventory builds the desk's configuration management database: what the
+// company runs, and what each of those needs from the others. It is applied
+// before the requests, because a request is about an asset the site already
+// holds.
+func (a *Applier) assetInventory(ctx context.Context, declared *Assets) error {
+	if declared == nil {
+		return nil
+	}
+	deskID := a.desks[declared.Project]
+	if deskID == "" {
+		return fmt.Errorf("the asset inventory names the project %s, which has no service desk", declared.Project)
+	}
+	held, err := a.Store.ServiceAssetInventory(ctx, a.workspaceID, a.admin, deskID)
+	if err != nil {
+		return fmt.Errorf("read the asset inventory: %w", err)
+	}
+	// A second run keeps the inventory it built: a schema is its key, and an
+	// object is its key within that schema.
+	schemas := map[string]string{}
+	for _, schema := range held.Schemas {
+		schemas[schema.Key] = schema.ID
+	}
+	objects := map[string]string{}
+	for _, object := range held.Objects {
+		objects[object.SchemaKey+"\x00"+object.Key] = object.ID
+	}
+	for _, schema := range declared.Schemas {
+		schemaID, ok := schemas[schema.Key]
+		if !ok {
+			attributes := make([]models.ServiceAssetAttribute, 0, len(schema.Attributes))
+			for _, attribute := range schema.Attributes {
+				attributes = append(attributes, models.ServiceAssetAttribute{
+					Key: strings.ToLower(strings.ReplaceAll(attribute, " ", "_")), Name: attribute, Type: "text",
+				})
+			}
+			created, err := a.Store.CreateServiceAssetSchema(ctx, a.workspaceID, a.admin, deskID, models.ServiceAssetSchema{
+				Key: schema.Key, Name: schema.Name, Description: schema.Description, Attributes: attributes,
+			})
+			if err != nil {
+				return fmt.Errorf("asset schema %s: %w", schema.Key, err)
+			}
+			schemaID = created.ID
+		}
+		for _, object := range schema.Objects {
+			if id, ok := objects[schema.Key+"\x00"+object.Key]; ok {
+				a.assets[object.ID] = id
+				continue
+			}
+			values := map[string]string{}
+			for name, value := range object.Values {
+				values[strings.ToLower(strings.ReplaceAll(name, " ", "_"))] = value
+			}
+			created, err := a.Store.SaveServiceAssetObject(ctx, a.workspaceID, a.admin, deskID, models.ServiceAssetObject{
+				SchemaID: schemaID, Key: object.Key, Label: object.Label, Values: values,
+			})
+			if err != nil {
+				return fmt.Errorf("asset %s: %w", object.Key, err)
+			}
+			a.assets[object.ID] = created.ID
+		}
+	}
+	linked := map[string]bool{}
+	for _, relation := range held.Relationships {
+		linked[relation.From.ID+"\x00"+relation.To.ID] = true
+	}
+	for _, relation := range declared.Relationships {
+		from, to := a.assets[relation.From], a.assets[relation.To]
+		if linked[from+"\x00"+to] {
+			continue
+		}
+		if _, err := a.Store.CreateServiceAssetRelationship(ctx, a.workspaceID, a.admin, deskID, models.ServiceAssetRelationship{
+			Relationship: relation.Type,
+			From:         models.ServiceAssetObject{ID: from},
+			To:           models.ServiceAssetObject{ID: to},
+		}); err != nil {
+			return fmt.Errorf("asset relationship %s to %s: %w", relation.From, relation.To, err)
 		}
 	}
 	return nil

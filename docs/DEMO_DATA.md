@@ -102,7 +102,7 @@ show.
 | `deployments`, `commits` | Deliveries to environments and the changes they carried, which the delivery (DORA) report counts: deployments give the frequency and the failure rate, and commits paired with them give the lead time ([REPORTS.md](REPORTS.md)) |
 | `plans` | Cross-project plans, and the teams that work in them |
 | `automation` | The rules the company runs: what starts them, what they are scoped to, and what they do |
-| `service` | Customer organizations and the requests they raised, with their conversation and satisfaction rating |
+| `service` | Customer organizations, the requests they raised with their conversation and satisfaction rating, and `assets` — the desk's inventory: schemas, the objects in them, and what each object needs from the others |
 | `wiki` | Spaces, page trees, blog posts and comments |
 | `filters`, `dashboards` | The searches people saved, and the dashboards they keep, with the gadgets on them. A gadget names its `type` (the catalog key without `com.zzira:`) and whatever that kind reads: a `project` and `days` window, a scrum `board`, a saved `filter` or `jql`, a `groupBy` and `yGroupBy`, `dateField` or `cumulative` |
 
@@ -144,6 +144,9 @@ scenario declares the *shape* of its history and the generator writes it:
 - `linkShare` and `watchShare` are how much of a sprint's work is linked to the
   work beside it and watched by somebody. A link points backwards, at work
   already raised, because the timeline is replayed in order.
+- `approvalType` is the request type somebody has to approve, `approvers` the
+  people who answer, and `assets` the objects an incident is about. Most access
+  requests are approved, a few refused and closed, and a few left waiting.
 - Generated work carries an `estimate` like curated work does, and about a
   third of it is `due` on a day, so the time tracking, user workload, version
   workload and calendar surfaces have something to show for every year of the
@@ -184,6 +187,11 @@ transition names the status it moves to; the applier runs the workflow
 transition that leads there, so conditions, validators and post functions all
 run. A resolution is taken from the transition screen when it asks for one, and
 recorded as an edit when it does not.
+
+`asset` connects the request to something in the desk's inventory, as
+`"affected"` unless the event says `"role": "depends_on"`. What depends on that
+object is then reached through the relationships, so an incident on a service
+shows what else it takes down.
 
 A comment on a service request is a reply through the desk: public unless the
 event says `"internal": true`, which is an agent's note the customer never sees.
