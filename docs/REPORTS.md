@@ -45,8 +45,8 @@ A report draws only from data that already exists, so a site being filled for a 
 | Velocity chart | A scrum board with at least one completed sprint. Each bar needs work that was in the sprint at its start (commitment) and work done before it closed. |
 | Cumulative flow diagram | A board whose columns carry statuses, and work its filter shows. Work with no recorded status change counts in its current status from the day it was created. |
 | Control chart | Work that moved into an in-progress status and then into a done status, with the done move inside the window. Work created straight into a done status never has a cycle time. |
-| Epic report | A board, plus an epic with child work items. Sub-tasks are not counted. |
-| Epic burndown | A board with sprints that have started, and an epic with child work items. Each bar is one sprint: what it finished, and what arrived in the epic while it ran. |
+| Epic report | A board, plus an epic with child work items. A site with a level above the epic can follow one of those instead, and the report then summarises the work under each of its epics. Sub-tasks are not counted. |
+| Epic burndown | A board with sprints that have started, and an epic with child work items, or anything above the epic level. Each bar is one sprint: what it finished, and what arrived while it ran. |
 | Release burndown | The same, of the work whose fix version is the one chosen. |
 | User workload | Work in the project that nobody has resolved. The time each person holds is the sum of the remaining estimates, so work without one counts as a work item and adds no time; the summary says how many carry an estimate. |
 | Version workload | The same, of the work whose fix version is the one chosen. It is grouped twice: by the person holding it and by what kind of work it is. |

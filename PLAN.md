@@ -64,7 +64,7 @@ Each numbered item is one or more substantial PRs.
 ## 1. Work item model
 
 **Hierarchy rollups.** Levels above epic exist ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#work-type-hierarchy)), and plans, roadmaps and `hierarchyLevel` in JQL read through all of them. What remains:
-- Reports still summarise an epic and its children, not a level above it.
+- The epic report and epic burndown follow a level above the epic as well, summarising the work under everything beneath it ([REPORTS.md](docs/REPORTS.md)).
 - Boards and backlogs treat the epic level as the top, as Jira's do; a board
   above the epic level would be ours, not Jira's.
 
