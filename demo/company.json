@@ -17,6 +17,14 @@
     {
       "id": "leads",
       "name": "Team leads"
+    },
+    {
+      "id": "design",
+      "name": "Design"
+    },
+    {
+      "id": "data",
+      "name": "Data"
     }
   ],
   "people": [
@@ -96,6 +104,244 @@
       "id": "cust-felix",
       "email": "felix@harbourco.test",
       "displayName": "Felix Braun",
+      "customer": true
+    },
+    {
+      "id": "kofi",
+      "email": "kofi@northwind.test",
+      "displayName": "Kofi Mensah",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "lena",
+      "email": "lena@northwind.test",
+      "displayName": "Lena Fischer",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "arjun",
+      "email": "arjun@northwind.test",
+      "displayName": "Arjun Patel",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "mei",
+      "email": "mei@northwind.test",
+      "displayName": "Mei Chen",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "paulo",
+      "email": "paulo@northwind.test",
+      "displayName": "Paulo Rocha",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "hana",
+      "email": "hana@northwind.test",
+      "displayName": "Hana Suzuki",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "viktor",
+      "email": "viktor@northwind.test",
+      "displayName": "Viktor Novak",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "zoe",
+      "email": "zoe@northwind.test",
+      "displayName": "Zoë Martin",
+      "role": "member",
+      "groups": [
+        "engineering",
+        "leads"
+      ]
+    },
+    {
+      "id": "omar",
+      "email": "omar@northwind.test",
+      "displayName": "Omar Haddad",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "elin",
+      "email": "elin@northwind.test",
+      "displayName": "Elin Dahl",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "bruno",
+      "email": "bruno@northwind.test",
+      "displayName": "Bruno Costa",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "aisha",
+      "email": "aisha@northwind.test",
+      "displayName": "Aisha Bello",
+      "role": "member",
+      "groups": [
+        "engineering",
+        "leads"
+      ]
+    },
+    {
+      "id": "yuki",
+      "email": "yuki@northwind.test",
+      "displayName": "Yuki Tanaka",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "marta",
+      "email": "marta@northwind.test",
+      "displayName": "Marta Kowalska",
+      "role": "member",
+      "groups": [
+        "engineering",
+        "leads"
+      ]
+    },
+    {
+      "id": "sean",
+      "email": "sean@northwind.test",
+      "displayName": "Seán Ó Braonáin",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "nina",
+      "email": "nina@northwind.test",
+      "displayName": "Nina Petrov",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "caleb",
+      "email": "caleb@northwind.test",
+      "displayName": "Caleb Wright",
+      "role": "member"
+    },
+    {
+      "id": "rosa",
+      "email": "rosa@northwind.test",
+      "displayName": "Rosa Jiménez",
+      "role": "member"
+    },
+    {
+      "id": "tariq",
+      "email": "tariq@northwind.test",
+      "displayName": "Tariq Rahman",
+      "role": "member"
+    },
+    {
+      "id": "gita",
+      "email": "gita@northwind.test",
+      "displayName": "Gita Raman",
+      "role": "member",
+      "groups": [
+        "support"
+      ]
+    },
+    {
+      "id": "lucas",
+      "email": "lucas@northwind.test",
+      "displayName": "Lucas Meyer",
+      "role": "member",
+      "groups": [
+        "support"
+      ]
+    },
+    {
+      "id": "fatima",
+      "email": "fatima@northwind.test",
+      "displayName": "Fatima Al-Amin",
+      "role": "member",
+      "groups": [
+        "support",
+        "leads"
+      ]
+    },
+    {
+      "id": "henrik",
+      "email": "henrik@northwind.test",
+      "displayName": "Henrik Sørensen",
+      "role": "member",
+      "groups": [
+        "engineering"
+      ]
+    },
+    {
+      "id": "priya",
+      "email": "priya@northwind.test",
+      "displayName": "Priya Nair",
+      "role": "admin",
+      "groups": [
+        "leads"
+      ]
+    },
+    {
+      "id": "jonas",
+      "email": "jonas@northwind.test",
+      "displayName": "Jonas Berg",
+      "role": "member",
+      "groups": [
+        "leads"
+      ]
+    },
+    {
+      "id": "cust-liwei",
+      "email": "liwei@example.test",
+      "displayName": "Li Wei",
+      "customer": true
+    },
+    {
+      "id": "cust-sofia",
+      "email": "sofia@example.test",
+      "displayName": "Sofia Rossi",
+      "customer": true
+    },
+    {
+      "id": "cust-nadia",
+      "email": "nadia@example.test",
+      "displayName": "Nadia Haddad",
       "customer": true
     }
   ],
@@ -245,6 +491,140 @@
         ]
       },
       "template": "com.atlassian.servicedesk:simplified-external-service-desk"
+    },
+    {
+      "id": "plat",
+      "key": "PLAT",
+      "name": "Platform",
+      "description": "The services everything else is built on.",
+      "type": "software",
+      "lead": "zoe",
+      "template": "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic",
+      "components": [
+        {
+          "name": "API gateway",
+          "lead": "paulo"
+        },
+        {
+          "name": "Identity",
+          "lead": "hana"
+        },
+        {
+          "name": "Storage",
+          "lead": "viktor"
+        }
+      ],
+      "board": {
+        "id": "plat-board",
+        "name": "Platform board",
+        "type": "scrum"
+      }
+    },
+    {
+      "id": "mob",
+      "key": "MOB",
+      "name": "Mobile",
+      "description": "The phone apps customers pay with.",
+      "type": "software",
+      "lead": "aisha",
+      "template": "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic",
+      "components": [
+        {
+          "name": "iOS",
+          "lead": "omar"
+        },
+        {
+          "name": "Android",
+          "lead": "elin"
+        },
+        {
+          "name": "Shared",
+          "lead": "bruno"
+        }
+      ],
+      "board": {
+        "id": "mob-board",
+        "name": "Mobile board",
+        "type": "scrum"
+      }
+    },
+    {
+      "id": "data",
+      "key": "DATA",
+      "name": "Data and reporting",
+      "description": "Where the numbers the company runs on come from.",
+      "type": "software",
+      "lead": "marta",
+      "template": "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic",
+      "components": [
+        {
+          "name": "Pipelines",
+          "lead": "yuki"
+        },
+        {
+          "name": "Warehouse",
+          "lead": "sean"
+        },
+        {
+          "name": "Dashboards",
+          "lead": "marta"
+        }
+      ],
+      "board": {
+        "id": "data-board",
+        "name": "Data board",
+        "type": "scrum"
+      }
+    },
+    {
+      "id": "web",
+      "key": "WEB",
+      "name": "Storefront",
+      "description": "What a customer sees before they pay.",
+      "type": "software",
+      "lead": "nina",
+      "template": "com.pyxis.greenhopper.jira:gh-simplified-kanban-classic",
+      "components": [
+        {
+          "name": "Checkout",
+          "lead": "nina"
+        },
+        {
+          "name": "Catalogue",
+          "lead": "caleb"
+        }
+      ],
+      "board": {
+        "id": "web-board",
+        "name": "Storefront board",
+        "type": "kanban"
+      }
+    },
+    {
+      "id": "mkt",
+      "key": "MKT",
+      "name": "Marketing",
+      "description": "Campaigns, launches and the words on the site.",
+      "type": "business",
+      "lead": "rosa",
+      "components": [
+        {
+          "name": "Campaigns",
+          "lead": "rosa"
+        },
+        {
+          "name": "Content",
+          "lead": "tariq"
+        }
+      ]
+    },
+    {
+      "id": "hr",
+      "key": "HR",
+      "name": "People operations",
+      "description": "Hiring, onboarding and everything after.",
+      "type": "business",
+      "lead": "priya"
     }
   ],
   "workItems": [
@@ -2096,6 +2476,255 @@
       "name": "Initiative",
       "workTypes": [
         "Initiative"
+      ]
+    }
+  ],
+  "generate": {
+    "seed": 20260922,
+    "days": 1092,
+    "sprintDays": 14,
+    "teams": [
+      {
+        "name": "Payments",
+        "members": [
+          "ravi",
+          "ines",
+          "tom",
+          "kofi",
+          "lena",
+          "arjun",
+          "mei"
+        ],
+        "projects": [
+          "pay"
+        ]
+      },
+      {
+        "name": "Platform",
+        "members": [
+          "zoe",
+          "paulo",
+          "hana",
+          "viktor",
+          "henrik"
+        ],
+        "projects": [
+          "plat"
+        ]
+      },
+      {
+        "name": "Mobile",
+        "members": [
+          "aisha",
+          "omar",
+          "elin",
+          "bruno"
+        ],
+        "projects": [
+          "mob"
+        ]
+      },
+      {
+        "name": "Data",
+        "members": [
+          "marta",
+          "yuki",
+          "sean"
+        ],
+        "projects": [
+          "data"
+        ]
+      },
+      {
+        "name": "Storefront",
+        "members": [
+          "nina",
+          "caleb",
+          "maya"
+        ],
+        "projects": [
+          "web"
+        ]
+      },
+      {
+        "name": "Marketing",
+        "members": [
+          "rosa",
+          "tariq",
+          "caleb"
+        ],
+        "projects": [
+          "mkt"
+        ]
+      },
+      {
+        "name": "Operations",
+        "members": [
+          "dan",
+          "sara",
+          "henrik",
+          "jonas"
+        ],
+        "projects": [
+          "ops"
+        ]
+      },
+      {
+        "name": "People",
+        "members": [
+          "priya",
+          "jonas"
+        ],
+        "projects": [
+          "hr"
+        ]
+      }
+    ],
+    "projects": [
+      {
+        "project": "pay",
+        "board": "pay-board",
+        "workPerSprint": 9,
+        "releaseEvery": 3,
+        "deploymentsPerWeek": 5,
+        "failureRate": 0.07,
+        "bugShare": 0.3,
+        "themes": [
+          "card payments",
+          "refunds",
+          "payouts",
+          "fraud checks",
+          "settlement",
+          "disputes"
+        ]
+      },
+      {
+        "project": "plat",
+        "board": "plat-board",
+        "workPerSprint": 8,
+        "releaseEvery": 4,
+        "deploymentsPerWeek": 7,
+        "failureRate": 0.05,
+        "bugShare": 0.25,
+        "themes": [
+          "the API gateway",
+          "identity",
+          "storage",
+          "rate limits",
+          "service discovery",
+          "observability"
+        ]
+      },
+      {
+        "project": "mob",
+        "board": "mob-board",
+        "workPerSprint": 7,
+        "releaseEvery": 6,
+        "deploymentsPerWeek": 1.5,
+        "failureRate": 0.12,
+        "bugShare": 0.35,
+        "themes": [
+          "the iOS app",
+          "the Android app",
+          "offline mode",
+          "push notifications",
+          "the wallet"
+        ]
+      },
+      {
+        "project": "data",
+        "board": "data-board",
+        "workPerSprint": 6,
+        "releaseEvery": 4,
+        "deploymentsPerWeek": 3,
+        "failureRate": 0.08,
+        "bugShare": 0.2,
+        "themes": [
+          "the nightly pipeline",
+          "the warehouse",
+          "revenue reporting",
+          "event tracking"
+        ]
+      },
+      {
+        "project": "web",
+        "board": "web-board",
+        "workPerSprint": 6,
+        "releaseEvery": 0,
+        "deploymentsPerWeek": 9,
+        "failureRate": 0.06,
+        "bugShare": 0.3,
+        "themes": [
+          "checkout",
+          "the catalogue",
+          "search",
+          "the basket",
+          "accessibility"
+        ]
+      },
+      {
+        "project": "ops",
+        "workPerSprint": 4,
+        "bugShare": 0.15,
+        "themes": [
+          "the on-call rota",
+          "supplier reviews",
+          "the office move",
+          "security training",
+          "budget reporting"
+        ]
+      },
+      {
+        "project": "mkt",
+        "workPerSprint": 4,
+        "bugShare": 0.05,
+        "themes": [
+          "the launch campaign",
+          "the pricing page",
+          "the newsletter",
+          "conference season",
+          "case studies"
+        ]
+      },
+      {
+        "project": "hr",
+        "workPerSprint": 3,
+        "bugShare": 0.05,
+        "themes": [
+          "hiring",
+          "onboarding",
+          "the review cycle",
+          "the handbook",
+          "benefits"
+        ]
+      }
+    ]
+  },
+  "plans": [
+    {
+      "name": "Payments and platform",
+      "lead": "nora",
+      "projects": [
+        "pay",
+        "plat"
+      ],
+      "boards": [],
+      "teams": [
+        "Payments",
+        "Platform"
+      ]
+    },
+    {
+      "name": "Customer facing",
+      "lead": "maya",
+      "projects": [
+        "mob",
+        "web"
+      ],
+      "boards": [],
+      "teams": [
+        "Mobile",
+        "Storefront"
       ]
     }
   ]

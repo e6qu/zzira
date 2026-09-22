@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -137,6 +138,9 @@ func (a *Applier) run(ctx context.Context, scenario *Scenario, slug string) (*Re
 		if err := a.wiki(ctx, scenario.Wiki); err != nil {
 			return nil, err
 		}
+	}
+	if err := a.teamsAndPlans(ctx, scenario); err != nil {
+		return nil, err
 	}
 	if err := a.filtersAndDashboards(ctx, scenario); err != nil {
 		return nil, err
@@ -1248,4 +1252,83 @@ func (a *Applier) retime(ctx context.Context) error {
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// teamsAndPlans builds the company's delivery teams and the plans that
+// schedule them: a site with years of work in it is also a site somebody is
+// planning, and a plan with no teams in it plans nothing.
+func (a *Applier) teamsAndPlans(ctx context.Context, scenario *Scenario) error {
+	teams := map[string]string{}
+	if scenario.Generate != nil {
+		for _, declared := range scenario.Generate.Teams {
+			existing, err := a.Store.AtlassianTeams(ctx, a.workspaceID)
+			if err != nil {
+				return err
+			}
+			id := ""
+			for _, found := range existing {
+				if found.Name == declared.Name {
+					id = found.ID
+					break
+				}
+			}
+			if id == "" {
+				id, err = a.Store.CreateAtlassianTeam(ctx, a.workspaceID, a.admin, declared.Name,
+					fmt.Sprintf("%s, who work on %s", declared.Name, strings.Join(declared.Projects, ", ")))
+				if err != nil {
+					return fmt.Errorf("team %s: %w", declared.Name, err)
+				}
+			}
+			teams[declared.Name] = id
+			for _, member := range declared.Members {
+				if err := a.Store.SetAtlassianTeamMember(ctx, a.workspaceID, id, a.people[member], true); err != nil {
+					return fmt.Errorf("team %s member %s: %w", declared.Name, member, err)
+				}
+			}
+		}
+	}
+	for _, declared := range scenario.Plans {
+		plans, _, err := a.Store.Plans(ctx, a.workspaceID, false, false, 0, 100)
+		if err != nil {
+			return err
+		}
+		existing := int64(0)
+		for _, found := range plans {
+			if found.Name == declared.Name {
+				existing = found.ID
+				break
+			}
+		}
+		if existing != 0 {
+			continue
+		}
+		plan := store.Plan{Name: declared.Name, LeadAccountID: a.people[declared.Lead], Status: "Active"}
+		for _, project := range declared.Projects {
+			id, err := strconv.ParseInt(a.projects[project].ID, 10, 64)
+			if err != nil {
+				return fmt.Errorf("plan %s: project %s: %w", declared.Name, project, err)
+			}
+			plan.IssueSources = append(plan.IssueSources, store.PlanIssueSource{Type: "Project", Value: id})
+		}
+		for _, board := range declared.Boards {
+			id, err := strconv.ParseInt(a.boards[board].ID, 10, 64)
+			if err != nil {
+				return fmt.Errorf("plan %s: board %s: %w", declared.Name, board, err)
+			}
+			plan.IssueSources = append(plan.IssueSources, store.PlanIssueSource{Type: "Board", Value: id})
+		}
+		store.NormalizePlan(&plan)
+		planID, err := a.Store.CreatePlan(ctx, a.workspaceID, a.admin, plan)
+		if err != nil {
+			return fmt.Errorf("plan %s: %w", declared.Name, err)
+		}
+		for _, team := range declared.Teams {
+			if _, err := a.Store.SavePlanTeam(ctx, a.workspaceID, planID, store.PlanTeam{
+				AtlassianTeamID: teams[team], PlanningStyle: "Scrum",
+			}, true); err != nil {
+				return fmt.Errorf("plan %s: team %s: %w", declared.Name, team, err)
+			}
+		}
+	}
+	return nil
 }

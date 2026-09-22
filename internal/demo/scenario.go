@@ -43,6 +43,12 @@ type Scenario struct {
 	// Filters and Dashboards are what people saved for themselves.
 	Filters    []Filter    `json:"filters,omitempty"`
 	Dashboards []Dashboard `json:"dashboards,omitempty"`
+	// Plans are the cross-project plans people run the company by.
+	Plans []Plan `json:"plans,omitempty"`
+	// Generate is the history the scenario grows for itself: years of
+	// sprints, releases, work and deliveries that nobody would write out by
+	// hand. It is expanded before the scenario is checked.
+	Generate *Generation `json:"generate,omitempty"`
 }
 
 // Site is the workspace a scenario builds.
@@ -317,6 +323,19 @@ type Gadget struct {
 	Cumulative bool   `json:"cumulative,omitempty"`
 }
 
+// Plan is one cross-project plan: what it draws from, and the teams that do
+// the work in it. Teams come from the generated history, which is where the
+// company's teams are declared.
+type Plan struct {
+	Name string `json:"name"`
+	Lead string `json:"lead"`
+	// Projects and Boards are the scenario ids the plan schedules.
+	Projects []string `json:"projects,omitempty"`
+	Boards   []string `json:"boards,omitempty"`
+	// Teams are the names of the teams that work in this plan.
+	Teams []string `json:"teams,omitempty"`
+}
+
 // Read parses a scenario and checks that it hangs together.
 func Read(r io.Reader) (*Scenario, error) {
 	var scenario Scenario
@@ -324,6 +343,11 @@ func Read(r io.Reader) (*Scenario, error) {
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&scenario); err != nil {
 		return nil, fmt.Errorf("read scenario: %w", err)
+	}
+	// The declared history grows before anything is checked, so generated
+	// work is held to the same rules as work somebody wrote by hand.
+	if err := scenario.Expand(); err != nil {
+		return nil, err
 	}
 	if err := scenario.Validate(); err != nil {
 		return nil, err
@@ -580,6 +604,35 @@ func (s *Scenario) Validate() error {
 	for _, project := range s.Projects {
 		if project.Board != nil {
 			boards[project.Board.ID] = true
+		}
+	}
+	teams := map[string]bool{}
+	if s.Generate != nil {
+		for _, team := range s.Generate.Teams {
+			teams[team.Name] = true
+		}
+	}
+	for _, plan := range s.Plans {
+		if strings.TrimSpace(plan.Name) == "" {
+			return fmt.Errorf("a plan needs a name")
+		}
+		if err := knownPerson("plan "+plan.Name, plan.Lead); err != nil {
+			return err
+		}
+		for _, project := range plan.Projects {
+			if !projects[project] {
+				return fmt.Errorf("plan %q draws from the unknown project %q", plan.Name, project)
+			}
+		}
+		for _, board := range plan.Boards {
+			if !boards[board] {
+				return fmt.Errorf("plan %q draws from the unknown board %q", plan.Name, board)
+			}
+		}
+		for _, team := range plan.Teams {
+			if !teams[team] {
+				return fmt.Errorf("plan %q names the unknown team %q", plan.Name, team)
+			}
 		}
 	}
 	for _, dashboard := range s.Dashboards {
