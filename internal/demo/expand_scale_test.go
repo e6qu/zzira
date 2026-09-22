@@ -31,8 +31,19 @@ func TestShippedCompanyHasYearsOfHistory(t *testing.T) {
 	for _, item := range scenario.WorkItems {
 		events += len(item.Events)
 	}
-	t.Logf("people=%d projects=%d sprints=%d versions=%d work=%d events=%d deployments=%d",
-		len(scenario.People), len(scenario.Projects), sprints, versions, len(scenario.WorkItems), events, len(scenario.Deployments))
+	requests := 0
+	if scenario.Service != nil {
+		requests = len(scenario.Service.Requests)
+	}
+	t.Logf("people=%d projects=%d sprints=%d versions=%d work=%d events=%d deployments=%d requests=%d commits=%d",
+		len(scenario.People), len(scenario.Projects), sprints, versions, len(scenario.WorkItems), events,
+		len(scenario.Deployments), requests, len(scenario.Commits))
+	if len(scenario.Commits) < 1000 {
+		t.Fatalf("%d commits went into three years of releases, which leaves the lead time unmeasurable", len(scenario.Commits))
+	}
+	if requests < 500 {
+		t.Fatalf("the desk answered %d requests in three years, which is not a support queue", requests)
+	}
 	if len(scenario.WorkItems) < 1000 {
 		t.Fatalf("the shipped company has %d work items, which is not years of a company", len(scenario.WorkItems))
 	}

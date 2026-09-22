@@ -28,6 +28,8 @@ type Generation struct {
 	Teams []GeneratedTeam `json:"teams,omitempty"`
 	// Projects are the projects that grow a history.
 	Projects []GeneratedProject `json:"projects,omitempty"`
+	// Service is the desk whose queue fills up over the same years.
+	Service *GeneratedService `json:"service,omitempty"`
 }
 
 // GeneratedTeam is a group of people who work on the same projects, so the
@@ -38,6 +40,27 @@ type GeneratedTeam struct {
 	Members []string `json:"members"`
 	// Projects are the scenario project ids this team works on.
 	Projects []string `json:"projects"`
+}
+
+// GeneratedService is the stream of requests a service desk answers.
+type GeneratedService struct {
+	// Project is the scenario id of the service project.
+	Project string `json:"project"`
+	// RequestsPerWeek is how many customers ask for something.
+	RequestsPerWeek float64 `json:"requestsPerWeek"`
+	// IncidentShare is how many of those are incidents, which is what the
+	// delivery report reads to say how long recovery takes.
+	IncidentShare float64 `json:"incidentShare,omitempty"`
+	// Customers are the scenario person ids who raise them, and Agents the
+	// people who answer.
+	Customers []string `json:"customers,omitempty"`
+	Agents    []string `json:"agents,omitempty"`
+	// RequestTypes are the ids a request can be raised under, and
+	// IncidentType the one incidents use.
+	RequestTypes []string `json:"requestTypes,omitempty"`
+	IncidentType string   `json:"incidentType,omitempty"`
+	// Subjects are what customers write in about.
+	Subjects []string `json:"subjects,omitempty"`
 }
 
 // GeneratedProject is how much history one project has.
@@ -79,8 +102,14 @@ var (
 		"Split the rest into a follow-up.", "Checked with the customer; this is what they meant.",
 		"The numbers look right now.", "Rolled the change forward after the fix.",
 	}
-	generatedEstimates = []string{"1h", "2h", "4h", "1d", "2d", "3d"}
-	generatedPriority  = []string{"Low", "Medium", "Medium", "High", "Highest"}
+	generatedEstimates      = []string{"1h", "2h", "4h", "1d", "2d", "3d"}
+	generatedServiceReplies = []string{
+		"Thanks for writing in -- taking a look now.", "I can see the error on our side.",
+		"Could you tell me which account this is on?", "This is fixed; please try again.",
+		"Passed this to the payments team.", "Sorry about that. It is back.",
+	}
+	generatedFeedback = []string{"Quick and clear, thank you.", "Sorted in a day.", "Fine once it was picked up.", "Fast answer."}
+	generatedPriority = []string{"Low", "Medium", "Medium", "High", "Highest"}
 )
 
 // Expand writes the generated history into the scenario: sprints and versions
@@ -122,6 +151,11 @@ func (s *Scenario) Expand() error {
 			people = []string{project.Lead}
 		}
 		if err := s.growProject(project, generated, plan, people, sprintDays, random); err != nil {
+			return err
+		}
+	}
+	if plan.Service != nil {
+		if err := s.growService(plan, random); err != nil {
 			return err
 		}
 	}
@@ -359,5 +393,77 @@ func (s *Scenario) growDeliveries(project *Project, generated GeneratedProject, 
 			Pipeline: project.ID + "-release", Environment: "production", Type: "production",
 			State: state, Day: at, WorkItems: carried,
 		})
+		// What went out was written first: a commit a few days before the
+		// deployment that carried it, which is the pair the delivery report
+		// measures a lead time from.
+		for _, item := range carried {
+			s.Commits = append(s.Commits, Commit{
+				ID:         fmt.Sprintf("%s-c%d-%s", project.ID, len(s.Commits)+1, item),
+				Repository: project.ID,
+				Message:    fmt.Sprintf("Work on %s", item),
+				Day:        at - 1 - random.Intn(5),
+				WorkItems:  []string{item},
+			})
+		}
 	}
+}
+
+// growService fills the desk's queue: years of people asking for things, some
+// of it broken and answered in a hurry, most of it answered and rated. An
+// incident that was resolved is what the delivery report reads to say how
+// long this company takes to recover.
+func (s *Scenario) growService(plan *Generation, random *rand.Rand) error {
+	declared := plan.Service
+	if declared.RequestsPerWeek <= 0 {
+		return nil
+	}
+	if s.Service == nil {
+		s.Service = &Service{}
+	}
+	pick := func(from []string) string {
+		if len(from) == 0 {
+			return ""
+		}
+		return from[random.Intn(len(from))]
+	}
+	interval := 7.0 / declared.RequestsPerWeek
+	raised := 0
+	for day := float64(-plan.Days); day < 0; day += interval {
+		at := int(day)
+		raised++
+		incident := random.Float64() < declared.IncidentShare
+		requestType := pick(declared.RequestTypes)
+		subject := pick(declared.Subjects)
+		summary := fmt.Sprintf("Help with %s", subject)
+		if incident && declared.IncidentType != "" {
+			requestType = declared.IncidentType
+			summary = fmt.Sprintf("%s is down", strings.ToUpper(subject[:1])+subject[1:])
+		}
+		agent := pick(declared.Agents)
+		request := ServiceRequest{
+			ID: fmt.Sprintf("%s-gr%d", declared.Project, raised), Project: declared.Project,
+			RequestType: requestType, Customer: pick(declared.Customers), Summary: summary,
+			Description: pick(generatedDetail), CreatedDay: at,
+		}
+		day := at + 1
+		request.Events = append(request.Events, Event{Day: day, Kind: "comment", Actor: agent, Body: pick(generatedServiceReplies)})
+		// An incident is answered in hours and a question in days, which is
+		// what makes the two read differently in the reports.
+		if random.Float64() < 0.85 {
+			if incident {
+				day++
+			} else {
+				day += 1 + random.Intn(4)
+			}
+			request.Events = append(request.Events, Event{
+				Day: day, Kind: "transition", Status: "Done", Resolution: "Done", Actor: agent,
+			})
+			if random.Float64() < 0.5 {
+				request.Satisfaction = 3 + random.Intn(3)
+				request.Feedback = pick(generatedFeedback)
+			}
+		}
+		s.Service.Requests = append(s.Service.Requests, request)
+	}
+	return nil
 }

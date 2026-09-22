@@ -34,8 +34,9 @@ type Scenario struct {
 	CustomFields []CustomField `json:"customFields,omitempty"`
 	Projects     []Project     `json:"projects"`
 	WorkItems    []WorkItem    `json:"workItems,omitempty"`
-	// Deployments and Incidents feed the delivery (DORA) report.
+	// Deployments and Commits feed the delivery (DORA) report.
 	Deployments []Deployment `json:"deployments,omitempty"`
+	Commits     []Commit     `json:"commits,omitempty"`
 	// Service is the service desk's customers and their requests.
 	Service *Service `json:"service,omitempty"`
 	// Wiki is the knowledge base: spaces, pages and blog posts.
@@ -217,6 +218,18 @@ type Deployment struct {
 	State     string   `json:"state"`
 	Day       int      `json:"day"`
 	WorkItems []string `json:"workItems,omitempty"`
+}
+
+// Commit is one change somebody pushed, and the work it was for. The delivery
+// report reads commits to say how long a change took to reach production, so
+// a company with no commits has no lead time.
+type Commit struct {
+	ID string `json:"id"`
+	// Repository is what it was pushed to; a project's own by default.
+	Repository string   `json:"repository"`
+	Message    string   `json:"message,omitempty"`
+	Day        int      `json:"day"`
+	WorkItems  []string `json:"workItems,omitempty"`
 }
 
 // Service is the service desk's customers and the requests they raised.

@@ -2698,7 +2698,41 @@
           "benefits"
         ]
       }
-    ]
+    ],
+    "service": {
+      "project": "help",
+      "requestsPerWeek": 9,
+      "incidentShare": 0.18,
+      "customers": [
+        "cust-amara",
+        "cust-felix",
+        "cust-liwei",
+        "cust-sofia",
+        "cust-nadia"
+      ],
+      "agents": [
+        "sara",
+        "dan",
+        "gita",
+        "lucas",
+        "fatima"
+      ],
+      "requestTypes": [
+        "help",
+        "access"
+      ],
+      "incidentType": "incident",
+      "subjects": [
+        "a refund",
+        "the checkout page",
+        "a payout",
+        "the mobile app",
+        "an invoice",
+        "logging in",
+        "a failed card",
+        "the monthly report"
+      ]
+    }
   },
   "plans": [
     {

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -21,19 +20,14 @@ import (
 	"github.com/e6qu/zzira/internal/store"
 )
 
-// companyScenario reads the demo company the repository ships.
+// companyScenario reads the demo company the repository ships, with its
+// generated history cut to a few sprints. The whole three years is what an
+// operator builds with `make demo`; a test that applied all of it would spend
+// minutes writing history to check something that one sprint shows just as
+// well. TestShippedCompanyHasYearsOfHistory is what holds the shipped size.
 func companyScenario(t *testing.T) *demo.Scenario {
 	t.Helper()
-	file, err := os.Open(filepath.Join("..", "..", "demo", "company.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = file.Close() }()
-	scenario, err := demo.Read(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return scenario
+	return shippedCompanyOver(t, 14)
 }
 
 // A scenario survives being written and read again: what a person edits is
@@ -210,8 +204,20 @@ func TestApplyDemoCompany(t *testing.T) {
 	if len(boardValues) == 0 {
 		t.Fatal("no board")
 	}
-	board, _ := boardValues[0].(map[string]any)
-	boardID := fmt.Sprintf("%v", board["id"])
+	// The company has a board for each delivery team, so the one to read is
+	// the first project's own, not whichever the site lists first.
+	boardID := ""
+	for _, raw := range boardValues {
+		board, _ := raw.(map[string]any)
+		location, _ := board["location"].(map[string]any)
+		if location != nil && location["projectKey"] == scenario.Projects[0].Key {
+			boardID = fmt.Sprintf("%v", board["id"])
+			break
+		}
+	}
+	if boardID == "" {
+		t.Fatalf("no board for %s among %d boards", scenario.Projects[0].Key, len(boardValues))
+	}
 	sprints := get(software, "/rest/agile/1.0/board/"+boardID+"/sprint?state=closed,active,future")
 	sprintValues, _ := sprints["values"].([]any)
 	declaredSprints := len(scenario.Projects[0].Board.Sprints)
@@ -255,11 +261,13 @@ func TestApplyDemoCompany(t *testing.T) {
 		}
 	}
 
-	// Jira Service Management: the requests customers raised.
+	// Jira Service Management: the requests customers raised. The desk's
+	// queue is years long, so the page is read rather than the whole of it.
 	requests := get(jira, "/rest/servicedeskapi/request?requestOwnership=ALL_REQUESTS&limit=50")
 	requestValues, _ := requests["values"].([]any)
-	if len(requestValues) != len(scenario.Service.Requests) {
-		t.Fatalf("the desk has %d requests, the scenario declared %d", len(requestValues), len(scenario.Service.Requests))
+	wanted := min(len(scenario.Service.Requests), 50)
+	if len(requestValues) != wanted {
+		t.Fatalf("the desk has %d requests on the first page, want %d of %d", len(requestValues), wanted, len(scenario.Service.Requests))
 	}
 
 	// Confluence: the pages, with their tree.

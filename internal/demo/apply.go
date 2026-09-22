@@ -153,6 +153,9 @@ func (a *Applier) run(ctx context.Context, scenario *Scenario, slug string) (*Re
 	if err := a.deployments(ctx, scenario.Deployments); err != nil {
 		return nil, err
 	}
+	if err := a.commits(ctx, scenario.Commits); err != nil {
+		return nil, err
+	}
 	if scenario.Service != nil {
 		if err := a.service(ctx, scenario.Service); err != nil {
 			return nil, err
@@ -1393,6 +1396,75 @@ func (a *Applier) teamsAndPlans(ctx context.Context, scenario *Scenario) error {
 				return fmt.Errorf("plan %s: team %s: %w", declared.Name, team, err)
 			}
 		}
+	}
+	return nil
+}
+
+// commits records what was written before each delivery, so the delivery
+// report can say how long a change took to reach production. They are written
+// straight to the development store, as a source control integration would
+// send them.
+func (a *Applier) commits(ctx context.Context, declared []Commit) error {
+	if len(declared) == 0 {
+		return nil
+	}
+	repositories := map[string]*models.DevelopmentRepository{}
+	order := []string{}
+	for index, commit := range declared {
+		name := commit.Repository
+		if name == "" {
+			name = "zzira"
+		}
+		repository, known := repositories[name]
+		if !known {
+			payload, err := json.Marshal(map[string]any{
+				"id": name, "name": name, "url": "https://git.example.test/" + name, "updateSequenceId": 1,
+			})
+			if err != nil {
+				return err
+			}
+			repository = &models.DevelopmentRepository{
+				ID: name, UpdateSequenceID: 1, Name: name,
+				URL: "https://git.example.test/" + name, Payload: payload, Properties: json.RawMessage(`{}`),
+			}
+			repositories[name] = repository
+			order = append(order, name)
+		}
+		keys := make([]string, 0, len(commit.WorkItems))
+		for _, item := range commit.WorkItems {
+			if found := a.items[item]; found != nil {
+				keys = append(keys, found.Key)
+			}
+		}
+		if len(keys) == 0 {
+			continue
+		}
+		at := a.Clock.At(commit.Day, index)
+		message := commit.Message
+		if message == "" {
+			message = "Change " + commit.ID
+		}
+		payload, err := json.Marshal(map[string]any{
+			"id": commit.ID, "displayId": commit.ID, "message": message, "updateSequenceId": index + 1,
+			"url":             "https://git.example.test/" + name + "/commit/" + commit.ID,
+			"authorTimestamp": at.Format(time.RFC3339), "issueKeys": keys,
+		})
+		if err != nil {
+			return err
+		}
+		occurred := at
+		repository.Entities = append(repository.Entities, models.DevelopmentEntity{
+			RepositoryID: name, Type: "commit", ID: commit.ID, UpdateSequenceID: int64(index + 1),
+			IssueKeys: keys, Name: message, URL: "https://git.example.test/" + name + "/commit/" + commit.ID,
+			OccurredAt: &occurred, Payload: payload,
+		})
+	}
+	written := make([]models.DevelopmentRepository, 0, len(order))
+	for _, name := range order {
+		written = append(written, *repositories[name])
+	}
+	if _, err := a.Store.UpsertDevelopmentRepositories(ctx, a.workspaceID, written); err != nil {
+		return fmt.Errorf("record commits: %w", err)
 	}
 	return nil
 }
