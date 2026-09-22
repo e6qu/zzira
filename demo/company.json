@@ -3367,6 +3367,388 @@
             ]
           }
         ]
+      },
+      {
+        "key": "PRD",
+        "name": "Product",
+        "description": "What we are building, why, and what we decided.",
+        "pages": [
+          {
+            "id": "prd-home",
+            "title": "Product handbook",
+            "body": "<p>How Northwind decides what to build, and how a decision is written down.</p>",
+            "author": "nora",
+            "createdDay": -120,
+            "children": [
+              {
+                "id": "prd-discovery",
+                "title": "Discovery",
+                "body": "<p>Every quarter starts with five customer conversations and ends with a written problem statement.</p>",
+                "author": "nora",
+                "createdDay": -118,
+                "comments": [
+                  {
+                    "author": "maya",
+                    "body": "Added the interview template as a child page.",
+                    "day": -110
+                  }
+                ]
+              },
+              {
+                "id": "prd-interview",
+                "title": "Interview template",
+                "body": "<p>Ten questions, none of them about the feature you had in mind.</p>",
+                "author": "maya",
+                "createdDay": -110
+              },
+              {
+                "id": "prd-pricing",
+                "title": "Pricing principles",
+                "body": "<p>Price the outcome, not the seat. Never price the thing that stops someone leaving.</p>",
+                "author": "nora",
+                "createdDay": -96
+              },
+              {
+                "id": "prd-launch",
+                "title": "Launch checklist",
+                "body": "<p>Docs, support briefing, pricing page, release notes, and a rollback we have actually tried.</p>",
+                "author": "gita",
+                "createdDay": -84,
+                "comments": [
+                  {
+                    "author": "sean",
+                    "body": "The rollback step needs the runbook link.",
+                    "day": -80
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "prd-decisions",
+            "title": "Decision log",
+            "body": "<p>One page per decision: what we chose, what we gave up, and who we told.</p>",
+            "author": "nora",
+            "createdDay": -115,
+            "children": [
+              {
+                "id": "prd-decision-payments",
+                "title": "Card payments before wallets",
+                "body": "<p>Wallets reach fewer of our customers than the card processors we already use.</p>",
+                "author": "nora",
+                "createdDay": -112
+              },
+              {
+                "id": "prd-decision-mobile",
+                "title": "One mobile app, not two",
+                "body": "<p>A shared app costs less than two, and our customers do not care which store it came from.</p>",
+                "author": "gita",
+                "createdDay": -90
+              },
+              {
+                "id": "prd-decision-search",
+                "title": "Search stays in-house",
+                "body": "<p>The hosted search we priced costs more than the cluster and answers slower for our shapes.</p>",
+                "author": "viktor",
+                "createdDay": -52
+              }
+            ]
+          },
+          {
+            "id": "prd-roadmap",
+            "title": "What is next",
+            "body": "<p>Payouts, then invoicing, then the warehouse work that has been waiting since spring.</p>",
+            "author": "nora",
+            "createdDay": -40,
+            "comments": [
+              {
+                "author": "tom",
+                "body": "Invoicing needs the tax work first.",
+                "day": -35
+              }
+            ]
+          }
+        ],
+        "blogPosts": [
+          {
+            "title": "Why we said no to wallets, for now",
+            "body": "<p>The short version: our customers pay by card, and the wallets we looked at reach fewer of them than the processors we already have.</p>",
+            "author": "nora",
+            "createdDay": -112
+          },
+          {
+            "title": "What five customers told us about invoicing",
+            "body": "<p>All five send invoices from a spreadsheet. None of them want a new spreadsheet.</p>",
+            "author": "maya",
+            "createdDay": -64
+          }
+        ]
+      },
+      {
+        "key": "DSN",
+        "name": "Design",
+        "description": "How the product looks, reads and behaves.",
+        "pages": [
+          {
+            "id": "dsn-home",
+            "title": "Design system",
+            "body": "<p>Tokens, components and the rules that keep them consistent.</p>",
+            "author": "zoe",
+            "createdDay": -110,
+            "children": [
+              {
+                "id": "dsn-colour",
+                "title": "Colour and contrast",
+                "body": "<p>Every pairing meets WCAG AA. The dark theme is a set of tokens, not a filter.</p>",
+                "author": "zoe",
+                "createdDay": -108
+              },
+              {
+                "id": "dsn-type",
+                "title": "Typography",
+                "body": "<p>One family, five sizes. A page that needs a sixth needs rewriting.</p>",
+                "author": "elin",
+                "createdDay": -104
+              },
+              {
+                "id": "dsn-forms",
+                "title": "Forms",
+                "body": "<p>Label every field. Say what went wrong beside the field it went wrong in.</p>",
+                "author": "zoe",
+                "createdDay": -92,
+                "comments": [
+                  {
+                    "author": "ines",
+                    "body": "We fixed the checkout form to match this.",
+                    "day": -88
+                  }
+                ]
+              },
+              {
+                "id": "dsn-motion",
+                "title": "Motion",
+                "body": "<p>Nothing moves for longer than 200ms, and nothing moves that a reader did not ask to move.</p>",
+                "author": "elin",
+                "createdDay": -70
+              }
+            ]
+          },
+          {
+            "id": "dsn-writing",
+            "title": "Writing",
+            "body": "<p>Short sentences. The reader's words, not ours. No exclamation marks in errors.</p>",
+            "author": "elin",
+            "createdDay": -86,
+            "children": [
+              {
+                "id": "dsn-errors",
+                "title": "Error messages",
+                "body": "<p>Say what happened, then what to do. Never blame the person reading.</p>",
+                "author": "elin",
+                "createdDay": -84
+              }
+            ]
+          },
+          {
+            "id": "dsn-research",
+            "title": "Research library",
+            "body": "<p>Sessions, notes and the clips worth watching again.</p>",
+            "author": "zoe",
+            "createdDay": -58
+          }
+        ],
+        "blogPosts": [
+          {
+            "title": "The checkout form, before and after",
+            "body": "<p>Four fields fewer, one clear error, and a third fewer abandoned carts in the first week.</p>",
+            "author": "zoe",
+            "createdDay": -76
+          }
+        ]
+      },
+      {
+        "key": "OPS",
+        "name": "Operations",
+        "description": "Running the company's day: warehouses, suppliers and the people who keep them moving.",
+        "pages": [
+          {
+            "id": "ops-home",
+            "title": "Operations handbook",
+            "body": "<p>How orders reach a doorstep, and what to do when one does not.</p>",
+            "author": "tariq",
+            "createdDay": -130,
+            "children": [
+              {
+                "id": "ops-dispatch",
+                "title": "Dispatch",
+                "body": "<p>Every order is picked, packed and scanned before it leaves the floor.</p>",
+                "author": "tariq",
+                "createdDay": -128
+              },
+              {
+                "id": "ops-returns",
+                "title": "Returns",
+                "body": "<p>A return is accepted within 30 days, and refunded the day it arrives.</p>",
+                "author": "rosa",
+                "createdDay": -120,
+                "comments": [
+                  {
+                    "author": "nina",
+                    "body": "Refund timing changed in March; updated.",
+                    "day": -60
+                  }
+                ]
+              },
+              {
+                "id": "ops-suppliers",
+                "title": "Suppliers",
+                "body": "<p>Who we buy from, what we buy, and who to call when a pallet is late.</p>",
+                "author": "tariq",
+                "createdDay": -100
+              },
+              {
+                "id": "ops-peak",
+                "title": "Peak season",
+                "body": "<p>Double the pickers, freeze the releases, and put the on-call engineer on the warehouse floor for a day.</p>",
+                "author": "rosa",
+                "createdDay": -48
+              }
+            ]
+          },
+          {
+            "id": "ops-safety",
+            "title": "Safety",
+            "body": "<p>What to do about a spill, a fall, or a forklift that will not start.</p>",
+            "author": "nina",
+            "createdDay": -96
+          }
+        ],
+        "blogPosts": [
+          {
+            "title": "Peak is over",
+            "body": "<p>We shipped 42,000 orders in six weeks, and lost fewer than 200 to damage.</p>",
+            "author": "tariq",
+            "createdDay": -20
+          }
+        ]
+      },
+      {
+        "key": "PPL",
+        "name": "People",
+        "description": "Working here: how we hire, pay, and take time off.",
+        "pages": [
+          {
+            "id": "ppl-home",
+            "title": "Working at Northwind",
+            "body": "<p>The handbook everybody gets on their first day.</p>",
+            "author": "fatima",
+            "createdDay": -140,
+            "children": [
+              {
+                "id": "ppl-leave",
+                "title": "Time off",
+                "body": "<p>Twenty-eight days, plus public holidays where you live. Tell your team, not a form.</p>",
+                "author": "fatima",
+                "createdDay": -138
+              },
+              {
+                "id": "ppl-hiring",
+                "title": "Hiring",
+                "body": "<p>Four conversations, one of them about work you have actually done.</p>",
+                "author": "fatima",
+                "createdDay": -124,
+                "comments": [
+                  {
+                    "author": "nora",
+                    "body": "Added the product interview outline.",
+                    "day": -118
+                  }
+                ]
+              },
+              {
+                "id": "ppl-onboarding",
+                "title": "First week",
+                "body": "<p>A laptop, an account, a buddy, and one small change shipped by Friday.</p>",
+                "author": "priya",
+                "createdDay": -112
+              },
+              {
+                "id": "ppl-expenses",
+                "title": "Expenses",
+                "body": "<p>Spend it as if it were yours. Keep the receipt.</p>",
+                "author": "fatima",
+                "createdDay": -90
+              }
+            ]
+          },
+          {
+            "id": "ppl-remote",
+            "title": "Working from anywhere",
+            "body": "<p>Two hours of overlap with your team, and a desk that does not hurt your back.</p>",
+            "author": "priya",
+            "createdDay": -72
+          }
+        ],
+        "blogPosts": [
+          {
+            "title": "Welcome to the fourteen people who joined this quarter",
+            "body": "<p>Support, warehouse, data and two engineers. Say hello.</p>",
+            "author": "fatima",
+            "createdDay": -14
+          }
+        ]
+      },
+      {
+        "key": "DAT",
+        "name": "Data",
+        "description": "The numbers the company runs on, and where they come from.",
+        "pages": [
+          {
+            "id": "dat-home",
+            "title": "Data handbook",
+            "body": "<p>What we measure, how it is defined, and who owns each number.</p>",
+            "author": "henrik",
+            "createdDay": -100,
+            "children": [
+              {
+                "id": "dat-definitions",
+                "title": "Metric definitions",
+                "body": "<p>An order is counted when it is paid, not when it is placed.</p>",
+                "author": "henrik",
+                "createdDay": -98,
+                "comments": [
+                  {
+                    "author": "lucas",
+                    "body": "Refunds now subtract in the same month.",
+                    "day": -70
+                  }
+                ]
+              },
+              {
+                "id": "dat-warehouse",
+                "title": "The warehouse",
+                "body": "<p>Everything lands in the warehouse by 04:00, and the dashboards read from it.</p>",
+                "author": "lucas",
+                "createdDay": -88
+              },
+              {
+                "id": "dat-quality",
+                "title": "Data quality",
+                "body": "<p>Every table has an owner, a freshness check and a row count that has to move.</p>",
+                "author": "henrik",
+                "createdDay": -66
+              }
+            ]
+          },
+          {
+            "id": "dat-requests",
+            "title": "Asking for a number",
+            "body": "<p>Say the decision you are making. We will tell you which number answers it.</p>",
+            "author": "lucas",
+            "createdDay": -44
+          }
+        ],
+        "blogPosts": []
       }
     ]
   },
