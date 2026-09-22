@@ -1133,28 +1133,34 @@ test('admin builds a rule that runs when a page is written in the wiki', async (
   await page.goto('/settings/automation');
   await expect(page.getByRole('article').filter({ hasText: name })).toContainText('Page created');
 
-  // Writing the page is what starts it.
-  const title = `Release checklist ${stamp}`;
-  await page.goto(spaceURL);
-  await page.getByRole('link', { name: 'Create page', exact: true }).click();
-  await page.getByLabel('Page title').fill(title);
-  await page.getByRole('textbox', { name: 'Page content' }).fill('What to check before a release.');
-  await page.getByRole('button', { name: 'Save page', exact: true }).click();
-  await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
+  // A page trigger answers every space, so this rule has to come down even
+  // when an assertion below fails: a later journey's page would start it.
+  try {
+    // Writing the page is what starts it.
+    const title = `Release checklist ${stamp}`;
+    await page.goto(spaceURL);
+    await page.getByRole('link', { name: 'Create page', exact: true }).click();
+    await page.getByLabel('Page title').fill(title);
+    await page.getByRole('textbox', { name: 'Page content' }).fill('What to check before a release.');
+    await page.getByRole('button', { name: 'Save page', exact: true }).click();
+    await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
 
-  await expect.poll(async () => {
-    const found = await (await page.request.get(`/rest/api/3/search/jql?fields=summary&jql=${encodeURIComponent(`project = ZZ AND summary ~ "${title}"`)}`, { headers })).json();
-    return (found.issues ?? []).map((issue: any) => issue.fields?.summary ?? '').join(' | ');
-  }, { timeout: 20_000 }).toContain(`Review ${title}`);
+    await expect.poll(async () => {
+      const found = await (await page.request.get(`/rest/api/3/search/jql?fields=summary&jql=${encodeURIComponent(`project = ZZ AND summary ~ "${title}"`)}`, { headers })).json();
+      return (found.issues ?? []).map((issue: any) => issue.fields?.summary ?? '').join(' | ');
+    }, { timeout: 20_000 }).toContain(`Review ${title}`);
 
-  await expect.poll(async () => {
+    await expect.poll(async () => {
+      await page.goto(ruleURL);
+      return await page.locator('.automation-audit tbody').innerText();
+    }, { timeout: 15_000 }).toContain('SUCCESS');
+  } finally {
     await page.goto(ruleURL);
-    return await page.locator('.automation-audit tbody').innerText();
-  }, { timeout: 15_000 }).toContain('SUCCESS');
-  await page.getByRole('button', { name: 'Disable' }).click();
-  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
-  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
-  await expect(page).toHaveURL('/settings/automation');
+    await page.getByRole('button', { name: 'Disable' }).click();
+    await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+    await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+    await expect(page).toHaveURL('/settings/automation');
+  }
 });
 
 // A rule the wiki starts answers in the wiki: under the page that asked.
@@ -1185,30 +1191,42 @@ test('admin builds a rule that answers a page in the wiki', async ({ page }) => 
   await expect(page.getByRole('note')).toHaveCount(0);
   await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue('confluence.page.comment');
 
-  // Writing a page is what starts it, and the answer lands on that page.
-  const title = `Design review ${stamp}`;
-  await page.goto(spaceURL);
-  await page.getByRole('link', { name: 'Create page', exact: true }).click();
-  await page.getByLabel('Page title').fill(title);
-  await page.getByRole('textbox', { name: 'Page content' }).fill('Please read this before Friday.');
-  await page.getByRole('button', { name: 'Save page', exact: true }).click();
-  await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
-  const pageURL = page.url();
+  // A page trigger is not scoped to a space, so every page written anywhere
+  // while this rule is enabled gets answered. Take it down whatever happens
+  // here, or a later journey's page is the one that gets commented on.
+  try {
+    // Writing a page is what starts it, and the answer lands on that page.
+    const title = `Design review ${stamp}`;
+    await page.goto(spaceURL);
+    await page.getByRole('link', { name: 'Create page', exact: true }).click();
+    await page.getByLabel('Page title').fill(title);
+    await page.getByRole('textbox', { name: 'Page content' }).fill('Please read this before Friday.');
+    await page.getByRole('button', { name: 'Save page', exact: true }).click();
+    await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
+    const pageURL = page.url();
 
-  await expect.poll(async () => {
-    await page.goto(pageURL);
-    return await page.locator('body').innerText();
-  }, { timeout: 20_000 }).toContain(`Read by ${name}: ${title}`);
-  await expect(page.getByText(`read-${stamp}`).first()).toBeVisible();
+    // Comment and label are two actions of one run, and the run lands after
+    // the page is saved, so wait for both rather than for the first of them.
+    await expect.poll(async () => {
+      await page.goto(pageURL);
+      return await page.locator('body').innerText();
+    }, { timeout: 20_000 }).toContain(`Read by ${name}: ${title}`);
+    await expect.poll(async () => {
+      await page.goto(pageURL);
+      return await page.locator('body').innerText();
+    }, { timeout: 20_000 }).toContain(`read-${stamp}`);
 
-  await expect.poll(async () => {
+    await expect.poll(async () => {
+      await page.goto(ruleURL);
+      return await page.locator('.automation-audit tbody').innerText();
+    }, { timeout: 15_000 }).toContain('SUCCESS');
+  } finally {
     await page.goto(ruleURL);
-    return await page.locator('.automation-audit tbody').innerText();
-  }, { timeout: 15_000 }).toContain('SUCCESS');
-  await page.getByRole('button', { name: 'Disable' }).click();
-  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
-  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
-  await expect(page).toHaveURL('/settings/automation');
+    await page.getByRole('button', { name: 'Disable' }).click();
+    await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+    await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+    await expect(page).toHaveURL('/settings/automation');
+  }
 });
 
 // Advanced branching: the same actions, once for each item in a list.
