@@ -87,6 +87,10 @@ type Person struct {
 	Groups      []string `json:"groups,omitempty"`
 	// Customer marks a service desk customer, who has no seat on the site.
 	Customer bool `json:"customer,omitempty"`
+	// Locale is the language this person reads the site's own words in, which
+	// is how a demo shows that a translated site is read in more than one
+	// language rather than only translated in its settings.
+	Locale string `json:"locale,omitempty"`
 }
 
 // HierarchyLevel is one level above Epic and the work types on it. Levels are

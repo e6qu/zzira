@@ -304,6 +304,11 @@ func (a *Applier) accounts(ctx context.Context, scenario *Scenario, result *Resu
 				return fmt.Errorf("enrol %s as a customer: %w", person.Email, err)
 			}
 		}
+		if person.Locale != "" {
+			if err := a.Store.SetUserPreference(ctx, a.workspaceID, userID, store.UserPreferenceLocaleKey, person.Locale); err != nil {
+				return fmt.Errorf("set the language %s reads in: %w", person.Email, err)
+			}
+		}
 	}
 	if a.admin == "" {
 		return fmt.Errorf("the scenario needs one person with the admin role")

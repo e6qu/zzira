@@ -55,7 +55,8 @@
       "role": "member",
       "groups": [
         "engineering"
-      ]
+      ],
+      "locale": "es"
     },
     {
       "id": "tom",
@@ -149,7 +150,8 @@
       "role": "member",
       "groups": [
         "engineering"
-      ]
+      ],
+      "locale": "pt-br"
     },
     {
       "id": "hana",

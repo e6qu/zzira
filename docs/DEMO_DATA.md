@@ -4,12 +4,13 @@ A demo site is built from a scenario: one JSON document that declares a
 company's people, projects, work, releases, deliveries, service requests and
 knowledge. `demo/company.json` is the company the repository ships: Northwind, a business
 that has been running for three years. Applying it gives a site with that
-history behind it -- 37 people in eight teams, nine projects, hundreds of
+history behind it -- 37 people in eleven teams, twelve projects, hundreds of
 sprints and releases, thousands of pieces of work with the worklogs, comments
 and deployments that went with them, a support desk with years of requests,
-and four dashboards a site like it would keep: delivery health (the DORA
-metrics and the deployments behind them), this sprint, support and operations,
-and each person's own work. Building it takes a few minutes, because every
+seven wiki spaces, an Assets inventory of thirty typed objects, files on the
+work that carries evidence, and five dashboards a site like it would keep:
+delivery health (the DORA metrics and the deployments behind them), this
+sprint, support and operations, and each person's own work. Building it takes a few minutes, because every
 piece of it is written through the same commands a person's clicks would run.
 
 ```bash
@@ -94,7 +95,7 @@ show.
 | Section | What it builds |
 | --- | --- |
 | `site` | The workspace: its slug and name |
-| `groups`, `people` | Accounts, their roles and group membership. A person marked `customer` has no seat on the site and reaches the portal only |
+| `groups`, `people` | Accounts, their roles and group membership. A person marked `customer` has no seat on the site and reaches the portal only, and one with a `locale` reads the site's own words in that language |
 | `hierarchy` | Levels above Epic and the work types on them ([ISSUE_METADATA.md](ISSUE_METADATA.md#work-type-hierarchy)) |
 | `customFields` | Fields the work uses, with options for select lists |
 | `projects` | Projects with their type and template, components, versions, a board with its sprints, and a service desk with agents, request types (each with the `fields` its form asks, including an Assets object field's schema and AQL filter) and the queues its agents work from |
