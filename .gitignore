@@ -6,6 +6,7 @@ node_modules/
 __pycache__/
 *.pyc
 e2e/test-results/
+test-results/
 e2e/playwright-report/
 web/static/wasm/wasm_exec.js
 data/
