@@ -23,7 +23,7 @@ browser keeps a permission-shaped local replica.
 ```bash
 docker compose up -d --build            # Postgres and the server
 docker compose exec zzira /zzira-server -mode=migrate
-docker compose exec zzira /zzira-server -mode=demo   # a company with three months of history
+docker compose exec zzira /zzira-server -mode=demo   # a company with three years of history
 ```
 
 Or run it from source against a local Postgres:
@@ -35,10 +35,11 @@ make demo      # the Northwind demo company
 make dev       # serve on http://localhost:8080
 ```
 
-`-mode=demo` builds **Northwind**: three projects, a board with closed and
-active sprints, two shipped releases, ninety days of deployments and incidents,
-a service desk with customers and satisfaction ratings, and the knowledge base
-the teams wrote. The people, their passwords and API tokens are written to
+`-mode=demo` builds **Northwind**: twelve projects across eleven teams, boards
+with three years of closed and active sprints, a hundred shipped releases with
+the deployments and incidents behind them, two service desks with their
+customers, requests, SLAs and Assets inventory, and seven wiki spaces the teams
+wrote, with the files, labels and comments that came with them. The people, their passwords and API tokens are written to
 `data/demo-credentials.json`. Everything it builds is declared in
 [demo/company.json](demo/company.json) — change it, run the mode again, and you
 have your own company: a second run raises only what the scenario has gained
