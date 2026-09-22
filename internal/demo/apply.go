@@ -139,7 +139,15 @@ func (a *Applier) run(ctx context.Context, scenario *Scenario, slug string) (*Re
 			return nil, fmt.Errorf("work item %s: %w", item.ID, err)
 		}
 	}
-	if err := a.generatedWork(ctx, order, generated); err != nil {
+	// The desk's queue is its own project, so it fills while the delivery
+	// teams' years are being written: separate projects, separate keys, and
+	// the same site.
+	history, historyCtx := errgroup.WithContext(ctx)
+	history.Go(func() error { return a.generatedWork(historyCtx, order, generated) })
+	if scenario.Service != nil {
+		history.Go(func() error { return a.service(historyCtx, scenario.Service) })
+	}
+	if err := history.Wait(); err != nil {
 		return nil, err
 	}
 	// Sprints start and close once their work is in them, and versions ship
@@ -156,11 +164,7 @@ func (a *Applier) run(ctx context.Context, scenario *Scenario, slug string) (*Re
 	if err := a.commits(ctx, scenario.Commits); err != nil {
 		return nil, err
 	}
-	if scenario.Service != nil {
-		if err := a.service(ctx, scenario.Service); err != nil {
-			return nil, err
-		}
-	}
+
 	if scenario.Wiki != nil {
 		if err := a.wiki(ctx, scenario.Wiki); err != nil {
 			return nil, err
@@ -1121,7 +1125,9 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 			if err != nil {
 				return fmt.Errorf("read the request already raised for %q: %w", request.Summary, err)
 			}
+			a.mutex.Lock()
 			a.items[request.ID] = found
+			a.mutex.Unlock()
 			continue
 		}
 		var raised *models.ServiceRequest
@@ -1140,7 +1146,9 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 		if err != nil {
 			return err
 		}
+		a.mutex.Lock()
 		a.items[request.ID] = issue
+		a.mutex.Unlock()
 		for _, event := range request.Events {
 			if err := a.event(ctx, issue, event); err != nil {
 				return fmt.Errorf("request %s %s: %w", request.ID, event.Kind, err)

@@ -2701,7 +2701,7 @@
     ],
     "service": {
       "project": "help",
-      "requestsPerWeek": 9,
+      "requestsPerWeek": 6,
       "incidentShare": 0.18,
       "customers": [
         "cust-amara",
