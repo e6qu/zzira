@@ -343,6 +343,69 @@ type Space struct {
 	Description string     `json:"description,omitempty"`
 	Pages       []Page     `json:"pages,omitempty"`
 	BlogPosts   []BlogPost `json:"blogPosts,omitempty"`
+	// Content is what a space holds beside its pages: whiteboards, databases,
+	// folders and embedded pages from elsewhere.
+	Content []SpaceContent `json:"content,omitempty"`
+}
+
+// SpaceContent is one whiteboard, database, folder or embed in a space.
+type SpaceContent struct {
+	// Type is "whiteboard", "database", "folder" or "embed".
+	Type  string `json:"type"`
+	Title string `json:"title"`
+	// Author is who made it; the site administrator when it is not said.
+	Author string `json:"author,omitempty"`
+	// CreatedDay is the day offset it was made on.
+	CreatedDay int `json:"createdDay,omitempty"`
+	// EmbedURL is what an embed shows.
+	EmbedURL string `json:"embedUrl,omitempty"`
+	// Objects and Connectors are a whiteboard's canvas; a connector names the
+	// objects it joins by their titles.
+	Objects    []WhiteboardObject    `json:"objects,omitempty"`
+	Connectors []WhiteboardConnector `json:"connectors,omitempty"`
+	// Columns, Rows and Views are a database's shape, its records and the
+	// ways people read them. A row's keys are column names.
+	Columns []DatabaseColumn    `json:"columns,omitempty"`
+	Rows    []map[string]string `json:"rows,omitempty"`
+	Views   []DatabaseView      `json:"views,omitempty"`
+}
+
+// WhiteboardObject is one thing on a whiteboard: a sticky, a piece of text or
+// a shape.
+type WhiteboardObject struct {
+	Type   string `json:"type"`
+	Title  string `json:"title"`
+	Body   string `json:"body,omitempty"`
+	Color  string `json:"color,omitempty"`
+	X      int    `json:"x"`
+	Y      int    `json:"y"`
+	Width  int    `json:"width,omitempty"`
+	Height int    `json:"height,omitempty"`
+}
+
+// WhiteboardConnector joins two objects by their titles.
+type WhiteboardConnector struct {
+	From  string `json:"from"`
+	To    string `json:"to"`
+	Label string `json:"label,omitempty"`
+	Style string `json:"style,omitempty"`
+}
+
+// DatabaseColumn is one field of a database.
+type DatabaseColumn struct {
+	Name string `json:"name"`
+	// Type is "text", "number", "date", "checkbox" or "select".
+	Type    string   `json:"type"`
+	Options []string `json:"options,omitempty"`
+}
+
+// DatabaseView is a saved way of reading a database.
+type DatabaseView struct {
+	Name          string `json:"name"`
+	SortKey       string `json:"sortKey,omitempty"`
+	SortDirection string `json:"sortDirection,omitempty"`
+	FilterKey     string `json:"filterKey,omitempty"`
+	FilterValue   string `json:"filterValue,omitempty"`
 }
 
 // Page is one page, with its children beneath it.
@@ -502,8 +565,13 @@ var (
 	projectKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,9}$`)
 	spaceKeyPattern   = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,9}$`)
 	eventKinds        = []string{"transition", "comment", "worklog", "assign", "link", "watch", "vote", "approval", "approve", "decline", "asset"}
-	projectTypes      = []string{"software", "business", "service_desk"}
-	sprintStates      = []string{"future", "active", "closed"}
+	// What a space holds beside its pages, and what a board and a database
+	// are made of.
+	spaceContentTypes     = []string{"whiteboard", "database", "folder", "embed"}
+	whiteboardObjectTypes = []string{"sticky", "text", "shape"}
+	databaseColumnTypes   = []string{"text", "number", "date", "checkbox", "select"}
+	projectTypes          = []string{"software", "business", "service_desk"}
+	sprintStates          = []string{"future", "active", "closed"}
 )
 
 // Validate reports the first thing in a scenario that could not be applied:
@@ -803,6 +871,9 @@ func (s *Scenario) Validate() error {
 					return err
 				}
 			}
+			if err := validateSpaceContent(space, people); err != nil {
+				return err
+			}
 		}
 	}
 	for _, filter := range s.Filters {
@@ -1010,6 +1081,76 @@ func validatePages(space string, pages []Page, people map[string]bool) error {
 		}
 		if err := validatePages(space, page.Children, people); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// validateSpaceContent checks a space's whiteboards, databases, folders and
+// embeds are ones the site can build: types it knows, a line between objects
+// that are on the board, and a record whose fields are columns.
+func validateSpaceContent(space Space, people map[string]bool) error {
+	for _, content := range space.Content {
+		where := fmt.Sprintf("%s %q of space %s", content.Type, content.Title, space.Key)
+		if content.Title == "" {
+			return fmt.Errorf("a piece of content in space %s has no title", space.Key)
+		}
+		if !slices.Contains(spaceContentTypes, content.Type) {
+			return fmt.Errorf("%s is of the unknown kind %q", where, content.Type)
+		}
+		if content.Author != "" && !people[content.Author] {
+			return fmt.Errorf("%s was written by the unknown person %q", where, content.Author)
+		}
+		if content.CreatedDay > 0 {
+			return fmt.Errorf("%s was written on day %d, which is after the day the site is built", where, content.CreatedDay)
+		}
+		if content.Type == "embed" && content.EmbedURL == "" {
+			return fmt.Errorf("%s embeds nothing", where)
+		}
+		objects := map[string]bool{}
+		for _, object := range content.Objects {
+			if object.Title == "" {
+				return fmt.Errorf("%s has an object with no title", where)
+			}
+			if objects[object.Title] {
+				return fmt.Errorf("%s has two objects titled %q, so a line between them is ambiguous", where, object.Title)
+			}
+			objects[object.Title] = true
+			if object.Type != "" && !slices.Contains(whiteboardObjectTypes, object.Type) {
+				return fmt.Errorf("%s has a %q, which is not something a board holds", where, object.Type)
+			}
+		}
+		for _, connector := range content.Connectors {
+			if !objects[connector.From] || !objects[connector.To] {
+				return fmt.Errorf("%s draws a line from %q to %q, and one of them is not on the board", where, connector.From, connector.To)
+			}
+		}
+		columns := map[string]bool{}
+		for _, column := range content.Columns {
+			if column.Name == "" {
+				return fmt.Errorf("%s has a column with no name", where)
+			}
+			columns[column.Name] = true
+			if column.Type != "" && !slices.Contains(databaseColumnTypes, column.Type) {
+				return fmt.Errorf("%s has a %q column, which is not a kind of field", where, column.Type)
+			}
+		}
+		for index, row := range content.Rows {
+			for name := range row {
+				if !columns[name] {
+					return fmt.Errorf("%s has a record %d that sets %q, which is not one of its columns", where, index+1, name)
+				}
+			}
+		}
+		for _, view := range content.Views {
+			if view.Name == "" {
+				return fmt.Errorf("%s has a view with no name", where)
+			}
+			for _, key := range []string{view.SortKey, view.FilterKey} {
+				if key != "" && !columns[key] {
+					return fmt.Errorf("%s has a view reading %q, which is not one of its columns", where, key)
+				}
+			}
 		}
 	}
 	return nil

@@ -2618,6 +2618,177 @@
             "author": "ravi",
             "createdDay": -35
           }
+        ],
+        "content": [
+          {
+            "type": "whiteboard",
+            "title": "Payments architecture",
+            "author": "ravi",
+            "createdDay": -64,
+            "objects": [
+              {
+                "type": "sticky",
+                "title": "Checkout",
+                "body": "Takes the card and captures the payment.",
+                "color": "blue",
+                "x": 80,
+                "y": 80,
+                "width": 200,
+                "height": 120
+              },
+              {
+                "type": "sticky",
+                "title": "Payments API",
+                "body": "One way in for every client.",
+                "color": "green",
+                "x": 360,
+                "y": 80,
+                "width": 200,
+                "height": 120
+              },
+              {
+                "type": "sticky",
+                "title": "payments-db",
+                "body": "The ledger everything else reads.",
+                "color": "yellow",
+                "x": 640,
+                "y": 80,
+                "width": 200,
+                "height": 120
+              },
+              {
+                "type": "sticky",
+                "title": "Card processor",
+                "body": "Third party. Rate limited.",
+                "color": "pink",
+                "x": 360,
+                "y": 280,
+                "width": 200,
+                "height": 120
+              },
+              {
+                "type": "text",
+                "title": "Anything that touches money goes through the API.",
+                "x": 80,
+                "y": 280,
+                "width": 220,
+                "height": 80
+              }
+            ],
+            "connectors": [
+              {
+                "from": "Checkout",
+                "to": "Payments API",
+                "label": "calls"
+              },
+              {
+                "from": "Payments API",
+                "to": "payments-db",
+                "label": "writes"
+              },
+              {
+                "from": "Payments API",
+                "to": "Card processor",
+                "label": "charges",
+                "style": "dashed"
+              }
+            ]
+          },
+          {
+            "type": "database",
+            "title": "Vendor review",
+            "author": "nora",
+            "createdDay": -48,
+            "columns": [
+              {
+                "name": "Vendor",
+                "type": "text"
+              },
+              {
+                "name": "Owner",
+                "type": "text"
+              },
+              {
+                "name": "Reviewed",
+                "type": "date"
+              },
+              {
+                "name": "Risk",
+                "type": "select",
+                "options": [
+                  "Low",
+                  "Medium",
+                  "High"
+                ]
+              },
+              {
+                "name": "Signed off",
+                "type": "checkbox"
+              }
+            ],
+            "rows": [
+              {
+                "Vendor": "Card processor",
+                "Owner": "Nora Petrova",
+                "Reviewed": "2026-06-02",
+                "Risk": "High",
+                "Signed off": "true"
+              },
+              {
+                "Vendor": "Payout bank",
+                "Owner": "Maya Oduya",
+                "Reviewed": "2026-05-18",
+                "Risk": "Medium",
+                "Signed off": "true"
+              },
+              {
+                "Vendor": "Email delivery",
+                "Owner": "Tom Achebe",
+                "Reviewed": "2026-04-27",
+                "Risk": "Low",
+                "Signed off": "true"
+              },
+              {
+                "Vendor": "Analytics warehouse",
+                "Owner": "Mei Chen",
+                "Reviewed": "2026-07-14",
+                "Risk": "Medium",
+                "Signed off": "false"
+              },
+              {
+                "Vendor": "Status page",
+                "Owner": "Henrik Sørensen",
+                "Reviewed": "2026-03-09",
+                "Risk": "Low",
+                "Signed off": "true"
+              }
+            ],
+            "views": [
+              {
+                "name": "By risk",
+                "sortKey": "Risk",
+                "sortDirection": "desc"
+              },
+              {
+                "name": "Still open",
+                "filterKey": "Signed off",
+                "filterValue": "false"
+              }
+            ]
+          },
+          {
+            "type": "folder",
+            "title": "Runbooks",
+            "author": "omar",
+            "createdDay": -70
+          },
+          {
+            "type": "embed",
+            "title": "Processor status page",
+            "author": "sara",
+            "createdDay": -30,
+            "embedUrl": "https://status.processor.test/"
+          }
         ]
       },
       {

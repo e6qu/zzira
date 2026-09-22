@@ -405,6 +405,55 @@ func TestApplyDemoCompany(t *testing.T) {
 		t.Fatal("no request reaches an asset through the topology, so the relationships carry nothing")
 	}
 
+	// What the spaces hold beside pages: the whiteboard people drew, with the
+	// lines on it, and the database they keep records in.
+	for _, space := range scenario.Wiki.Spaces {
+		if len(space.Content) == 0 {
+			continue
+		}
+		found, err := st.WikiSpaceByKey(ctx, result.WorkspaceID, adminID, space.Key)
+		if err != nil {
+			t.Fatalf("find space %s: %v", space.Key, err)
+		}
+		spaceID := found.ID
+		byTitle := map[string]string{}
+		for _, kind := range []string{"whiteboard", "database", "folder", "embed"} {
+			held, err := st.WikiContents(ctx, result.WorkspaceID, adminID, spaceID, kind)
+			if err != nil {
+				t.Fatalf("read the %ss of %s: %v", kind, space.Key, err)
+			}
+			for _, content := range held {
+				byTitle[content.Title] = content.ID
+			}
+		}
+		for _, declared := range space.Content {
+			id := byTitle[declared.Title]
+			if id == "" {
+				t.Fatalf("space %s does not hold the %s %q", space.Key, declared.Type, declared.Title)
+			}
+			switch declared.Type {
+			case "whiteboard":
+				board, err := st.WikiWhiteboardData(ctx, result.WorkspaceID, adminID, id)
+				if err != nil {
+					t.Fatalf("read the whiteboard %q: %v", declared.Title, err)
+				}
+				if len(board.Objects) != len(declared.Objects) || len(board.Connectors) != len(declared.Connectors) {
+					t.Fatalf("the whiteboard %q holds %d objects and %d lines, the scenario drew %d and %d",
+						declared.Title, len(board.Objects), len(board.Connectors), len(declared.Objects), len(declared.Connectors))
+				}
+			case "database":
+				database, err := st.WikiDatabaseData(ctx, result.WorkspaceID, adminID, id)
+				if err != nil {
+					t.Fatalf("read the database %q: %v", declared.Title, err)
+				}
+				if len(database.Columns) != len(declared.Columns) || len(database.Rows) != len(declared.Rows) {
+					t.Fatalf("the database %q holds %d columns and %d records, the scenario declared %d and %d",
+						declared.Title, len(database.Columns), len(database.Rows), len(declared.Columns), len(declared.Rows))
+				}
+			}
+		}
+	}
+
 	// Confluence: the pages, with their tree.
 	pages := get(wiki, "/wiki/api/v2/pages?limit=100")
 	pageValues, _ := pages["results"].([]any)

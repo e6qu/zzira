@@ -1452,6 +1452,9 @@ func (a *Applier) wiki(ctx context.Context, declared *Wiki) error {
 		if err := a.pages(ctx, created.ID, "", space.Pages); err != nil {
 			return fmt.Errorf("space %s: %w", space.Key, err)
 		}
+		if err := a.spaceContent(ctx, created.ID, space); err != nil {
+			return fmt.Errorf("space %s: %w", space.Key, err)
+		}
 		for _, post := range space.BlogPosts {
 			author := a.people[post.Author]
 			if author == "" {
@@ -1476,6 +1479,185 @@ func (a *Applier) wiki(ctx context.Context, declared *Wiki) error {
 		}
 	}
 	return nil
+}
+
+// spaceContent builds what a space holds beside its pages: the whiteboards
+// people drew on, the databases they keep records in, the folders that hold
+// them and the pages they embedded from elsewhere. A space that already has a
+// piece of content by that title keeps it, as a page does.
+func (a *Applier) spaceContent(ctx context.Context, spaceID string, space Space) error {
+	if len(space.Content) == 0 {
+		return nil
+	}
+	// Content is read a kind at a time, which is how the store reads it, and
+	// a second run has to recognise what the first one made or it would build
+	// the same board twice.
+	titles := map[string]bool{}
+	for _, kind := range spaceContentTypes {
+		held, err := a.Store.WikiContents(ctx, a.workspaceID, a.admin, spaceID, kind)
+		if err != nil {
+			return fmt.Errorf("read the %ss of %s: %w", kind, space.Key, err)
+		}
+		for _, content := range held {
+			titles[content.Type+"\x00"+content.Title] = true
+		}
+	}
+	for _, declared := range space.Content {
+		if titles[declared.Type+"\x00"+declared.Title] {
+			continue
+		}
+		author := a.people[declared.Author]
+		if author == "" {
+			author = a.admin
+		}
+		var created *models.WikiContent
+		if err := a.at(ctx, declared.CreatedDay, func(ctx context.Context) error {
+			made, err := a.Store.CreateWikiContent(ctx, a.workspaceID, author, models.WikiContent{
+				Type: declared.Type, Title: declared.Title, SpaceID: spaceID, EmbedURL: declared.EmbedURL,
+			})
+			created = made
+			return err
+		}); err != nil {
+			return fmt.Errorf("%s %q: %w", declared.Type, declared.Title, err)
+		}
+		switch declared.Type {
+		case "whiteboard":
+			if err := a.whiteboard(ctx, author, created.ID, declared); err != nil {
+				return fmt.Errorf("whiteboard %q: %w", declared.Title, err)
+			}
+		case "database":
+			if err := a.database(ctx, author, created.ID, declared); err != nil {
+				return fmt.Errorf("database %q: %w", declared.Title, err)
+			}
+		}
+	}
+	return nil
+}
+
+// whiteboard draws a whiteboard's canvas: the objects on it, then the lines
+// between them, which name the objects they join by title.
+func (a *Applier) whiteboard(ctx context.Context, author, whiteboardID string, declared SpaceContent) error {
+	drawn := map[string]string{}
+	for _, object := range declared.Objects {
+		width, height := object.Width, object.Height
+		if width == 0 {
+			width = 200
+		}
+		if height == 0 {
+			height = 120
+		}
+		color := object.Color
+		if color == "" {
+			color = "yellow"
+		}
+		kind := object.Type
+		if kind == "" {
+			kind = "sticky"
+		}
+		if err := a.at(ctx, declared.CreatedDay, func(ctx context.Context) error {
+			made, err := a.Store.SaveWikiWhiteboardObject(ctx, a.workspaceID, author, whiteboardID, models.WikiWhiteboardObject{
+				Type: kind, Title: object.Title, Body: object.Body, Color: color,
+				X: object.X, Y: object.Y, Width: width, Height: height,
+			})
+			if err == nil {
+				drawn[object.Title] = made.ID
+			}
+			return err
+		}); err != nil {
+			return fmt.Errorf("object %q: %w", object.Title, err)
+		}
+	}
+	for _, connector := range declared.Connectors {
+		from, to := drawn[connector.From], drawn[connector.To]
+		if from == "" || to == "" {
+			return fmt.Errorf("a line joins %q to %q, and one of them is not on the board", connector.From, connector.To)
+		}
+		style := connector.Style
+		if style == "" {
+			style = "solid"
+		}
+		if err := a.at(ctx, declared.CreatedDay, func(ctx context.Context) error {
+			_, err := a.Store.SaveWikiWhiteboardConnector(ctx, a.workspaceID, author, whiteboardID, models.WikiWhiteboardConnector{
+				FromObjectID: from, ToObjectID: to, Label: connector.Label, Style: style,
+			})
+			return err
+		}); err != nil {
+			return fmt.Errorf("line from %q to %q: %w", connector.From, connector.To, err)
+		}
+	}
+	return nil
+}
+
+// database fills a database: its columns, the records in it, and the views
+// people read them through.
+func (a *Applier) database(ctx context.Context, author, databaseID string, declared SpaceContent) error {
+	keys := map[string]string{}
+	for _, column := range declared.Columns {
+		key := databaseColumnKey(column.Name)
+		keys[column.Name] = key
+		kind := column.Type
+		if kind == "" {
+			kind = "text"
+		}
+		if err := a.at(ctx, declared.CreatedDay, func(ctx context.Context) error {
+			_, err := a.Store.AddWikiDatabaseColumn(ctx, a.workspaceID, author, databaseID, models.WikiDatabaseColumn{
+				Key: key, Name: column.Name, Type: kind, Options: column.Options,
+			})
+			return err
+		}); err != nil {
+			return fmt.Errorf("column %q: %w", column.Name, err)
+		}
+	}
+	for index, row := range declared.Rows {
+		values := map[string]string{}
+		for name, value := range row {
+			key, ok := keys[name]
+			if !ok {
+				return fmt.Errorf("row %d sets %q, which is not a column", index+1, name)
+			}
+			values[key] = value
+		}
+		if err := a.at(ctx, declared.CreatedDay, func(ctx context.Context) error {
+			_, err := a.Store.SaveWikiDatabaseRow(ctx, a.workspaceID, author, databaseID, "", values)
+			return err
+		}); err != nil {
+			return fmt.Errorf("row %d: %w", index+1, err)
+		}
+	}
+	for _, view := range declared.Views {
+		direction := view.SortDirection
+		if direction == "" {
+			direction = "asc"
+		}
+		if err := a.at(ctx, declared.CreatedDay, func(ctx context.Context) error {
+			_, err := a.Store.SaveWikiDatabaseView(ctx, a.workspaceID, author, databaseID, models.WikiDatabaseView{
+				Name: view.Name, SortKey: keys[view.SortKey], SortDirection: direction,
+				FilterKey: keys[view.FilterKey], FilterValue: view.FilterValue,
+			})
+			return err
+		}); err != nil {
+			return fmt.Errorf("view %q: %w", view.Name, err)
+		}
+	}
+	return nil
+}
+
+// databaseColumnKey is the key a column is stored under: its name, lower case,
+// with anything that is not a letter or a number as an underscore.
+func databaseColumnKey(name string) string {
+	key := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			return r
+		case r >= 'A' && r <= 'Z':
+			return r + ('a' - 'A')
+		}
+		return '_'
+	}, name)
+	if key == "" {
+		return "column"
+	}
+	return key
 }
 
 // pages writes one level of a space's page tree and then its children.
