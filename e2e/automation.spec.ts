@@ -1296,6 +1296,69 @@ test('admin builds a rule that answers a page in the wiki', async ({ page }) => 
   }
 });
 
+// A rule keeps a page up to date and then puts it away: it writes at the end
+// of the page it ran for, and archives it.
+test('admin builds a rule that writes at the end of a page and archives it', async ({ page }) => {
+  await login(page);
+  const stamp = Date.now();
+  const spaceKey = `WAP${String(stamp).slice(-6)}`;
+  await page.goto('/wiki');
+  await page.locator('.wiki-create-space > summary').click();
+  await page.getByLabel('Space name').fill(`Appended pages ${stamp}`);
+  await page.getByLabel('Space key').fill(spaceKey);
+  await page.getByRole('button', { name: 'Create space', exact: true }).click();
+  await expect(page).toHaveURL(/\/wiki\/spaces\/\d+$/);
+  const spaceURL = page.url();
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E page append ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('confluence.page.created');
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('confluence.page.append');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(`Filed by {{rule.name}} ${stamp}`);
+  await page.locator('.automation-action-empty').first().getByLabel('Additional action').selectOption('confluence.page.archive');
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  await expect(page.getByRole('note')).toHaveCount(0);
+
+  // The trigger is not scoped to a space, so take the rule down whatever
+  // happens here: every page written anywhere would otherwise be archived.
+  try {
+    const title = `Weekly note ${stamp}`;
+    await page.goto(spaceURL);
+    await page.getByRole('link', { name: 'Create page', exact: true }).click();
+    await page.getByLabel('Page title').fill(title);
+    await page.getByRole('textbox', { name: 'Page content' }).fill('What happened this week.');
+    await page.getByRole('button', { name: 'Save page', exact: true }).click();
+    await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
+    const pageURL = page.url();
+
+    // What was on the page is still there, with the rule's line after it, and
+    // the page ends up archived.
+    await expect.poll(async () => {
+      await page.goto(pageURL);
+      return await page.locator('body').innerText();
+    }, { timeout: 20_000 }).toContain(`Filed by ${name} ${stamp}`);
+    await expect(page.locator('body')).toContainText('What happened this week.');
+    await expect.poll(async () => {
+      await page.goto(pageURL);
+      return await page.getByRole('status', { name: 'Archived page' }).count();
+    }, { timeout: 20_000 }).toBe(1);
+
+    await expect.poll(async () => {
+      await page.goto(ruleURL);
+      return await page.locator('.automation-audit tbody').innerText();
+    }, { timeout: 15_000 }).toContain('SUCCESS');
+  } finally {
+    await page.goto(ruleURL);
+    await page.getByRole('button', { name: 'Disable' }).click();
+    await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+    await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+    await expect(page).toHaveURL('/settings/automation');
+  }
+});
+
 // Advanced branching: the same actions, once for each item in a list.
 test('admin builds a rule that branches over each item in a list', async ({ page }) => {
   await login(page);
