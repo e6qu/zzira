@@ -3441,6 +3441,28 @@
             "createdDay": -30,
             "embedUrl": "https://status.processor.test/"
           }
+        ],
+        "roles": [
+          {
+            "role": "admin",
+            "groups": [
+              "leads"
+            ]
+          },
+          {
+            "role": "member",
+            "groups": [
+              "engineering"
+            ]
+          },
+          {
+            "role": "viewer",
+            "groups": [
+              "support",
+              "design",
+              "data"
+            ]
+          }
         ]
       },
       {
@@ -3493,6 +3515,26 @@
               "kofi",
               "yuki",
               "paulo"
+            ]
+          }
+        ],
+        "roles": [
+          {
+            "role": "admin",
+            "people": [
+              "sara"
+            ]
+          },
+          {
+            "role": "member",
+            "groups": [
+              "support"
+            ]
+          },
+          {
+            "role": "viewer",
+            "groups": [
+              "engineering"
             ]
           }
         ]
@@ -3718,6 +3760,27 @@
               "paulo"
             ]
           }
+        ],
+        "roles": [
+          {
+            "role": "admin",
+            "people": [
+              "nora"
+            ]
+          },
+          {
+            "role": "member",
+            "groups": [
+              "leads"
+            ]
+          },
+          {
+            "role": "viewer",
+            "groups": [
+              "engineering",
+              "design"
+            ]
+          }
         ]
       },
       {
@@ -3881,6 +3944,27 @@
               "jonas"
             ]
           }
+        ],
+        "roles": [
+          {
+            "role": "admin",
+            "people": [
+              "zoe"
+            ]
+          },
+          {
+            "role": "member",
+            "groups": [
+              "design"
+            ]
+          },
+          {
+            "role": "viewer",
+            "groups": [
+              "engineering",
+              "leads"
+            ]
+          }
         ]
       },
       {
@@ -4010,6 +4094,21 @@
               "arjun"
             ]
           }
+        ],
+        "roles": [
+          {
+            "role": "member",
+            "groups": [
+              "leads"
+            ]
+          },
+          {
+            "role": "viewer",
+            "groups": [
+              "engineering",
+              "support"
+            ]
+          }
         ]
       },
       {
@@ -4129,6 +4228,24 @@
               "elin"
             ]
           }
+        ],
+        "roles": [
+          {
+            "role": "admin",
+            "people": [
+              "fatima"
+            ]
+          },
+          {
+            "role": "viewer",
+            "groups": [
+              "engineering",
+              "support",
+              "design",
+              "data",
+              "leads"
+            ]
+          }
         ]
       },
       {
@@ -4227,7 +4344,22 @@
             ]
           }
         ],
-        "blogPosts": []
+        "blogPosts": [],
+        "roles": [
+          {
+            "role": "member",
+            "groups": [
+              "data"
+            ]
+          },
+          {
+            "role": "viewer",
+            "groups": [
+              "engineering",
+              "leads"
+            ]
+          }
+        ]
       }
     ]
   },

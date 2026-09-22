@@ -1683,6 +1683,9 @@ func (a *Applier) wiki(ctx context.Context, declared *Wiki) error {
 		if err := a.spaceContent(ctx, created.ID, space); err != nil {
 			return fmt.Errorf("space %s: %w", space.Key, err)
 		}
+		if err := a.spaceRoles(ctx, created.ID, space); err != nil {
+			return fmt.Errorf("space %s: %w", space.Key, err)
+		}
 		for _, post := range space.BlogPosts {
 			author := a.people[post.Author]
 			if author == "" {
@@ -2373,4 +2376,35 @@ func (a *Applier) postExtras(ctx context.Context, postID string, post BlogPost) 
 		}
 	}
 	return nil
+}
+
+// spaceRoles says who administers a space, who works in it and who only
+// reads it. A company's handbook is written by a few people and read by
+// everybody, and a space where nobody holds a role shows none of that.
+func (a *Applier) spaceRoles(ctx context.Context, spaceID string, space Space) error {
+	if len(space.Roles) == 0 {
+		return nil
+	}
+	held, err := a.Store.WikiSpaceRoleAssignments(ctx, a.workspaceID, a.admin, spaceID)
+	if err != nil {
+		return fmt.Errorf("read the roles of %s: %w", space.Key, err)
+	}
+	if len(held) > 0 {
+		return nil
+	}
+	assignments := []models.WikiSpaceRoleAssignment{}
+	for _, role := range space.Roles {
+		id := "system-" + role.Role
+		for _, group := range role.Groups {
+			if groupID := a.groups[group]; groupID != "" {
+				assignments = append(assignments, models.WikiSpaceRoleAssignment{RoleID: id, PrincipalType: "GROUP", PrincipalID: groupID})
+			}
+		}
+		for _, person := range role.People {
+			if userID := a.people[person]; userID != "" {
+				assignments = append(assignments, models.WikiSpaceRoleAssignment{RoleID: id, PrincipalType: "USER", PrincipalID: userID})
+			}
+		}
+	}
+	return a.Store.SetWikiSpaceRoleAssignments(ctx, a.workspaceID, a.admin, spaceID, assignments)
 }

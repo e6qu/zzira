@@ -439,6 +439,16 @@ type Wiki struct {
 	Spaces []Space `json:"spaces,omitempty"`
 }
 
+// SpaceRole is who holds one of the space's roles: the people and groups
+// that administer it, work in it, or only read it.
+type SpaceRole struct {
+	// Role is "admin", "member" or "viewer", which are the roles every space
+	// has before anybody defines another.
+	Role   string   `json:"role"`
+	Groups []string `json:"groups,omitempty"`
+	People []string `json:"people,omitempty"`
+}
+
 // Space is one Confluence space with its content.
 type Space struct {
 	Key         string     `json:"key"`
@@ -449,6 +459,9 @@ type Space struct {
 	// Content is what a space holds beside its pages: whiteboards, databases,
 	// folders and embedded pages from elsewhere.
 	Content []SpaceContent `json:"content,omitempty"`
+	// Roles are who administers, works in and reads the space. A space that
+	// names none is open to the site, which is what a new space is.
+	Roles []SpaceRole `json:"roles,omitempty"`
 }
 
 // SpaceContent is one whiteboard, database, folder or embed in a space.
@@ -1006,6 +1019,9 @@ func (s *Scenario) Validate() error {
 				return fmt.Errorf("two spaces share the key %q", space.Key)
 			}
 			spaces[space.Key] = true
+			if err := validateSpaceRoles(space, people, groups); err != nil {
+				return err
+			}
 			if err := validatePages(space.Key, space.Pages, people); err != nil {
 				return err
 			}
@@ -1246,6 +1262,27 @@ func validateEvents(where string, createdDay int, events []Event, people, items 
 }
 
 // validatePages checks a space's page tree.
+// validateSpaceRoles checks a space names roles the site has and people and
+// groups it knows.
+func validateSpaceRoles(space Space, people, groups map[string]bool) error {
+	for _, role := range space.Roles {
+		if role.Role != "admin" && role.Role != "member" && role.Role != "viewer" {
+			return fmt.Errorf("space %s names the role %q, which is not admin, member or viewer", space.Key, role.Role)
+		}
+		for _, group := range role.Groups {
+			if !groups[group] {
+				return fmt.Errorf("space %s gives the %s role to the unknown group %q", space.Key, role.Role, group)
+			}
+		}
+		for _, person := range role.People {
+			if !people[person] {
+				return fmt.Errorf("space %s gives the %s role to the unknown person %q", space.Key, role.Role, person)
+			}
+		}
+	}
+	return nil
+}
+
 func validatePages(space string, pages []Page, people map[string]bool) error {
 	for _, page := range pages {
 		if page.Title == "" || page.Body == "" {
