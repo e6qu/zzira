@@ -510,7 +510,10 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 		case "com.zzira:dora-metrics":
 			data, err := h.Store.DORAReport(ctx, ws, project.ID, userID, config.Days, now)
 			if err != nil {
-				log.Printf("dashboard gadget %s for %s: %v", moduleKey, project.Key, err)
+				// Quoted, because everything here but the module key comes
+				// from the site: a key with a newline in it would otherwise
+				// write a second line of its own into the log.
+				log.Printf("dashboard gadget %s for %s: %s", moduleKey, strconv.Quote(project.Key), strconv.Quote(err.Error()))
 				return nil, failed
 			}
 			report.DORA = &data
