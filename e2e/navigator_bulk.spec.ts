@@ -199,3 +199,84 @@ test('navigator bulk-edits the custom fields a project shares', async ({ page, r
 
   expect((await request.delete(`/rest/api/3/project/${projectKey}?enableUndo=false`, { headers: auth })).status()).toBe(204);
 });
+
+// A cascading select, a user picker, a group picker: the field types the bulk
+// editor used to leave to the REST API.
+test('navigator bulk-edits cascading selects, people and groups', async ({ page, request }) => {
+  const auth = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const projectKey = `PK${stamp.toString(36).toUpperCase().slice(-8)}`;
+  const me = await (await request.get('/rest/api/3/myself', { headers: auth })).json();
+  expect((await request.post('/rest/api/3/project', {
+    headers: auth,
+    data: { key: projectKey, name: `Picker bulk ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' },
+  })).status()).toBe(201);
+
+  const field = async (name: string, type: string) => {
+    const created = await request.post('/rest/api/3/field', { headers: auth, data: { name, type } });
+    expect(created.status()).toBe(201);
+    return (await created.json()).id as string;
+  };
+  const areaID = await field(`Area ${stamp}`, 'cascadingselect');
+  const ownerID = await field(`Owner ${stamp}`, 'userpicker');
+  const guildID = await field(`Guild ${stamp}`, 'grouppicker');
+
+  // The cascading select's options: two parents, one with children.
+  const contexts = await (await request.get(`/rest/api/3/field/${areaID}/context`, { headers: auth })).json();
+  const contextID = String(contexts.values[0].id);
+  const parents = await request.post(`/rest/api/3/field/${areaID}/context/${contextID}/option`, {
+    headers: auth, data: { options: [{ value: 'Payments' }, { value: 'Platform' }] },
+  });
+  expect(parents.status()).toBe(200);
+  const parentOptions = (await parents.json()).options as Array<{ id: string; value: string }>;
+  const payments = parentOptions.find((option) => option.value === 'Payments')!;
+  const children = await request.post(`/rest/api/3/field/${areaID}/context/${contextID}/option`, {
+    headers: auth, data: { options: [{ value: 'Refunds', optionId: payments.id }] },
+  });
+  expect(children.status()).toBe(200);
+
+  const group = await request.post('/rest/api/3/group', { headers: auth, data: { name: `Guild ${stamp}` } });
+  expect(group.status()).toBe(201);
+
+  const keys: string[] = [];
+  for (const summary of [`Picker ${stamp} one`, `Picker ${stamp} two`]) {
+    const created = await request.post('/rest/api/3/issue', {
+      headers: auth, data: { fields: { project: { key: projectKey }, summary, issuetype: { name: 'Task' } } },
+    });
+    expect(created.status()).toBe(201);
+    keys.push((await created.json()).key as string);
+  }
+
+  await login(page);
+  await page.goto(`/issues/${projectKey}?text=Picker+${stamp}`);
+  for (const key of keys) {
+    await page.locator('tr').filter({ hasText: key }).getByRole('checkbox').check();
+  }
+  await page.locator('summary').filter({ hasText: 'Edit selected' }).click();
+  const editor = page.locator('.bulk-edit-picker');
+  await expect(editor.locator(`input[name="field"][value="${areaID}"]`)).toBeVisible();
+
+  await editor.locator(`input[name="field"][value="${areaID}"]`).check();
+  // A child reads as its parent and itself, which is how the work item's own
+  // editor lists it.
+  await editor.locator(`select[name="valueCustom_${areaID}"]`).selectOption({ label: 'Payments › Refunds' });
+  await editor.locator(`input[name="field"][value="${ownerID}"]`).check();
+  await editor.locator(`select[name="valueCustom_${ownerID}"]`).selectOption({ label: 'Demo User' });
+  await editor.locator(`input[name="field"][value="${guildID}"]`).check();
+  await editor.locator(`select[name="valueCustom_${guildID}"]`).selectOption({ label: `Guild ${stamp}` });
+  await accessible(page);
+  page.once('dialog', (dialog) => dialog.accept());
+  await editor.getByRole('button', { name: 'Start edit' }).click();
+  await expect(page.getByRole('heading', { name: /Bulk edit issues/ })).toBeVisible();
+
+  await expect(async () => {
+    for (const key of keys) {
+      const issue = await (await request.get(`/rest/api/3/issue/${key}`, { headers: auth })).json();
+      expect(JSON.stringify(issue.fields[areaID])).toContain('Refunds');
+      expect(JSON.stringify(issue.fields[ownerID])).toContain(me.accountId);
+      expect(JSON.stringify(issue.fields[guildID])).toContain(`Guild ${stamp}`);
+    }
+  }).toPass({ timeout: 20_000 });
+
+  expect((await request.delete(`/rest/api/3/project/${projectKey}?enableUndo=false`, { headers: auth })).status()).toBe(204);
+});
