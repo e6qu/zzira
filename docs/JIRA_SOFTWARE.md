@@ -114,6 +114,14 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
   see, and says when the members do not share a release date or when one has
   been deleted. Names are unique within a plan.
 - `/plans/{id}` shows the plan's work as a table (Work, Start, End, Team, Sprint, Estimate, Dependencies) beside a month timeline. Epics are nested with their child work items.
+- **Views** sit above the work. **Group by** gathers it under the team, sprint,
+  project, status or assignee each item belongs to, with how many are in each
+  group and the items that have nothing in that field last. **Filter** narrows
+  it to work whose key or summary contains what was typed; a filter that
+  matches nothing says so rather than showing an empty table. Anyone who may
+  edit the plan can keep the pair under a name, and the saved views are links
+  that open the plan that way (`?group=`, `?q=`, `?view=`). Saving over a name
+  changes that view rather than adding another.
 - Who can open a plan: site administrators, the plan lead, and people or groups the plan grants access to.
 
 **Scenarios**
@@ -198,7 +206,7 @@ Errors use the module format, `[{"message": …}]`. Provider rate limits are des
   - No restoring an archived or trashed plan.
   - `inferredDates` and plan `customFields` are stored but not used.
   - No capacity derived from velocity.
-  - No saved views, grouping, filters or rollups.
+  - No rollups of estimates or dates onto a parent, and no saved view of the timeline's zoom or columns.
 - Scenarios cannot change parent, rank, release or status, and cannot create work items.
 - Cross-project releases: the plan's `crossProjectReleases` list is validated and stored, but nothing shows it or plans against it. There is no multi-project release in the plan or the release hub.
 - No REST teams API (Atlassian's public teams API).

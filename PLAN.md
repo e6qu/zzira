@@ -117,7 +117,9 @@ and dependency checks.
   and cross-project releases are there).
 - Restore archived and trashed plans; duplicate copies scenarios.
 - Scenario edits: parent, rank, release, status, create work items.
-- Views: saved views, grouping, filters, rollups across the hierarchy.
+- Views: rollups across the hierarchy, and a saved zoom or column set. Work is
+  grouped by team, sprint, project, status or assignee, filtered by key or
+  summary, and kept under a name ([JIRA_SOFTWARE](docs/JIRA_SOFTWARE.md)).
 - `inferredDates` and plan `customFields` take effect. (Capacity is read from velocity when nobody has typed one: [JIRA_SOFTWARE.md](docs/JIRA_SOFTWARE.md).)
 - Atlassian Teams REST API.
 
