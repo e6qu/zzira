@@ -217,6 +217,59 @@ func (s *Store) wikiSpaceExportAttachments(ctx context.Context, ws, user string,
 // linking every page and blog post, a file for each with its body rendered as
 // the space shows it and a list of its attachments, and the attachment files
 // the export carries.
+// wikiSpaceManifest is the machine-readable half of an export: what a space
+// holds, in the storage the site keeps, so another site can read it back.
+type wikiSpaceManifest struct {
+	Version     int                     `json:"version"`
+	Key         string                  `json:"key"`
+	Name        string                  `json:"name"`
+	Description string                  `json:"description,omitempty"`
+	Pages       []wikiSpaceManifestPage `json:"pages,omitempty"`
+	BlogPosts   []wikiSpaceManifestPage `json:"blogPosts,omitempty"`
+}
+
+// wikiSpaceManifestPage is one page or blog post as an export carries it.
+type wikiSpaceManifestPage struct {
+	ID       string `json:"id"`
+	ParentID string `json:"parentId,omitempty"`
+	Title    string `json:"title"`
+	Body     string `json:"body"`
+	// Representation is what the body is written in, which is "storage" for
+	// everything this site keeps.
+	Representation string `json:"representation"`
+}
+
+// manifestPages is a space's pages as an export carries them, parents first
+// so an import can raise a page after the page it belongs under.
+func manifestPages(pages []*models.WikiPage) []wikiSpaceManifestPage {
+	out := make([]wikiSpaceManifestPage, 0, len(pages))
+	for _, page := range pages {
+		representation := page.Body.Representation
+		if representation == "" {
+			representation = "storage"
+		}
+		out = append(out, wikiSpaceManifestPage{
+			ID: page.ID, ParentID: page.ParentID, Title: page.Title, Body: page.Body.Value, Representation: representation,
+		})
+	}
+	return out
+}
+
+// manifestPosts is the same for blog posts, which have no parent.
+func manifestPosts(posts []*models.WikiBlogPost) []wikiSpaceManifestPage {
+	out := make([]wikiSpaceManifestPage, 0, len(posts))
+	for _, post := range posts {
+		representation := post.Body.Representation
+		if representation == "" {
+			representation = "storage"
+		}
+		out = append(out, wikiSpaceManifestPage{
+			ID: post.ID, Title: post.Title, Body: post.Body.Value, Representation: representation,
+		})
+	}
+	return out
+}
+
 func buildWikiSpaceExport(space *models.WikiSpace, pages []*models.WikiPage, posts []*models.WikiBlogPost, attachments []wikiExportAttachment) ([]byte, error) {
 	var buffer bytes.Buffer
 	archive := zip.NewWriter(&buffer)
@@ -293,6 +346,19 @@ func buildWikiSpaceExport(space *models.WikiSpace, pages []*models.WikiPage, pos
 	}
 	index.WriteString("</ul>")
 	if err := write("index.html", document(space.Name, "<p>"+html.EscapeString(space.Description)+"</p>"+index.String())); err != nil {
+		return nil, err
+	}
+	// The HTML is for reading; space.json is for moving. An import reads the
+	// manifest, because rendered HTML cannot be turned back into the storage
+	// the site keeps without losing what it was.
+	manifest, err := json.Marshal(wikiSpaceManifest{
+		Version: 1, Key: space.Key, Name: space.Name, Description: space.Description,
+		Pages: manifestPages(pages), BlogPosts: manifestPosts(posts),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := write("space.json", string(manifest)); err != nil {
 		return nil, err
 	}
 	if err := archive.Close(); err != nil {

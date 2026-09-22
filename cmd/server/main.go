@@ -387,6 +387,7 @@ func main() {
 	mux.HandleFunc("GET /wiki/pages/{page}", webHandler.WikiPageRedirect)
 	mux.HandleFunc("GET /wiki/blogposts/{blogpost}", webHandler.WikiBlogPostRedirect)
 	mux.HandleFunc("POST /wiki/spaces", webHandler.WikiHome)
+	mux.HandleFunc("POST /wiki/spaces/import", webHandler.WikiSpaceImport)
 	mux.HandleFunc("GET /wiki/spaces/{space}", webHandler.WikiSpacePage)
 	mux.HandleFunc("POST /wiki/spaces/{space}/classification", webHandler.WikiSpaceClassification)
 	mux.HandleFunc("POST /wiki/spaces/{space}/properties", webHandler.WikiSpaceProperty)

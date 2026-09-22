@@ -115,10 +115,22 @@ The space page (`/wiki/spaces/{space}`) links to the following tools:
     see, up to 100 MiB in total. Attachments over the limit are listed but not
     included.
 
+  - `space.json`: the same pages and blog posts in the storage the site keeps,
+    with each page's parent, which is what an import reads. The HTML is for
+    reading; the manifest is for moving.
+
   The space page lists the exporter's five latest exports and their status.
   The download (`GET /wiki/spaces/{space}/exports/{task}.zip`) is available
   only to the person who requested the export. When the export is ready,
   that person is emailed a link. Code: `internal/store/wiki_space_export.go`.
+- **Import a space** (`POST /wiki/spaces/import`, site administrators only),
+  from the wiki home page. It reads an export's `space.json` and makes a new
+  space from it: every page in the tree it was in, then the blog posts. The key
+  and name are the importer's -- a space is usually read back beside the one it
+  came from -- and default to the export's. Attachments, comments, labels and
+  restrictions are not carried. An archive with no manifest, or one written by
+  a later version of the site, is refused rather than making an empty space.
+  Code: `internal/store/wiki_space_import.go`.
 
 The space page also handles watching, classification, space properties, role
 assignments and content state settings.
@@ -127,8 +139,10 @@ assignments and content state settings.
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- **Import.** No space import of any kind: no Confluence XML, no HTML or
-  Markdown, and no Word or other document import.
+- **Import.** A space is read back from this site's own export ([above](#space-tools-in-the-browser)); no Confluence XML, no
+  HTML or Markdown, and no Word or other document import. An imported space
+  carries pages and blog posts, not attachments, comments, labels or
+  restrictions.
 - **Export formats.** No XML export (full or custom) for backup or migration,
   no site export, and no PDF, Word or CSV export of a space.
 - **Export contents.** The HTML export has no page hierarchy, comments,

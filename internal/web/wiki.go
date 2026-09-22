@@ -86,8 +86,10 @@ type wikiData struct {
 	Query                                 string
 	Status                                string
 	SpaceName, SpaceKey, SpaceDescription string
-	Private                               bool
-	WatchingSpace                         bool
+	// ImportError is what went wrong reading an export somebody uploaded.
+	ImportError   string
+	Private       bool
+	WatchingSpace bool
 	// SpaceTemplates, SiteTemplates and BlueprintTemplates are what a space's
 	// templates page lists, and EditingTemplate the space template being edited.
 	SpaceTemplates, SiteTemplates, BlueprintTemplates []wikiTemplateView
@@ -203,6 +205,7 @@ func (h *Handler) WikiHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.CanAdmin = admin
+	data.ImportError = r.URL.Query().Get("importError")
 	status := 200
 	if r.Method == "POST" {
 		if !parseForm(w, r) {

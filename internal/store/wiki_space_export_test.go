@@ -40,7 +40,7 @@ func TestBuildWikiSpaceExport(t *testing.T) {
 		}
 		files[file.Name] = string(data)
 	}
-	if len(files) != 5 {
+	if len(files) != 6 {
 		t.Fatalf("export files = %v", files)
 	}
 	for name, wants := range map[string][]string{
@@ -49,6 +49,7 @@ func TestBuildWikiSpaceExport(t *testing.T) {
 		"blogposts/21.html": {"<h1>Release notes</h1>", "Shipped.", `<a href="../attachments/33/notes.txt">notes.txt</a>`},
 		"attachments/31/runbook_.._plan <v2>.txt": {"step one"},
 		"attachments/33/notes.txt":                {"shipped notes"},
+		"space.json":                              {`"key":"OPS"`, `"title":"Restart \u0026 recover"`, `"title":"Release notes"`},
 	} {
 		for _, want := range wants {
 			if !strings.Contains(files[name], want) {
