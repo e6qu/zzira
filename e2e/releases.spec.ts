@@ -154,6 +154,14 @@ test('plan a release, assign scope, publish notes, archive and delete', async ({
   } finally {
     await context.setOffline(false);
   }
+  // The hub says where the project's work has been: this deployment put it
+  // into production, and the hub reads that back.
+  await page.goto('/projects/ZZ/releases');
+  const environments = page.getByRole('region', { name: 'Environments' });
+  await expect(environments).toContainText('production');
+  await expect(environments).toContainText('Production');
+  await expect(environments).toContainText('work item');
+
   // A project can ask for its conditions before a version ships: this one
   // wants its work resolved, and the work in this release is not.
   await page.goto('/projects/ZZ/settings');
