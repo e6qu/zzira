@@ -132,6 +132,8 @@ func GadgetCatalog() []GadgetDefinition {
 		{"com.zzira:calendar", "Calendar", "This month's due work and release dates from a filter or JQL.", ""},
 		{"com.zzira:road-map", "Road map", "A project's unreleased versions due soon, with their progress.", ""},
 		{"com.zzira:bubble-chart", "Bubble chart", "Work from a filter or JQL by how recently it changed, its participants and its votes.", ""},
+		{"com.zzira:dora-metrics", "DORA metrics", "A project's four delivery metrics: how often it deploys, how long a change takes to reach production, how often a change fails, and how long recovery takes.", ""},
+		{"com.zzira:deployment-frequency", "Deployment frequency", "A project's successful production deployments, day by day.", ""},
 	}
 }
 
@@ -197,7 +199,8 @@ func ReportGadget(moduleKey string) bool {
 // over a window of days, rather than for a scrum board.
 func ProjectReportGadget(moduleKey string) bool {
 	switch moduleKey {
-	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since", "com.zzira:road-map":
+	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since", "com.zzira:road-map",
+		"com.zzira:dora-metrics", "com.zzira:deployment-frequency":
 		return true
 	}
 	return false

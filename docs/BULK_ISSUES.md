@@ -128,11 +128,11 @@ without Bulk change. Progress is shown at
 See [PLAN.md](../PLAN.md).
 
 - The navigator's bulk edit offers the six built-in fields above and the
-  custom fields every work type in the project shares, as text, a number, a
-  date, a date and time, a URL, a single select, a multiple select or a list
-  of values. A cascading select, a user picker, a group picker and rich text
-  are REST-only, as are work type and status, which the navigator changes
-  through bulk move and bulk transition instead.
+  custom fields every work type in the project shares: text, a number, a date,
+  a date and time, a URL, a single or multiple select, a cascading select, a
+  person, a group, a team, a project, one or several versions, and a list of
+  values. Assets fields are REST-only, as are work type and status, which the
+  navigator changes through bulk move and bulk transition instead.
 
 ## In the navigator
 

@@ -34,8 +34,9 @@ type Scenario struct {
 	CustomFields []CustomField `json:"customFields,omitempty"`
 	Projects     []Project     `json:"projects"`
 	WorkItems    []WorkItem    `json:"workItems,omitempty"`
-	// Deployments and Incidents feed the delivery (DORA) report.
+	// Deployments and Commits feed the delivery (DORA) report.
 	Deployments []Deployment `json:"deployments,omitempty"`
+	Commits     []Commit     `json:"commits,omitempty"`
 	// Service is the service desk's customers and their requests.
 	Service *Service `json:"service,omitempty"`
 	// Wiki is the knowledge base: spaces, pages and blog posts.
@@ -43,6 +44,12 @@ type Scenario struct {
 	// Filters and Dashboards are what people saved for themselves.
 	Filters    []Filter    `json:"filters,omitempty"`
 	Dashboards []Dashboard `json:"dashboards,omitempty"`
+	// Plans are the cross-project plans people run the company by.
+	Plans []Plan `json:"plans,omitempty"`
+	// Generate is the history the scenario grows for itself: years of
+	// sprints, releases, work and deliveries that nobody would write out by
+	// hand. It is expanded before the scenario is checked.
+	Generate *Generation `json:"generate,omitempty"`
 }
 
 // Site is the workspace a scenario builds.
@@ -178,6 +185,10 @@ type WorkItem struct {
 	Fields      map[string]string `json:"fields,omitempty"`
 	CreatedDay  int               `json:"createdDay"`
 	Events      []Event           `json:"events,omitempty"`
+	// Generated marks work the generator wrote rather than a person. Such
+	// work refers to nothing outside its own project, so a project's history
+	// can be applied while another project's is being applied.
+	Generated bool `json:"-"`
 }
 
 // Event is something that happened to a work item on a given day. Kind is
@@ -207,6 +218,18 @@ type Deployment struct {
 	State     string   `json:"state"`
 	Day       int      `json:"day"`
 	WorkItems []string `json:"workItems,omitempty"`
+}
+
+// Commit is one change somebody pushed, and the work it was for. The delivery
+// report reads commits to say how long a change took to reach production, so
+// a company with no commits has no lead time.
+type Commit struct {
+	ID string `json:"id"`
+	// Repository is what it was pushed to; a project's own by default.
+	Repository string   `json:"repository"`
+	Message    string   `json:"message,omitempty"`
+	Day        int      `json:"day"`
+	WorkItems  []string `json:"workItems,omitempty"`
 }
 
 // Service is the service desk's customers and the requests they raised.
@@ -294,12 +317,40 @@ type Dashboard struct {
 	Gadgets []Gadget `json:"gadgets,omitempty"`
 }
 
-// Gadget is one gadget on a dashboard.
+// Gadget is one gadget on a dashboard. Type is the catalog key without its
+// "com.zzira:" prefix; the rest is what that kind of gadget reads.
 type Gadget struct {
 	Type    string `json:"type"`
 	Title   string `json:"title,omitempty"`
 	Project string `json:"project,omitempty"`
 	Filter  string `json:"filter,omitempty"`
+	// Board is the scrum board a sprint gadget follows, by scenario id.
+	Board string `json:"board,omitempty"`
+	// JQL is what a query gadget counts or lists when it does not use a
+	// saved filter.
+	JQL string `json:"jql,omitempty"`
+	// GroupBy and YGroupBy are what a chart gadget counts by.
+	GroupBy  string `json:"groupBy,omitempty"`
+	YGroupBy string `json:"yGroupBy,omitempty"`
+	// Days is a report gadget's window: 7, 30 or 90.
+	Days int `json:"days,omitempty"`
+	// DateField is what the time since chart counts, and Cumulative whether
+	// created vs resolved shows running totals.
+	DateField  string `json:"dateField,omitempty"`
+	Cumulative bool   `json:"cumulative,omitempty"`
+}
+
+// Plan is one cross-project plan: what it draws from, and the teams that do
+// the work in it. Teams come from the generated history, which is where the
+// company's teams are declared.
+type Plan struct {
+	Name string `json:"name"`
+	Lead string `json:"lead"`
+	// Projects and Boards are the scenario ids the plan schedules.
+	Projects []string `json:"projects,omitempty"`
+	Boards   []string `json:"boards,omitempty"`
+	// Teams are the names of the teams that work in this plan.
+	Teams []string `json:"teams,omitempty"`
 }
 
 // Read parses a scenario and checks that it hangs together.
@@ -309,6 +360,11 @@ func Read(r io.Reader) (*Scenario, error) {
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&scenario); err != nil {
 		return nil, fmt.Errorf("read scenario: %w", err)
+	}
+	// The declared history grows before anything is checked, so generated
+	// work is held to the same rules as work somebody wrote by hand.
+	if err := scenario.Expand(); err != nil {
+		return nil, err
 	}
 	if err := scenario.Validate(); err != nil {
 		return nil, err
@@ -555,6 +611,47 @@ func (s *Scenario) Validate() error {
 			return err
 		}
 	}
+	// A dashboard names the filters and boards the rest of the scenario
+	// declared, so a gadget cannot quietly show nothing.
+	filters := map[string]bool{}
+	for _, filter := range s.Filters {
+		filters[filter.Name] = true
+	}
+	boards := map[string]bool{}
+	for _, project := range s.Projects {
+		if project.Board != nil {
+			boards[project.Board.ID] = true
+		}
+	}
+	teams := map[string]bool{}
+	if s.Generate != nil {
+		for _, team := range s.Generate.Teams {
+			teams[team.Name] = true
+		}
+	}
+	for _, plan := range s.Plans {
+		if strings.TrimSpace(plan.Name) == "" {
+			return fmt.Errorf("a plan needs a name")
+		}
+		if err := knownPerson("plan "+plan.Name, plan.Lead); err != nil {
+			return err
+		}
+		for _, project := range plan.Projects {
+			if !projects[project] {
+				return fmt.Errorf("plan %q draws from the unknown project %q", plan.Name, project)
+			}
+		}
+		for _, board := range plan.Boards {
+			if !boards[board] {
+				return fmt.Errorf("plan %q draws from the unknown board %q", plan.Name, board)
+			}
+		}
+		for _, team := range plan.Teams {
+			if !teams[team] {
+				return fmt.Errorf("plan %q names the unknown team %q", plan.Name, team)
+			}
+		}
+	}
 	for _, dashboard := range s.Dashboards {
 		if err := knownPerson("dashboard "+dashboard.Name, dashboard.Owner); err != nil {
 			return err
@@ -562,6 +659,15 @@ func (s *Scenario) Validate() error {
 		for _, gadget := range dashboard.Gadgets {
 			if gadget.Project != "" && !projects[gadget.Project] {
 				return fmt.Errorf("dashboard %q shows the unknown project %q", dashboard.Name, gadget.Project)
+			}
+			if gadget.Board != "" && !boards[gadget.Board] {
+				return fmt.Errorf("dashboard %q follows the unknown board %q", dashboard.Name, gadget.Board)
+			}
+			if gadget.Filter != "" && !filters[gadget.Filter] {
+				return fmt.Errorf("dashboard %q shows the unknown filter %q", dashboard.Name, gadget.Filter)
+			}
+			if gadget.Days != 0 && gadget.Days != 7 && gadget.Days != 30 && gadget.Days != 90 {
+				return fmt.Errorf("dashboard %q asks gadget %q for a window of %d days, which is not 7, 30 or 90", dashboard.Name, gadget.Type, gadget.Days)
 			}
 		}
 	}

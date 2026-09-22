@@ -34,6 +34,24 @@ func WithAutomationRule(ctx context.Context, ruleUUID string) context.Context {
 	return context.WithValue(ctx, automationRuleKey{}, ruleUUID)
 }
 
+type actionTimeKey struct{}
+
+// WithActionTime records what a write did at the given time rather than now.
+// Building a site with years of history behind it is the reason this exists:
+// the alternative is to write everything at today's date and rewrite the log
+// afterwards, which cannot be done while several writes are in flight. It is
+// internal to the server -- nothing a request carries reaches it.
+func WithActionTime(ctx context.Context, at time.Time) context.Context {
+	return context.WithValue(ctx, actionTimeKey{}, at)
+}
+
+func actionTimeFrom(ctx context.Context) *time.Time {
+	if at, ok := ctx.Value(actionTimeKey{}).(time.Time); ok && !at.IsZero() {
+		return &at
+	}
+	return nil
+}
+
 func automationRuleFrom(ctx context.Context) *string {
 	if uuid, ok := ctx.Value(automationRuleKey{}).(string); ok && uuid != "" {
 		return &uuid
@@ -43,9 +61,9 @@ func automationRuleFrom(ctx context.Context) *string {
 
 func appendAction(ctx context.Context, tx pgx.Tx, a *models.Action) error {
 	_, err := tx.Exec(ctx, `
-		INSERT INTO actions (workspace_id, seq, entity_type, entity_id, op, schema_v, payload, actor_id, automation_rule_uuid)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		a.WorkspaceID, a.Seq, a.EntityType, a.EntityID, a.Op, a.SchemaV, a.Payload, a.ActorID, automationRuleFrom(ctx))
+		INSERT INTO actions (workspace_id, seq, entity_type, entity_id, op, schema_v, payload, actor_id, automation_rule_uuid, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10,now()))`,
+		a.WorkspaceID, a.Seq, a.EntityType, a.EntityID, a.Op, a.SchemaV, a.Payload, a.ActorID, automationRuleFrom(ctx), actionTimeFrom(ctx))
 	if err != nil {
 		return err
 	}

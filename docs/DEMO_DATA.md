@@ -2,8 +2,15 @@
 
 A demo site is built from a scenario: one JSON document that declares a
 company's people, projects, work, releases, deliveries, service requests and
-knowledge. `demo/company.json` is the company the repository ships; applying it
-gives a site with three months of history behind it.
+knowledge. `demo/company.json` is the company the repository ships: Northwind, a business
+that has been running for three years. Applying it gives a site with that
+history behind it -- 37 people in eight teams, nine projects, hundreds of
+sprints and releases, thousands of pieces of work with the worklogs, comments
+and deployments that went with them, a support desk with years of requests,
+and four dashboards a site like it would keep: delivery health (the DORA
+metrics and the deployments behind them), this sprint, support and operations,
+and each person's own work. Building it takes a few minutes, because every
+piece of it is written through the same commands a person's clicks would run.
 
 ```bash
 make demo                                          # apply demo/company.json
@@ -92,10 +99,38 @@ show.
 | `customFields` | Fields the work uses, with options for select lists |
 | `projects` | Projects with their type and template, components, versions, a board with its sprints, and a service desk with agents and request types |
 | `workItems` | Work with its parent, sprint, versions, labels, estimates and field values, plus `events` — the transitions, comments, worklogs, assignments, links, watches and votes that happened to it |
-| `deployments` | Deliveries to environments, which the delivery (DORA) report counts ([REPORTS.md](REPORTS.md)) |
+| `deployments`, `commits` | Deliveries to environments and the changes they carried, which the delivery (DORA) report counts: deployments give the frequency and the failure rate, and commits paired with them give the lead time ([REPORTS.md](REPORTS.md)) |
+| `plans` | Cross-project plans, and the teams that work in them |
 | `service` | Customer organizations and the requests they raised, with their conversation and satisfaction rating |
 | `wiki` | Spaces, page trees, blog posts and comments |
-| `filters`, `dashboards` | The searches people saved, and the dashboards they keep, with the gadgets on them |
+| `filters`, `dashboards` | The searches people saved, and the dashboards they keep, with the gadgets on them. A gadget names its `type` (the catalog key without `com.zzira:`) and whatever that kind reads: a `project` and `days` window, a scrum `board`, a saved `filter` or `jql`, a `groupBy` and `yGroupBy`, `dateField` or `cumulative` |
+
+## Generated history
+
+Three years of a company is not something anybody writes out by hand, so the
+scenario declares the *shape* of its history and the generator writes it:
+
+```json
+"generate": {
+  "seed": 20260922, "days": 1092, "sprintDays": 14,
+  "teams": [{ "name": "Payments", "members": ["ravi", "ines"], "projects": ["pay"] }],
+  "projects": [{ "project": "pay", "board": "pay-board", "workPerSprint": 9,
+                 "releaseEvery": 3, "deploymentsPerWeek": 5, "failureRate": 0.07,
+                 "bugShare": 0.3, "themes": ["card payments", "refunds"] }],
+  "service": { "project": "help", "requestsPerWeek": 6, "incidentShare": 0.18 },
+  "knowledge": { "space": "ENG", "pagesPerMonth": 2.5, "postsPerQuarter": 2 }
+}
+```
+
+- The same `seed` gives the same company every time, so a test can be written
+  against it.
+- Generated history fills the years *before* whatever the scenario declares by
+  hand: a curated sprint or release is the recent, readable part, and the
+  generator never runs a second sprint alongside it.
+- Generated releases are numbered above the highest version declared by hand,
+  so the two never collide.
+- Expanding consumes the plan: the scenario that reaches the applier has every
+  sprint, release, work item, deployment, commit, request and page declared.
 
 Every entity has an `id` that the rest of the document refers to: a work item
 names its `parent` and `sprint`, a deployment names the `workItems` it carried,

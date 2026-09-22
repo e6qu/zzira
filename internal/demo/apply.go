@@ -5,8 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/sync/errgroup"
+	"os"
 	"slices"
+	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -54,17 +59,16 @@ type Applier struct {
 	// so a re-run keeps it rather than raising it twice.
 	existing map[string]string
 	spaces   map[string]string
-	stamps   []stamp
-	ordinal  int
+	// ordinal orders the writes that share a day, so a day's history reads
+	// in the order it happened.
+	ordinal int
+	// mutex guards what several projects' histories touch at once: the work
+	// they have raised, and the ordinal that orders a day.
+	mutex sync.Mutex
 }
 
 // stamp records that everything written between two action sequences happened
 // at a moment in the scenario's history.
-type stamp struct {
-	from, to int64
-	at       time.Time
-}
-
 // Apply builds the scenario's site and returns how to sign in to it.
 //
 // slug names the workspace to build into, and is the scenario's own slug
@@ -112,10 +116,39 @@ func (a *Applier) run(ctx context.Context, scenario *Scenario, slug string) (*Re
 	if err := a.readExistingWork(ctx); err != nil {
 		return nil, err
 	}
+	// Work a person wrote can refer to anything -- a parent in another
+	// project, a link to another piece of work -- so it is applied in the
+	// order it was written. Generated work refers only to its own project,
+	// so each project's years of history are applied alongside the others'.
+	// Inside a project the order still holds, which is what keeps its keys
+	// climbing with its history.
+	curated, generated := []WorkItem{}, map[string][]WorkItem{}
+	order := []string{}
 	for _, item := range scenario.WorkItems {
+		if !item.Generated {
+			curated = append(curated, item)
+			continue
+		}
+		if _, seen := generated[item.Project]; !seen {
+			order = append(order, item.Project)
+		}
+		generated[item.Project] = append(generated[item.Project], item)
+	}
+	for _, item := range curated {
 		if err := a.workItem(ctx, item); err != nil {
 			return nil, fmt.Errorf("work item %s: %w", item.ID, err)
 		}
+	}
+	// The desk's queue is its own project, so it fills while the delivery
+	// teams' years are being written: separate projects, separate keys, and
+	// the same site.
+	history, historyCtx := errgroup.WithContext(ctx)
+	history.Go(func() error { return a.generatedWork(historyCtx, order, generated) })
+	if scenario.Service != nil {
+		history.Go(func() error { return a.service(historyCtx, scenario.Service) })
+	}
+	if err := history.Wait(); err != nil {
+		return nil, err
 	}
 	// Sprints start and close once their work is in them, and versions ship
 	// once the work that went into them is done, as they do in a real site.
@@ -128,15 +161,17 @@ func (a *Applier) run(ctx context.Context, scenario *Scenario, slug string) (*Re
 	if err := a.deployments(ctx, scenario.Deployments); err != nil {
 		return nil, err
 	}
-	if scenario.Service != nil {
-		if err := a.service(ctx, scenario.Service); err != nil {
-			return nil, err
-		}
+	if err := a.commits(ctx, scenario.Commits); err != nil {
+		return nil, err
 	}
+
 	if scenario.Wiki != nil {
 		if err := a.wiki(ctx, scenario.Wiki); err != nil {
 			return nil, err
 		}
+	}
+	if err := a.teamsAndPlans(ctx, scenario); err != nil {
+		return nil, err
 	}
 	if err := a.filtersAndDashboards(ctx, scenario); err != nil {
 		return nil, err
@@ -149,30 +184,17 @@ func (a *Applier) run(ctx context.Context, scenario *Scenario, slug string) (*Re
 
 // at runs one piece of the scenario and records when it happened, so the
 // retiming pass can move its action log entries into the past.
-func (a *Applier) at(ctx context.Context, day int, write func() error) error {
-	before, err := a.sequence(ctx)
-	if err != nil {
-		return err
-	}
-	if err := write(); err != nil {
-		return err
-	}
-	after, err := a.sequence(ctx)
-	if err != nil {
-		return err
-	}
-	if after > before {
-		a.ordinal++
-		a.stamps = append(a.stamps, stamp{from: before, to: after, at: a.Clock.At(day, a.ordinal)})
-	}
-	return nil
-}
-
-// sequence reads the workspace's action sequence.
-func (a *Applier) sequence(ctx context.Context) (int64, error) {
-	var seq int64
-	err := a.Store.Pool.QueryRow(ctx, `SELECT COALESCE(max(seq),0) FROM actions WHERE workspace_id=$1`, a.workspaceID).Scan(&seq)
-	return seq, err
+func (a *Applier) at(ctx context.Context, day int, write func(context.Context) error) error {
+	a.mutex.Lock()
+	a.ordinal++
+	ordinal := a.ordinal
+	a.mutex.Unlock()
+	// The write carries the moment it happened into the action log, so the
+	// history reads correctly as it is written. Bracketing each write with
+	// the workspace's action sequence and rewriting the range afterwards
+	// cost two queries a write and could never be done with more than one
+	// write in flight.
+	return write(store.WithActionTime(ctx, a.Clock.At(day, ordinal)))
 }
 
 // workspace finds or creates the site the scenario describes, under the slug
@@ -510,12 +532,29 @@ func sprintNamed(sprints []*models.Sprint, name string) *models.Sprint {
 // startSprints moves each sprint into the state the scenario declares, once
 // its work is in it: Jira starts a sprint with its scope, and completing one
 // moves unfinished work out.
+// sprintStartDay is when a sprint began, for ordering; one with no start day
+// sorts first, as it is the oldest thing a scenario can say about it.
+func sprintStartDay(sprint Sprint) int {
+	if sprint.StartDay == nil {
+		return -1 << 30
+	}
+	return *sprint.StartDay
+}
+
 func (a *Applier) startSprints(ctx context.Context, scenario *Scenario) error {
 	for _, project := range scenario.Projects {
 		if project.Board == nil {
 			continue
 		}
-		for _, sprint := range project.Board.Sprints {
+		// Sprints run in the order they happened, whatever order the scenario
+		// lists them in: a site with parallel sprints off allows one active
+		// sprint at a time, so starting an older sprint while a newer one is
+		// still running is refused -- correctly.
+		ordered := append([]Sprint(nil), project.Board.Sprints...)
+		sort.SliceStable(ordered, func(first, second int) bool {
+			return sprintStartDay(ordered[first]) < sprintStartDay(ordered[second])
+		})
+		for _, sprint := range ordered {
 			state := sprint.State
 			if state == "" || state == "future" {
 				continue
@@ -540,7 +579,7 @@ func (a *Applier) startSprints(ctx context.Context, scenario *Scenario) error {
 			if sprint.StartDay != nil {
 				day = *sprint.StartDay
 			}
-			if err := a.at(ctx, day, func() error {
+			if err := a.at(ctx, day, func(ctx context.Context) error {
 				_, _, err := a.Store.UpdateSprint(ctx, a.admin, a.workspaceID, created.ID, update)
 				return err
 			}); err != nil {
@@ -555,7 +594,7 @@ func (a *Applier) startSprints(ctx context.Context, scenario *Scenario) error {
 			if sprint.EndDay != nil {
 				closeDay = *sprint.EndDay
 			}
-			if err := a.at(ctx, closeDay, func() error {
+			if err := a.at(ctx, closeDay, func(ctx context.Context) error {
 				_, _, err := a.Store.UpdateSprint(ctx, a.admin, a.workspaceID, created.ID, closing)
 				return err
 			}); err != nil {
@@ -580,7 +619,7 @@ func (a *Applier) releaseVersions(ctx context.Context, scenario *Scenario) error
 			if version.ReleaseDay != nil {
 				day = *version.ReleaseDay
 			}
-			if err := a.at(ctx, day, func() error {
+			if err := a.at(ctx, day, func(ctx context.Context) error {
 				_, err := a.Store.SaveVersion(ctx, a.workspaceID, a.admin, a.projects[project.ID].ID, saved.ID,
 					store.VersionUpdate{Released: &released})
 				return err
@@ -624,7 +663,9 @@ func (a *Applier) workItem(ctx context.Context, item WorkItem) error {
 		if err != nil {
 			return fmt.Errorf("read the work already raised for %q: %w", item.Summary, err)
 		}
+		a.mutex.Lock()
 		a.items[item.ID] = found
+		a.mutex.Unlock()
 		return nil
 	}
 	fields := map[string]json.RawMessage{}
@@ -667,7 +708,7 @@ func (a *Applier) workItem(ctx context.Context, item WorkItem) error {
 		parent = a.items[item.Parent].ID
 	}
 	var created *models.Issue
-	if err := a.at(ctx, item.CreatedDay, func() error {
+	if err := a.at(ctx, item.CreatedDay, func(ctx context.Context) error {
 		issue, _, err := a.Commands.CreateIssue(ctx, commands.CreateIssueInput{
 			ActorID: actor, ReporterID: reporter, WorkspaceID: a.workspaceID, ProjectIDOrKey: project.ID,
 			Summary: item.Summary, Description: item.Description, IssueTypeID: item.Type,
@@ -679,10 +720,12 @@ func (a *Applier) workItem(ctx context.Context, item WorkItem) error {
 	}); err != nil {
 		return err
 	}
+	a.mutex.Lock()
 	a.items[item.ID] = created
+	a.mutex.Unlock()
 	if item.Sprint != "" {
 		sprint := a.sprints[item.Sprint]
-		if err := a.at(ctx, item.CreatedDay, func() error {
+		if err := a.at(ctx, item.CreatedDay, func(ctx context.Context) error {
 			rank, err := a.Store.NextSprintRank(ctx, sprint.ID)
 			if err != nil {
 				return err
@@ -701,13 +744,47 @@ func (a *Applier) workItem(ctx context.Context, item WorkItem) error {
 	return nil
 }
 
+// demoConcurrency is how many projects' histories are applied at once. The
+// work is database-bound, and every write takes the workspace's action
+// sequence, so past a handful of writers the site spends its time waiting on
+// itself rather than working.
+func demoConcurrency() int {
+	if value := os.Getenv("ZZIRA_DEMO_CONCURRENCY"); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+	return 4
+}
+
+// generatedWork applies each project's generated history, one project at a
+// time within the project and every project at once across them.
+func (a *Applier) generatedWork(ctx context.Context, order []string, byProject map[string][]WorkItem) error {
+	group, groupCtx := errgroup.WithContext(ctx)
+	// A site's database has a connection pool behind it, and a demo that
+	// opens more work than the pool can carry just waits differently.
+	group.SetLimit(demoConcurrency())
+	for _, project := range order {
+		items := byProject[project]
+		group.Go(func() error {
+			for _, item := range items {
+				if err := a.workItem(groupCtx, item); err != nil {
+					return fmt.Errorf("work item %s: %w", item.ID, err)
+				}
+			}
+			return nil
+		})
+	}
+	return group.Wait()
+}
+
 // event replays one thing that happened to a work item.
 func (a *Applier) event(ctx context.Context, issue *models.Issue, event Event) error {
 	actor := a.people[event.Actor]
 	if actor == "" {
 		actor = a.admin
 	}
-	return a.at(ctx, event.Day, func() error {
+	return a.at(ctx, event.Day, func(ctx context.Context) error {
 		switch event.Kind {
 		case "transition":
 			return a.transition(ctx, actor, issue, event)
@@ -915,9 +992,15 @@ func (a *Applier) dashboard(ctx context.Context, declared Dashboard, filters map
 		if err != nil {
 			return fmt.Errorf("gadget %s: %w", gadget.Type, err)
 		}
-		config := models.GadgetConfig{FilterID: filters[gadget.Filter]}
+		config := models.GadgetConfig{
+			FilterID: filters[gadget.Filter], JQL: gadget.JQL, GroupBy: gadget.GroupBy, YGroupBy: gadget.YGroupBy,
+			Days: gadget.Days, DateField: gadget.DateField, Cumulative: gadget.Cumulative,
+		}
 		if gadget.Project != "" {
 			config.ProjectKey = a.projects[gadget.Project].Key
+		}
+		if gadget.Board != "" {
+			config.BoardID = a.boards[gadget.Board].ID
 		}
 		if err := store.NormalizeGadgetConfig(&config); err != nil {
 			return fmt.Errorf("gadget %s: %w", gadget.Type, err)
@@ -1042,11 +1125,13 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 			if err != nil {
 				return fmt.Errorf("read the request already raised for %q: %w", request.Summary, err)
 			}
+			a.mutex.Lock()
 			a.items[request.ID] = found
+			a.mutex.Unlock()
 			continue
 		}
 		var raised *models.ServiceRequest
-		if err := a.at(ctx, request.CreatedDay, func() error {
+		if err := a.at(ctx, request.CreatedDay, func(ctx context.Context) error {
 			created, err := a.Commands.CreateServiceRequest(ctx, commands.CreateServiceRequestInput{
 				ActorID: customer, WorkspaceID: a.workspaceID, ServiceDeskID: deskID,
 				RequestTypeID: a.requestType[request.RequestType], CustomerID: customer, Channel: "portal",
@@ -1061,7 +1146,9 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 		if err != nil {
 			return err
 		}
+		a.mutex.Lock()
 		a.items[request.ID] = issue
+		a.mutex.Unlock()
 		for _, event := range request.Events {
 			if err := a.event(ctx, issue, event); err != nil {
 				return fmt.Errorf("request %s %s: %w", request.ID, event.Kind, err)
@@ -1072,7 +1159,7 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 			if len(request.Events) > 0 {
 				day = request.Events[len(request.Events)-1].Day
 			}
-			if err := a.at(ctx, day, func() error {
+			if err := a.at(ctx, day, func(ctx context.Context) error {
 				_, err := a.Store.PutServiceRequestFeedback(ctx, a.workspaceID, issue.ID, customer, "csat", request.Satisfaction, request.Feedback)
 				return err
 			}); err != nil {
@@ -1127,7 +1214,7 @@ func (a *Applier) wiki(ctx context.Context, declared *Wiki) error {
 			if len(written) > 0 {
 				continue
 			}
-			if err := a.at(ctx, post.CreatedDay, func() error {
+			if err := a.at(ctx, post.CreatedDay, func(ctx context.Context) error {
 				_, err := a.Store.SaveWikiBlogPost(ctx, a.workspaceID, author, models.WikiBlogPost{
 					SpaceID: created.ID, Title: post.Title, Status: "current",
 					Body: models.WikiBody{Representation: "storage", Value: post.Body},
@@ -1164,7 +1251,7 @@ func (a *Applier) pages(ctx context.Context, spaceID, parentID string, pages []P
 			}
 			continue
 		}
-		if err := a.at(ctx, page.CreatedDay, func() error {
+		if err := a.at(ctx, page.CreatedDay, func(ctx context.Context) error {
 			created, err := a.Commands.SaveWikiPage(ctx, a.workspaceID, author, models.WikiPage{
 				SpaceID: spaceID, ParentID: parentID, Title: page.Title, Status: "current",
 				Body: models.WikiBody{Representation: "storage", Value: page.Body},
@@ -1179,7 +1266,7 @@ func (a *Applier) pages(ctx context.Context, spaceID, parentID string, pages []P
 			if commenter == "" {
 				commenter = a.admin
 			}
-			if err := a.at(ctx, comment.Day, func() error {
+			if err := a.at(ctx, comment.Day, func(ctx context.Context) error {
 				_, err := a.Commands.CreateWikiFooterComment(ctx, a.workspaceID, commenter, models.WikiFooterComment{
 					PageID: saved.ID, Body: models.WikiBody{Representation: "storage", Value: comment.Body},
 				})
@@ -1205,13 +1292,8 @@ func (a *Applier) retime(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	for _, stamp := range a.stamps {
-		if _, err := tx.Exec(ctx, `UPDATE actions SET created_at=$4
-			WHERE workspace_id=$1 AND seq>$2 AND seq<=$3`, a.workspaceID, stamp.from, stamp.to, stamp.at); err != nil {
-			return err
-		}
-	}
-	// Each row takes the time of the action that made it.
+	// Each row takes the time of the action that made it; the log itself was
+	// written with those times, so there is nothing to move.
 	for _, statement := range []string{
 		`UPDATE issues i SET created_at=first.created_at
 		   FROM (SELECT entity_id, min(created_at) AS created_at FROM actions
@@ -1242,4 +1324,155 @@ func (a *Applier) retime(ctx context.Context) error {
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// teamsAndPlans builds the company's delivery teams and the plans that
+// schedule them: a site with years of work in it is also a site somebody is
+// planning, and a plan with no teams in it plans nothing.
+func (a *Applier) teamsAndPlans(ctx context.Context, scenario *Scenario) error {
+	teams := map[string]string{}
+	if scenario.Generate != nil {
+		for _, declared := range scenario.Generate.Teams {
+			existing, err := a.Store.AtlassianTeams(ctx, a.workspaceID)
+			if err != nil {
+				return err
+			}
+			id := ""
+			for _, found := range existing {
+				if found.Name == declared.Name {
+					id = found.ID
+					break
+				}
+			}
+			if id == "" {
+				id, err = a.Store.CreateAtlassianTeam(ctx, a.workspaceID, a.admin, declared.Name,
+					fmt.Sprintf("%s, who work on %s", declared.Name, strings.Join(declared.Projects, ", ")))
+				if err != nil {
+					return fmt.Errorf("team %s: %w", declared.Name, err)
+				}
+			}
+			teams[declared.Name] = id
+			for _, member := range declared.Members {
+				if err := a.Store.SetAtlassianTeamMember(ctx, a.workspaceID, id, a.people[member], true); err != nil {
+					return fmt.Errorf("team %s member %s: %w", declared.Name, member, err)
+				}
+			}
+		}
+	}
+	for _, declared := range scenario.Plans {
+		plans, _, err := a.Store.Plans(ctx, a.workspaceID, false, false, 0, 100)
+		if err != nil {
+			return err
+		}
+		existing := int64(0)
+		for _, found := range plans {
+			if found.Name == declared.Name {
+				existing = found.ID
+				break
+			}
+		}
+		if existing != 0 {
+			continue
+		}
+		plan := store.Plan{
+			Name: declared.Name, LeadAccountID: a.people[declared.Lead], Status: "Active",
+			Scheduling: store.PlanScheduling{Estimation: "StoryPoints"},
+		}
+		for _, project := range declared.Projects {
+			id, err := strconv.ParseInt(a.projects[project].ID, 10, 64)
+			if err != nil {
+				return fmt.Errorf("plan %s: project %s: %w", declared.Name, project, err)
+			}
+			plan.IssueSources = append(plan.IssueSources, store.PlanIssueSource{Type: "Project", Value: id})
+		}
+		for _, board := range declared.Boards {
+			id, err := strconv.ParseInt(a.boards[board].ID, 10, 64)
+			if err != nil {
+				return fmt.Errorf("plan %s: board %s: %w", declared.Name, board, err)
+			}
+			plan.IssueSources = append(plan.IssueSources, store.PlanIssueSource{Type: "Board", Value: id})
+		}
+		store.NormalizePlan(&plan)
+		planID, err := a.Store.CreatePlan(ctx, a.workspaceID, a.admin, plan)
+		if err != nil {
+			return fmt.Errorf("plan %s: %w", declared.Name, err)
+		}
+		for _, team := range declared.Teams {
+			if _, err := a.Store.SavePlanTeam(ctx, a.workspaceID, planID, store.PlanTeam{
+				AtlassianTeamID: teams[team], PlanningStyle: "Scrum",
+			}, true); err != nil {
+				return fmt.Errorf("plan %s: team %s: %w", declared.Name, team, err)
+			}
+		}
+	}
+	return nil
+}
+
+// commits records what was written before each delivery, so the delivery
+// report can say how long a change took to reach production. They are written
+// straight to the development store, as a source control integration would
+// send them.
+func (a *Applier) commits(ctx context.Context, declared []Commit) error {
+	if len(declared) == 0 {
+		return nil
+	}
+	repositories := map[string]*models.DevelopmentRepository{}
+	order := []string{}
+	for index, commit := range declared {
+		name := commit.Repository
+		if name == "" {
+			name = "zzira"
+		}
+		repository, known := repositories[name]
+		if !known {
+			payload, err := json.Marshal(map[string]any{
+				"id": name, "name": name, "url": "https://git.example.test/" + name, "updateSequenceId": 1,
+			})
+			if err != nil {
+				return err
+			}
+			repository = &models.DevelopmentRepository{
+				ID: name, UpdateSequenceID: 1, Name: name,
+				URL: "https://git.example.test/" + name, Payload: payload, Properties: json.RawMessage(`{}`),
+			}
+			repositories[name] = repository
+			order = append(order, name)
+		}
+		keys := make([]string, 0, len(commit.WorkItems))
+		for _, item := range commit.WorkItems {
+			if found := a.items[item]; found != nil {
+				keys = append(keys, found.Key)
+			}
+		}
+		if len(keys) == 0 {
+			continue
+		}
+		at := a.Clock.At(commit.Day, index)
+		message := commit.Message
+		if message == "" {
+			message = "Change " + commit.ID
+		}
+		payload, err := json.Marshal(map[string]any{
+			"id": commit.ID, "displayId": commit.ID, "message": message, "updateSequenceId": index + 1,
+			"url":             "https://git.example.test/" + name + "/commit/" + commit.ID,
+			"authorTimestamp": at.Format(time.RFC3339), "issueKeys": keys,
+		})
+		if err != nil {
+			return err
+		}
+		occurred := at
+		repository.Entities = append(repository.Entities, models.DevelopmentEntity{
+			RepositoryID: name, Type: "commit", ID: commit.ID, UpdateSequenceID: int64(index + 1),
+			IssueKeys: keys, Name: message, URL: "https://git.example.test/" + name + "/commit/" + commit.ID,
+			OccurredAt: &occurred, Payload: payload,
+		})
+	}
+	written := make([]models.DevelopmentRepository, 0, len(order))
+	for _, name := range order {
+		written = append(written, *repositories[name])
+	}
+	if _, err := a.Store.UpsertDevelopmentRepositories(ctx, a.workspaceID, written); err != nil {
+		return fmt.Errorf("record commits: %w", err)
+	}
+	return nil
 }

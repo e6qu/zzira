@@ -33,9 +33,8 @@ type bulkCustomField struct {
 func (field bulkCustomField) InputName() string { return "valueCustom_" + field.ID }
 
 // bulkCustomFieldKind maps a field's create-metadata type to what the editor
-// can render. An empty answer is a field the editor leaves alone -- a
-// cascading select, a user or group picker, rich text -- which the REST bulk
-// edit still takes.
+// can render. An empty answer is a field the editor leaves alone, which the
+// REST bulk edit still takes.
 func bulkCustomFieldKind(field models.CreateFieldMeta) string {
 	switch field.Type {
 	case "string":
@@ -52,12 +51,56 @@ func bulkCustomFieldKind(field models.CreateFieldMeta) string {
 		return "singleSelect"
 	case "options":
 		return "multiSelect"
+	case "option-with-child":
+		// A cascading select's choices are its parents, each followed by its
+		// children, exactly as the single-item editor lists them.
+		return "cascadingSelect"
+	case "user":
+		return "user"
+	case "users":
+		return "multiUser"
+	case "group":
+		return "group"
+	case "groups":
+		return "multiGroup"
+	case "team":
+		return "team"
+	case "projectpicker":
+		return "project"
+	case "version":
+		return "version"
+	case "versions":
+		return "multiVersion"
 	case "array":
 		return "labels"
 	default:
 		return ""
 	}
 }
+
+// bulkCustomFieldChooses reports whether the kind is picked from a list the
+// editor offers rather than typed into a box.
+func bulkCustomFieldChooses(kind string) bool {
+	switch kind {
+	case "singleSelect", "multiSelect", "cascadingSelect", "user", "multiUser", "group", "multiGroup",
+		"team", "project", "version", "multiVersion":
+		return true
+	}
+	return false
+}
+
+// MultiValued reports whether the field takes several values at once, which
+// is how the page decides between a select and a multiple select.
+func (field bulkCustomField) MultiValued() bool {
+	switch field.Kind {
+	case "multiSelect", "multiUser", "multiGroup", "multiVersion":
+		return true
+	}
+	return false
+}
+
+// Chooses reports whether this field is picked from the options beside it.
+func (field bulkCustomField) Chooses() bool { return bulkCustomFieldChooses(field.Kind) }
 
 // bulkCustomFields are the custom fields shared by every work type of one
 // project, ordered by name so the panel reads the same way twice.
@@ -92,9 +135,40 @@ func (h *Handler) bulkCustomFields(ctx context.Context, workspaceID, userID, pro
 		}
 	}
 	fields := make([]bulkCustomField, 0, len(shared))
+	cascading := false
 	for id, field := range shared {
-		if seen[id] == len(project.IssueTypes) {
-			fields = append(fields, field)
+		if seen[id] != len(project.IssueTypes) {
+			continue
+		}
+		cascading = cascading || field.Kind == "cascadingSelect"
+		fields = append(fields, field)
+	}
+	if cascading {
+		// A cascading select is chosen as one value -- an option, or an
+		// option and one of its children -- so its list is the parents each
+		// followed by their children, as the work item's own editor reads it.
+		catalog, err := h.Store.CustomFieldOptionCatalog(ctx, workspaceID, projectID, project.IssueTypes[0].ID)
+		if err != nil {
+			return nil, err
+		}
+		for index, field := range fields {
+			if field.Kind != "cascadingSelect" {
+				continue
+			}
+			cascade := []models.CreateFieldOption{}
+			for _, parent := range field.Options {
+				cascade = append(cascade, parent)
+				children := catalog[field.ID].Children[parent.ID]
+				names := make([]string, 0, len(children))
+				for name := range children {
+					names = append(names, name)
+				}
+				sort.Strings(names)
+				for _, name := range names {
+					cascade = append(cascade, models.CreateFieldOption{ID: parent.ID + ":" + children[name], Name: parent.Name + " › " + name})
+				}
+			}
+			fields[index].Options = cascade
 		}
 	}
 	sort.Slice(fields, func(i, j int) bool {
@@ -159,6 +233,53 @@ func bulkCustomFieldOperation(r *http.Request, field bulkCustomField) (store.Bul
 			options = append(options, map[string]string{"id": value})
 		}
 		return encode(options)
+	case "cascadingSelect":
+		// The option list names a child as "parent:child", as the work item
+		// editor's own cascading select does.
+		if single == "" {
+			return encode(nil)
+		}
+		parent, child, _ := strings.Cut(single, ":")
+		cascade := map[string]any{"id": strings.TrimSpace(parent)}
+		if child = strings.TrimSpace(child); child != "" {
+			cascade["child"] = map[string]string{"id": child}
+		}
+		return encode(cascade)
+	case "user":
+		if single == "" {
+			return encode(nil)
+		}
+		return encode(map[string]string{"accountId": single})
+	case "multiUser":
+		people := make([]map[string]string, 0, len(values))
+		for _, value := range values {
+			people = append(people, map[string]string{"accountId": value})
+		}
+		return encode(people)
+	case "team", "project", "version":
+		// Each of these names one thing by its id, and an empty box clears
+		// the field as it does everywhere else in this editor.
+		if single == "" {
+			return encode(nil)
+		}
+		return encode(map[string]string{"id": single})
+	case "multiVersion":
+		versions := make([]map[string]string, 0, len(values))
+		for _, value := range values {
+			versions = append(versions, map[string]string{"id": value})
+		}
+		return encode(versions)
+	case "group":
+		if single == "" {
+			return encode(nil)
+		}
+		return encode(map[string]string{"groupId": single})
+	case "multiGroup":
+		groups := make([]map[string]string, 0, len(values))
+		for _, value := range values {
+			groups = append(groups, map[string]string{"groupId": value})
+		}
+		return encode(groups)
 	case "labels":
 		return encode(values)
 	case "dateTime":

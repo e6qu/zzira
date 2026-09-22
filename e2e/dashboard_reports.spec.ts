@@ -141,3 +141,86 @@ test('project and sprint report gadgets show recent work, age and sprint progres
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+// Delivery belongs on a dashboard, not only on a report page: the four DORA
+// metrics and the deployments behind them.
+test('delivery gadgets draw DORA metrics and deployment frequency', async ({ page }) => {
+  await page.goto('/login');
+  await page.fill('#login-email', 'demo@zzira.dev');
+  await page.fill('#login-password', 'demo1234');
+  await page.click('button[type=submit]');
+  await expect(page).toHaveURL('/');
+
+  const stamp = Date.now();
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  // Work, a commit on it, and a production deployment that shipped it: what
+  // the four metrics are read from.
+  const created = await page.request.post('/rest/api/3/issue', {
+    headers, data: { fields: { project: { key: 'ZZ' }, summary: `Delivery gadget work ${stamp}`, issuetype: { name: 'Task' } } },
+  });
+  expect(created.status()).toBe(201);
+  const key = (await created.json()).key as string;
+  const shipped = new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString();
+  expect((await page.request.post('/rest/devinfo/0.10/bulk', {
+    headers,
+    data: {
+      repositories: [{
+        id: `repo-${stamp}`, name: 'payments', url: 'https://git.example/payments', updateSequenceId: 1,
+        commits: [{
+          id: `c${stamp}`, displayId: `c${stamp}`, message: `Ship ${key}`, url: 'https://git.example/payments/commit',
+          updateSequenceId: 1, issueKeys: [key],
+          authorTimestamp: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+        }],
+      }],
+    },
+  })).status()).toBe(202);
+  expect((await page.request.post('/rest/deployments/0.1/bulk', {
+    headers,
+    data: {
+      deployments: [{
+        deploymentSequenceNumber: stamp, updateSequenceNumber: 1, issueKeys: [key],
+        displayName: `Release ${stamp}`, url: 'https://git.example/payments/deploy', description: 'Shipped',
+        lastUpdated: shipped, state: 'successful',
+        pipeline: { id: 'release', displayName: 'Release', url: 'https://git.example/payments/pipeline' },
+        environment: { id: 'prod', displayName: 'Production', type: 'production' },
+      }],
+    },
+  })).status()).toBe(202);
+
+  await page.goto('/dashboards');
+  await page.getByLabel('Dashboard name', { exact: true }).fill(`Delivery ${stamp}`);
+  await page.getByRole('button', { name: 'Create dashboard', exact: true }).click();
+  await expect(page).toHaveURL(/\/dashboards\/\d+\?add=1$/);
+
+  await page.getByRole('button', { name: 'Add DORA metrics', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Configure DORA metrics' })).toBeVisible();
+  await page.getByLabel('Project', { exact: true }).selectOption('ZZ');
+  await page.getByLabel('Time window').selectOption('30');
+  await accessible(page);
+  await page.getByRole('button', { name: 'Save gadget report' }).click();
+  const dora = page.getByRole('region', { name: 'DORA metrics' });
+  await expect(dora).toContainText('production deployment');
+  await expect(dora).toContainText('Deployment frequency');
+  await expect(dora).toContainText('Lead time for changes');
+  await expect(dora).toContainText('Change failure rate');
+  await expect(dora).toContainText('Time to restore service');
+  // The gadget says what it counted through rather than implying everything.
+  await expect(dora).toContainText(/Counting \d+ pipelines? deploying to production/);
+
+  await page.getByRole('link', { name: 'Add gadget', exact: true }).click();
+  await page.getByRole('button', { name: 'Add Deployment frequency', exact: true }).click();
+  await page.getByLabel('Project', { exact: true }).selectOption('ZZ');
+  await page.getByLabel('Time window').selectOption('7');
+  await page.getByRole('button', { name: 'Save gadget report' }).click();
+  // "Deployment frequency" is also one of the DORA gadget's metrics, so the
+  // gadget is taken by its own region rather than by the words in it.
+  const frequency = page.getByRole('region', { name: 'Deployment frequency' });
+  // Other specs ship to this site too, so what matters is that this
+  // deployment is counted, not that it is the only one.
+  await expect(frequency).toContainText(/[1-9]\d* successful/);
+  await frequency.getByText('View daily counts').click();
+  const days = frequency.getByRole('table', { name: 'Production deployments by day in ZZ' }).locator('tbody tr');
+  expect(await days.count()).toBeGreaterThanOrEqual(7);
+  await expect(days.filter({ hasText: /[1-9]/ }).first()).toBeVisible();
+  await accessible(page);
+});

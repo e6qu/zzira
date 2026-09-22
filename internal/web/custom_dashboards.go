@@ -458,6 +458,10 @@ type gadgetReport struct {
 	DaysRemaining   *daysRemainingView
 	SprintHealth    *models.SprintHealth
 	RoadMap         *roadMapView
+	// DORA and DeploymentFrequency are what a project delivered: the four
+	// delivery metrics, and the deployments behind the first of them.
+	DORA       *models.DORAReport
+	Deployment *deploymentFrequencyView
 }
 
 // gadgetReport draws a report gadget from its configured project or board,
@@ -473,7 +477,8 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 	}
 	const failed = "This report could not be calculated."
 	switch moduleKey {
-	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since", "com.zzira:road-map":
+	case "com.zzira:created-vs-resolved", "com.zzira:resolution-time", "com.zzira:recently-created", "com.zzira:average-age", "com.zzira:time-since", "com.zzira:road-map",
+		"com.zzira:dora-metrics", "com.zzira:deployment-frequency":
 		if config.ProjectKey == "" {
 			return nil, "Configure this gadget to choose a project."
 		}
@@ -502,6 +507,22 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 				return nil, failed
 			}
 			report.RecentlyCreated = newRecentlyCreatedView(data, look.DateDay)
+		case "com.zzira:dora-metrics":
+			data, err := h.Store.DORAReport(ctx, ws, project.ID, userID, config.Days, now)
+			if err != nil {
+				// Quoted, because everything here but the module key comes
+				// from the site: a key with a newline in it would otherwise
+				// write a second line of its own into the log.
+				log.Printf("dashboard gadget %s for %s: %s", moduleKey, strconv.Quote(project.Key), strconv.Quote(err.Error()))
+				return nil, failed
+			}
+			report.DORA = &data
+		case "com.zzira:deployment-frequency":
+			data, err := h.Store.DeploymentFrequencyReport(ctx, ws, project.ID, userID, config.Days, "day", now)
+			if err != nil {
+				return nil, failed
+			}
+			report.Deployment = newDeploymentFrequencyView(data, look.DateDay)
 		case "com.zzira:road-map":
 			data, err := h.Store.RoadMap(ctx, ws, userID, project.ID, config.Days, now)
 			if err != nil {
