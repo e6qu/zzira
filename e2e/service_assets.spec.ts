@@ -79,6 +79,17 @@ test('service manager models assets and an agent calculates request impact', asy
   await databaseEdit.getByRole('button', { name: 'Save object' }).click();
   await expect(page.locator('#objects article').filter({ hasText: 'Checkout database' })).toContainText('1400');
 
+  // What the attributes cannot say goes in a comment, and the card keeps it
+  // with what has happened to the object.
+  const card = page.locator('#objects article').filter({ hasText: 'Checkout database' });
+  await card.locator('.service-asset-comments > summary').click();
+  await card.getByLabel('Say something about DATABASE').fill('Tier 1 because the shop stops without it.');
+  await card.getByRole('button', { name: 'Add comment' }).click();
+  const commented = page.locator('#objects article').filter({ hasText: 'Checkout database' });
+  await expect(commented.locator('.service-asset-comments')).toContainText('the shop stops without it');
+  await commented.locator('.service-asset-history > summary').click();
+  await expect(commented.locator('.service-asset-history')).toContainText('Changed capacity');
+
   // A whole inventory arrives as a file rather than one form at a time, and a
   // row whose key is already in the schema updates that object.
   const assetImport = page.locator('#import');
