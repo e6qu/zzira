@@ -217,10 +217,13 @@ func (h *Handler) SubmitBulkIssueAutomation(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "that rule does not cover this project", http.StatusForbidden)
 		return
 	}
+	// Every rule offered here has its own answers on the page, so the fields
+	// carry the rule they belong to: two rules asking "Which release?" would
+	// otherwise be one box answering for both.
 	inputs := map[string]string{}
 	for _, prompt := range h.Automation.ManualPrompts(rule) {
 		name, _ := prompt["variableName"].(string)
-		inputs[name] = strings.TrimSpace(r.PostFormValue("input_" + name))
+		inputs[name] = strings.TrimSpace(r.PostFormValue("input_" + rule.UUID + "_" + name))
 	}
 	if missing := automation.MissingManualInput(rule, inputs); missing != "" {
 		http.Error(w, "Answer "+missing+" before running this rule.", http.StatusBadRequest)

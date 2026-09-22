@@ -1055,10 +1055,11 @@ test('admin runs a manual rule over a selection in the navigator', async ({ page
     const runner = page.locator('.bulk-automation-picker');
     await runner.locator('summary').click();
     await accessible(page);
-    await runner.getByLabel('Rule').selectOption({ label: name });
-    await runner.getByLabel('Which release?').fill(`4.2`);
+    // Each rule has its own box, so the question belongs to this rule alone.
+    const box = runner.locator('fieldset').filter({ hasText: name });
+    await box.getByLabel('Which release?').fill('4.2');
     page.once('dialog', dialog => dialog.accept());
-    await runner.getByRole('button', { name: 'Run rule' }).click();
+    await box.getByRole('button', { name: `Run ${name}` }).click();
     await expect(page.getByRole('status')).toContainText(`${name} ran on 3 of 3 work items.`);
 
     // What was typed reached every one of them.

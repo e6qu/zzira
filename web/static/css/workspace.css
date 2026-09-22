@@ -844,3 +844,9 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 .metadata-translation-list { list-style:none; margin:8px 0; padding:0; display:grid; gap:6px; }
 .metadata-translation-list li { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 10px; border:1px solid var(--ds-border); border-radius:var(--ds-radius); }
 .metadata-translation-list li small { display:block; color:var(--ds-text-subtle); font-size:12px; }
+
+/* Each rule a selection can be run through gets its own box: its questions
+   and its own Run button, so two rules asking the same question do not share
+   one answer. */
+.bulk-automation-rule { display:grid; gap:6px; margin:0 0 10px; padding:10px; border:1px solid var(--ds-border); border-radius:var(--ds-radius); }
+.bulk-automation-rule legend { padding:0 4px; font-weight:600; font-size:13px; }
