@@ -18,8 +18,11 @@ type workTypesPageData struct {
 	Levels    []store.HierarchyLevel
 	Schemes   []store.IssueTypeScheme
 	Projects  []*models.Project
-	Notice    string
-	Error     string
+	// Translations is what each work type is called in the site's other
+	// languages, by work type id.
+	Translations map[string]metadataTranslationCard
+	Notice       string
+	Error        string
 }
 
 // prioritiesPageData is the priorities settings page.
@@ -30,15 +33,21 @@ type prioritiesPageData struct {
 	Projects   []*models.Project
 	// Assigned is the projects each scheme holds, keyed by scheme id.
 	Assigned map[string][]*models.Project
-	Notice   string
-	Error    string
+	// Translations is what each priority is called in the site's other
+	// languages, by priority id.
+	Translations map[string]metadataTranslationCard
+	Notice       string
+	Error        string
 }
 
 // resolutionsPageData is the resolutions settings page.
 type resolutionsPageData struct {
 	Resolutions []models.Resolution
-	Notice      string
-	Error       string
+	// Translations is what each resolution is called in the site's other
+	// languages, by resolution id.
+	Translations map[string]metadataTranslationCard
+	Notice       string
+	Error        string
 }
 
 // WorkTypesPage lists the site's work types and work type schemes.
@@ -65,16 +74,32 @@ func (h *Handler) WorkTypesPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load projects.", http.StatusInternalServerError)
 		return
 	}
+	named := make(map[string]string, len(data.WorkTypes))
+	for _, workType := range data.WorkTypes {
+		named[workType.ID] = workType.Name
+	}
+	held, err := h.Store.IssueMetadataTranslations(r.Context(), workspaceID, "issuetype")
+	if err != nil {
+		http.Error(w, "Could not load work type translations.", http.StatusInternalServerError)
+		return
+	}
+	data.Translations = metadataTranslationCards("issuetype", "/settings/work-types", named, held)
 	h.writeWorkspacePage(w, r, "page_work_types", user, workspaceID, data, "work-types", "")
 }
 
 // WorkTypesMutation creates, edits and deletes work types and their schemes.
 func (h *Handler) WorkTypesMutation(w http.ResponseWriter, r *http.Request) {
-	_, workspaceID, ok := h.requireAdminPage(w, r)
+	user, workspaceID, ok := h.requireAdminPage(w, r)
 	if !ok {
 		return
 	}
 	if !parseForm(w, r) {
+		return
+	}
+	// Naming something in another language works the same on every metadata
+	// page, so it is handled in one place.
+	if handled, notice, err := h.metadataTranslationAction(r, workspaceID, user.ID, "issuetype"); handled {
+		h.redirectMetadata(w, r, "/settings/work-types", notice, err)
 		return
 	}
 	notice, err := "", error(nil)
@@ -172,6 +197,16 @@ func (h *Handler) PrioritiesPage(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Assigned[scheme.ID] = assigned
 	}
+	named := make(map[string]string, len(data.Priorities))
+	for _, priority := range data.Priorities {
+		named[priority.ID] = priority.Name
+	}
+	held, err := h.Store.IssueMetadataTranslations(r.Context(), workspaceID, "priority")
+	if err != nil {
+		http.Error(w, "Could not load priority translations.", http.StatusInternalServerError)
+		return
+	}
+	data.Translations = metadataTranslationCards("priority", "/settings/priorities", named, held)
 	h.writeWorkspacePage(w, r, "page_priorities", user, workspaceID, data, "priorities", "")
 }
 
@@ -182,6 +217,10 @@ func (h *Handler) PrioritiesMutation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !parseForm(w, r) {
+		return
+	}
+	if handled, notice, err := h.metadataTranslationAction(r, workspaceID, user.ID, "priority"); handled {
+		h.redirectMetadata(w, r, "/settings/priorities", notice, err)
 		return
 	}
 	notice, err := "", error(nil)
@@ -283,6 +322,16 @@ func (h *Handler) ResolutionsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load resolutions.", http.StatusInternalServerError)
 		return
 	}
+	named := make(map[string]string, len(data.Resolutions))
+	for _, resolution := range data.Resolutions {
+		named[resolution.ID] = resolution.Name
+	}
+	held, err := h.Store.IssueMetadataTranslations(r.Context(), workspaceID, "resolution")
+	if err != nil {
+		http.Error(w, "Could not load resolution translations.", http.StatusInternalServerError)
+		return
+	}
+	data.Translations = metadataTranslationCards("resolution", "/settings/resolutions", named, held)
 	h.writeWorkspacePage(w, r, "page_resolutions", user, workspaceID, data, "resolutions", "")
 }
 
@@ -293,6 +342,10 @@ func (h *Handler) ResolutionsMutation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !parseForm(w, r) {
+		return
+	}
+	if handled, notice, err := h.metadataTranslationAction(r, workspaceID, user.ID, "resolution"); handled {
+		h.redirectMetadata(w, r, "/settings/resolutions", notice, err)
 		return
 	}
 	notice, err := "", error(nil)
