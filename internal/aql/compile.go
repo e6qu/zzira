@@ -20,6 +20,10 @@ type Columns struct {
 	Key        string
 	SchemaName string
 	Values     string
+	// Attributes maps an attribute's name, lower-cased, to the key its value
+	// is stored under. A filter names an attribute as the schema names it;
+	// what the value is stored under is the schema's business.
+	Attributes map[string]string
 }
 
 // DefaultColumns are the aliases the service desk's own object query uses.
@@ -100,7 +104,15 @@ func (c *compiler) column(field string) (sql string, attribute bool) {
 	case "key", "objectkey":
 		return c.columns.Key, false
 	}
+	if key, ok := c.columns.Attributes[strings.ToLower(field)]; ok {
+		return c.columns.Values + "->>" + quoteLiteral(key), true
+	}
 	return c.columns.Values + "->>" + quoteAttribute(field), true
+}
+
+// quoteLiteral writes a value as a SQL string literal.
+func quoteLiteral(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 // quoteAttribute writes an attribute name as the key it is stored under:
@@ -116,5 +128,5 @@ func quoteAttribute(name string) string {
 		}
 		return '_'
 	}, name)
-	return "'" + strings.ReplaceAll(key, "'", "''") + "'"
+	return quoteLiteral(key)
 }

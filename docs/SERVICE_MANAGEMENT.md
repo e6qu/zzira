@@ -455,11 +455,37 @@ as partial. They cover:
   and SLAs.
 - Approvals, temporary uploads and attachments, subscriptions, and feedback.
 
+## Assets filters
+
+An Assets object field on a request type's form is scoped to one schema, and
+narrowed further by an AQL filter written where the schema is chosen:
+
+```
+objectType = "Business services" AND Tier IN ("1", "2")
+"Owner" = Platform AND Runbook IS NOT EMPTY
+NOT (objectType = Vendors)
+```
+
+- `objectType` (also `type`, `schema`) is the object's schema, `Name` (also
+  `Label`) its label and `Key` its key; anything else is one of its attributes,
+  named as the schema names it or by the key it is stored under.
+- The comparisons are `=`, `!=`, `IN`, `NOT IN`, `LIKE` (contains),
+  `IS EMPTY` and `IS NOT EMPTY`, joined with `AND`, `OR`, `NOT` and brackets.
+  Values are quoted with `"` or `'`, doubling the quote to include one.
+- A filter is read when it is saved, so a form never carries one the site
+  cannot read, and a field whose filter fails offers nothing rather than
+  everything.
+- What AQL has that this does not: references between objects, functions such
+  as `objectTypeAndChildren()`, dot paths through reference attributes, and
+  `ORDER BY`.
+
 ## Gaps
 
 See [PLAN.md](../PLAN.md).
-- Assets public REST API: objects, schemas, object types, attributes, AQL
-  search, and object import or reconciliation.
+- Assets public REST API: objects, schemas, object types, attributes and
+  object import or reconciliation. AQL narrows an object field on a form
+  ([the filter below](#assets-filters)); it is not a search endpoint of its
+  own.
 - Assets object type hierarchy, typed reference attributes and AQL in JQL
   (`aqlFunction()`).
 - Request type restrictions (`RESTRICTED` returns nothing).

@@ -212,7 +212,13 @@ func (s *Store) servicePortalAssetObjects(ctx context.Context, workspaceID, serv
 		if err != nil {
 			return nil, fmt.Errorf("the Assets filter %q: %w", filter, err)
 		}
-		compiled := query.Compile(aql.DefaultColumns(), len(args)+1)
+		// A filter names an attribute as its schema names it, and the value
+		// is stored under whatever key the schema gave it.
+		columns := aql.DefaultColumns()
+		if columns.Attributes, err = s.serviceAssetAttributeKeys(ctx, serviceDeskID); err != nil {
+			return nil, err
+		}
+		compiled := query.Compile(columns, len(args)+1)
 		where, args = compiled.Where, append(args, compiled.Args...)
 	}
 	rows, err := s.Pool.Query(ctx, `SELECT o.id::text,o.label,s.name
@@ -234,6 +240,35 @@ func (s *Store) servicePortalAssetObjects(ctx context.Context, workspaceID, serv
 		objects = append(objects, option)
 	}
 	return objects, rows.Err()
+}
+
+// serviceAssetAttributeKeys is what each attribute of a desk's schemas is
+// called and what it is stored under, so a filter can name an attribute the
+// way the schema does.
+func (s *Store) serviceAssetAttributeKeys(ctx context.Context, serviceDeskID string) (map[string]string, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT attributes FROM service_asset_schemas WHERE service_desk_id=$1`, serviceDeskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	keys := map[string]string{}
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		attributes := []models.ServiceAssetAttribute{}
+		if err := json.Unmarshal(raw, &attributes); err != nil {
+			return nil, fmt.Errorf("read the schema's attributes: %w", err)
+		}
+		for _, attribute := range attributes {
+			if attribute.Name == "" || attribute.Key == "" {
+				continue
+			}
+			keys[strings.ToLower(attribute.Name)] = attribute.Key
+		}
+	}
+	return keys, rows.Err()
 }
 
 // ServiceAssetObjectInProject finds an Assets object of the service desk of a
