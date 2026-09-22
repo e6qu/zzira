@@ -324,6 +324,11 @@ type Organization struct {
 	ID      string   `json:"id"`
 	Name    string   `json:"name"`
 	Members []string `json:"members,omitempty"`
+	// Desks are the scenario ids of the service projects this organization is
+	// a customer of. A desk that serves an organization shows each of its
+	// members what their colleagues asked for. Empty means every desk on the
+	// site, which is what a company with one customer-facing desk wants.
+	Desks []string `json:"desks,omitempty"`
 }
 
 // ServiceRequest is one request a customer raised through a portal.
@@ -785,6 +790,11 @@ func (s *Scenario) Validate() error {
 			for _, member := range organization.Members {
 				if !customers[member] {
 					return fmt.Errorf("organization %q names the unknown person %q", organization.Name, member)
+				}
+			}
+			for _, desk := range organization.Desks {
+				if !projects[desk] {
+					return fmt.Errorf("organization %q is a customer of the unknown project %q", organization.Name, desk)
 				}
 			}
 		}

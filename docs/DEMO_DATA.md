@@ -103,7 +103,7 @@ show.
 | `plans` | Cross-project plans, the teams that work in them, and the cross-project `releases` that group versions from several projects into one delivery |
 | `translations` | What the site calls a work type, a priority, a resolution or a status in the other languages its people read ([ISSUE_METADATA](ISSUE_METADATA.md#translating-the-words-on-a-work-item)) |
 | `automation` | The rules the company runs: what starts them, what they are scoped to, and what they do |
-| `service` | Customer organizations, the requests they raised with their conversation and satisfaction rating, and `assets` — the desk's inventory: schemas, the objects in them, and what each object needs from the others |
+| `service` | Customer organizations with their members and the `desks` they are customers of, the requests they raised with their conversation and satisfaction rating, and `assets` — the desk's inventory: schemas, the objects in them, and what each object needs from the others |
 | `wiki` | Spaces, page trees, blog posts and comments, and the `content` a space holds beside them: whiteboards with their objects and the lines between them, databases with their columns, records and views, folders, and embedded pages |
 | `filters`, `dashboards` | The searches people saved, and the dashboards they keep, with the gadgets on them. A gadget names its `type` (the catalog key without `com.zzira:`) and whatever that kind reads: a `project` and `days` window, a scrum `board`, a saved `filter` or `jql`, a `groupBy` and `yGroupBy`, `dateField` or `cumulative` |
 

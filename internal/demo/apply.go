@@ -1286,6 +1286,25 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 				return fmt.Errorf("organization %s members: %w", organization.Name, err)
 			}
 		}
+		// A desk that serves an organization shows each of its members what
+		// their colleagues asked for, and is what the Organizations search
+		// reads. An organization that names no desk is a customer of them all.
+		desks := organization.Desks
+		if len(desks) == 0 {
+			for project := range a.desks {
+				desks = append(desks, project)
+			}
+			sort.Strings(desks)
+		}
+		for _, project := range desks {
+			deskID := a.desks[project]
+			if deskID == "" {
+				return fmt.Errorf("organization %s is a customer of %s, which has no service desk", organization.Name, project)
+			}
+			if err := a.Store.SetServiceDeskOrganization(ctx, a.workspaceID, deskID, created.ID, true); err != nil {
+				return fmt.Errorf("organization %s on the %s desk: %w", organization.Name, project, err)
+			}
+		}
 	}
 	if err := a.assetInventory(ctx, declared.Assets); err != nil {
 		return err

@@ -487,6 +487,10 @@
           {
             "name": "Answered this week",
             "jql": "resolved >= -7d ORDER BY resolved DESC"
+          },
+          {
+            "name": "Riverbank Foods",
+            "jql": "Organizations = \"Riverbank Foods\" AND resolution = Unresolved ORDER BY created ASC"
           }
         ],
         "requestTypes": [
@@ -2177,14 +2181,23 @@
         "id": "riverbank",
         "name": "Riverbank Foods",
         "members": [
-          "cust-amara"
+          "cust-amara",
+          "cust-liwei"
+        ],
+        "desks": [
+          "help"
         ]
       },
       {
         "id": "harbour",
         "name": "Harbour Co",
         "members": [
-          "cust-felix"
+          "cust-felix",
+          "cust-sofia",
+          "cust-nadia"
+        ],
+        "desks": [
+          "help"
         ]
       }
     ],
