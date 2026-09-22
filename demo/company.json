@@ -535,7 +535,16 @@
         "id": "plat-board",
         "name": "Platform board",
         "type": "scrum"
-      }
+      },
+      "versions": [
+        {
+          "id": "plat-autumn",
+          "name": "Autumn platform",
+          "description": "What the platform ships for the autumn programme.",
+          "startDay": -28,
+          "releaseDay": 7
+        }
+      ]
     },
     {
       "id": "mob",
@@ -563,7 +572,16 @@
         "id": "mob-board",
         "name": "Mobile board",
         "type": "scrum"
-      }
+      },
+      "versions": [
+        {
+          "id": "mob-autumn",
+          "name": "Autumn mobile",
+          "description": "The mobile half of the autumn programme.",
+          "startDay": -28,
+          "releaseDay": 10
+        }
+      ]
     },
     {
       "id": "data",
@@ -615,7 +633,16 @@
         "id": "web-board",
         "name": "Storefront board",
         "type": "kanban"
-      }
+      },
+      "versions": [
+        {
+          "id": "web-autumn",
+          "name": "Autumn storefront",
+          "description": "The storefront half of the autumn programme.",
+          "startDay": -28,
+          "releaseDay": 7
+        }
+      ]
     },
     {
       "id": "mkt",
@@ -3308,6 +3335,15 @@
       "teams": [
         "Payments",
         "Platform"
+      ],
+      "releases": [
+        {
+          "name": "Autumn programme",
+          "versions": [
+            "pay-1-2",
+            "plat-autumn"
+          ]
+        }
       ]
     },
     {
@@ -3321,6 +3357,15 @@
       "teams": [
         "Mobile",
         "Storefront"
+      ],
+      "releases": [
+        {
+          "name": "Autumn on every screen",
+          "versions": [
+            "mob-autumn",
+            "web-autumn"
+          ]
+        }
       ]
     }
   ],

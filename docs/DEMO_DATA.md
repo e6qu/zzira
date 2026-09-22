@@ -100,7 +100,7 @@ show.
 | `projects` | Projects with their type and template, components, versions, a board with its sprints, and a service desk with agents, request types and the queues its agents work from |
 | `workItems` | Work with its parent, sprint, versions, labels, `estimate`, `due` day and field values, plus `events` — the transitions, comments, worklogs, assignments, links, watches and votes that happened to it |
 | `deployments`, `commits` | Deliveries to environments and the changes they carried, which the delivery (DORA) report counts: deployments give the frequency and the failure rate, and commits paired with them give the lead time ([REPORTS.md](REPORTS.md)) |
-| `plans` | Cross-project plans, and the teams that work in them |
+| `plans` | Cross-project plans, the teams that work in them, and the cross-project `releases` that group versions from several projects into one delivery |
 | `automation` | The rules the company runs: what starts them, what they are scoped to, and what they do |
 | `service` | Customer organizations, the requests they raised with their conversation and satisfaction rating, and `assets` — the desk's inventory: schemas, the objects in them, and what each object needs from the others |
 | `wiki` | Spaces, page trees, blog posts and comments |

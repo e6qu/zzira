@@ -293,7 +293,7 @@ func (s *Scenario) growProject(project *Project, generated GeneratedProject, pla
 			start, end := startDay, endDay
 			board.Sprints = append(board.Sprints, Sprint{
 				ID: sprintID, Name: fmt.Sprintf("%s sprint %d", project.Name, round+1),
-				Goal: strings.ToUpper(pick(themes)[:1]) + pick(themes)[1:], StartDay: &start, EndDay: &end, State: state,
+				Goal: capitalise(pick(themes)), StartDay: &start, EndDay: &end, State: state,
 			})
 		}
 		// A release gathers the sprints that went into it.
@@ -306,11 +306,10 @@ func (s *Scenario) growProject(project *Project, generated GeneratedProject, pla
 			// with one the scenario declared by hand and a reader can tell
 			// at a glance when it went out.
 			version = &Version{
-				ID:   fmt.Sprintf("%s-gv%d", project.ID, versionsMade),
-				Name: fmt.Sprintf("%d.%d", series+versionsMade/10, (versionsMade-1)%10),
-				Description: fmt.Sprintf("%s, released from %s",
-					strings.ToUpper(pick(themes)[:1])+pick(themes)[1:], project.Name),
-				StartDay: &start, ReleaseDay: &release, Released: released,
+				ID:          fmt.Sprintf("%s-gv%d", project.ID, versionsMade),
+				Name:        fmt.Sprintf("%d.%d", series+versionsMade/10, (versionsMade-1)%10),
+				Description: fmt.Sprintf("%s, released from %s", capitalise(pick(themes)), project.Name),
+				StartDay:    &start, ReleaseDay: &release, Released: released,
 			}
 			project.Versions = append(project.Versions, *version)
 		}
@@ -342,6 +341,16 @@ func releaseSeries(project *Project) int {
 	return highest + 1
 }
 
+// capitalise writes a phrase as a title starts: the whole phrase, with its
+// first letter upper case. Splicing one phrase's first letter onto another
+// phrase's tail is how the shipped company came to ship "Craud checks".
+func capitalise(phrase string) string {
+	if phrase == "" {
+		return phrase
+	}
+	return strings.ToUpper(phrase[:1]) + phrase[1:]
+}
+
 // until holds a generated day at today: day zero is the day the site is built,
 // and a scenario that runs past it dates work in the future.
 func until(day int) int {
@@ -367,7 +376,7 @@ func (s *Scenario) growWorkItem(project *Project, generated GeneratedProject, sp
 	workType, summary := "Task", fmt.Sprintf("%s %s", pick(generatedVerbs), theme)
 	if bug {
 		workType = "Bug"
-		summary = fmt.Sprintf("%s %s", strings.ToUpper(theme[:1])+theme[1:], pick(generatedDefects))
+		summary = fmt.Sprintf("%s %s", capitalise(theme), pick(generatedDefects))
 	}
 	if project.Type != "software" {
 		workType = "Task"
@@ -584,7 +593,7 @@ func (s *Scenario) growService(declared *GeneratedService, days int, random *ran
 		summary := fmt.Sprintf("Help with %s", subject)
 		if incident && declared.IncidentType != "" {
 			requestType = declared.IncidentType
-			summary = fmt.Sprintf("%s is down", strings.ToUpper(subject[:1])+subject[1:])
+			summary = fmt.Sprintf("%s is down", capitalise(subject))
 		}
 		agent := pick(declared.Agents)
 		request := ServiceRequest{
@@ -654,7 +663,15 @@ func (s *Scenario) growService(declared *GeneratedService, days int, random *ran
 		// what makes the two read differently in the reports. Most are
 		// resolved the day they were answered, so the desk's time to
 		// resolution is met more often than it is missed.
-		if approved && random.Float64() < 0.85 {
+		//
+		// What is still open is what came in recently. A desk does not carry
+		// a request from two years ago that nobody ever answered, and one
+		// that did would read as a resolution clock breached by months.
+		answered := 0.98
+		if at > -30 {
+			answered = 0.6
+		}
+		if approved && random.Float64() < answered {
 			switch {
 			case incident || random.Float64() < 0.65:
 			case random.Float64() < 0.5:
@@ -716,7 +733,7 @@ func (s *Scenario) growKnowledge(plan *Generation, random *rand.Rand) error {
 				// scenario is applied again: two pages called "Payments:
 				// runbook" are one page, and three years of writing makes
 				// that collision many times over.
-				Title: fmt.Sprintf("%s: %s (%d)", strings.ToUpper(subject[:1])+subject[1:],
+				Title: fmt.Sprintf("%s: %s (%d)", capitalise(subject),
 					generatedPageKinds[written%len(generatedPageKinds)], written),
 				Body: fmt.Sprintf("<p>%s</p><p>%s</p>", pick(generatedDetail),
 					"Written as this went out, and kept because the next one will ask the same questions."),
@@ -730,7 +747,7 @@ func (s *Scenario) growKnowledge(plan *Generation, random *rand.Rand) error {
 		for day := float64(-plan.Days); day < 0; day += interval {
 			posted++
 			space.BlogPosts = append(space.BlogPosts, BlogPost{
-				Title:  fmt.Sprintf("%s, quarter %d", strings.ToUpper(pick(declared.Subjects)[:1])+pick(declared.Subjects)[1:], posted),
+				Title:  fmt.Sprintf("%s, quarter %d", capitalise(pick(declared.Subjects)), posted),
 				Body:   "<p>What we shipped, what we learned, and what is next.</p>",
 				Author: pick(declared.Authors), CreatedDay: int(day),
 			})

@@ -1642,6 +1642,17 @@ func (a *Applier) teamsAndPlans(ctx context.Context, scenario *Scenario) error {
 			}
 			plan.IssueSources = append(plan.IssueSources, store.PlanIssueSource{Type: "Board", Value: id})
 		}
+		for _, release := range declared.Releases {
+			grouped := store.PlanRelease{Name: release.Name}
+			for _, version := range release.Versions {
+				id, err := strconv.ParseInt(a.versions[version].ID, 10, 64)
+				if err != nil {
+					return fmt.Errorf("plan %s: release %s: version %s: %w", declared.Name, release.Name, version, err)
+				}
+				grouped.ReleaseIDs = append(grouped.ReleaseIDs, id)
+			}
+			plan.CrossProjectReleases = append(plan.CrossProjectReleases, grouped)
+		}
 		store.NormalizePlan(&plan)
 		planID, err := a.Store.CreatePlan(ctx, a.workspaceID, a.admin, plan)
 		if err != nil {

@@ -459,6 +459,16 @@ type Plan struct {
 	Boards   []string `json:"boards,omitempty"`
 	// Teams are the names of the teams that work in this plan.
 	Teams []string `json:"teams,omitempty"`
+	// Releases are the cross-project releases the plan groups: the versions
+	// from several projects that ship as one thing.
+	Releases []PlanRelease `json:"releases,omitempty"`
+}
+
+// PlanRelease groups versions from several projects that ship together.
+type PlanRelease struct {
+	Name string `json:"name"`
+	// Versions are the scenario ids of the versions in it.
+	Versions []string `json:"versions,omitempty"`
 }
 
 // Read parses a scenario and checks that it hangs together.
@@ -857,6 +867,19 @@ func (s *Scenario) Validate() error {
 		for _, team := range plan.Teams {
 			if !teams[team] {
 				return fmt.Errorf("plan %q names the unknown team %q", plan.Name, team)
+			}
+		}
+		for _, release := range plan.Releases {
+			if release.Name == "" {
+				return fmt.Errorf("a cross-project release of plan %q has no name", plan.Name)
+			}
+			if len(release.Versions) < 2 {
+				return fmt.Errorf("cross-project release %q groups fewer than two versions, which is not across projects", release.Name)
+			}
+			for _, version := range release.Versions {
+				if !versions[version] {
+					return fmt.Errorf("cross-project release %q names the unknown version %q", release.Name, version)
+				}
 			}
 		}
 	}
