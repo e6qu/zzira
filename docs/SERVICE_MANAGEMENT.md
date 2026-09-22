@@ -418,6 +418,9 @@ active first. Values of `requestOwnership` combine:
 - **History:** an object's card carries what has happened to it -- added,
   changed (with the fields that changed), deleted -- read from those actions
   rather than kept a second time. The REST resource reports the same.
+- **Comments:** an object carries what its attributes cannot say -- why a
+  service is tier 1, what the vendor answered. Agents of the desk read and
+  write them; whoever wrote one, and any site administrator, can remove it.
 - **Access:** agents can view. Only site administrators create, edit, move or
   delete. Customers cannot read inventory.
 - **Workspace page:** shows the dependency map (SVG) and an accessible
@@ -463,6 +466,8 @@ caller does not agent answers 404, the same as an id that was never there.
 | `GET /object/{id}/referenceinfo` | The relationships it is either end of, inbound and outbound |
 | `GET /object/{id}/connectedTickets` | The requests that name it |
 | `GET /object/{id}/history` | What has happened to the object, oldest first: who wrote it, when, and which fields that write changed |
+| `GET/POST /object/{id}/comment` | What people have said about the object, and saying something new (`{"comment"}`) |
+| `DELETE /object/{id}/comment/{commentId}` | Removes a comment: its author may, and so may a site administrator |
 | `POST /objectschema/create` | `{"name","objectSchemaKey","description","serviceDeskId","attributes"}`; an attribute with no type is text |
 | `DELETE /objectschema/{id}` | Deletes the schema, its objects and everything that named them |
 | `POST /objectschema/{id}/import` | The import above, as `{"file"}` or the body itself. `{"reconcile":true}` (or `?reconcile=true`) makes the file the whole schema: an object it leaves out is deleted |
@@ -535,7 +540,7 @@ NOT (objectType = Vendors)
 ## Gaps
 
 See [PLAN.md](../PLAN.md).
-- Assets: attachments and comments on an object.
+- Assets: attachments on an object.
 - Assets object type hierarchy, typed reference attributes and AQL in JQL
   (`aqlFunction()`).
 - Request type restrictions (`RESTRICTED` returns nothing).

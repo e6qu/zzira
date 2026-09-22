@@ -65,3 +65,12 @@ type ServiceAssetObjectChange struct {
 	Changed []string
 	Object  ServiceAssetObject
 }
+
+// ServiceAssetObjectComment is something somebody said about an object.
+type ServiceAssetObjectComment struct {
+	ID, ObjectID string
+	AuthorID     string
+	AuthorName   string
+	Body         string
+	At           string
+}

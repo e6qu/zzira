@@ -72,6 +72,10 @@ func (h *Handler) assetsRoute(w http.ResponseWriter, r *http.Request) {
 		h.assetObjectTickets(w, r, workspaceID, actorID, parts[1])
 	case len(parts) == 3 && parts[0] == "object" && parts[2] == "history" && r.Method == http.MethodGet:
 		h.assetObjectHistory(w, r, workspaceID, actorID, parts[1])
+	case len(parts) == 3 && parts[0] == "object" && parts[2] == "comment" && (r.Method == http.MethodGet || r.Method == http.MethodPost):
+		h.assetObjectComments(w, r, workspaceID, actorID, parts[1])
+	case len(parts) == 4 && parts[0] == "object" && parts[2] == "comment" && r.Method == http.MethodDelete:
+		h.assetObjectCommentDelete(w, r, workspaceID, actorID, parts[1], parts[3])
 	default:
 		jiraError(w, http.StatusNotFound, "That Assets resource does not exist.")
 	}
@@ -509,4 +513,63 @@ func (h *Handler) assetObjectHistory(w http.ResponseWriter, r *http.Request, wor
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"total": len(entries), "entries": entries})
+}
+
+// assetObjectComments reads what has been said about an object, and says
+// something new.
+func (h *Handler) assetObjectComments(w http.ResponseWriter, r *http.Request, workspaceID, actorID, objectID string) {
+	if r.Method == http.MethodPost {
+		var body struct {
+			Comment string `json:"comment"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			jiraError(w, http.StatusBadRequest, "The request body is not valid JSON.")
+			return
+		}
+		comment, err := h.Store.CreateServiceAssetObjectComment(r.Context(), workspaceID, actorID, objectID, body.Comment)
+		if err != nil {
+			assetWriteError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, assetCommentBean(*comment))
+		return
+	}
+	comments, err := h.Store.ServiceAssetObjectComments(r.Context(), workspaceID, actorID, objectID)
+	if err != nil {
+		assetError(w, err, "Could not load that Assets object.")
+		return
+	}
+	beans := make([]map[string]any, 0, len(comments))
+	for _, comment := range comments {
+		beans = append(beans, assetCommentBean(comment))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"total": len(beans), "entries": beans})
+}
+
+func (h *Handler) assetObjectCommentDelete(w http.ResponseWriter, r *http.Request, workspaceID, actorID, objectID, commentID string) {
+	if err := h.Store.DeleteServiceAssetObjectComment(r.Context(), workspaceID, actorID, objectID, commentID); err != nil {
+		assetWriteError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// assetWriteError answers a write the site refused: an id it will not serve
+// is 404, and anything else the store said is what the caller asked for
+// wrongly.
+func assetWriteError(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrAssetNotFound) || errors.Is(err, store.ErrProjectPermission) {
+		jiraError(w, http.StatusNotFound, "That Assets object does not exist.")
+		return
+	}
+	jiraError(w, http.StatusBadRequest, err.Error())
+}
+
+func assetCommentBean(comment models.ServiceAssetObjectComment) map[string]any {
+	return map[string]any{
+		"id":      comment.ID,
+		"comment": comment.Body,
+		"created": comment.At,
+		"author":  map[string]string{"id": comment.AuthorID, "displayName": comment.AuthorName},
+	}
 }

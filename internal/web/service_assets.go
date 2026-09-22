@@ -42,7 +42,12 @@ func (h *Handler) ServiceAssetsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load what has happened to these objects.", http.StatusInternalServerError)
 		return
 	}
-	data := servicePageData{Desk: desk, AssetInventory: inventory, CanAgent: true, CanAdmin: admin, AssetHistory: history}
+	comments, err := h.Store.ServiceAssetInventoryComments(r.Context(), workspaceID, user.ID, deskID)
+	if err != nil {
+		http.Error(w, "Could not load what people have said about these objects.", http.StatusInternalServerError)
+		return
+	}
+	data := servicePageData{Desk: desk, AssetInventory: inventory, CanAgent: true, CanAdmin: admin, AssetHistory: history, AssetComments: comments}
 	// An import redirects back here with what it wrote, so the inventory the
 	// page shows is the one the import left behind.
 	data.AssetImportError = r.URL.Query().Get("importError")
@@ -215,4 +220,26 @@ func (h *Handler) ServiceRequestAssetSettings(w http.ResponseWriter, r *http.Req
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+r.PathValue("key")+"#asset-impact")
+}
+
+// ServiceAssetObjectComment says something about an object, or takes a
+// comment away. Agents of the desk may say something; whoever wrote a comment,
+// and any site administrator, may remove it.
+func (h *Handler) ServiceAssetObjectComment(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	deskID, objectID := r.PathValue("desk"), r.PostFormValue("objectId")
+	var err error
+	if r.PostFormValue("action") == "delete" {
+		err = h.Store.DeleteServiceAssetObjectComment(r.Context(), workspaceID, user.ID, objectID, r.PostFormValue("commentId"))
+	} else {
+		_, err = h.Store.CreateServiceAssetObjectComment(r.Context(), workspaceID, user.ID, objectID, r.PostFormValue("body"))
+	}
+	if err != nil {
+		http.Error(w, "Could not update the comments on this object: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"/assets#objects")
 }

@@ -192,6 +192,27 @@ func TestTheAssetsAPIServesOneSiteInventory(t *testing.T) {
 		t.Fatal(history)
 	}
 
+	// What people say about an object is kept with it, and only its author or
+	// a site administrator takes a comment away.
+	said := call("POST", assets+"/object/"+checkout.ID+"/comment", `{"comment":"Tier 1 because the shop stops without it."}`, 201)
+	var comment struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(said), &comment); err != nil || comment.ID == "" {
+		t.Fatalf("comment = %s, %v", said, err)
+	}
+	if read := call("GET", assets+"/object/"+checkout.ID+"/comment", "", 200); !strings.Contains(read, "the shop stops without it") || !strings.Contains(read, `"total":1`) {
+		t.Fatal(read)
+	}
+	if refused := call("POST", assets+"/object/"+checkout.ID+"/comment", `{"comment":"   "}`, 400); !strings.Contains(refused, "between 1 and 10000") {
+		t.Fatal(refused)
+	}
+	call("DELETE", assets+"/object/"+checkout.ID+"/comment/"+strings.Repeat("0", 8)+"-0000-0000-0000-"+strings.Repeat("0", 12), "", 400)
+	call("DELETE", assets+"/object/"+checkout.ID+"/comment/"+comment.ID, "", 204)
+	if read := call("GET", assets+"/object/"+checkout.ID+"/comment", "", 200); !strings.Contains(read, `"total":0`) {
+		t.Fatal(read)
+	}
+
 	// A schema is made and taken away over REST, the way the Assets page does
 	// both.
 	madeSchema := call("POST", assets+"/objectschema/create", `{"name":"Laptops","objectSchemaKey":"LAP","description":"What people carry","serviceDeskId":"`+deskID+`","attributes":[{"name":"Holder"},{"name":"Model","type":"select","required":true,"options":["Air","Pro"]}]}`, 201)

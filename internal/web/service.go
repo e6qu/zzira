@@ -151,7 +151,9 @@ type servicePageData struct {
 	AssetImportError string
 	// AssetHistory is what has happened to each object of the inventory, by
 	// object id, oldest first.
-	AssetHistory  map[string][]models.ServiceAssetObjectChange
+	AssetHistory map[string][]models.ServiceAssetObjectChange
+	// AssetComments is what people have said about each object, by object id.
+	AssetComments map[string][]models.ServiceAssetObjectComment
 	RequestAssets []models.ServiceRequestAsset
 	FieldValues   map[string]string
 	// FieldOptions are the options each select field on a portal form offers,
