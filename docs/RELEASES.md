@@ -76,10 +76,27 @@ The release hub plans a project's versions, tracks their scope and delivery evid
 **Project ids**
 - Projects with legacy non-numeric ids leave out `projectId` in version responses. To create a version in one of these projects, send the project key in `project`.
 
+## Release conditions
+
+A project can say what has to be true before one of its versions ships, in
+**Release conditions** on the project settings page:
+
+- **Every approver has approved the version.** A version with an approver who
+  has not answered, or who declined, is refused.
+- **Nothing unresolved is left in it.** Work that still names the version and
+  has no resolution refuses the release, unless the release is moving that work
+  to another version, which is what `moveUnfixedIssuesTo` does.
+
+A project that asks for neither ships whenever a project administrator says
+so, which is what every project does until somebody chooses otherwise. The
+version page says which condition would refuse it before the button does; the
+browser answers 409 with the same sentence, and so does `PUT
+/rest/api/3/version/{id}`.
+
 ## Gaps
 
 - A version still belongs to exactly one project (`project_versions.project_id`); a plan's cross-project release groups such versions ([Jira Software](JIRA_SOFTWARE.md#plans)). The hub and the version page read the group back from the plans the viewer may see: the list notes what a version ships with, and the version page lists the other projects' versions with their dates, progress and release state, and says when they are not all due on the same day.
-- No grouping of deployments across projects, no configurable release gates, and no environment promotion policies.
+- No grouping of deployments across projects, and no environment promotion policies.
 - Dates are shown in fixed English format; the user's locale and the site time zone are not applied.
 - The release hub needs a connection. Versions are not stored in the offline replica.
 - Versions are paged by offset, so pages can shift when versions change between requests.

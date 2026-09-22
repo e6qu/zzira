@@ -48,6 +48,10 @@ type projectSettingsData struct {
 	// its own, which its administrators may edit. A shared workflow is a
 	// site administrator's to change, so the page offers to start one.
 	ProjectWorkflow bool
+	// Gates are what this project asks for before a version ships.
+	Gates      store.ReleaseGates
+	GateNotice string
+	GateError  string
 }
 
 type projectPropertyView struct{ Key, Value string }
@@ -254,6 +258,11 @@ func (h *Handler) projectSettings(w http.ResponseWriter, r *http.Request, key st
 				data.ProjectWorkflow = wf.ProjectID == data.Project.ID
 			}
 		}
+		if data.Gates, err = h.Store.ReleaseGatesFor(r.Context(), data.Project.ID); err != nil {
+			http.Error(w, "Could not load the project's release conditions.", 500)
+			return
+		}
+		data.GateNotice, data.GateError = r.URL.Query().Get("gateNotice"), r.URL.Query().Get("gateError")
 	}
 	data.SiteAdmin, err = h.Store.IsAdmin(r.Context(), wsID, user.ID)
 	if err != nil {
@@ -534,4 +543,29 @@ func (h *Handler) ProjectConfigurationPage(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	h.writeWorkspacePage(w, r, "page_project_configuration", user, workspaceID, data, "project-configuration", project.Key)
+}
+
+// ProjectReleaseGates records what a project asks for before one of its
+// versions ships: every approver's approval, and nothing unresolved left in
+// it. A project that asks for neither ships whenever an administrator says so.
+func (h *Handler) ProjectReleaseGates(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	project, err := h.Store.ProjectByIDOrKey(r.Context(), workspaceID, r.PathValue("key"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	gates := store.ReleaseGates{
+		RequireApprovals: r.PostFormValue("requireApprovals") == "true",
+		RequireResolved:  r.PostFormValue("requireResolved") == "true",
+	}
+	target := "/projects/" + url.PathEscape(project.Key) + "/settings"
+	if err := h.Store.SaveReleaseGates(r.Context(), workspaceID, user.ID, project.ID, gates); err != nil {
+		redirectLocal(w, r, target+"?gateError="+url.QueryEscape(err.Error())+"#release-gates")
+		return
+	}
+	redirectLocal(w, r, target+"?gateNotice="+url.QueryEscape("Release conditions saved")+"#release-gates")
 }

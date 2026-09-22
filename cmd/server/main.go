@@ -517,6 +517,7 @@ func main() {
 	mux.HandleFunc("GET /projects/{key}/settings", webHandler.ProjectSettings)
 	mux.HandleFunc("POST /projects/{key}/settings", webHandler.ProjectSettings)
 	mux.HandleFunc("POST /projects/{key}/settings/governance", webHandler.ProjectGovernanceSettings)
+	mux.HandleFunc("POST /projects/{key}/settings/release-gates", webHandler.ProjectReleaseGates)
 	mux.HandleFunc("POST /projects/{key}/settings/templates", webHandler.ProjectTemplateSettings)
 	mux.HandleFunc("POST /projects/{key}/lifecycle", webHandler.ProjectLifecycleSettings)
 	mux.HandleFunc("POST /projects/{key}/components", webHandler.ProjectComponentSettings)

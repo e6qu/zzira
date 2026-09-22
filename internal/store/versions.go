@@ -162,6 +162,16 @@ func (s *Store) SaveVersion(ctx context.Context, ws, actor, project, id string, 
 	if err = validateVersion(v); err != nil {
 		return nil, err
 	}
+	// The project's own conditions decide whether this version may ship.
+	if !wasReleased && v.Released && id != "" {
+		refusal, gateErr := releaseRefusal(ctx, tx, project, id, v.MoveUnfixedIssuesToID)
+		if gateErr != nil {
+			return nil, gateErr
+		}
+		if refusal != "" {
+			return nil, fmt.Errorf("%w: %s", ErrReleaseGate, refusal)
+		}
+	}
 	if id == "" {
 		err = tx.QueryRow(ctx, `INSERT INTO project_versions(project_id,name,description,start_date,release_date,released,archived,position,driver_account_id,move_unfixed_issues_to) VALUES($1,$2,$3,NULLIF($4,'')::date,NULLIF($5,'')::date,$6,$7,COALESCE((SELECT max(position)+1 FROM project_versions WHERE project_id=$1),0),NULLIF($8,''),NULLIF($9,'')) RETURNING id,position`, project, v.Name, v.Description, v.StartDate, v.ReleaseDate, v.Released, v.Archived, v.DriverID, v.MoveUnfixedIssuesToID).Scan(&v.ID, &v.Position)
 	} else {

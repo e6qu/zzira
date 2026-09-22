@@ -59,9 +59,13 @@ type releasesData struct {
 	// ShipsWith are the cross-project releases this version is part of: what
 	// else goes out with it, in the other projects a plan groups it with.
 	ShipsWith []store.VersionCrossProjectRelease
-	Error     string
-	Query     string
-	Status    string
+	// Gates are the project's release conditions, and GateRefusal what would
+	// refuse this version today, so the page says it before the button does.
+	Gates       store.ReleaseGates
+	GateRefusal string
+	Error       string
+	Query       string
+	Status      string
 }
 
 // releaseApproval is an approval request with the approver's name.
@@ -74,6 +78,9 @@ func releaseWebError(err error) (int, string) {
 	switch {
 	case errors.Is(err, store.ErrVersionValidation):
 		return 400, err.Error()
+	case errors.Is(err, store.ErrReleaseGate):
+		// The project's own conditions refused it, and the page says which.
+		return 409, strings.TrimPrefix(err.Error(), store.ErrReleaseGate.Error()+": ")
 	case errors.Is(err, store.ErrProjectPermission):
 		return 403, err.Error()
 	case errors.Is(err, pgx.ErrNoRows):
@@ -323,6 +330,16 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 	if data.ShipsWith, err = h.Store.CrossProjectReleasesForVersion(r.Context(), ws, user.ID, version.ID); err != nil {
 		http.Error(w, "Could not load what ships with this release.", 500)
 		return
+	}
+	if data.Gates, err = h.Store.ReleaseGatesFor(r.Context(), project.ID); err != nil {
+		http.Error(w, "Could not load the project's release conditions.", 500)
+		return
+	}
+	if !data.Version.Released {
+		if data.GateRefusal, err = h.Store.ReleaseRefusalFor(r.Context(), project.ID, version.ID, data.Version.MoveUnfixedIssuesToID); err != nil {
+			http.Error(w, "Could not read the project's release conditions.", 500)
+			return
+		}
 	}
 	h.writeWorkspacePageStatus(w, r, "page_release", user, ws, data, "releases", project.Key, status)
 }
