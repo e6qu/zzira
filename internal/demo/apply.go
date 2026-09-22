@@ -1709,7 +1709,7 @@ func (a *Applier) wiki(ctx context.Context, declared *Wiki) error {
 			}); err != nil {
 				return fmt.Errorf("blog post %s: %w", post.Title, err)
 			}
-			if err := a.postExtras(ctx, raised.ID, post); err != nil {
+			if err := a.postExtras(ctx, author, raised.ID, post); err != nil {
 				return fmt.Errorf("blog post %s: %w", post.Title, err)
 			}
 		}
@@ -1984,7 +1984,7 @@ func (a *Applier) pages(ctx context.Context, spaceID, parentID string, pages []P
 		}); err != nil {
 			return fmt.Errorf("page %s: %w", page.Title, err)
 		}
-		if err := a.pageExtras(ctx, saved.ID, page); err != nil {
+		if err := a.pageExtras(ctx, author, saved.ID, page); err != nil {
 			return fmt.Errorf("page %s: %w", page.Title, err)
 		}
 		for _, comment := range page.Comments {
@@ -2317,15 +2317,17 @@ func automationComponent(action AutomationAction) map[string]any {
 }
 
 // pageExtras files a page where people look for it, attaches what it refers
-// to, and records who found it useful. A knowledge base with no labels, no
+// to, and records who found it useful. It writes as the page's author, who is
+// somebody the space lets write: a site administrator holds no space role
+// unless the space gives them one. A knowledge base with no labels, no
 // files and no likes shows none of what a wiki is read through.
-func (a *Applier) pageExtras(ctx context.Context, pageID string, page Page) error {
+func (a *Applier) pageExtras(ctx context.Context, author, pageID string, page Page) error {
 	if len(page.Labels) > 0 {
 		labels := make([]models.WikiLabel, 0, len(page.Labels))
 		for _, label := range page.Labels {
 			labels = append(labels, models.WikiLabel{Name: label, Prefix: "global"})
 		}
-		if _, err := a.Store.AddWikiPageLabels(ctx, a.workspaceID, a.admin, pageID, labels); err != nil {
+		if _, err := a.Store.AddWikiPageLabels(ctx, a.workspaceID, author, pageID, labels); err != nil {
 			return fmt.Errorf("label: %w", err)
 		}
 	}
@@ -2339,7 +2341,7 @@ func (a *Applier) pageExtras(ctx context.Context, pageID string, page Page) erro
 		if err != nil {
 			return fmt.Errorf("store the file %s: %w", name, err)
 		}
-		if _, err := a.Store.SaveWikiAttachment(ctx, a.workspaceID, a.admin, pageID, "", name, mime, "", "Attached with the page", false, size, ref); err != nil {
+		if _, err := a.Store.SaveWikiAttachment(ctx, a.workspaceID, author, pageID, "", name, mime, "", "Attached with the page", false, size, ref); err != nil {
 			return fmt.Errorf("attach %s: %w", name, err)
 		}
 	}
@@ -2356,13 +2358,13 @@ func (a *Applier) pageExtras(ctx context.Context, pageID string, page Page) erro
 }
 
 // postExtras is the same for a blog post, which carries labels and likes.
-func (a *Applier) postExtras(ctx context.Context, postID string, post BlogPost) error {
+func (a *Applier) postExtras(ctx context.Context, author, postID string, post BlogPost) error {
 	if len(post.Labels) > 0 {
 		labels := make([]models.WikiLabel, 0, len(post.Labels))
 		for _, label := range post.Labels {
 			labels = append(labels, models.WikiLabel{Name: label, Prefix: "global"})
 		}
-		if _, err := a.Store.AddWikiBlogPostLabels(ctx, a.workspaceID, a.admin, postID, labels); err != nil {
+		if _, err := a.Store.AddWikiBlogPostLabels(ctx, a.workspaceID, author, postID, labels); err != nil {
 			return fmt.Errorf("label: %w", err)
 		}
 	}
@@ -2385,11 +2387,13 @@ func (a *Applier) spaceRoles(ctx context.Context, spaceID string, space Space) e
 	if len(space.Roles) == 0 {
 		return nil
 	}
-	held, err := a.Store.WikiSpaceRoleAssignments(ctx, a.workspaceID, a.admin, spaceID)
+	// Reading the assignments answers what a space with none implies, so ask
+	// whether it holds any of its own rather than whether it answers some.
+	assigned, err := a.Store.WikiSpaceRoleAssigned(ctx, spaceID)
 	if err != nil {
 		return fmt.Errorf("read the roles of %s: %w", space.Key, err)
 	}
-	if len(held) > 0 {
+	if assigned {
 		return nil
 	}
 	assignments := []models.WikiSpaceRoleAssignment{}

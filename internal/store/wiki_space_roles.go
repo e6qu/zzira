@@ -150,6 +150,16 @@ func (s *Store) WikiSpaceRoleAssignments(ctx context.Context, ws, actor, spaceID
 	return assignments, nil
 }
 
+// WikiSpaceRoleAssigned reports whether a space has role assignments of its
+// own. Reading them answers what a space without any implies -- members are
+// everybody signed in -- which is what a page shows and not what a caller
+// deciding whether to write them needs to know.
+func (s *Store) WikiSpaceRoleAssigned(ctx context.Context, spaceID string) (bool, error) {
+	var assigned bool
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM wiki_space_role_assignments WHERE space_id::text=$1)`, spaceID).Scan(&assigned)
+	return assigned, err
+}
+
 // validateWikiSpaceRoleAssignment checks an assignment names a role that exists
 // and a principal that belongs to the site.
 func (s *Store) validateWikiSpaceRoleAssignment(ctx context.Context, tx pgx.Tx, ws string, assignment models.WikiSpaceRoleAssignment) error {
