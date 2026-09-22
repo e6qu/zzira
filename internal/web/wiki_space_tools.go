@@ -379,7 +379,8 @@ func (h *Handler) WikiSpaceImport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Only a site administrator imports a space.", http.StatusForbidden)
 		return
 	}
-	if err := r.ParseMultipartForm(wikiSpaceImportLimit); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, wikiSpaceImportLimit+(1<<20))
+	if err := r.ParseMultipartForm(wikiSpaceImportLimit); err != nil { // #nosec G120 -- body capped by MaxBytesReader above
 		http.Error(w, "Choose an export to import.", http.StatusBadRequest)
 		return
 	}

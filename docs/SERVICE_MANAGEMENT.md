@@ -393,9 +393,9 @@ active first. Values of `requestOwnership` combine:
 ## Assets
 
 - **Workspace:** each site has one Assets workspace, and each desk has its own
-  inventory in it. REST exposes only the workspace itself:
-  `GET /rest/servicedeskapi/assets/workspace` (also at the deprecated
-  `/insight/workspace`).
+  inventory in it. `GET /rest/servicedeskapi/assets/workspace` (also at the
+  deprecated `/insight/workspace`) names it, and the Assets API below is served
+  beneath it.
 - **Schemas:** a key, a name and 1–30 attributes (text, number, date, boolean,
   or select with 1–50 options).
   - A schema is also the object type; there is no separate type hierarchy.
@@ -416,6 +416,42 @@ active first. Values of `requestOwnership` combine:
     cycles, stays within the desk, and reports the shortest depth.
   - Direct links can be edited; inferred impact is derived.
 - **Object fields:** see [Request types and portal fields](#request-types-and-portal-fields).
+- **Import (site administrators):** the Assets page loads a comma separated
+  file of objects for one schema. Its first row names the columns: `Key` and
+  `Label`, optionally `X` and `Y`, and any attribute of the schema, named as
+  the schema names it or by the key it is stored under.
+  - A row whose key already belongs to an object in that schema updates it and
+    keeps its place on the canvas; every other row creates an object, laid out
+    in rows after the ones already there.
+  - The file is read and checked whole, and then written in one transaction, so
+    a refused row leaves the inventory exactly as it was. At most 1000 objects
+    and 4 MB at a time.
+
+### Assets API
+
+Served at `/jsm/assets/workspace/{workspaceId}/v1`, where the workspace is the
+one `GET /rest/servicedeskapi/assets/workspace` names. A schema is also its
+object type, so `objectschema` and `objecttype` answer for the same ids. An
+agent of the desk reads; only site administrators write. An id in a desk the
+caller does not agent answers 404, the same as an id that was never there.
+
+| Operation | What it does |
+| --- | --- |
+| `GET /objectschema/list` | Every schema the caller agents, with its object count |
+| `GET /objectschema/{id}` | One schema |
+| `GET /objectschema/{id}/objecttypes/flat` | The schema as its one object type, with its attributes |
+| `GET /objecttype/{id}/attributes` | The schema's attributes, typed, with select options |
+| `POST /object/navlist/aql` | `{"qlQuery","objectTypeId","startAt","maxResults"}`; answers `objectEntries` and a total |
+| `POST /object/create` | `{"objectTypeId","objectKey","label","attributes","position"}` |
+| `GET /object/{id}` | One object, its attributes and its place on the canvas |
+| `PUT /object/{id}` | Changes only what the body names |
+| `DELETE /object/{id}` | Deletes the object, its relationships and its request links |
+| `GET /object/{id}/referenceinfo` | The relationships it is either end of, inbound and outbound |
+| `GET /object/{id}/connectedTickets` | The requests that name it |
+| `POST /objectschema/{id}/import` | The import above, as `{"file"}` or the body itself |
+
+An attribute is written and read under the key its schema gave it, and a value
+is checked against the attribute's type exactly as the Assets page checks it.
 
 ## Portal and help center settings
 
@@ -482,10 +518,9 @@ NOT (objectType = Vendors)
 ## Gaps
 
 See [PLAN.md](../PLAN.md).
-- Assets public REST API: objects, schemas, object types, attributes and
-  object import or reconciliation. AQL narrows an object field on a form
-  ([the filter below](#assets-filters)); it is not a search endpoint of its
-  own.
+- Assets: creating or deleting a schema through REST (the Assets page does
+  both), reconciliation imports that delete what a file leaves out, and
+  attachments on an object.
 - Assets object type hierarchy, typed reference attributes and AQL in JQL
   (`aqlFunction()`).
 - Request type restrictions (`RESTRICTED` returns nothing).

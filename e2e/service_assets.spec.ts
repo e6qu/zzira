@@ -79,6 +79,23 @@ test('service manager models assets and an agent calculates request impact', asy
   await databaseEdit.getByRole('button', { name: 'Save object' }).click();
   await expect(page.locator('#objects article').filter({ hasText: 'Checkout database' })).toContainText('1400');
 
+  // A whole inventory arrives as a file rather than one form at a time, and a
+  // row whose key is already in the schema updates that object.
+  const assetImport = page.locator('#import');
+  await assetImport.getByRole('combobox', { name: 'Schema' }).selectOption({ label: 'Business services' });
+  await assetImport.getByLabel('Or paste the rows').fill('Key,Label,Service tier,Capacity,Active\nDATABASE,Checkout database,Tier 1,1600,true\nQUEUE,Payment queue,Tier 2,800,true\nCACHE,Session cache,Tier 2,400,false');
+  await assetImport.getByRole('button', { name: 'Import objects' }).click();
+  await expect(page.locator('#import')).toContainText('Imported 2 new objects and updated 1.');
+  await expect(page.locator('#objects')).toContainText('Payment queue');
+  await expect(page.locator('#objects')).toContainText('Session cache');
+  await expect(page.locator('#objects article').filter({ hasText: 'Checkout database' })).toContainText('1600');
+
+  // A file that names a column the schema does not have is refused whole.
+  await assetImport.getByLabel('Or paste the rows').fill('Key,Label,Owner\nLEDGER,Ledger service,Ana');
+  await assetImport.getByRole('button', { name: 'Import objects' }).click();
+  await expect(page.locator('#import')).toContainText('not Key, Label, X, Y, or an attribute of Business services');
+  await expect(page.locator('#objects')).not.toContainText('Ledger service');
+
   const relationshipCreate = page.locator('details').filter({ hasText: 'Connect two objects' });
   await relationshipCreate.locator('summary').click();
   await relationshipCreate.getByLabel('Object that depends').selectOption({ label: 'STOREFRONT · Customer storefront' });

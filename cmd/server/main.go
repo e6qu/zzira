@@ -846,6 +846,7 @@ func main() {
 		mux.Handle(prefix, api)
 	}
 	mux.Handle("/rest/servicedeskapi/", api)
+	mux.Handle("/jsm/assets/workspace/", api)
 	mux.Handle("/jira/forms/cloud/", api)
 	mux.Handle("/rest/devinfo/0.10/", api)
 	mux.Handle("/jira/devinfo/0.1/cloud/", api)

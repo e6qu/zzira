@@ -41,3 +41,9 @@ type ServiceAssetImport struct {
 	Created, Updated int
 	Objects          []ServiceAssetObject
 }
+
+// ServiceAssetObjectRequest is a request that names an object, as the Assets
+// API reports an object's connected tickets.
+type ServiceAssetObjectRequest struct {
+	IssueID, Key, Summary, Role string
+}

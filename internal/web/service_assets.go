@@ -61,7 +61,8 @@ func (h *Handler) ServiceAssetImport(w http.ResponseWriter, r *http.Request) {
 	}
 	deskID := r.PathValue("desk")
 	back := "/service/agent/" + deskID + "/assets"
-	if err := r.ParseMultipartForm(serviceAssetImportLimit); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, serviceAssetImportLimit+(1<<20))
+	if err := r.ParseMultipartForm(serviceAssetImportLimit); err != nil { // #nosec G120 -- body capped by MaxBytesReader above
 		redirectLocal(w, r, back+"?importError="+url.QueryEscape("that file could not be read")+"#import")
 		return
 	}
