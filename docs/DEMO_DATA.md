@@ -193,7 +193,8 @@ An event is one thing that happened on one day:
 ```
 
 The kinds are `transition`, `comment`, `worklog`, `assign`, `link`, `watch`,
-`vote`, and, on a service request only, `approval`, `approve` and `decline`. A
+`vote`, `attach`, and, on a service request only, `approval`, `approve` and
+`decline`. A
 transition names the status it moves to; the applier runs the workflow
 transition that leads there, so conditions, validators and post functions all
 run. A resolution is taken from the transition screen when it asks for one, and
@@ -209,6 +210,14 @@ written.
 `"affected"` unless the event says `"role": "depends_on"`. What depends on that
 object is then reached through the relationships, so an incident on a service
 shows what else it takes down.
+
+`attach` puts a file on the work item: `{ "day": -57, "kind": "attach",
+"actor": "ravi", "file": "console.log" }`. The content comes from the name, so
+rebuilding writes the same bytes: `.png` is an image a browser renders, `.log`
+and `.txt` are lines of text, `.csv` is a table and `.json` is a document. On a
+service request the file arrives the way the portal sends one -- uploaded to
+the desk, then carried by a comment, public unless the event says
+`"internal": true` -- and `body` is that comment.
 
 A comment on a service request is a reply through the desk: public unless the
 event says `"internal": true`, which is an agent's note the customer never sees.

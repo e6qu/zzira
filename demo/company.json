@@ -1797,6 +1797,20 @@
         },
         {
           "day": -6,
+          "minutes": 18,
+          "kind": "attach",
+          "actor": "ravi",
+          "file": "checkout-errors.png"
+        },
+        {
+          "day": -6,
+          "minutes": 22,
+          "kind": "attach",
+          "actor": "ravi",
+          "file": "gateway.log"
+        },
+        {
+          "day": -6,
           "minutes": 35,
           "kind": "comment",
           "actor": "ravi",
@@ -2239,6 +2253,13 @@
         "description": "Reported through the customer portal.",
         "createdDay": -34,
         "events": [
+          {
+            "day": -34,
+            "kind": "attach",
+            "actor": "cust-amara",
+            "file": "declined-payment.png",
+            "body": "The error our customer sees at the till."
+          },
           {
             "day": -34,
             "kind": "comment",

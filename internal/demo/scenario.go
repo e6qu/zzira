@@ -269,6 +269,11 @@ type Event struct {
 	// "asset" event. Role is "affected" or "depends_on"; empty is affected.
 	Asset string `json:"asset,omitempty"`
 	Role  string `json:"role,omitempty"`
+	// File is what an "attach" event attaches. Its content comes from its
+	// name: .png is an image, .log and .txt are text, .csv is a table and
+	// .json is a document. On a service request the file arrives with a
+	// comment, which is how the portal attaches one.
+	File string `json:"file,omitempty"`
 }
 
 // Deployment is one delivery to an environment, and what it carried.
@@ -600,7 +605,7 @@ func Write(w io.Writer, scenario *Scenario) error {
 var (
 	projectKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,9}$`)
 	spaceKeyPattern   = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,9}$`)
-	eventKinds        = []string{"transition", "comment", "worklog", "assign", "link", "watch", "vote", "approval", "approve", "decline", "asset"}
+	eventKinds        = []string{"transition", "comment", "worklog", "assign", "link", "watch", "vote", "approval", "approve", "decline", "asset", "attach"}
 	// What a space holds beside its pages, and what a board and a database
 	// are made of.
 	spaceContentTypes     = []string{"whiteboard", "database", "folder", "embed"}
@@ -1135,6 +1140,13 @@ func validateEvents(where string, createdDay int, events []Event, people, items 
 			}
 			if event.Role != "" && event.Role != "affected" && event.Role != "depends_on" {
 				return fmt.Errorf("%s connects an asset as %q, which is neither affected nor depends_on", where, event.Role)
+			}
+		case "attach":
+			if event.File == "" {
+				return fmt.Errorf("%s attaches a file with no name", where)
+			}
+			if _, _, err := demoFile(event.File); err != nil {
+				return fmt.Errorf("%s: %w", where, err)
 			}
 		}
 	}

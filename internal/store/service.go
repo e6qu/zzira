@@ -189,8 +189,20 @@ var ErrServiceRequestTypeNotFound = errors.New("request type does not exist")
 
 // EnrollServiceCustomer marks an existing account as a portal customer for a
 // workspace. Product access remains governed independently by role bindings.
+// EnrollServiceCustomer admits an account to the portals of a site, which is
+// what raising a request does for whoever raised it. Somebody enrolled this
+// way is a customer in the same sense as one an administrator created: they
+// are in the site's directory, and an account with no other site role holds
+// the site's customer role. Without both, the account is a customer the
+// portal shows things to and then refuses, because every check beyond the
+// request itself reads the site's roles.
 func (s *Store) EnrollServiceCustomer(ctx context.Context, workspaceID, userID string) error {
-	result, err := s.Pool.Exec(ctx, `
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	result, err := tx.Exec(ctx, `
 		INSERT INTO service_customers(workspace_id,user_id)
 		SELECT $1,$2 WHERE EXISTS(SELECT 1 FROM users WHERE id=$2 AND active)
 		ON CONFLICT(workspace_id,user_id) DO UPDATE SET active=TRUE
@@ -201,7 +213,25 @@ func (s *Store) EnrollServiceCustomer(ctx context.Context, workspaceID, userID s
 	if result.RowsAffected() == 0 {
 		return fmt.Errorf("customer account does not exist or its portal access was revoked")
 	}
-	return nil
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO directory_users(directory_id,user_id)
+		SELECT d.id,$2 FROM directories d JOIN sites si ON si.organization_id=d.organization_id
+		WHERE si.workspace_id=$1 AND d.active ORDER BY (d.directory_type='internal') DESC,d.created_at LIMIT 1
+		ON CONFLICT DO NOTHING`, workspaceID, userID); err != nil {
+		return err
+	}
+	// A licensed member who raises a request keeps the roles they have; the
+	// customer role belongs to an account that holds no other.
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO role_bindings(scope_type,scope_id,role_key,principal_type,principal_id,source)
+		SELECT 'site',si.id::text,'atlassian/customer','user',$2,'system' FROM sites si
+		WHERE si.workspace_id=$1 AND NOT EXISTS(
+			SELECT 1 FROM role_bindings rb WHERE rb.scope_type='site' AND rb.scope_id=si.id::text
+			AND rb.principal_type='user' AND rb.principal_id=$2 AND rb.role_key<>'atlassian/customer')
+		ON CONFLICT DO NOTHING`, workspaceID, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // CreateServiceCustomer provisions a portal-only account and grants the site

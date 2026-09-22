@@ -1,6 +1,7 @@
 package demo
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -885,9 +886,9 @@ func (a *Applier) generatedWork(ctx context.Context, order []string, byProject m
 // which of the two it is decides the desk's clocks: a public reply is what
 // stops time to first response. Everything else happens to a request as it
 // happens to any work item.
-func (a *Applier) requestEvent(ctx context.Context, issue *models.Issue, event Event) error {
+func (a *Applier) requestEvent(ctx context.Context, deskID string, issue *models.Issue, event Event) error {
 	switch event.Kind {
-	case "comment", "approval", "approve", "decline", "asset":
+	case "comment", "approval", "approve", "decline", "asset", "attach":
 	default:
 		return a.event(ctx, issue, event)
 	}
@@ -900,6 +901,23 @@ func (a *Applier) requestEvent(ctx context.Context, issue *models.Issue, event E
 		case "comment":
 			_, err := a.Commands.AddServiceRequestComment(ctx, actor, a.workspaceID, issue.ID,
 				adf.ParagraphDoc(event.Body), event.Body, !event.Internal)
+			return err
+		case "attach":
+			// A file reaches a request the way the portal sends one: it is
+			// uploaded to the desk first, and then a comment carries it.
+			content, mime, err := demoFile(event.File)
+			if err != nil {
+				return err
+			}
+			temporary, err := a.Commands.CreateServiceTemporaryAttachment(ctx, actor, a.workspaceID, deskID, event.File, mime, bytes.NewReader(content))
+			if err != nil {
+				return err
+			}
+			body := event.Body
+			if body == "" {
+				body = "Attached " + event.File + "."
+			}
+			_, _, err = a.Commands.CreateServiceAttachmentComment(ctx, actor, a.workspaceID, issue.ID, []string{temporary.ID}, body, !event.Internal)
 			return err
 		case "asset":
 			role := event.Role
@@ -982,6 +1000,13 @@ func (a *Applier) event(ctx context.Context, issue *models.Issue, event Event) e
 			return err
 		case "vote":
 			_, err := a.Commands.SetVoting(ctx, actor, a.workspaceID, issue.ID, true)
+			return err
+		case "attach":
+			content, mime, err := demoFile(event.File)
+			if err != nil {
+				return err
+			}
+			_, _, err = a.Commands.AddAttachment(ctx, actor, a.workspaceID, issue.ID, event.File, mime, bytes.NewReader(content))
 			return err
 		}
 		return fmt.Errorf("unknown event kind %q", event.Kind)
@@ -1435,7 +1460,7 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 		a.items[request.ID] = issue
 		a.mutex.Unlock()
 		for _, event := range request.Events {
-			if err := a.requestEvent(ctx, issue, event); err != nil {
+			if err := a.requestEvent(ctx, deskID, issue, event); err != nil {
 				return fmt.Errorf("request %s %s: %w", request.ID, event.Kind, err)
 			}
 		}

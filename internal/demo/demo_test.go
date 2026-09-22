@@ -403,7 +403,10 @@ func TestApplyDemoCompany(t *testing.T) {
 	for id, label := range labels {
 		byLabel[label] = id
 	}
-	rows, err := st.Pool.Query(ctx, `SELECT DISTINCT request_issue_id FROM service_request_assets`)
+	// Scoped to the site this test built: a test database keeps what earlier
+	// runs left behind, and a request from one of those has no desk here.
+	rows, err := st.Pool.Query(ctx, `SELECT DISTINCT a.request_issue_id FROM service_request_assets a
+		JOIN issues i ON i.id=a.request_issue_id WHERE i.workspace_id=$1`, result.WorkspaceID)
 	if err != nil {
 		t.Fatalf("read the connected requests: %v", err)
 	}

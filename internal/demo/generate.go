@@ -496,6 +496,18 @@ func (s *Scenario) growWorkItem(project *Project, generated GeneratedProject, sp
 		day = until(day + random.Intn(3))
 		item.Events = append(item.Events, Event{Day: day, Kind: "comment", Actor: pick(people), Body: pick(generatedComments)})
 	}
+	// Evidence lands on some of the work: what was on the screen, what the
+	// log said, what the numbers were. A site where nothing carries a file
+	// has nothing to show in the attachment list, the image preview or the
+	// download.
+	if share := 0.3; bug || random.Float64() < share/2 {
+		if bug || random.Float64() < share {
+			day = until(day + random.Intn(2))
+			item.Events = append(item.Events, Event{
+				Day: day, Kind: "attach", Actor: assignee, File: pick(generatedWorkFiles(bug)),
+			})
+		}
+	}
 	// Work in a sprint that has ended is nearly all done; work in the sprint
 	// running now mostly is not, because that is what a backlog looks like.
 	finished := random.Float64() < 0.92
@@ -522,6 +534,20 @@ func (s *Scenario) growWorkItem(project *Project, generated GeneratedProject, sp
 		})
 	}
 	return item
+}
+
+// generatedRequestFiles are what a customer sends a desk: what was on the
+// screen, what the browser said, or the export they were working from.
+var generatedRequestFiles = []string{"screenshot.png", "error.png", "console.log", "export.csv"}
+
+// generatedWorkFiles are the files that turn up on work: a bug carries what
+// was seen and what was logged, and anything else carries the numbers behind
+// it.
+func generatedWorkFiles(bug bool) []string {
+	if bug {
+		return []string{"screenshot.png", "console.log", "server.log", "har-summary.json", "screenshot.png"}
+	}
+	return []string{"measurements.csv", "notes.txt", "before-and-after.png", "checks.json"}
 }
 
 // linkSprintWork joins work in a sprint to the work beside it and puts
@@ -681,6 +707,14 @@ func (s *Scenario) growService(declared *GeneratedService, days int, random *ran
 		day := at
 		if at < 0 && random.Float64() < 0.3 {
 			day = at + 1
+		}
+		// Some customers send what they saw with the request, which is how a
+		// file reaches a desk: uploaded to the portal, carried by a comment.
+		if random.Float64() < 0.22 {
+			request.Events = append(request.Events, Event{
+				Day: at, Kind: "attach", Actor: request.Customer, File: pick(generatedRequestFiles),
+				Body: "This is what I see.",
+			})
 		}
 		// Agents talk among themselves before they answer, and a note is not
 		// a reply: it leaves the first response clock running.

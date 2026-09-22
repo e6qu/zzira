@@ -46,6 +46,14 @@ checks and 320 px reflow.
   auto-enrollment does not restore it.
 - **Portals:** a portal is open to every active site customer, or closed to
   direct members and members of linked organizations.
+- **What a customer may do to the work item behind their request** -- read it,
+  comment on it, attach a file -- comes from the project's permission scheme,
+  through the service portal customer holder the default scheme grants
+  ([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)). A scheme that drops that
+  holder leaves the portal showing a comment box the site then refuses.
+- **Raising a request enrolls whoever raised it** as a customer of the site,
+  in its directory and holding the site's customer role unless they already
+  hold another, which is the same account an administrator creates by hand.
 - **REST visibility:** service desk lists and lookups answer only a desk's
   administrators, agents and admitted users; everyone else gets 403.
 - **Comments:** comments made in the ordinary Jira issue view have no public
