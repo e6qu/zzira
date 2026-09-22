@@ -2,7 +2,9 @@ package web
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -35,7 +37,59 @@ func (h *Handler) ServiceAssetsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not authorize service asset administration.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_service_assets", user, workspaceID, servicePageData{Desk: desk, AssetInventory: inventory, CanAgent: true, CanAdmin: admin}, "service-agent", desk.ProjectID)
+	data := servicePageData{Desk: desk, AssetInventory: inventory, CanAgent: true, CanAdmin: admin}
+	// An import redirects back here with what it wrote, so the inventory the
+	// page shows is the one the import left behind.
+	data.AssetImportError = r.URL.Query().Get("importError")
+	created, createdErr := strconv.Atoi(r.URL.Query().Get("imported"))
+	updated, updatedErr := strconv.Atoi(r.URL.Query().Get("reimported"))
+	if createdErr == nil && updatedErr == nil {
+		data.AssetImport = &models.ServiceAssetImport{Created: created, Updated: updated}
+	}
+	h.writeWorkspacePage(w, r, "page_service_assets", user, workspaceID, data, "service-agent", desk.ProjectID)
+}
+
+// serviceAssetImportLimit is the largest file an import reads. A thousand
+// objects of typed attributes are far smaller than this.
+const serviceAssetImportLimit = 4 << 20
+
+// ServiceAssetImport reads a comma separated file of objects for one schema.
+func (h *Handler) ServiceAssetImport(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	deskID := r.PathValue("desk")
+	back := "/service/agent/" + deskID + "/assets"
+	if err := r.ParseMultipartForm(serviceAssetImportLimit); err != nil {
+		redirectLocal(w, r, back+"?importError="+url.QueryEscape("that file could not be read")+"#import")
+		return
+	}
+	file, header, err := r.FormFile("file")
+	text := r.PostFormValue("objects")
+	if err == nil {
+		defer func() { _ = file.Close() }()
+		if header.Size > serviceAssetImportLimit {
+			redirectLocal(w, r, back+"?importError="+url.QueryEscape("that file is larger than 4 MB")+"#import")
+			return
+		}
+		body, readErr := io.ReadAll(io.LimitReader(file, serviceAssetImportLimit+1))
+		if readErr != nil {
+			redirectLocal(w, r, back+"?importError="+url.QueryEscape("that file could not be read")+"#import")
+			return
+		}
+		text = string(body)
+	}
+	if strings.TrimSpace(text) == "" {
+		redirectLocal(w, r, back+"?importError="+url.QueryEscape("choose a file or paste the objects to import")+"#import")
+		return
+	}
+	imported, err := h.Commands.ImportServiceAssetObjects(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("schemaId"), text)
+	if err != nil {
+		redirectLocal(w, r, back+"?importError="+url.QueryEscape(err.Error())+"#import")
+		return
+	}
+	redirectLocal(w, r, back+"?imported="+strconv.Itoa(imported.Created)+"&reimported="+strconv.Itoa(imported.Updated)+"#import")
 }
 
 func parseServiceAssetAttributes(value string) ([]models.ServiceAssetAttribute, error) {

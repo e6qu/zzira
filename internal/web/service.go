@@ -145,8 +145,12 @@ type servicePageData struct {
 	IncidentRoles        []models.ServiceIncidentRole
 	IncidentStakeholders []models.ServiceIncidentStakeholder
 	AssetInventory       *models.ServiceAssetInventory
-	RequestAssets        []models.ServiceRequestAsset
-	FieldValues          map[string]string
+	// AssetImport is what the last import of objects wrote, and
+	// AssetImportError why one was refused.
+	AssetImport      *models.ServiceAssetImport
+	AssetImportError string
+	RequestAssets    []models.ServiceRequestAsset
+	FieldValues      map[string]string
 	// FieldOptions are the options each select field on a portal form offers,
 	// and FieldChoices the answers a refused form keeps.
 	FieldOptions map[string][]store.ServiceRequestFieldOption

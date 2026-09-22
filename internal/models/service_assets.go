@@ -34,3 +34,10 @@ type ServiceAssetInventory struct {
 	Objects       []ServiceAssetObject
 	Relationships []ServiceAssetRelationship
 }
+
+// ServiceAssetImport reports what an import of objects did, so the page that
+// sent the file can say how many objects it wrote.
+type ServiceAssetImport struct {
+	Created, Updated int
+	Objects          []ServiceAssetObject
+}

@@ -151,6 +151,36 @@ func (s *Store) SaveServiceAssetObject(ctx context.Context, ws, actor, deskID st
 	if err := projectAdmin(ctx, tx, ws, actor); err != nil {
 		return nil, err
 	}
+	written, err := writeServiceAssetObject(ctx, tx, ws, actor, deskID, object)
+	if err != nil {
+		return nil, err
+	}
+	return written, tx.Commit(ctx)
+}
+
+// ImportServiceAssetObjects writes a whole batch in one transaction, so an
+// import that fails on its last row leaves the inventory as it was.
+func (s *Store) ImportServiceAssetObjects(ctx context.Context, ws, actor, deskID string, objects []models.ServiceAssetObject) ([]models.ServiceAssetObject, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := projectAdmin(ctx, tx, ws, actor); err != nil {
+		return nil, err
+	}
+	written := make([]models.ServiceAssetObject, 0, len(objects))
+	for _, object := range objects {
+		saved, err := writeServiceAssetObject(ctx, tx, ws, actor, deskID, object)
+		if err != nil {
+			return nil, fmt.Errorf("object %s: %w", object.Key, err)
+		}
+		written = append(written, *saved)
+	}
+	return written, tx.Commit(ctx)
+}
+
+func writeServiceAssetObject(ctx context.Context, tx pgx.Tx, ws, actor, deskID string, object models.ServiceAssetObject) (*models.ServiceAssetObject, error) {
 	raw, err := json.Marshal(object.Values)
 	if err != nil {
 		return nil, err
@@ -166,7 +196,7 @@ func (s *Store) SaveServiceAssetObject(ctx context.Context, ws, actor, deskID st
 	if err := serviceAssetAction(ctx, tx, ws, actor, "service_asset_object", object.ID, models.OpUpsert, object); err != nil {
 		return nil, err
 	}
-	return &object, tx.Commit(ctx)
+	return &object, nil
 }
 
 func (s *Store) DeleteServiceAssetObject(ctx context.Context, ws, actor, deskID, objectID string) error {
