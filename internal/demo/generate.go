@@ -350,6 +350,7 @@ func (s *Scenario) assureRecentIncident(project *Project, generated GeneratedPro
 		assignee = people[random.Intn(len(people))]
 	}
 	day := until(-3 - random.Intn(10))
+	recovery := 45 + random.Intn(240)
 	item := WorkItem{
 		Generated: true, ID: fmt.Sprintf("%s-gi1", project.ID), Project: project.ID, Type: "Bug",
 		Summary:     fmt.Sprintf("%s stopped working for everyone", capitalise(theme)),
@@ -357,10 +358,12 @@ func (s *Scenario) assureRecentIncident(project *Project, generated GeneratedPro
 		Reporter:    assignee, Assignee: assignee, Priority: "Highest",
 		Labels:   []string{"incident", strings.ReplaceAll(theme, " ", "-")},
 		Estimate: "2h", CreatedDay: day,
+		// Found in the morning, over within a few hours: the time between the
+		// two is what the delivery report's time to restore reads.
 		Events: []Event{
-			{Day: day, Kind: "transition", Status: "In Progress", Actor: assignee},
-			{Day: day, Kind: "worklog", Actor: assignee, Seconds: 1800 * (1 + random.Intn(4))},
-			{Day: day, Kind: "transition", Status: "Done", Resolution: "Done", Actor: assignee},
+			{Day: day, Minutes: 10, Kind: "transition", Status: "In Progress", Actor: assignee},
+			{Day: day, Minutes: 20, Kind: "worklog", Actor: assignee, Seconds: 1800 * (1 + random.Intn(4))},
+			{Day: day, Minutes: recovery, Kind: "transition", Status: "Done", Resolution: "Done", Actor: assignee},
 		},
 	}
 	if generated.Points != "" {
@@ -499,7 +502,7 @@ func (s *Scenario) growWorkItem(project *Project, generated GeneratedProject, sp
 	if endDay > 0 {
 		finished = random.Float64() < 0.35
 	}
-	// An outage is over: somebody stayed until it was.
+	// An outage is over: somebody stayed until it was, the same day.
 	if incident {
 		finished = true
 	}

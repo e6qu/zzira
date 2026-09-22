@@ -225,10 +225,14 @@ type WorkItem struct {
 // "transition", "comment", "worklog", "assign", "label", "link", "watch" or
 // "vote".
 type Event struct {
-	Day    int    `json:"day"`
-	Kind   string `json:"kind"`
-	Actor  string `json:"actor,omitempty"`
-	Status string `json:"status,omitempty"`
+	Day int `json:"day"`
+	// Minutes is how far into the working day it happened, when that matters:
+	// an outage found at nine and over by ten is fifty minutes of recovery,
+	// and a day is the smallest thing the rest of a scenario measures.
+	Minutes int    `json:"minutes,omitempty"`
+	Kind    string `json:"kind"`
+	Actor   string `json:"actor,omitempty"`
+	Status  string `json:"status,omitempty"`
 	// Resolution is set with a transition that finishes the work.
 	Resolution string `json:"resolution,omitempty"`
 	Body       string `json:"body,omitempty"`
@@ -1018,7 +1022,7 @@ func (s *Scenario) Validate() error {
 // whether it belongs to a service request, because asking for an approval is
 // something only a request has.
 func validateEvents(where string, createdDay int, events []Event, people, items map[string]bool, request bool) error {
-	previous, asked := createdDay, false
+	previous, previousMinutes, asked := createdDay, 0, false
 	for _, event := range events {
 		if !slices.Contains(eventKinds, event.Kind) {
 			return fmt.Errorf("%s has the unknown event kind %q", where, event.Kind)
@@ -1032,10 +1036,19 @@ func validateEvents(where string, createdDay int, events []Event, people, items 
 		if event.Day > 0 {
 			return fmt.Errorf("%s has a %s on day %d, which is after the day the site is built", where, event.Kind, event.Day)
 		}
+		if event.Minutes < 0 || event.Minutes >= 24*60 {
+			return fmt.Errorf("%s has a %s %d minutes into the day, which is not a time of day", where, event.Kind, event.Minutes)
+		}
+		if event.Day == previous && event.Minutes < previousMinutes {
+			return fmt.Errorf("%s has events out of order inside a day", where)
+		}
 		if event.Day < previous {
 			return fmt.Errorf("%s has events out of order", where)
 		}
-		previous = event.Day
+		if event.Day != previous {
+			previousMinutes = 0
+		}
+		previous, previousMinutes = event.Day, max(previousMinutes, event.Minutes)
 		if event.Actor != "" && !people[event.Actor] {
 			return fmt.Errorf("%s has a %s by the unknown person %q", where, event.Kind, event.Actor)
 		}

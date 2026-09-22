@@ -187,6 +187,7 @@ An event is one thing that happened on one day:
 { "day": -60, "kind": "transition", "actor": "ravi", "status": "Done", "resolution": "Done" }
 { "day": -59, "kind": "comment", "actor": "ines", "body": "Reviewed and merged." }
 { "day": -58, "kind": "worklog", "actor": "ravi", "seconds": 7200 }
+{ "day": -57, "minutes": 48, "kind": "transition", "status": "Done", "resolution": "Done" }
 { "day": -57, "kind": "approval", "actor": "sara", "body": "Manager approval", "approvers": ["nora"] }
 { "day": -56, "kind": "approve", "actor": "nora" }
 ```
@@ -197,6 +198,12 @@ transition names the status it moves to; the applier runs the workflow
 transition that leads there, so conditions, validators and post functions all
 run. A resolution is taken from the transition screen when it asks for one, and
 recorded as an edit when it does not.
+
+`minutes` is how far into the working day an event happened, for the times a
+day is too coarse to say what happened: an outage found at nine and over by ten
+is fifty minutes of recovery, which is what the delivery report's time to
+restore reads. Events inside a day are still replayed in the order they are
+written.
 
 `asset` connects the request to something in the desk's inventory, as
 `"affected"` unless the event says `"role": "depends_on"`. What depends on that

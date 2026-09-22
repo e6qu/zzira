@@ -1766,24 +1766,28 @@
       "events": [
         {
           "day": -6,
+          "minutes": 12,
           "kind": "transition",
           "status": "In Progress",
           "actor": "ravi"
         },
         {
           "day": -6,
+          "minutes": 35,
           "kind": "comment",
           "actor": "ravi",
           "body": "Rotated the certificate and payments recovered."
         },
         {
           "day": -6,
+          "minutes": 40,
           "kind": "worklog",
           "actor": "ravi",
           "seconds": 2400
         },
         {
           "day": -6,
+          "minutes": 48,
           "kind": "transition",
           "status": "Done",
           "resolution": "Done",

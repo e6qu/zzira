@@ -201,6 +201,21 @@ func (a *Applier) run(ctx context.Context, scenario *Scenario, slug string) (*Re
 	return result, nil
 }
 
+// atMinute runs one piece of the scenario at a time of day: the same spread
+// through the working day as everything else, plus however far into the day
+// the event said it happened. An outage found at nine and over by ten is fifty
+// minutes of recovery, and a day is too coarse to say that.
+func (a *Applier) atMinute(ctx context.Context, day, minutes int, write func(context.Context) error) error {
+	if minutes <= 0 {
+		return a.at(ctx, day, write)
+	}
+	a.mutex.Lock()
+	ordinal := a.ordinals[day]
+	a.ordinals[day] = ordinal + 1
+	a.mutex.Unlock()
+	return write(store.WithActionTime(ctx, a.Clock.At(day, ordinal).Add(time.Duration(minutes)*time.Minute)))
+}
+
 // at runs one piece of the scenario and records when it happened, so the
 // retiming pass can move its action log entries into the past.
 func (a *Applier) at(ctx context.Context, day int, write func(context.Context) error) error {
@@ -878,7 +893,7 @@ func (a *Applier) requestEvent(ctx context.Context, issue *models.Issue, event E
 	if actor == "" {
 		actor = a.admin
 	}
-	return a.at(ctx, event.Day, func(ctx context.Context) error {
+	return a.atMinute(ctx, event.Day, event.Minutes, func(ctx context.Context) error {
 		switch event.Kind {
 		case "comment":
 			_, err := a.Commands.AddServiceRequestComment(ctx, actor, a.workspaceID, issue.ID,
@@ -926,7 +941,7 @@ func (a *Applier) event(ctx context.Context, issue *models.Issue, event Event) e
 	if actor == "" {
 		actor = a.admin
 	}
-	return a.at(ctx, event.Day, func(ctx context.Context) error {
+	return a.atMinute(ctx, event.Day, event.Minutes, func(ctx context.Context) error {
 		switch event.Kind {
 		case "transition":
 			return a.transition(ctx, actor, issue, event)
