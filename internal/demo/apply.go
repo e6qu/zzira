@@ -53,11 +53,14 @@ type Applier struct {
 	desks       map[string]string
 	requestType map[string]string
 	// assets maps a scenario asset id to the object the site holds.
-	assets   map[string]string
-	versions map[string]*models.Version
-	sprints  map[string]*models.Sprint
-	boards   map[string]*models.Board
-	fields   map[string]string
+	assets map[string]string
+	// deskForms are the request type forms waiting for their desk's Assets
+	// inventory, which is built after the desks are.
+	deskForms []deskForm
+	versions  map[string]*models.Version
+	sprints   map[string]*models.Sprint
+	boards    map[string]*models.Board
+	fields    map[string]string
 	// fieldTypes is what each declared custom field is, because a value is
 	// written differently for each kind: an option is named by its value,
 	// and everything else is written as it stands.
@@ -400,23 +403,22 @@ func (a *Applier) customFields(ctx context.Context, fields []CustomField) error 
 			return fmt.Errorf("create field %s: %w", field.Name, err)
 		}
 		a.fields[field.ID] = id
-		if len(field.Options) > 0 {
-			contexts, err := a.Store.CustomFieldContexts(ctx, a.workspaceID, id, nil)
+		// A field is created without a context, and a field with no context
+		// is in no project: its options have nowhere to live and no form
+		// offers it. Every declared field gets one covering the site.
+		contexts, err := a.Store.CustomFieldContexts(ctx, a.workspaceID, id, nil)
+		if err != nil {
+			return err
+		}
+		if len(contexts) == 0 {
+			made, err := a.Store.CreateCustomFieldContext(ctx, a.workspaceID, a.admin, id,
+				field.Name+" context", "Every project and work type", nil, nil)
 			if err != nil {
-				return err
+				return fmt.Errorf("give %s a context: %w", field.Name, err)
 			}
-			if len(contexts) == 0 {
-				// A field is created without one, and a select field with no
-				// context has nowhere to keep its options -- which is how
-				// this scenario shipped a field that offered none, and said
-				// nothing about it until something tried to set one.
-				made, err := a.Store.CreateCustomFieldContext(ctx, a.workspaceID, a.admin, id,
-					field.Name+" context", "Every project and work type", nil, nil)
-				if err != nil {
-					return fmt.Errorf("give %s a context to hold its options: %w", field.Name, err)
-				}
-				contexts = []*models.CustomFieldContext{made}
-			}
+			contexts = []*models.CustomFieldContext{made}
+		}
+		if len(field.Options) > 0 {
 			if _, err := a.Store.CreateCustomFieldOptions(ctx, a.workspaceID, a.admin, id, contexts[0].ID, field.Options); err != nil {
 				return fmt.Errorf("add options to %s: %w", field.Name, err)
 			}
@@ -1273,7 +1275,61 @@ func (a *Applier) serviceDesk(ctx context.Context, declared Project, project *mo
 		}
 		a.requestType[requestType.ID] = created.ID
 	}
+	// The forms are laid out after the desk's inventory is built, because a
+	// form can narrow an Assets object field to a schema that does not exist
+	// at this point.
+	for _, requestType := range declared.ServiceDesk.RequestTypes {
+		if len(requestType.Fields) > 0 {
+			a.deskForms = append(a.deskForms, deskForm{DeskID: deskID, RequestType: requestType})
+		}
+	}
 	return nil
+}
+
+// deskForm is one request type's form, waiting for its desk's inventory.
+type deskForm struct {
+	DeskID      string
+	RequestType RequestType
+}
+
+// requestTypeForm lays out what a request type asks a customer: the summary
+// and description every desk starts with, then the fields the scenario names,
+// with the schema and AQL an Assets object field is narrowed by.
+func (a *Applier) requestTypeForm(ctx context.Context, deskID string, declared RequestType) error {
+	schemas, err := a.Store.ServiceDeskAssetSchemas(ctx, a.workspaceID, deskID)
+	if err != nil {
+		return fmt.Errorf("read the desk's Assets schemas: %w", err)
+	}
+	schemaID := func(key string) string {
+		for _, schema := range schemas {
+			if strings.EqualFold(schema.Key, key) || strings.EqualFold(schema.Name, key) {
+				return schema.ID
+			}
+		}
+		return ""
+	}
+	requestTypeID := a.requestType[declared.ID]
+	fields := []models.ServiceRequestTypeField{
+		{ID: "summary", RequestTypeID: requestTypeID, Required: true},
+		{ID: "description", RequestTypeID: requestTypeID},
+	}
+	for _, field := range declared.Fields {
+		id := a.fields[field.Field]
+		if id == "" {
+			return fmt.Errorf("asks for %q, which the scenario does not declare", field.Field)
+		}
+		asked := models.ServiceRequestTypeField{
+			ID: id, RequestTypeID: requestTypeID, Required: field.Required, HelpText: field.HelpText,
+			AssetFilter: field.AssetFilter,
+		}
+		if field.AssetSchema != "" {
+			if asked.AssetSchemaID = schemaID(field.AssetSchema); asked.AssetSchemaID == "" {
+				return fmt.Errorf("asks for objects of %q, which this desk has no schema for", field.AssetSchema)
+			}
+		}
+		fields = append(fields, asked)
+	}
+	return a.Store.SetServiceRequestTypeFields(ctx, a.workspaceID, a.admin, deskID, requestTypeID, fields)
 }
 
 // service raises the requests customers made, replays what happened to each,
@@ -1323,6 +1379,11 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 	}
 	if err := a.assetInventory(ctx, declared.Assets); err != nil {
 		return err
+	}
+	for _, form := range a.deskForms {
+		if err := a.requestTypeForm(ctx, form.DeskID, form.RequestType); err != nil {
+			return fmt.Errorf("the %s form: %w", form.RequestType.Name, err)
+		}
 	}
 	// Somebody who raises a request is a customer of the site, whether or not
 	// they also have a seat on it: an internal desk is asked for things by the

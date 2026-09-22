@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/e6qu/zzira/internal/aql"
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -189,6 +190,22 @@ type RequestType struct {
 	Description string `json:"description,omitempty"`
 	// Group is "incidents", "problems", "changes" or empty for ordinary help.
 	Group string `json:"group,omitempty"`
+	// Fields are what the form asks beyond a summary and a description. A
+	// request type that names none asks for those two, which is what a desk
+	// starts with.
+	Fields []RequestTypeField `json:"fields,omitempty"`
+}
+
+// RequestTypeField is one question a request type's form asks.
+type RequestTypeField struct {
+	// Field is the scenario id of the custom field it asks for.
+	Field    string `json:"field"`
+	Required bool   `json:"required,omitempty"`
+	HelpText string `json:"helpText,omitempty"`
+	// AssetSchema and AssetFilter narrow an Assets object field: the schema
+	// its objects come from, and the AQL that picks which of them.
+	AssetSchema string `json:"assetSchema,omitempty"`
+	AssetFilter string `json:"assetFilter,omitempty"`
 }
 
 // WorkItem is one piece of work and everything that happened to it.
@@ -631,6 +648,13 @@ func (s *Scenario) Validate() error {
 		return nil
 	}
 	projects, versions, sprints, components := map[string]bool{}, map[string]bool{}, map[string]bool{}, map[string]bool{}
+	fields := map[string]bool{}
+	for _, field := range s.CustomFields {
+		if fields[field.ID] {
+			return fmt.Errorf("two custom fields share the id %q", field.ID)
+		}
+		fields[field.ID] = true
+	}
 	requestTypes := map[string]bool{}
 	deskAgents := map[string]bool{}
 	for _, project := range s.Projects {
@@ -703,6 +727,16 @@ func (s *Scenario) Validate() error {
 					return fmt.Errorf("two request types share the id %q", requestType.ID)
 				}
 				requestTypes[requestType.ID] = true
+				for _, field := range requestType.Fields {
+					if !fields[field.Field] {
+						return fmt.Errorf("the %q form asks for the unknown field %q", requestType.Name, field.Field)
+					}
+					if query := strings.TrimSpace(field.AssetFilter); query != "" {
+						if _, err := aql.Parse(query); err != nil {
+							return fmt.Errorf("the %q form's Assets filter %q: %w", requestType.Name, query, err)
+						}
+					}
+				}
 			}
 		}
 	}
@@ -713,13 +747,6 @@ func (s *Scenario) Validate() error {
 		if level.Name == "" || len(level.WorkTypes) == 0 {
 			return fmt.Errorf("hierarchy level %d needs a name and at least one work type", level.Level)
 		}
-	}
-	fields := map[string]bool{}
-	for _, field := range s.CustomFields {
-		if fields[field.ID] {
-			return fmt.Errorf("two custom fields share the id %q", field.ID)
-		}
-		fields[field.ID] = true
 	}
 	items := map[string]bool{}
 	for _, item := range s.WorkItems {

@@ -447,6 +447,67 @@ func TestApplyDemoCompany(t *testing.T) {
 		t.Fatal("no request reaches an asset through the topology, so the relationships carry nothing")
 	}
 
+	// A desk's forms ask what the scenario says they ask, and an Assets
+	// object field offers only what its filter selects.
+	for _, project := range scenario.Projects {
+		if project.ServiceDesk == nil {
+			continue
+		}
+		deskID := ""
+		for _, desk := range desks {
+			if desk.ProjectID == "" {
+				continue
+			}
+			found, err := st.ProjectByIDOrKey(ctx, result.WorkspaceID, desk.ProjectID)
+			if err == nil && found != nil && found.Key == project.Key {
+				deskID = desk.ID
+			}
+		}
+		if deskID == "" {
+			t.Fatalf("the %s desk is not on the site", project.Key)
+		}
+		types, err := st.ServiceRequestTypes(ctx, result.WorkspaceID, deskID, "")
+		if err != nil {
+			t.Fatalf("read the request types of %s: %v", project.Key, err)
+		}
+		byName := map[string]string{}
+		for _, requestType := range types {
+			byName[requestType.Name] = requestType.ID
+		}
+		for _, declared := range project.ServiceDesk.RequestTypes {
+			if len(declared.Fields) == 0 {
+				continue
+			}
+			fields, err := st.ServiceRequestTypeFields(ctx, result.WorkspaceID, deskID, byName[declared.Name])
+			if err != nil {
+				t.Fatalf("read the %s form: %v", declared.Name, err)
+			}
+			// Summary and description, then whatever the scenario named.
+			if len(fields) != len(declared.Fields)+2 {
+				t.Fatalf("the %s form asks %d things, the scenario named %d", declared.Name, len(fields), len(declared.Fields)+2)
+			}
+			for _, asked := range fields {
+				if asked.AssetFilter == "" {
+					continue
+				}
+				offered, err := st.ServicePortalFilteredAssetObjects(ctx, result.WorkspaceID, deskID, asked.AssetSchemaID, asked.AssetFilter)
+				if err != nil {
+					t.Fatalf("read what %q offers: %v", asked.Name, err)
+				}
+				if len(offered) == 0 {
+					t.Fatalf("%q is filtered by %q and offers nothing", asked.Name, asked.AssetFilter)
+				}
+				all, err := st.ServicePortalAssetObjects(ctx, result.WorkspaceID, deskID, asked.AssetSchemaID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(offered) >= len(all) {
+					t.Fatalf("%q offers %d of %d objects, so its filter selects everything", asked.Name, len(offered), len(all))
+				}
+			}
+		}
+	}
+
 	// The words on a work item in the other languages the company reads.
 	spanish, err := st.IssueMetadataNamesInLocale(ctx, result.WorkspaceID, "es")
 	if err != nil {

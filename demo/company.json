@@ -360,6 +360,11 @@
         "Several customers",
         "Everyone"
       ]
+    },
+    {
+      "id": "affected",
+      "name": "Affected service",
+      "type": "cmdb"
     }
   ],
   "projects": [
@@ -497,13 +502,32 @@
           {
             "id": "help",
             "name": "Get help",
-            "description": "Ask the support team anything."
+            "description": "Ask the support team anything.",
+            "fields": [
+              {
+                "field": "impact",
+                "helpText": "How many customers does this affect?"
+              }
+            ]
           },
           {
             "id": "incident",
             "name": "Report an incident",
             "description": "Something is broken right now.",
-            "group": "incidents"
+            "group": "incidents",
+            "fields": [
+              {
+                "field": "affected",
+                "required": true,
+                "helpText": "Which service is down?",
+                "assetSchema": "SVC",
+                "assetFilter": "Tier IN (\"1\", \"2\")"
+              },
+              {
+                "field": "impact",
+                "helpText": "How many customers can see it?"
+              }
+            ]
           },
           {
             "id": "access",
