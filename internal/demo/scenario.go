@@ -184,6 +184,10 @@ type WorkItem struct {
 	Fields      map[string]string `json:"fields,omitempty"`
 	CreatedDay  int               `json:"createdDay"`
 	Events      []Event           `json:"events,omitempty"`
+	// Generated marks work the generator wrote rather than a person. Such
+	// work refers to nothing outside its own project, so a project's history
+	// can be applied while another project's is being applied.
+	Generated bool `json:"-"`
 }
 
 // Event is something that happened to a work item on a given day. Kind is

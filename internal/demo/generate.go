@@ -150,9 +150,27 @@ func (s *Scenario) growProject(project *Project, generated GeneratedProject, pla
 	if len(themes) == 0 {
 		themes = []string{strings.ToLower(project.Name)}
 	}
-	// Sprints run back to back from the start of the history to today; the
-	// one covering today is the active one, and the next is still to come.
-	rounds := plan.Days / sprintDays
+	// Generated history fills the years *before* whatever the scenario wrote
+	// by hand: a curated sprint or release is the recent, readable part of
+	// the company, and the generator must not run a second sprint alongside
+	// it -- a site with parallel sprints off allows exactly one.
+	cutoff := 0
+	for _, version := range project.Versions {
+		if version.StartDay != nil && *version.StartDay < cutoff {
+			cutoff = *version.StartDay
+		}
+	}
+	if project.Board != nil {
+		for _, sprint := range project.Board.Sprints {
+			if sprint.StartDay != nil && *sprint.StartDay < cutoff {
+				cutoff = *sprint.StartDay
+			}
+		}
+	}
+	// Sprints run back to back from the start of the history up to the
+	// curated part; the last generated one is active only when nothing
+	// curated follows it.
+	rounds := (plan.Days + cutoff) / sprintDays
 	board := project.Board
 	if generated.Board != "" {
 		if board == nil || board.ID != generated.Board {
@@ -169,7 +187,7 @@ func (s *Scenario) growProject(project *Project, generated GeneratedProject, pla
 		if board != nil {
 			sprintID = fmt.Sprintf("%s-gs%d", project.ID, round+1)
 			state := "closed"
-			if endDay > 0 {
+			if endDay > 0 && cutoff == 0 {
 				state = "active"
 			}
 			start, end := startDay, endDay
@@ -243,6 +261,7 @@ func (s *Scenario) growWorkItem(project *Project, generated GeneratedProject, sp
 	}
 	assignee := pick(people)
 	item := WorkItem{
+		Generated:   true,
 		ID:          fmt.Sprintf("%s-g%d-%d", project.ID, round+1, index+1),
 		Project:     project.ID,
 		Type:        workType,
