@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
 )
 
@@ -157,9 +158,18 @@ type Sprint struct {
 
 // ServiceDesk is a service project's portal.
 type ServiceDesk struct {
-	PortalName   string        `json:"portalName"`
-	Agents       []string      `json:"agents,omitempty"`
-	RequestTypes []RequestType `json:"requestTypes,omitempty"`
+	PortalName string   `json:"portalName"`
+	Agents     []string `json:"agents,omitempty"`
+	// Queues are the desk's own queues, beyond the three every desk is given.
+	// A queue is a name and the JQL an agent works from.
+	Queues       []ServiceQueue `json:"queues,omitempty"`
+	RequestTypes []RequestType  `json:"requestTypes,omitempty"`
+}
+
+// ServiceQueue is a queue an agent works from.
+type ServiceQueue struct {
+	Name string `json:"name"`
+	JQL  string `json:"jql"`
 }
 
 // RequestType is one thing a customer can ask for.
@@ -522,6 +532,16 @@ func (s *Scenario) Validate() error {
 			for _, agent := range project.ServiceDesk.Agents {
 				if err := knownPerson("service desk of "+project.ID, agent); err != nil {
 					return err
+				}
+			}
+			// A queue whose query does not compile is a queue that breaks the
+			// agent view it is on, and the store takes the JQL as given.
+			for _, queue := range project.ServiceDesk.Queues {
+				if queue.Name == "" || queue.JQL == "" {
+					return fmt.Errorf("a queue of %s needs a name and a query", project.ID)
+				}
+				if _, err := jql.Parse(queue.JQL); err != nil {
+					return fmt.Errorf("queue %q of %s: %w", queue.Name, project.ID, err)
 				}
 			}
 			for _, requestType := range project.ServiceDesk.RequestTypes {

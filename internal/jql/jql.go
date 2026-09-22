@@ -672,6 +672,8 @@ func canonicalField(field string) string {
 		return "requestparticipants"
 	case "request channel type", "request-channel-type":
 		return "requestchanneltype"
+	case "request type", "request-type", "customer request type":
+		return "requesttype"
 	default:
 		// cf[10000] names a custom field by its number.
 		lower := strings.ToLower(field)
@@ -1174,6 +1176,9 @@ func DefaultResolver() FieldResolver {
 			// The channel a service request came in on, which only a request
 			// has at all.
 			"requestchanneltype": "(SELECT service_request.channel FROM service_requests service_request WHERE service_request.issue_id=i.id)",
+			// The request type a customer raised this under, by name, which
+			// only a request has at all.
+			"requesttype": "(SELECT request_type.name FROM service_requests service_request JOIN service_request_types request_type ON request_type.id=service_request.request_type_id WHERE service_request.issue_id=i.id)",
 		},
 		TextColumns: []string{"i.summary", "i.description::text"},
 		DefaultOrder: map[string]string{

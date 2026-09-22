@@ -41,7 +41,8 @@ status.
   `issueLinkType`, `level`, `category`, `hierarchyLevel`,
   `statusCategoryChangedDate`, `lastViewed`, `filter` (and its aliases
   `request`, `savedFilter` and `searchRequest`),
-  `"Request participants"`, `request-channel-type`, service SLA fields,
+  `"Request participants"`, `request-channel-type`, `"Request Type"`, service
+  SLA fields,
   typed custom fields (`cf[N]`, id or name), app field aliases and indexed
   entity properties. `issueKey` and `type` are Jira's aliases for `key` and
   `issuetype`.

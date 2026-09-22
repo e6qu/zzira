@@ -471,6 +471,20 @@
           "sara",
           "dan"
         ],
+        "queues": [
+          {
+            "name": "Breached first response",
+            "jql": "\"Time to first response\" = everBreached() AND resolution = Unresolved ORDER BY created ASC"
+          },
+          {
+            "name": "Incidents",
+            "jql": "\"Request Type\" = \"Report an incident\" AND resolution = Unresolved ORDER BY created ASC"
+          },
+          {
+            "name": "Answered this week",
+            "jql": "resolved >= -7d ORDER BY resolved DESC"
+          }
+        ],
         "requestTypes": [
           {
             "id": "help",

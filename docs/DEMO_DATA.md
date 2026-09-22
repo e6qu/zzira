@@ -97,7 +97,7 @@ show.
 | `groups`, `people` | Accounts, their roles and group membership. A person marked `customer` has no seat on the site and reaches the portal only |
 | `hierarchy` | Levels above Epic and the work types on them ([ISSUE_METADATA.md](ISSUE_METADATA.md#work-type-hierarchy)) |
 | `customFields` | Fields the work uses, with options for select lists |
-| `projects` | Projects with their type and template, components, versions, a board with its sprints, and a service desk with agents and request types |
+| `projects` | Projects with their type and template, components, versions, a board with its sprints, and a service desk with agents, request types and the queues its agents work from |
 | `workItems` | Work with its parent, sprint, versions, labels, `estimate`, `due` day and field values, plus `events` — the transitions, comments, worklogs, assignments, links, watches and votes that happened to it |
 | `deployments`, `commits` | Deliveries to environments and the changes they carried, which the delivery (DORA) report counts: deployments give the frequency and the failure rate, and commits paired with them give the lead time ([REPORTS.md](REPORTS.md)) |
 | `plans` | Cross-project plans, and the teams that work in them |

@@ -1131,6 +1131,24 @@ func (a *Applier) serviceDesk(ctx context.Context, declared Project, project *mo
 			return fmt.Errorf("agent %s: %w", agent, err)
 		}
 	}
+	// A desk is given three queues when its project is made; these are the
+	// ones this desk works from beyond those.
+	existing, err := a.Store.ServiceQueues(ctx, a.workspaceID, deskID)
+	if err != nil {
+		return fmt.Errorf("read the queues of %s: %w", declared.Key, err)
+	}
+	named := map[string]bool{}
+	for _, queue := range existing {
+		named[strings.ToLower(queue.Name)] = true
+	}
+	for _, queue := range declared.ServiceDesk.Queues {
+		if named[strings.ToLower(queue.Name)] {
+			continue
+		}
+		if _, err := a.Store.CreateServiceQueue(ctx, a.workspaceID, a.admin, deskID, queue.Name, queue.JQL); err != nil {
+			return fmt.Errorf("queue %s: %w", queue.Name, err)
+		}
+	}
 	types, err := a.Store.ServiceRequestTypes(ctx, a.workspaceID, deskID, "")
 	if err != nil {
 		return err
