@@ -1115,7 +1115,42 @@ func (a *Applier) deployments(ctx context.Context, declared []Deployment) error 
 			EnvironmentType: deployment.Type, LastUpdated: at,
 		})
 	}
-	return a.Store.UpsertSoftwareDeployments(ctx, a.workspaceID, deployments)
+	if err := a.Store.UpsertSoftwareDeployments(ctx, a.workspaceID, deployments); err != nil {
+		return err
+	}
+	return a.builds(ctx, declared, deployments)
+}
+
+// builds records the build that produced each deployment. Nothing deploys
+// without one, and the work item's development panel reads builds and
+// deployments from the same place: a site with deployments and no builds is
+// one where half that panel is empty.
+func (a *Applier) builds(ctx context.Context, declared []Deployment, deployments []models.SoftwareDeployment) error {
+	builds := make([]models.SoftwareBuild, 0, len(deployments))
+	for index, deployment := range deployments {
+		state := "successful"
+		if declared[index].State == "failed" {
+			state = "failed"
+		}
+		name := fmt.Sprintf("%s build #%d", deployment.PipelineID, index+1)
+		url := fmt.Sprintf("https://ci.example.test/%s/builds/%d", deployment.PipelineID, index+1)
+		payload, err := json.Marshal(map[string]any{
+			"buildNumber": index + 1, "updateSequenceNumber": index + 1,
+			"displayName": name, "url": url, "state": state,
+			"lastUpdated":  deployment.LastUpdated.Format(time.RFC3339),
+			"pipeline":     map[string]any{"id": deployment.PipelineID, "displayName": deployment.PipelineID, "url": "https://ci.example.test/" + deployment.PipelineID},
+			"associations": []any{map[string]any{"associationType": "issueKeys", "values": deployment.IssueKeys}},
+		})
+		if err != nil {
+			return err
+		}
+		builds = append(builds, models.SoftwareBuild{
+			PipelineID: deployment.PipelineID, BuildNumber: int64(index + 1), UpdateSequenceNumber: int64(index + 1),
+			IssueKeys: deployment.IssueKeys, DisplayName: name, URL: url, State: state,
+			LastUpdated: deployment.LastUpdated, Properties: json.RawMessage(`{}`), Payload: payload,
+		})
+	}
+	return a.Store.UpsertSoftwareBuilds(ctx, a.workspaceID, builds)
 }
 
 // filtersAndDashboards saves the searches and dashboards people keep. A
@@ -1481,6 +1516,22 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 		a.mutex.Lock()
 		a.items[request.ID] = issue
 		a.mutex.Unlock()
+		// Somebody shares a request with the colleagues it also affects,
+		// which is what a participant is.
+		if len(request.Participants) > 0 {
+			shared := make([]string, 0, len(request.Participants))
+			for _, person := range request.Participants {
+				if id := a.people[person]; id != "" {
+					shared = append(shared, id)
+				}
+			}
+			if err := a.at(ctx, request.CreatedDay, func(ctx context.Context) error {
+				_, err := a.Commands.UpdateServiceRequestParticipants(ctx, customer, a.workspaceID, issue.ID, shared, false)
+				return err
+			}); err != nil {
+				return fmt.Errorf("request %s participants: %w", request.ID, err)
+			}
+		}
 		for _, event := range request.Events {
 			if err := a.requestEvent(ctx, deskID, issue, event); err != nil {
 				return fmt.Errorf("request %s %s: %w", request.ID, event.Kind, err)

@@ -701,10 +701,18 @@ func (s *Scenario) growService(declared *GeneratedService, days int, random *ran
 			summary = fmt.Sprintf("%s is down", capitalise(subject))
 		}
 		agent := pick(declared.Agents)
+		customer := pick(declared.Customers)
 		request := ServiceRequest{
 			ID: fmt.Sprintf("%s-gr%d", declared.Project, raised), Project: declared.Project,
-			RequestType: requestType, Customer: pick(declared.Customers), Summary: summary,
+			RequestType: requestType, Customer: customer, Summary: summary,
 			Description: pick(generatedDetail), CreatedDay: at,
+		}
+		// Some requests are shared with a colleague, who then reads the
+		// replies as the person who raised it does.
+		if len(declared.Customers) > 1 && random.Float64() < 0.2 {
+			if colleague := pick(declared.Customers); colleague != customer {
+				request.Participants = []string{colleague}
+			}
 		}
 		// Most requests are answered the day they arrive, inside the desk's
 		// four working hours for a first response; the rest are answered the

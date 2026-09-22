@@ -2289,7 +2289,10 @@
           }
         ],
         "satisfaction": 5,
-        "feedback": "Fixed within the hour, thank you."
+        "feedback": "Fixed within the hour, thank you.",
+        "participants": [
+          "cust-nadia"
+        ]
       },
       {
         "id": "sr-2",
@@ -2364,7 +2367,10 @@
             "resolution": "Done"
           }
         ],
-        "satisfaction": 5
+        "satisfaction": 5,
+        "participants": [
+          "cust-nadia"
+        ]
       },
       {
         "id": "sr-4",
@@ -2425,6 +2431,9 @@
             "status": "In Progress",
             "actor": "sara"
           }
+        ],
+        "participants": [
+          "cust-nadia"
         ]
       },
       {

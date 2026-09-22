@@ -419,6 +419,9 @@ type ServiceRequest struct {
 	// Satisfaction is the customer's rating, 1 to 5, left after resolution.
 	Satisfaction int    `json:"satisfaction,omitempty"`
 	Feedback     string `json:"feedback,omitempty"`
+	// Participants are the colleagues the customer shared it with, who read
+	// it and its public replies as they do their own requests.
+	Participants []string `json:"participants,omitempty"`
 }
 
 // Wiki is the knowledge base.
