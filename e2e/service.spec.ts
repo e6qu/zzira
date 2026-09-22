@@ -701,13 +701,13 @@ test('a service project is archived, restored and trashed with its portal', asyn
   // Trashed, it waits in the trash, and deleting it there is the end of it.
   await page.goto(`/projects/${key}/settings`);
   await page.locator('details').filter({ hasText: 'Move project to trash' }).locator('summary').click();
-  await page.getByRole('button', { name: /Move project to trash/ }).click();
+  await page.getByRole('button', { name: 'Confirm move to trash' }).click();
   await expect(page).toHaveURL(/\/projects\?status=trash/);
   expect((await page.goto(`/service/portals/${deskID}`))?.status()).toBe(404);
   await page.goto('/projects?status=trash');
   const trashed = page.locator('.directory-card').filter({ hasText: `Lifecycle desk ${stamp}` });
   await trashed.locator('details').filter({ hasText: 'Delete permanently' }).locator('summary').click();
-  await trashed.getByRole('button', { name: /Delete/ }).last().click();
+  await trashed.getByRole('button', { name: 'Confirm permanent deletion' }).click();
   await expect(page.getByRole('status')).toContainText('permanently deleted');
   await expect(page.locator('.directory-card').filter({ hasText: `Lifecycle desk ${stamp}` })).toHaveCount(0);
 });
