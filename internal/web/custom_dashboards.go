@@ -510,6 +510,7 @@ func (h *Handler) gadgetReport(r *http.Request, ws, userID, moduleKey string, co
 		case "com.zzira:dora-metrics":
 			data, err := h.Store.DORAReport(ctx, ws, project.ID, userID, config.Days, now)
 			if err != nil {
+				log.Printf("dashboard gadget %s for %s: %v", moduleKey, project.Key, err)
 				return nil, failed
 			}
 			report.DORA = &data

@@ -44,8 +44,13 @@ func (s *Store) DORAReport(ctx context.Context, workspaceID, projectID, userID s
 		WITH current_deployments AS (
 		  SELECT DISTINCT ON (pipeline_id,environment_id,entity_sequence_number)
 		         workspace_id,pipeline_id,issue_keys,state,environment_type,occurred_at AS last_updated,
-		         payload->>'displayName' AS display_name,payload->>'url' AS url,
-		         payload->'environment'->>'displayName' AS environment_name,
+		         -- A deployment carries what its sender chose to send: a
+		         -- name, an address and an environment name are all optional,
+		         -- and a report that cannot read one of them without a name
+		         -- is a report that fails on somebody else's payload.
+		         COALESCE(payload->>'displayName','') AS display_name,
+		         COALESCE(payload->>'url','') AS url,
+		         COALESCE(payload->'environment'->>'displayName','') AS environment_name,
 		         entity_sequence_number
 		  FROM software_delivery_facts
 		  WHERE workspace_id=$1 AND fact_type='deployment'

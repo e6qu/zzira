@@ -3,7 +3,9 @@
 A demo site is built from a scenario: one JSON document that declares a
 company's people, projects, work, releases, deliveries, service requests and
 knowledge. `demo/company.json` is the company the repository ships; applying it
-gives a site with three months of history behind it.
+gives a site with three months of history behind it, and four dashboards a
+site like it would keep: delivery health (the DORA metrics and the deployments
+behind them), this sprint, support and operations, and each person's own work.
 
 ```bash
 make demo                                          # apply demo/company.json
@@ -95,7 +97,7 @@ show.
 | `deployments` | Deliveries to environments, which the delivery (DORA) report counts ([REPORTS.md](REPORTS.md)) |
 | `service` | Customer organizations and the requests they raised, with their conversation and satisfaction rating |
 | `wiki` | Spaces, page trees, blog posts and comments |
-| `filters`, `dashboards` | The searches people saved, and the dashboards they keep, with the gadgets on them |
+| `filters`, `dashboards` | The searches people saved, and the dashboards they keep, with the gadgets on them. A gadget names its `type` (the catalog key without `com.zzira:`) and whatever that kind reads: a `project` and `days` window, a scrum `board`, a saved `filter` or `jql`, a `groupBy` and `yGroupBy`, `dateField` or `cumulative` |
 
 Every entity has an `id` that the rest of the document refers to: a work item
 names its `parent` and `sprint`, a deployment names the `workItems` it carried,
