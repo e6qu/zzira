@@ -1,7 +1,7 @@
 {{define "page_admin"}}
 <!doctype html>
 <html lang="en">
-<head><title>Administration · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/admin.css?v=9"></head>
+<head><title>Administration · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/admin.css?v=10"></head>
 <body>
 <a class="skip-link" href="#main-content">Skip to content</a>
 {{template "header" .}}
@@ -153,7 +153,13 @@
         <div><dt>Status</dt><dd>{{if .Connected}}Connected{{if .LastWritten}} · last write {{.LastWritten}}{{end}}{{else}}No provider has written yet{{end}}</dd></div>
         <div><dt>Provisioned</dt><dd>{{len .People}} {{if eq (len .People) 1}}person{{else}}people{{end}} · {{len .Groups}} {{if eq (len .Groups) 1}}group{{else}}groups{{end}}</dd></div>
       </dl>
-      <p class="muted">A provider authenticates as an organization administrator; it needs no key of its own. The full conversation it can have is in the SCIM documentation.</p>
+      <p class="muted">A provider holds a key issued for this directory. The full conversation it can have is in the SCIM documentation.</p>
+      <div class="admin-provisioning-keys">
+        <h3>Provisioning keys</h3>
+        {{if $.Data.Provisioning.Issued}}<p class="form-success" role="status">Copy this key now: it is shown once and only its hash is kept.<br><code class="admin-provisioning-key">{{$.Data.Provisioning.Issued}}</code></p>{{end}}
+        {{if .Keys}}<ul class="admin-provisioning-key-list">{{range .Keys}}<li><div><strong>{{.Name}}</strong><small>Issued {{.Created}}{{if .LastUsed}} · last used {{.LastUsed}}{{else}} · never used{{end}}</small></div>{{if .Revoked}}<span class="lozenge lozenge-default">Revoked</span>{{else}}<form method="post" action="/admin/provisioning-keys"><input type="hidden" name="action" value="revoke"><input type="hidden" name="key" value="{{.ID}}"><button class="btn btn-subtle" type="submit">Revoke<span class="sr-only"> {{.Name}}</span></button></form>{{end}}</li>{{end}}</ul>{{else}}<p class="muted">No key has been issued, so no provider can write here yet.</p>{{end}}
+        <form class="project-details-form" method="post" action="/admin/provisioning-keys"><input type="hidden" name="action" value="issue"><label for="provisioning-key-name">Name this key</label><input id="provisioning-key-name" name="name" maxlength="255" placeholder="Okta, Entra ID" required><button class="btn btn-primary" type="submit">Issue a provisioning key</button></form>
+      </div>
       {{if .People}}<div class="table-scroll" tabindex="0" aria-label="People a provider manages"><table><caption class="sr-only">People a provider manages</caption><thead><tr><th scope="col">Person</th><th scope="col">External id</th><th scope="col">Groups</th><th scope="col">State</th><th scope="col">Last written</th></tr></thead><tbody>{{range .People}}<tr><th scope="row">{{.DisplayName}}<small>{{.Email}}</small></th><td><code>{{.ExternalID}}</code></td><td>{{if .Groups}}{{.Groups}}{{else}}<span class="muted">None</span>{{end}}</td><td>{{if .Active}}Active{{else}}Deactivated{{end}}</td><td>{{.Updated}}</td></tr>{{end}}</tbody></table></div>{{else}}<div class="empty-state"><strong>Nobody is provisioned yet</strong><p>Point a provider at the address above; the people it creates appear here.</p></div>{{end}}
       {{if .Groups}}<div class="table-scroll" tabindex="0" aria-label="Groups a provider manages"><table><caption class="sr-only">Groups a provider manages</caption><thead><tr><th scope="col">Group</th><th scope="col">External id</th><th scope="col">Members</th><th scope="col">Last written</th></tr></thead><tbody>{{range .Groups}}<tr><th scope="row">{{.Name}}</th><td><code>{{.ExternalID}}</code></td><td>{{.Members}}</td><td>{{.Updated}}</td></tr>{{end}}</tbody></table></div>{{end}}
       {{else}}<p>No active directory is available.</p>{{end}}

@@ -60,3 +60,11 @@
 /* Product plan controls meet the 24px target size. */
 .admin-product-plan{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.admin-product-plan select,.admin-product-plan .btn{min-height:24px;margin:0}
 .admin-policy-groups{display:grid;gap:6px;margin-top:10px}.admin-policy-groups ul{display:grid;gap:6px;margin:0;padding:0;list-style:none}.admin-policy-groups li{display:flex;align-items:center;justify-content:space-between;gap:12px}.admin-provisioning-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;margin:0 0 14px}.admin-provisioning-facts>div{display:grid;gap:3px;padding:10px 12px;border:1px solid var(--ds-border);border-radius:var(--ds-radius);background:var(--ds-surface-sunken)}.admin-provisioning-facts dt{font-size:11px;font-weight:700;color:var(--ds-text-subtle);text-transform:uppercase;letter-spacing:.04em}.admin-provisioning-facts dd{margin:0;overflow-wrap:anywhere}.admin-provisioning-facts code{font-size:12px}
+
+/* The keys a provider provisions with: one line each, and the key itself
+   shown once when it is issued because only its hash is kept. */
+.admin-provisioning-keys { margin-top:16px; display:grid; gap:10px; }
+.admin-provisioning-key-list { list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+.admin-provisioning-key-list li { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 10px; border:1px solid var(--ds-border); border-radius:var(--ds-radius); }
+.admin-provisioning-key-list li small { display:block; color:var(--ds-text-subtle); font-size:12px; }
+.admin-provisioning-key { display:inline-block; margin-top:6px; word-break:break-all; }

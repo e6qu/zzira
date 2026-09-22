@@ -298,6 +298,9 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 	if err != nil {
 		return adminPageData{}, err
 	}
+	// A key just issued travels back once and is shown once: the site kept
+	// only its hash.
+	data.Provisioning.Issued = r.URL.Query().Get("issued")
 	knownUsers := make(map[string]*models.User, len(data.Users))
 	for _, member := range data.Users {
 		knownUsers[member.ID] = member

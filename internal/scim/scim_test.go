@@ -9,6 +9,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/store"
 )
 
@@ -115,6 +116,30 @@ func TestSCIMProvisioningJourney(t *testing.T) {
 	// directory that exists.
 	call(memberToken, http.MethodGet, base+"/Users", "", http.StatusForbidden)
 	call(adminToken, http.MethodGet, "/scim/directory/00000000-0000-0000-0000-000000000000/Users", "", http.StatusNotFound)
+
+	// A provider holds a key issued for this directory: it provisions with
+	// that and nothing else, and a revoked key provisions nothing.
+	keyPlain, keyHash, err := authn.NewAPIToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := st.CreateDirectoryAPIKey(ctx, organization.ID, adminID, directoryID, "Okta", keyHash)
+	if err != nil {
+		t.Fatalf("issue a provisioning key: %v", err)
+	}
+	call(keyPlain, http.MethodGet, base+"/Users", "", http.StatusOK)
+	call(keyPlain, http.MethodGet, "/scim/directory/00000000-0000-0000-0000-000000000000/Users", "", http.StatusForbidden)
+	keys, err := st.DirectoryAPIKeys(ctx, directoryID)
+	if err != nil || len(keys) != 1 || keys[0].LastUsedAt == nil {
+		t.Fatalf("keys after a provider used one = %+v, %v", keys, err)
+	}
+	if err := st.RevokeDirectoryAPIKey(ctx, organization.ID, key.ID); err != nil {
+		t.Fatalf("revoke the key: %v", err)
+	}
+	call(keyPlain, http.MethodGet, base+"/Users", "", http.StatusUnauthorized)
+	if err := st.RevokeDirectoryAPIKey(ctx, organization.ID, key.ID); err == nil {
+		t.Fatal("revoking a key twice was accepted")
+	}
 
 	// Discovery.
 	config := call(adminToken, http.MethodGet, base+"/ServiceProviderConfig", "", http.StatusOK)

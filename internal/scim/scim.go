@@ -59,18 +59,23 @@ func scimError(w http.ResponseWriter, status int, detail, scimType string) {
 	writeSCIM(w, status, body)
 }
 
-// authorize answers who is provisioning and which directory they name. SCIM
-// runs as the organization's administrator: the provider holds a bearer token
-// of one, as it holds an API key in Atlassian.
+// authorize answers who is provisioning and which directory they name. A
+// provider holds a key issued for one directory, which is what Atlassian's
+// own SCIM API key is; an organization administrator's own bearer token is
+// still taken, because that is how this site's provisioning was set up before
+// directories had keys of their own.
 func (h *Handler) authorize(w http.ResponseWriter, r *http.Request) (actorID, workspaceID, directoryID string, ok bool) {
-	actorID, err := authn.IdentifyBearer(r.Context(), h.Store, r)
-	if err != nil {
-		scimError(w, http.StatusUnauthorized, "A valid bearer provisioning token is required.", "")
-		return "", "", "", false
-	}
-	workspaceID, err = h.Store.WorkspaceBySlug(r.Context(), h.WorkspaceSlug)
+	workspaceID, err := h.Store.WorkspaceBySlug(r.Context(), h.WorkspaceSlug)
 	if err != nil {
 		scimError(w, http.StatusInternalServerError, "Site lookup failed.", "")
+		return "", "", "", false
+	}
+	if actorID, directoryID, ok := h.authorizeDirectoryKey(w, r, workspaceID); ok || actorID == refusedKey {
+		return actorID, workspaceID, directoryID, ok
+	}
+	actorID, err = authn.IdentifyBearer(r.Context(), h.Store, r)
+	if err != nil {
+		scimError(w, http.StatusUnauthorized, "A valid bearer provisioning token is required.", "")
 		return "", "", "", false
 	}
 	allowed, err := authz.Allowed(r.Context(), h.Store, workspaceID, actorID, authz.AdministerSite)
@@ -92,6 +97,42 @@ func (h *Handler) authorize(w http.ResponseWriter, r *http.Request) (actorID, wo
 		return "", "", "", false
 	}
 	return actorID, workspaceID, directoryID, true
+}
+
+// refusedKey marks a bearer token that is a directory key the site has
+// already answered about, so the caller stops rather than trying it as a
+// person's token as well.
+const refusedKey = "\x00refused"
+
+// authorizeDirectoryKey admits a provider holding a key issued for one
+// directory. A key that does not name the directory in the path provisions
+// nothing: a key is for the directory it was made for.
+func (h *Handler) authorizeDirectoryKey(w http.ResponseWriter, r *http.Request, workspaceID string) (actorID, directoryID string, ok bool) {
+	parts := strings.Fields(r.Header.Get("Authorization"))
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] == "" {
+		return "", "", false
+	}
+	keyed, organizationID, err := h.Store.DirectoryForAPIKey(r.Context(), store.HashToken(parts[1]))
+	if err != nil {
+		return "", "", false
+	}
+	organization, err := h.Store.OrganizationByWorkspace(r.Context(), workspaceID)
+	if err != nil || organization == nil || organization.ID != organizationID {
+		scimError(w, http.StatusForbidden, "That provisioning key is for another organization.", "")
+		return refusedKey, "", false
+	}
+	if named := r.PathValue("directoryId"); named != "" && named != keyed {
+		scimError(w, http.StatusForbidden, "That provisioning key is for another directory.", "")
+		return refusedKey, "", false
+	}
+	// A key provisions as the person who issued it, so every change it makes
+	// is recorded against somebody the organization knows.
+	issuer, err := h.Store.DirectoryAPIKeyIssuer(r.Context(), keyed, store.HashToken(parts[1]))
+	if err != nil || issuer == "" {
+		scimError(w, http.StatusForbidden, "The key's issuer is no longer on this site.", "")
+		return refusedKey, "", false
+	}
+	return issuer, keyed, true
 }
 
 // markManaged records that a provider writes to this directory the first time
