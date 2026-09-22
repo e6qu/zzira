@@ -165,7 +165,7 @@ restore and remove.
   expiry and the rest of Atlassian's strength rules are still missing, and a
   policy covers named people rather than a group.
 - Two-step verification is an authenticator app alone: no WebAuthn, no
-  passkeys, and the key is shown as text rather than a QR image.
+  passkeys. The setup link is drawn as a QR code and shown as a key.
 - Managed accounts claimed through verified domains; domain ownership exclusive
   across organizations; `claimStatus` derived, not constant.
 - User management API (`/users/{id}/manage/...`).
@@ -204,14 +204,19 @@ condition catalog, and 14 action types including web requests and page creation.
 Jira Service Management Assets: schemas, object types with a hierarchy, typed
 attributes, objects, references, AQL, imports and a REST API. ZZIRA has per-desk
 schemas with inline attributes, objects, directed relationships, request impact
-links, the Assets portal field, and the workspace discovery endpoints.
+links, the Assets portal field, the workspace discovery endpoints, an import of
+objects from a file, and an Assets REST API under the Assets workspace
+([SERVICE_MANAGEMENT](docs/SERVICE_MANAGEMENT.md#assets-api)).
 
 - Object schemas, object types with inheritance, typed attributes (including
   reference, user, group, status, date, URL), object keys and labels.
-- Assets REST API: schemas, object types, attributes, objects, AQL search,
-  history, attachments, comments, icons.
+- Assets REST API: creating and deleting a schema, object history,
+  attachments, comments and icons. Schemas, object types, attributes, objects,
+  AQL search and imports are served.
 - AQL parser and evaluator; `aqlFunction()` in JQL; AQL-filtered Assets fields.
-- Imports (CSV, JSON, object schema) with mapping, reconciliation and schedules.
+- Imports: JSON and object schema files, column mapping, reconciliation that
+  deletes what a file leaves out, and schedules. A comma separated file of
+  objects for one schema is imported from the page and over REST.
 - Agent browser UI for schemas and objects; per-schema roles.
 
 ## 9. Service Management
@@ -239,7 +244,8 @@ links, the Assets portal field, and the workspace discovery endpoints.
 **Spaces and search.**
 - Import (Confluence XML, HTML, Markdown, Word) and export (XML full/custom, site,
   PDF, Word, CSV, per page) including hierarchy, comments, whiteboards, databases
-  and custom content.
+  and custom content. A space this site exported reads back in with its page
+  tree and blog posts ([CONFLUENCE_SPACES](docs/CONFLUENCE_SPACES.md#gaps)).
 - Space icons, browser rename and description edit; emptying the space trash 60
   days after a space lands there; `routeOverrideEnabled`, `contentMode` and
   themes take effect.
