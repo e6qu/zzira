@@ -182,3 +182,28 @@ func (s *Store) issueMetadataExists(ctx context.Context, workspaceID, entityType
 	err := s.Pool.QueryRow(ctx, query, workspaceID, entityID).Scan(&known)
 	return known, err
 }
+
+// TranslatedLocales are the languages this site has been translated into: the
+// ones an administrator has named a work type, a priority, a resolution, a
+// status or a field in. A person can read the site in one of these, and in no
+// others, because there is nothing else to read.
+func (s *Store) TranslatedLocales(ctx context.Context, workspaceID string) ([]string, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT DISTINCT locale FROM issue_metadata_translations WHERE workspace_id=$1
+		UNION
+		SELECT DISTINCT locale FROM custom_field_translations WHERE workspace_id=$1
+		ORDER BY 1`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	locales := []string{}
+	for rows.Next() {
+		var locale string
+		if err := rows.Scan(&locale); err != nil {
+			return nil, err
+		}
+		locales = append(locales, locale)
+	}
+	return locales, rows.Err()
+}

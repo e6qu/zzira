@@ -559,6 +559,7 @@ func main() {
 	mux.HandleFunc("GET /profile", webHandler.SelfProfile)
 	mux.HandleFunc("POST /profile/identities/{provider}/unlink", webHandler.UnlinkIdentityProvider)
 	mux.HandleFunc("POST /profile/notifications", webHandler.UpdateNotificationPreferences)
+	mux.HandleFunc("POST /profile/language", webHandler.UpdateLanguage)
 	mux.HandleFunc("POST /profile/password", webHandler.ChangePassword)
 	mux.HandleFunc("POST /profile/two-step", webHandler.UpdateTwoStep)
 	mux.HandleFunc("GET /password/forgot", webHandler.ForgotPasswordForm)

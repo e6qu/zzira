@@ -166,6 +166,12 @@ name in that language and, if it helps, the description.
 - A site translated into `pt-br` answers a reader who asked for `pt`, and the
   other way round: the region is dropped before the language is given up.
 - Removing a translation takes that language back to the site's own name.
+- **In the browser:** a person chooses their language on their profile, from
+  the languages the site has been translated into, and the work item view then
+  reads in it: the item's work type, priority, resolution and status, the work
+  under and beside it, and the priorities and resolutions its fields offer.
+  The site's own words are unchanged underneath, so a search, a form and the
+  REST API all still take them.
 
 The names live in `issue_metadata_translations`, keyed by the kind of thing and
 its id, and each write is recorded in the governance log like every other
@@ -179,7 +185,7 @@ Tracked in [PLAN.md](../PLAN.md).
 - Team-managed scoping (`scope`, `entityId`) is not modelled; every type is company-managed.
 - A priority scheme update applies its mappings before answering, so the 202 has no `task`.
 - The system avatar catalogue has five work type icons; Jira's is larger.
-- A translated name reaches the metadata resources and the settings pages; the work item view, the board and the search results still read the site's own names, as JQL does.
+- A translated name reaches the metadata resources, the settings pages and the work item view (the item, the work under and beside it, and the priorities and resolutions its fields offer). The board and the search results still read the site's own names, as JQL does.
 
 ## See also
 

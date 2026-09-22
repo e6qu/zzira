@@ -726,7 +726,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
-	return &models.IssueView{
+	view := &models.IssueView{
 		Issue:               *issue,
 		ProjectKey:          project.Key,
 		ProjectName:         project.Name,
@@ -771,7 +771,11 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		AppActivityTabs:     appActivityTabs,
 		AppContexts:         appContexts,
 		AppIssueContent:     appIssueContent,
-	}, nil
+	}
+	// The page reads in the language the person chose, wherever the site
+	// shows a name it chose itself.
+	translateIssueView(h.readerMetadataNames(r.Context(), wsID, user.ID), view)
+	return view, nil
 }
 
 func selectIssueContextModules(modules []models.AppModule) []models.AppModule {
