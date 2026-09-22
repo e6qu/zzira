@@ -915,9 +915,15 @@ func (a *Applier) dashboard(ctx context.Context, declared Dashboard, filters map
 		if err != nil {
 			return fmt.Errorf("gadget %s: %w", gadget.Type, err)
 		}
-		config := models.GadgetConfig{FilterID: filters[gadget.Filter]}
+		config := models.GadgetConfig{
+			FilterID: filters[gadget.Filter], JQL: gadget.JQL, GroupBy: gadget.GroupBy, YGroupBy: gadget.YGroupBy,
+			Days: gadget.Days, DateField: gadget.DateField, Cumulative: gadget.Cumulative,
+		}
 		if gadget.Project != "" {
 			config.ProjectKey = a.projects[gadget.Project].Key
+		}
+		if gadget.Board != "" {
+			config.BoardID = a.boards[gadget.Board].ID
 		}
 		if err := store.NormalizeGadgetConfig(&config); err != nil {
 			return fmt.Errorf("gadget %s: %w", gadget.Type, err)

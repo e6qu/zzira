@@ -53,6 +53,8 @@ When a share is revoked, the person's rendered gadgets are cleared on their next
 | Sprint burndown | `com.zzira:sprint-burndown` | The active sprint's burndown, for a scrum board |
 | Days remaining in sprint | `com.zzira:days-remaining` | Whole days to the active sprint's planned end, or days overdue |
 | Sprint health | `com.zzira:sprint-health` | Time elapsed, work complete, and scope change for the active sprint |
+| DORA metrics | `com.zzira:dora-metrics` | The four delivery metrics for a project: deployment frequency, lead time for changes, change failure rate and time to restore service, with what they were counted through |
+| Deployment frequency | `com.zzira:deployment-frequency` | A project's successful and failed production deployments, day by day |
 
 **Query gadgets**
 - Configuration is stored in the reserved `zzira.config` item property. It holds either direct JQL or a saved filter.
@@ -80,9 +82,14 @@ When a share is revoked, the person's rendered gadgets are cleared on their next
 - A table lists the same values.
 
 **Report gadgets**
-- **Project-based.** Created vs. resolved, Resolution time, Recently created, Average age and Time since store a `projectKey` and a `days` window of 7, 30 or 90. Created vs. resolved can also show running totals (`cumulative`).
+- **Project-based.** Created vs. resolved, Resolution time, Recently created, Average age, Time since, DORA metrics and Deployment frequency store a `projectKey` and a `days` window of 7, 30 or 90. Created vs. resolved can also show running totals (`cumulative`).
 - **Board-based.** Velocity, Sprint burndown, Days remaining and Sprint health store a scrum board's `boardId` and follow its active sprint.
 - **Road map** stores a `projectKey` and a `days` window. It lists up to 20 of the project's unreleased, unarchived versions that are due in the window or already overdue, soonest first.
+- **DORA metrics** and **Deployment frequency** read the project's delivery
+  settings: the environment types and pipelines it counts, and the periods it
+  leaves out. The DORA gadget says what it counted through, because a number
+  that omits half the site's deployments and does not say so is worse than no
+  number. Deployment frequency draws successful deployments under failed ones.
 - **Sprint health** shows:
   - the share of planned time elapsed;
   - the share of the estimate complete (counted by work items when nothing is estimated);

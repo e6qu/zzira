@@ -43,7 +43,7 @@
     {
       "id": "ines",
       "email": "ines@northwind.test",
-      "displayName": "In\u00e9s Ferrer",
+      "displayName": "Inés Ferrer",
       "role": "member",
       "groups": [
         "engineering"
@@ -1617,7 +1617,7 @@
             "day": -34,
             "kind": "comment",
             "actor": "sara",
-            "body": "Thanks for the report \u2014 taking a look now."
+            "body": "Thanks for the report — taking a look now."
           },
           {
             "day": -34,
@@ -1655,7 +1655,7 @@
             "day": -26,
             "kind": "comment",
             "actor": "sara",
-            "body": "Thanks for the report \u2014 taking a look now."
+            "body": "Thanks for the report — taking a look now."
           },
           {
             "day": -26,
@@ -1693,7 +1693,7 @@
             "day": -19,
             "kind": "comment",
             "actor": "sara",
-            "body": "Thanks for the report \u2014 taking a look now."
+            "body": "Thanks for the report — taking a look now."
           },
           {
             "day": -19,
@@ -1730,7 +1730,7 @@
             "day": -12,
             "kind": "comment",
             "actor": "sara",
-            "body": "Thanks for the report \u2014 taking a look now."
+            "body": "Thanks for the report — taking a look now."
           },
           {
             "day": -12,
@@ -1768,7 +1768,7 @@
             "day": -6,
             "kind": "comment",
             "actor": "sara",
-            "body": "Thanks for the report \u2014 taking a look now."
+            "body": "Thanks for the report — taking a look now."
           },
           {
             "day": -6,
@@ -1791,7 +1791,7 @@
             "day": -2,
             "kind": "comment",
             "actor": "sara",
-            "body": "Thanks for the report \u2014 taking a look now."
+            "body": "Thanks for the report — taking a look now."
           },
           {
             "day": -2,
@@ -1939,19 +1939,153 @@
   ],
   "dashboards": [
     {
-      "name": "Delivery",
+      "name": "Delivery health",
       "owner": "nora",
       "shared": true,
       "gadgets": [
+        {
+          "type": "dora-metrics",
+          "title": "Payments delivery",
+          "project": "pay",
+          "days": 90
+        },
+        {
+          "type": "deployment-frequency",
+          "title": "Payments deployments",
+          "project": "pay",
+          "days": 30
+        },
+        {
+          "type": "created-vs-resolved",
+          "title": "Created vs resolved",
+          "project": "pay",
+          "days": 90,
+          "cumulative": true
+        },
+        {
+          "type": "resolution-time",
+          "title": "How long work takes",
+          "project": "pay",
+          "days": 90
+        },
+        {
+          "type": "road-map",
+          "title": "What ships next",
+          "project": "pay",
+          "days": 90
+        },
+        {
+          "type": "velocity",
+          "title": "Payments velocity",
+          "board": "pay-board"
+        }
+      ]
+    },
+    {
+      "name": "This sprint",
+      "owner": "maya",
+      "shared": true,
+      "gadgets": [
+        {
+          "type": "sprint-health",
+          "title": "Sprint health",
+          "board": "pay-board"
+        },
+        {
+          "type": "days-remaining",
+          "title": "Days left",
+          "board": "pay-board"
+        },
+        {
+          "type": "sprint-burndown",
+          "title": "Burndown",
+          "board": "pay-board"
+        },
         {
           "type": "filter-results",
           "title": "Payments bugs",
           "filter": "Payments bugs"
         },
         {
-          "type": "created-vs-resolved",
-          "title": "Created vs resolved",
-          "project": "pay"
+          "type": "issue-statistics",
+          "title": "Sprint work by assignee",
+          "jql": "project = PAY AND sprint in openSprints() ORDER BY created DESC",
+          "groupBy": "assignee"
+        },
+        {
+          "type": "activity-stream",
+          "title": "What just happened",
+          "jql": "project = PAY ORDER BY updated DESC"
+        }
+      ]
+    },
+    {
+      "name": "Support and operations",
+      "owner": "sara",
+      "shared": true,
+      "gadgets": [
+        {
+          "type": "filter-results",
+          "title": "Open requests",
+          "jql": "project = HELP AND resolution = Unresolved ORDER BY created DESC"
+        },
+        {
+          "type": "pie-chart",
+          "title": "Requests by priority",
+          "jql": "project = HELP ORDER BY created DESC",
+          "groupBy": "priority"
+        },
+        {
+          "type": "two-dimensional-statistics",
+          "title": "Requests by status and assignee",
+          "jql": "project = HELP ORDER BY created DESC",
+          "groupBy": "status",
+          "yGroupBy": "assignee"
+        },
+        {
+          "type": "recently-created",
+          "title": "New requests",
+          "project": "help",
+          "days": 30
+        },
+        {
+          "type": "average-age",
+          "title": "How old open requests are",
+          "project": "help",
+          "days": 30
+        },
+        {
+          "type": "heat-map",
+          "title": "Where operations work sits",
+          "jql": "project = OPS ORDER BY created DESC",
+          "groupBy": "status"
+        }
+      ]
+    },
+    {
+      "name": "My work",
+      "owner": "ravi",
+      "shared": true,
+      "gadgets": [
+        {
+          "type": "assigned-to-me",
+          "title": "Assigned to me",
+          "jql": "ORDER BY updated DESC"
+        },
+        {
+          "type": "in-progress",
+          "title": "What I am doing",
+          "jql": "ORDER BY updated DESC"
+        },
+        {
+          "type": "watched-issues",
+          "title": "What I watch",
+          "jql": "ORDER BY updated DESC"
+        },
+        {
+          "type": "calendar",
+          "title": "Due this month",
+          "jql": "resolution = Unresolved ORDER BY duedate ASC"
         }
       ]
     }

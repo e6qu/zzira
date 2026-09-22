@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 // dayBar is one day's bar in a gadget chart, with an optional second segment
@@ -139,5 +140,32 @@ func newDaysRemainingView(sprint *models.Sprint, now time.Time, layout string) *
 	if end, err := time.Parse(time.RFC3339, sprint.EndDate); err == nil {
 		view.EndLabel = end.UTC().Format(layout)
 	}
+	return view
+}
+
+type deploymentFrequencyRow struct {
+	Date               string
+	Successful, Failed int
+}
+
+// deploymentFrequencyView draws a project's production deployments day by day,
+// successful ones under failed ones, with the same table beneath the chart
+// that every other chart gadget offers a reader who is not reading the chart.
+type deploymentFrequencyView struct {
+	store.DeploymentFrequencyReport
+	Chart dayBars
+	Rows  []deploymentFrequencyRow
+}
+
+func newDeploymentFrequencyView(report store.DeploymentFrequencyReport, layout string) *deploymentFrequencyView {
+	view := &deploymentFrequencyView{DeploymentFrequencyReport: report}
+	successful, failed := []float64{}, []float64{}
+	for _, period := range report.Periods {
+		successful, failed = append(successful, float64(period.Successful)), append(failed, float64(period.Failed))
+		view.Rows = append(view.Rows, deploymentFrequencyRow{
+			Date: displayDay(period.Start, layout), Successful: period.Successful, Failed: period.Failed,
+		})
+	}
+	view.Chart = newDayBars(successful, failed)
 	return view
 }

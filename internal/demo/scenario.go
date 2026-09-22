@@ -294,12 +294,27 @@ type Dashboard struct {
 	Gadgets []Gadget `json:"gadgets,omitempty"`
 }
 
-// Gadget is one gadget on a dashboard.
+// Gadget is one gadget on a dashboard. Type is the catalog key without its
+// "com.zzira:" prefix; the rest is what that kind of gadget reads.
 type Gadget struct {
 	Type    string `json:"type"`
 	Title   string `json:"title,omitempty"`
 	Project string `json:"project,omitempty"`
 	Filter  string `json:"filter,omitempty"`
+	// Board is the scrum board a sprint gadget follows, by scenario id.
+	Board string `json:"board,omitempty"`
+	// JQL is what a query gadget counts or lists when it does not use a
+	// saved filter.
+	JQL string `json:"jql,omitempty"`
+	// GroupBy and YGroupBy are what a chart gadget counts by.
+	GroupBy  string `json:"groupBy,omitempty"`
+	YGroupBy string `json:"yGroupBy,omitempty"`
+	// Days is a report gadget's window: 7, 30 or 90.
+	Days int `json:"days,omitempty"`
+	// DateField is what the time since chart counts, and Cumulative whether
+	// created vs resolved shows running totals.
+	DateField  string `json:"dateField,omitempty"`
+	Cumulative bool   `json:"cumulative,omitempty"`
 }
 
 // Read parses a scenario and checks that it hangs together.
@@ -555,6 +570,18 @@ func (s *Scenario) Validate() error {
 			return err
 		}
 	}
+	// A dashboard names the filters and boards the rest of the scenario
+	// declared, so a gadget cannot quietly show nothing.
+	filters := map[string]bool{}
+	for _, filter := range s.Filters {
+		filters[filter.Name] = true
+	}
+	boards := map[string]bool{}
+	for _, project := range s.Projects {
+		if project.Board != nil {
+			boards[project.Board.ID] = true
+		}
+	}
 	for _, dashboard := range s.Dashboards {
 		if err := knownPerson("dashboard "+dashboard.Name, dashboard.Owner); err != nil {
 			return err
@@ -562,6 +589,15 @@ func (s *Scenario) Validate() error {
 		for _, gadget := range dashboard.Gadgets {
 			if gadget.Project != "" && !projects[gadget.Project] {
 				return fmt.Errorf("dashboard %q shows the unknown project %q", dashboard.Name, gadget.Project)
+			}
+			if gadget.Board != "" && !boards[gadget.Board] {
+				return fmt.Errorf("dashboard %q follows the unknown board %q", dashboard.Name, gadget.Board)
+			}
+			if gadget.Filter != "" && !filters[gadget.Filter] {
+				return fmt.Errorf("dashboard %q shows the unknown filter %q", dashboard.Name, gadget.Filter)
+			}
+			if gadget.Days != 0 && gadget.Days != 7 && gadget.Days != 30 && gadget.Days != 90 {
+				return fmt.Errorf("dashboard %q asks gadget %q for a window of %d days, which is not 7, 30 or 90", dashboard.Name, gadget.Type, gadget.Days)
 			}
 		}
 	}
