@@ -37,7 +37,12 @@ func (h *Handler) ServiceAssetsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not authorize service asset administration.", http.StatusInternalServerError)
 		return
 	}
-	data := servicePageData{Desk: desk, AssetInventory: inventory, CanAgent: true, CanAdmin: admin}
+	history, err := h.Store.ServiceAssetInventoryHistory(r.Context(), workspaceID, user.ID, deskID)
+	if err != nil {
+		http.Error(w, "Could not load what has happened to these objects.", http.StatusInternalServerError)
+		return
+	}
+	data := servicePageData{Desk: desk, AssetInventory: inventory, CanAgent: true, CanAdmin: admin, AssetHistory: history}
 	// An import redirects back here with what it wrote, so the inventory the
 	// page shows is the one the import left behind.
 	data.AssetImportError = r.URL.Query().Get("importError")

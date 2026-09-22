@@ -185,6 +185,13 @@ func TestTheAssetsAPIServesOneSiteInventory(t *testing.T) {
 		t.Fatal(after)
 	}
 
+	// What has happened to an object is read from the site's own action log:
+	// it was added, then the import changed its tier.
+	history := call("GET", assets+"/object/"+checkout.ID+"/history", "", 200)
+	if !strings.Contains(history, `"total":2`) || !strings.Contains(history, `"changed":["tier"]`) {
+		t.Fatal(history)
+	}
+
 	// A schema is made and taken away over REST, the way the Assets page does
 	// both.
 	madeSchema := call("POST", assets+"/objectschema/create", `{"name":"Laptops","objectSchemaKey":"LAP","description":"What people carry","serviceDeskId":"`+deskID+`","attributes":[{"name":"Holder"},{"name":"Model","type":"select","required":true,"options":["Air","Pro"]}]}`, 201)

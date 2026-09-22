@@ -70,6 +70,8 @@ func (h *Handler) assetsRoute(w http.ResponseWriter, r *http.Request) {
 		h.assetObjectReferences(w, r, workspaceID, actorID, assetsWorkspace, parts[1])
 	case len(parts) == 3 && parts[0] == "object" && parts[2] == "connectedTickets" && r.Method == http.MethodGet:
 		h.assetObjectTickets(w, r, workspaceID, actorID, parts[1])
+	case len(parts) == 3 && parts[0] == "object" && parts[2] == "history" && r.Method == http.MethodGet:
+		h.assetObjectHistory(w, r, workspaceID, actorID, parts[1])
 	default:
 		jiraError(w, http.StatusNotFound, "That Assets resource does not exist.")
 	}
@@ -485,4 +487,26 @@ func (h *Handler) assetImport(w http.ResponseWriter, r *http.Request, workspaceI
 		objects = append(objects, h.assetObjectBean(object, assetsWorkspace))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"created": imported.Created, "updated": imported.Updated, "deleted": imported.Deleted, "total": len(objects), "objectEntries": objects})
+}
+
+// assetObjectHistory is what has happened to one object, oldest first, read
+// from the site's own action log.
+func (h *Handler) assetObjectHistory(w http.ResponseWriter, r *http.Request, workspaceID, actorID, objectID string) {
+	history, err := h.Store.ServiceAssetObjectHistory(r.Context(), workspaceID, actorID, objectID)
+	if err != nil {
+		assetError(w, err, "Could not load that Assets object.")
+		return
+	}
+	entries := make([]map[string]any, 0, len(history))
+	for _, change := range history {
+		entries = append(entries, map[string]any{
+			"id":      change.Seq,
+			"created": change.At,
+			"actor":   map[string]string{"id": change.ActorID, "displayName": change.ActorName},
+			"type":    change.Operation,
+			"changed": change.Changed,
+			"label":   change.Object.Label,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"total": len(entries), "entries": entries})
 }

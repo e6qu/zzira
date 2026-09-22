@@ -50,3 +50,18 @@ type ServiceAssetImport struct {
 type ServiceAssetObjectRequest struct {
 	IssueID, Key, Summary, Role string
 }
+
+// ServiceAssetObjectChange is one thing that happened to an object: who did
+// it, when, and what it left the object looking like. An object's history is
+// read from the site's own action log, which every write already records.
+type ServiceAssetObjectChange struct {
+	Seq       int64
+	At        string
+	ActorID   string
+	ActorName string
+	Operation string
+	// Changed names the fields this write altered, against the write before
+	// it. The first write of an object changes nothing: it is the object.
+	Changed []string
+	Object  ServiceAssetObject
+}

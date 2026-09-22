@@ -149,8 +149,11 @@ type servicePageData struct {
 	// AssetImportError why one was refused.
 	AssetImport      *models.ServiceAssetImport
 	AssetImportError string
-	RequestAssets    []models.ServiceRequestAsset
-	FieldValues      map[string]string
+	// AssetHistory is what has happened to each object of the inventory, by
+	// object id, oldest first.
+	AssetHistory  map[string][]models.ServiceAssetObjectChange
+	RequestAssets []models.ServiceRequestAsset
+	FieldValues   map[string]string
 	// FieldOptions are the options each select field on a portal form offers,
 	// and FieldChoices the answers a refused form keeps.
 	FieldOptions map[string][]store.ServiceRequestFieldOption
