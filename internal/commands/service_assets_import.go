@@ -22,8 +22,10 @@ const serviceAssetImportRows = 1000
 // that object; every other row creates one.
 //
 // The whole file is checked before anything is written, and then written in
-// one transaction, so an import never half-lands.
-func (s *Service) ImportServiceAssetObjects(ctx context.Context, actorID, workspaceID, deskID, schemaID, file string) (*models.ServiceAssetImport, error) {
+// one transaction, so an import never half-lands. A reconciling import makes
+// the file the whole schema: an object the file leaves out is deleted, with
+// its relationships and the request links that named it.
+func (s *Service) ImportServiceAssetObjects(ctx context.Context, actorID, workspaceID, deskID, schemaID, file string, reconcile bool) (*models.ServiceAssetImport, error) {
 	inventory, err := s.Store.ServiceAssetInventory(ctx, workspaceID, actorID, deskID)
 	if err != nil {
 		return nil, err
@@ -101,11 +103,11 @@ func (s *Service) ImportServiceAssetObjects(ctx context.Context, actorID, worksp
 	if len(objects) == 0 {
 		return nil, fmt.Errorf("the file needs a heading row and at least one object")
 	}
-	written, err := s.Store.ImportServiceAssetObjects(ctx, workspaceID, actorID, deskID, objects)
+	written, deleted, err := s.Store.ImportServiceAssetObjects(ctx, workspaceID, actorID, deskID, objects, reconcile)
 	if err != nil {
 		return nil, err
 	}
-	result.Objects = written
+	result.Objects, result.Deleted = written, deleted
 	return result, nil
 }
 

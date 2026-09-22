@@ -39,7 +39,10 @@ type ServiceAssetInventory struct {
 // sent the file can say how many objects it wrote.
 type ServiceAssetImport struct {
 	Created, Updated int
-	Objects          []ServiceAssetObject
+	// Deleted counts the objects a reconciling import took away because the
+	// file left them out.
+	Deleted int
+	Objects []ServiceAssetObject
 }
 
 // ServiceAssetObjectRequest is a request that names an object, as the Assets

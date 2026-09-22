@@ -185,6 +185,31 @@ func TestTheAssetsAPIServesOneSiteInventory(t *testing.T) {
 		t.Fatal(after)
 	}
 
+	// A schema is made and taken away over REST, the way the Assets page does
+	// both.
+	madeSchema := call("POST", assets+"/objectschema/create", `{"name":"Laptops","objectSchemaKey":"LAP","description":"What people carry","serviceDeskId":"`+deskID+`","attributes":[{"name":"Holder"},{"name":"Model","type":"select","required":true,"options":["Air","Pro"]}]}`, 201)
+	var made struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(madeSchema), &made); err != nil || made.ID == "" {
+		t.Fatalf("created schema = %s, %v", madeSchema, err)
+	}
+	if attributes := call("GET", assets+"/objecttype/"+made.ID+"/attributes", "", 200); !strings.Contains(attributes, `"id":"holder"`) || !strings.Contains(attributes, `"Pro"`) {
+		t.Fatal(attributes)
+	}
+	call("POST", assets+"/objectschema/"+made.ID+"/import", `{"file":"Key,Label,Holder,Model\nLAP-1,Ana's laptop,Ana,Pro\n"}`, 200)
+	call("DELETE", assets+"/objectschema/"+made.ID, "", 204)
+	call("GET", assets+"/objectschema/"+made.ID, "", 404)
+
+	// A reconciling import is the whole schema: what it leaves out goes.
+	reconciled := call("POST", assets+"/objectschema/"+schema.ID+"/import?reconcile=true", `{"file":"Key,Label,Service tier\nSVC-5,Warehouse,Tier 1\n"}`, 200)
+	if !strings.Contains(reconciled, `"deleted":2`) || !strings.Contains(reconciled, `"updated":1`) {
+		t.Fatal(reconciled)
+	}
+	if left := call("POST", assets+"/object/navlist/aql", `{"objectTypeId":"`+schema.ID+`"}`, 200); !strings.Contains(left, `"total":1`) || !strings.Contains(left, `"objectKey":"SVC-5"`) {
+		t.Fatal(left)
+	}
+
 	// A member of the site who does not agent this desk is told the object is
 	// not there, rather than that it is hidden.
 	callAs(memberID, "GET", assets+"/object/"+checkout.ID, "", 404)

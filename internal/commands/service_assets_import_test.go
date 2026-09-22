@@ -68,7 +68,7 @@ func TestAnAssetInventoryIsImportedFromAFile(t *testing.T) {
 		"SVC-2,Search,Tier 2,",
 		"SVC-3,Notifications,Tier 2,40",
 		"",
-	}, "\n"))
+	}, "\n"), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestAnAssetInventoryIsImportedFromAFile(t *testing.T) {
 		{"the same key twice", "Key,Label,Service tier\nSVC-9,Ledger,Tier 1\nsvc-9,Ledger again,Tier 1", "row 3: SVC-9 is already row 2"},
 		{"a heading row alone", "Key,Label,Service tier", "at least one object"},
 	} {
-		if _, err := service.ImportServiceAssetObjects(ctx, adminID, workspaceID, deskID, schema.ID, refusal.file); err == nil || !strings.Contains(err.Error(), refusal.want) {
+		if _, err := service.ImportServiceAssetObjects(ctx, adminID, workspaceID, deskID, schema.ID, refusal.file, false); err == nil || !strings.Contains(err.Error(), refusal.want) {
 			t.Fatalf("%s: error = %v", refusal.name, err)
 		}
 	}
@@ -115,5 +115,30 @@ func TestAnAssetInventoryIsImportedFromAFile(t *testing.T) {
 	}
 	if len(after.Objects) != 3 {
 		t.Fatalf("a refused import left %d objects", len(after.Objects))
+	}
+
+	// A reconciling import is the whole schema: what the file leaves out goes.
+	reconciled, err := service.ImportServiceAssetObjects(ctx, adminID, workspaceID, deskID, schema.ID, strings.Join([]string{
+		"Key,Label,Service tier",
+		"SVC-2,Search,Tier 1",
+		"SVC-7,Ledger,Tier 2",
+		"",
+	}, "\n"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reconciled.Created != 1 || reconciled.Updated != 1 || reconciled.Deleted != 2 {
+		t.Fatalf("a reconciling import wrote %d new, %d updated and deleted %d", reconciled.Created, reconciled.Updated, reconciled.Deleted)
+	}
+	left, err := st.ServiceAssetInventory(ctx, workspaceID, adminID, deskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := map[string]bool{}
+	for _, object := range left.Objects {
+		keys[object.Key] = true
+	}
+	if len(keys) != 2 || !keys["SVC-2"] || !keys["SVC-7"] {
+		t.Fatalf("the schema holds %v", keys)
 	}
 }

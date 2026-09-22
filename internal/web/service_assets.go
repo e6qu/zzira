@@ -43,8 +43,9 @@ func (h *Handler) ServiceAssetsPage(w http.ResponseWriter, r *http.Request) {
 	data.AssetImportError = r.URL.Query().Get("importError")
 	created, createdErr := strconv.Atoi(r.URL.Query().Get("imported"))
 	updated, updatedErr := strconv.Atoi(r.URL.Query().Get("reimported"))
+	deleted, _ := strconv.Atoi(r.URL.Query().Get("unimported"))
 	if createdErr == nil && updatedErr == nil {
-		data.AssetImport = &models.ServiceAssetImport{Created: created, Updated: updated}
+		data.AssetImport = &models.ServiceAssetImport{Created: created, Updated: updated, Deleted: deleted}
 	}
 	h.writeWorkspacePage(w, r, "page_service_assets", user, workspaceID, data, "service-agent", desk.ProjectID)
 }
@@ -85,12 +86,12 @@ func (h *Handler) ServiceAssetImport(w http.ResponseWriter, r *http.Request) {
 		redirectLocal(w, r, back+"?importError="+url.QueryEscape("choose a file or paste the objects to import")+"#import")
 		return
 	}
-	imported, err := h.Commands.ImportServiceAssetObjects(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("schemaId"), text)
+	imported, err := h.Commands.ImportServiceAssetObjects(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("schemaId"), text, r.PostFormValue("reconcile") == "true")
 	if err != nil {
 		redirectLocal(w, r, back+"?importError="+url.QueryEscape(err.Error())+"#import")
 		return
 	}
-	redirectLocal(w, r, back+"?imported="+strconv.Itoa(imported.Created)+"&reimported="+strconv.Itoa(imported.Updated)+"#import")
+	redirectLocal(w, r, back+"?imported="+strconv.Itoa(imported.Created)+"&reimported="+strconv.Itoa(imported.Updated)+"&unimported="+strconv.Itoa(imported.Deleted)+"#import")
 }
 
 func parseServiceAssetAttributes(value string) ([]models.ServiceAssetAttribute, error) {

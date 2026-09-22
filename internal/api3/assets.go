@@ -44,6 +44,10 @@ func (h *Handler) assetsRoute(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case len(parts) == 2 && parts[0] == "objectschema" && parts[1] == "list" && r.Method == http.MethodGet:
 		h.assetSchemaList(w, r, workspaceID, actorID, assetsWorkspace)
+	case len(parts) == 2 && parts[0] == "objectschema" && parts[1] == "create" && r.Method == http.MethodPost:
+		h.assetSchemaCreate(w, r, workspaceID, actorID, assetsWorkspace)
+	case len(parts) == 2 && parts[0] == "objectschema" && r.Method == http.MethodDelete:
+		h.assetSchemaDelete(w, r, workspaceID, actorID, parts[1])
 	case len(parts) == 2 && parts[0] == "objectschema" && r.Method == http.MethodGet:
 		h.assetSchema(w, r, workspaceID, actorID, assetsWorkspace, parts[1])
 	case len(parts) == 4 && parts[0] == "objectschema" && parts[2] == "objecttypes" && parts[3] == "flat" && r.Method == http.MethodGet:
@@ -354,6 +358,94 @@ func (h *Handler) assetObjectTickets(w http.ResponseWriter, r *http.Request, wor
 
 type assetImportBody struct {
 	File string `json:"file"`
+	// Reconcile deletes the objects of the schema that the file leaves out,
+	// so an import can be the whole inventory rather than an addition to it.
+	Reconcile bool `json:"reconcile"`
+}
+
+// assetSchemaBody is a schema and the attributes it describes. An attribute
+// is named, typed, optionally required, and a select carries its options.
+type assetSchemaBody struct {
+	Name            string `json:"name"`
+	ObjectSchemaKey string `json:"objectSchemaKey"`
+	Description     string `json:"description"`
+	ServiceDeskID   string `json:"serviceDeskId"`
+	Attributes      []struct {
+		ID       string   `json:"id"`
+		Name     string   `json:"name"`
+		Type     string   `json:"type"`
+		Required bool     `json:"required"`
+		Options  []string `json:"options"`
+	} `json:"attributes"`
+}
+
+// assetSchemaCreate makes a schema in one desk's inventory. A site has one
+// Assets workspace and each schema belongs to a service desk, so the body
+// names which desk it is for.
+func (h *Handler) assetSchemaCreate(w http.ResponseWriter, r *http.Request, workspaceID, actorID, assetsWorkspace string) {
+	var body assetSchemaBody
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+		jiraError(w, http.StatusBadRequest, "The request body is not valid JSON.")
+		return
+	}
+	if strings.TrimSpace(body.ServiceDeskID) == "" {
+		jiraError(w, http.StatusBadRequest, "Name the service desk the schema belongs to.")
+		return
+	}
+	agent, err := h.Store.IsServiceAgent(r.Context(), workspaceID, body.ServiceDeskID, actorID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load that service desk.")
+		return
+	}
+	if !agent {
+		jiraError(w, http.StatusNotFound, "That service desk does not exist.")
+		return
+	}
+	schema := models.ServiceAssetSchema{Key: body.ObjectSchemaKey, Name: body.Name, Description: body.Description}
+	for _, attribute := range body.Attributes {
+		key := attribute.ID
+		if key == "" {
+			key = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(attribute.Name), " ", "_"))
+		}
+		// An attribute with no type is a line of text, which is what most of
+		// them are and what the Assets page writes when nothing is chosen.
+		kind := attribute.Type
+		if kind == "" {
+			kind = "text"
+		}
+		schema.Attributes = append(schema.Attributes, models.ServiceAssetAttribute{
+			Key: key, Name: attribute.Name, Type: kind, Required: attribute.Required, Options: attribute.Options,
+		})
+	}
+	created, err := h.Commands.CreateServiceAssetSchema(r.Context(), actorID, workspaceID, body.ServiceDeskID, schema)
+	if err != nil {
+		if errors.Is(err, store.ErrProjectPermission) {
+			jiraError(w, http.StatusForbidden, "Only site administrators create Assets schemas.")
+			return
+		}
+		jiraError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, h.assetSchemaBean(*created, assetsWorkspace, 0))
+}
+
+// assetSchemaDelete removes a schema, and with it its objects, their
+// relationships and the request links that named them.
+func (h *Handler) assetSchemaDelete(w http.ResponseWriter, r *http.Request, workspaceID, actorID, schemaID string) {
+	_, deskID, err := h.Store.ServiceAssetSchema(r.Context(), workspaceID, actorID, schemaID)
+	if err != nil {
+		assetError(w, err, "Could not load that Assets schema.")
+		return
+	}
+	if err := h.Commands.DeleteServiceAssetSchema(r.Context(), actorID, workspaceID, deskID, schemaID); err != nil {
+		if errors.Is(err, store.ErrProjectPermission) {
+			jiraError(w, http.StatusForbidden, "Only site administrators delete Assets schemas.")
+			return
+		}
+		jiraError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // assetImport reads the same comma separated inventory the Assets page takes,
@@ -369,16 +461,16 @@ func (h *Handler) assetImport(w http.ResponseWriter, r *http.Request, workspaceI
 		jiraError(w, http.StatusBadRequest, "Could not read the request body.")
 		return
 	}
-	file := string(raw)
+	file, reconcile := string(raw), r.URL.Query().Get("reconcile") == "true"
 	if strings.HasPrefix(strings.TrimSpace(r.Header.Get("Content-Type")), "application/json") {
 		var body assetImportBody
 		if err := json.Unmarshal(raw, &body); err != nil {
 			jiraError(w, http.StatusBadRequest, "The request body is not valid JSON.")
 			return
 		}
-		file = body.File
+		file, reconcile = body.File, body.Reconcile || reconcile
 	}
-	imported, err := h.Commands.ImportServiceAssetObjects(r.Context(), actorID, workspaceID, deskID, schemaID, file)
+	imported, err := h.Commands.ImportServiceAssetObjects(r.Context(), actorID, workspaceID, deskID, schemaID, file, reconcile)
 	if err != nil {
 		if errors.Is(err, store.ErrProjectPermission) {
 			jiraError(w, http.StatusForbidden, "Only site administrators import Assets objects.")
@@ -392,5 +484,5 @@ func (h *Handler) assetImport(w http.ResponseWriter, r *http.Request, workspaceI
 		object.SchemaKey, object.SchemaName = schema.Key, schema.Name
 		objects = append(objects, h.assetObjectBean(object, assetsWorkspace))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"created": imported.Created, "updated": imported.Updated, "total": len(objects), "objectEntries": objects})
+	writeJSON(w, http.StatusOK, map[string]any{"created": imported.Created, "updated": imported.Updated, "deleted": imported.Deleted, "total": len(objects), "objectEntries": objects})
 }
