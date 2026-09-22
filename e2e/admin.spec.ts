@@ -370,3 +370,113 @@ test('an administrator makes one person sign in through the identity provider', 
   await expect(refusedPage).not.toHaveURL(/\/login/);
   await refused.close();
 });
+
+// An identity provider writes people into the directory over SCIM. Until now
+// the only thing that answered was the API: an administrator had no way to see
+// whether the provider was connected, or who it had created.
+test('an administrator sees what an identity provider has provisioned', async ({ page, request }) => {
+  // A provider holds a bearer token of an organization administrator, as it
+  // holds an API key in Atlassian.
+  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
+  const auth = { Authorization: `Bearer ${tokens['demo@zzira.dev']}`, 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  await login(page);
+  await page.goto('/admin');
+  const provisioning = page.getByRole('region', { name: 'User provisioning' });
+  await expect(provisioning).toContainText('/scim/directory/');
+  // The address an administrator points their provider at is on the page.
+  const address = await provisioning.locator('code').first().innerText();
+  const directoryID = address.split('/scim/directory/')[1];
+  expect(directoryID).toBeTruthy();
+
+  const person = await request.post(`/scim/directory/${directoryID}/Users`, {
+    headers: auth,
+    data: {
+      schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'],
+      userName: `provisioned.${stamp}@northwind.test`,
+      externalId: `ext-${stamp}`,
+      name: { givenName: 'Provisioned', familyName: 'Person' },
+      emails: [{ value: `provisioned.${stamp}@northwind.test`, primary: true }],
+      active: true,
+    },
+  });
+  expect(person.status()).toBe(201);
+  const group = await request.post(`/scim/directory/${directoryID}/Groups`, {
+    headers: auth,
+    data: {
+      schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
+      displayName: `Provisioned team ${stamp}`,
+      externalId: `extgroup-${stamp}`,
+      members: [{ value: (await person.json()).id }],
+    },
+  });
+  expect(group.status()).toBe(201);
+
+  await page.reload();
+  const written = page.getByRole('region', { name: 'User provisioning' });
+  await expect(written).toContainText('Connected');
+  await expect(written.getByRole('table', { name: 'People a provider manages' })).toContainText(`ext-${stamp}`);
+  await expect(written.getByRole('table', { name: 'People a provider manages' })).toContainText('Provisioned Person');
+  await expect(written.getByRole('table', { name: 'People a provider manages' })).toContainText(`Provisioned team ${stamp}`);
+  await expect(written.getByRole('table', { name: 'Groups a provider manages' })).toContainText(`extgroup-${stamp}`);
+  // What SCIM does not do is said where somebody setting it up will read it.
+  await expect(written).toContainText('Product access is not provisioned');
+  await accessible(page);
+});
+
+// A site with a hundred contractors puts the contractors' group under the
+// policy once, rather than naming a hundred people and the hundred and first
+// when they arrive.
+test('an authentication policy covers everyone in a group', async ({ page, browser }) => {
+  await login(page);
+  await page.goto('/admin');
+  const stamp = Date.now();
+
+  // A group with one person in it.
+  const groupName = `contractors-${stamp}`;
+  await page.getByLabel('Group name').fill(groupName);
+  await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  const group = page.locator('.admin-group').filter({ hasText: groupName });
+  await group.locator('li').filter({ hasText: 'Ana Soursop' }).getByRole('button', { name: 'Add' }).click();
+  await expect(page.locator('.admin-group').filter({ hasText: groupName })).toContainText('1 member');
+
+  const policyName = `Group policy ${stamp}`;
+  const create = page.locator('.admin-authentication-policy-create');
+  await create.getByLabel('Policy name').fill(policyName);
+  await create.getByLabel('Session duration in minutes').fill('45');
+  await create.getByLabel('Single sign-on only').check();
+  await create.getByLabel('Enable immediately').check();
+  await create.getByRole('button', { name: 'Create authentication policy' }).click();
+
+  let policy = page.locator('.admin-authentication-policy').filter({ hasText: policyName });
+  await expect(policy).toContainText('No group is covered yet');
+  await policy.getByLabel('Add a group').selectOption({ label: groupName });
+  await policy.getByRole('button', { name: 'Add group' }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Policy\+group\+added$/);
+  policy = page.locator('.admin-authentication-policy').filter({ hasText: policyName });
+  await expect(policy).toContainText(groupName);
+  await accessible(page);
+
+  // The person in the group signs in the way the policy says, without being
+  // named on it.
+  const refused = await browser.newContext();
+  const refusedPage = await refused.newPage();
+  await refusedPage.goto('/login');
+  await refusedPage.fill('#login-email', 'ana@zzira.dev');
+  await refusedPage.fill('#login-password', 'ana12345');
+  await refusedPage.click('button[type=submit]');
+  await expect(refusedPage.locator('body')).toContainText(/single sign-on|identity provider/i);
+  await refused.close();
+
+  // Taking the group out gives her password back.
+  await policy.getByRole('button', { name: `Remove ${groupName}` }).click();
+  await expect(page).toHaveURL(/\/admin\?saved=Policy\+group\+removed$/);
+  const allowed = await browser.newContext();
+  const allowedPage = await allowed.newPage();
+  await allowedPage.goto('/login');
+  await allowedPage.fill('#login-email', 'ana@zzira.dev');
+  await allowedPage.fill('#login-password', 'ana12345');
+  await allowedPage.click('button[type=submit]');
+  await expect(allowedPage).toHaveURL('/');
+  await allowed.close();
+});

@@ -68,6 +68,14 @@ it.
 writes to it, and the service management organization bean then reports
 `scimManaged: true`.
 
+## In the browser
+
+`/admin` has a **User provisioning** section: the address to point a provider
+at, the directory it writes to, whether one has written yet and when it last
+did, and the people and groups it manages with the external ids it knows them
+by. What SCIM does not provision -- product access -- is said there too,
+because that is where somebody setting it up will read it.
+
 ## Gaps
 
 - One directory per organization, so `{directoryId}` is that directory.
@@ -76,6 +84,8 @@ writes to it, and the service management organization bean then reports
   a directory-scoped API key of its own.
 - Product access is not provisioned: a person SCIM creates joins the directory
   and its groups, and the groups carry whatever access the site gave them.
+- The browser page reads what a provider has written; it does not write. A
+  provider is connected by pointing it at the address, not by a form here.
 
 ## Tests
 
