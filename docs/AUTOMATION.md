@@ -62,6 +62,11 @@ Base paths (the Cloud ID comes from `GET /_edge/tenant_info`):
   rule is run on it. A required question that was not answered refuses the run
   and says so under the control; a rule that ran re-renders the work item,
   because it has just changed it.
+- **Run automation** in the navigator: the same rules, over a selection. It
+  runs the rule on each selected work item one at a time, so a rule refused on
+  one does not stop the rest, and says how many of them it ran on. One run
+  covers at most fifty work items, which is the limit the Automation API's own
+  bulk invocation takes.
 
 The editor offers every trigger, condition and action in the tables below and
 the rule's branches placed last, each one its conditions and then its actions,
@@ -312,8 +317,6 @@ See [PLAN.md](../PLAN.md).
 - Usage limits: no monthly execution quota or per-rule usage tracking.
 - The rest of Jira's trigger, condition, action and branch catalog (watchers,
   cloning, deleting comments and links), and branches nested inside branches.
-- Running a manual rule over a selection of work items: **Run automation** runs
-  it on the work item it is on, while the API takes up to fifty objects.
 
 ## See also
 

@@ -1017,6 +1017,69 @@ test('admin writes a rule to run by hand and runs it from a work item', async ({
   await expect(page).toHaveURL('/settings/automation');
 });
 
+// Jira runs a manual rule over a selection as well as over one work item.
+// The navigator offers the same rules the work item does, and runs them one at
+// a time so a rule refused on one item does not stop the rest.
+test('admin runs a manual rule over a selection in the navigator', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const keys: string[] = [];
+  for (const suffix of ['one', 'two', 'three']) {
+    const created = await page.request.post('/rest/api/3/issue', {
+      headers, data: { fields: { project: { key: 'ZZ' }, summary: `Bulk rule ${suffix} ${stamp}`, issuetype: { name: 'Task' } } },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    keys.push((await created.json()).key as string);
+  }
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E bulk manual ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('jira.manual.trigger.issue.action');
+  await page.getByLabel('Question').first().fill('Which release?');
+  await page.getByLabel('Variable').first().fill('release');
+  await page.getByLabel('Needed').first().selectOption('required');
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.comment');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(`Queued for {{userInputs.release}} (${stamp})`);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+
+  try {
+    // The navigator offers the rule beside the other bulk actions.
+    await page.goto(`/issues/ZZ?mode=advanced&jql=${encodeURIComponent(`summary ~ "Bulk rule" AND summary ~ "${stamp}" ORDER BY created ASC`)}`);
+    for (const key of keys) {
+      await page.getByRole('checkbox', { name: `Select ${key}` }).check();
+    }
+    const runner = page.locator('.bulk-automation-picker');
+    await runner.locator('summary').click();
+    await accessible(page);
+    await runner.getByLabel('Rule').selectOption({ label: name });
+    await runner.getByLabel('Which release?').fill(`4.2`);
+    page.once('dialog', dialog => dialog.accept());
+    await runner.getByRole('button', { name: 'Run rule' }).click();
+    await expect(page.getByRole('status')).toContainText(`${name} ran on 3 of 3 work items.`);
+
+    // What was typed reached every one of them.
+    for (const key of keys) {
+      await expect.poll(async () => {
+        const comments = await (await page.request.get(`/rest/api/3/issue/${key}/comment`, { headers })).json();
+        return JSON.stringify(comments.comments.map((item: any) => item.body));
+      }, { timeout: 15_000 }).toContain(`Queued for 4.2 (${stamp})`);
+    }
+    // Every run is in the rule's own audit log.
+    await page.goto(ruleURL);
+    await expect(page.locator('.automation-audit tbody').locator('tr')).toHaveCount(3);
+  } finally {
+    await page.goto(ruleURL);
+    await page.getByRole('button', { name: 'Disable' }).click();
+    await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+    await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+    await expect(page).toHaveURL('/settings/automation');
+  }
+});
+
 // A rule can name a value of its own and read it back later, and branch over
 // whatever a query matches rather than only over work related to the trigger.
 test('admin writes a rule that names a value and branches over a query', async ({ page }) => {
