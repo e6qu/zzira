@@ -123,6 +123,11 @@ type Project struct {
 	// ServiceDesk names this project's desk when the project is a service
 	// project.
 	ServiceDesk *ServiceDesk `json:"serviceDesk,omitempty"`
+	// IncidentJQL is what this project counts as an incident for its delivery
+	// metrics. A project that does not say counts its service desk's incident
+	// requests, which a project without a desk never has -- so a delivery team
+	// that says nothing can never show a time to restore.
+	IncidentJQL string `json:"incidentJql,omitempty"`
 }
 
 // Component is a part of a project, optionally with its own lead.
@@ -660,6 +665,11 @@ func (s *Scenario) Validate() error {
 				if sprint.StartDay != nil && sprint.EndDay != nil && *sprint.EndDay < *sprint.StartDay {
 					return fmt.Errorf("sprint %q ends before it starts", sprint.ID)
 				}
+			}
+		}
+		if query := strings.TrimSpace(project.IncidentJQL); query != "" {
+			if _, err := jql.Parse(query); err != nil {
+				return fmt.Errorf("project %q counts incidents with %q: %w", project.ID, query, err)
 			}
 		}
 		if project.ServiceDesk != nil {

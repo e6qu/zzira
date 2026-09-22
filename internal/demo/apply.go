@@ -524,6 +524,18 @@ func (a *Applier) project(ctx context.Context, project Project) error {
 			return err
 		}
 	}
+	// What this project counts as an incident, which is what its time to
+	// restore is measured over.
+	if query := strings.TrimSpace(project.IncidentJQL); query != "" {
+		settings, err := a.Store.DORASettingsFor(ctx, a.workspaceID, created.ID)
+		if err != nil {
+			return fmt.Errorf("read the delivery settings of %s: %w", project.Key, err)
+		}
+		settings.IncidentJQL = query
+		if err := a.Store.SaveDORASettings(ctx, a.workspaceID, a.admin, created.ID, settings); err != nil {
+			return fmt.Errorf("say what an incident is in %s: %w", project.Key, err)
+		}
+	}
 	return nil
 }
 
@@ -1028,7 +1040,13 @@ func (a *Applier) deployments(ctx context.Context, declared []Deployment) error 
 		for _, item := range deployment.WorkItems {
 			keys = append(keys, a.items[item].Key)
 		}
-		at := a.Clock.At(deployment.Day, index)
+		// The same as a commit: a deployment is dated by its own day, not by
+		// its place in three years of deliveries.
+		a.mutex.Lock()
+		ordinal := a.ordinals[deployment.Day]
+		a.ordinals[deployment.Day] = ordinal + 1
+		a.mutex.Unlock()
+		at := a.Clock.At(deployment.Day, ordinal)
 		payload, err := json.Marshal(map[string]any{
 			"deploymentSequenceNumber": index + 1, "updateSequenceNumber": index + 1,
 			"displayName": fmt.Sprintf("%s #%d", deployment.Pipeline, index+1), "state": deployment.State,
@@ -1948,7 +1966,14 @@ func (a *Applier) commits(ctx context.Context, declared []Commit) error {
 		if len(keys) == 0 {
 			continue
 		}
-		at := a.Clock.At(commit.Day, index)
+		// A commit is written on the day it was written, spread through that
+		// day like every other write; numbering them across the whole history
+		// would push the last of them months past the day they belong to.
+		a.mutex.Lock()
+		ordinal := a.ordinals[commit.Day]
+		a.ordinals[commit.Day] = ordinal + 1
+		a.mutex.Unlock()
+		at := a.Clock.At(commit.Day, ordinal)
 		message := commit.Message
 		if message == "" {
 			message = "Change " + commit.ID

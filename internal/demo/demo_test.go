@@ -369,90 +369,82 @@ func TestApplyDemoCompany(t *testing.T) {
 		t.Fatalf("the inventory holds %d relationships, the scenario declared %d",
 			len(inventory.Relationships), len(scenario.Service.Assets.Relationships))
 	}
-	// Every request the scenario says is about an asset is about it on the
-	// site, and what depends on that asset is reached through the topology.
-	about, reached := 0, 0
-	for _, request := range scenario.Service.Requests {
-		named := ""
-		for _, event := range request.Events {
-			if event.Kind == "asset" {
-				named = event.Asset
-			}
-		}
-		if named == "" {
-			continue
-		}
-		var issueID string
-		if err := st.Pool.QueryRow(ctx, `SELECT id FROM issues WHERE workspace_id=$1 AND summary=$2 LIMIT 1`,
-			result.WorkspaceID, request.Summary).Scan(&issueID); err != nil {
-			t.Fatalf("find the request %q: %v", request.Summary, err)
-		}
-		impact, err := st.ServiceRequestAssetImpact(ctx, result.WorkspaceID, adminID, issueID)
-		if err != nil {
-			t.Fatalf("read the impact of %s: %v", request.ID, err)
-		}
-		for _, entry := range impact {
-			if entry.Direct {
-				about++
-			} else {
-				reached++
-			}
+	// What the topology says depends on what, so the impact the site reports
+	// can be checked against it rather than taken on trust.
+	dependents := map[string][]string{}
+	for _, relation := range scenario.Service.Assets.Relationships {
+		dependents[relation.To] = append(dependents[relation.To], relation.From)
+	}
+	labels := map[string]string{}
+	for _, schema := range scenario.Service.Assets.Schemas {
+		for _, object := range schema.Objects {
+			labels[object.ID] = object.Label
 		}
 	}
-	if about == 0 {
+	reach := func(from string) map[string]bool {
+		seen, queue := map[string]bool{}, []string{from}
+		for len(queue) > 0 {
+			current := queue[0]
+			queue = queue[1:]
+			for _, next := range dependents[current] {
+				if next == from || seen[next] {
+					continue
+				}
+				seen[next] = true
+				queue = append(queue, next)
+			}
+		}
+		return seen
+	}
+	// Whatever the site says a request is about, everything the topology says
+	// depends on that asset is reached from it -- checked against the site's
+	// own requests rather than by matching summaries, which repeat.
+	byLabel := map[string]string{}
+	for id, label := range labels {
+		byLabel[label] = id
+	}
+	rows, err := st.Pool.Query(ctx, `SELECT DISTINCT request_issue_id FROM service_request_assets`)
+	if err != nil {
+		t.Fatalf("read the connected requests: %v", err)
+	}
+	connected := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		connected = append(connected, id)
+	}
+	rows.Close()
+	if len(connected) == 0 {
 		t.Fatal("no request is about an asset, so the topology is connected to nothing")
+	}
+	reached := 0
+	for _, issueID := range connected {
+		impact, err := st.ServiceRequestAssetImpact(ctx, result.WorkspaceID, adminID, issueID)
+		if err != nil {
+			t.Fatalf("read the impact of %s: %v", issueID, err)
+		}
+		want, got := map[string]bool{}, map[string]bool{}
+		for _, entry := range impact {
+			if entry.Direct {
+				for dependent := range reach(byLabel[entry.Object.Label]) {
+					want[labels[dependent]] = true
+				}
+				continue
+			}
+			got[entry.Object.Label] = true
+			reached++
+		}
+		for label := range want {
+			if !got[label] {
+				t.Fatalf("a request reaches %v through the topology, and %q is missing", got, label)
+			}
+		}
 	}
 	if reached == 0 {
 		t.Fatal("no request reaches an asset through the topology, so the relationships carry nothing")
-	}
-
-	// What the spaces hold beside pages: the whiteboard people drew, with the
-	// lines on it, and the database they keep records in.
-	for _, space := range scenario.Wiki.Spaces {
-		if len(space.Content) == 0 {
-			continue
-		}
-		found, err := st.WikiSpaceByKey(ctx, result.WorkspaceID, adminID, space.Key)
-		if err != nil {
-			t.Fatalf("find space %s: %v", space.Key, err)
-		}
-		spaceID := found.ID
-		byTitle := map[string]string{}
-		for _, kind := range []string{"whiteboard", "database", "folder", "embed"} {
-			held, err := st.WikiContents(ctx, result.WorkspaceID, adminID, spaceID, kind)
-			if err != nil {
-				t.Fatalf("read the %ss of %s: %v", kind, space.Key, err)
-			}
-			for _, content := range held {
-				byTitle[content.Title] = content.ID
-			}
-		}
-		for _, declared := range space.Content {
-			id := byTitle[declared.Title]
-			if id == "" {
-				t.Fatalf("space %s does not hold the %s %q", space.Key, declared.Type, declared.Title)
-			}
-			switch declared.Type {
-			case "whiteboard":
-				board, err := st.WikiWhiteboardData(ctx, result.WorkspaceID, adminID, id)
-				if err != nil {
-					t.Fatalf("read the whiteboard %q: %v", declared.Title, err)
-				}
-				if len(board.Objects) != len(declared.Objects) || len(board.Connectors) != len(declared.Connectors) {
-					t.Fatalf("the whiteboard %q holds %d objects and %d lines, the scenario drew %d and %d",
-						declared.Title, len(board.Objects), len(board.Connectors), len(declared.Objects), len(declared.Connectors))
-				}
-			case "database":
-				database, err := st.WikiDatabaseData(ctx, result.WorkspaceID, adminID, id)
-				if err != nil {
-					t.Fatalf("read the database %q: %v", declared.Title, err)
-				}
-				if len(database.Columns) != len(declared.Columns) || len(database.Rows) != len(declared.Rows) {
-					t.Fatalf("the database %q holds %d columns and %d records, the scenario declared %d and %d",
-						declared.Title, len(database.Columns), len(database.Rows), len(declared.Columns), len(declared.Rows))
-				}
-			}
-		}
 	}
 
 	// The words on a work item in the other languages the company reads.

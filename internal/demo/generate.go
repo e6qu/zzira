@@ -351,6 +351,10 @@ func capitalise(phrase string) string {
 	return strings.ToUpper(phrase[:1]) + phrase[1:]
 }
 
+// deliveryWindowDays is how far back a deployment reaches for the work it
+// carries: about a month, which is a sprint or two of finished work.
+const deliveryWindowDays = 30
+
 // until holds a generated day at today: day zero is the day the site is built,
 // and a scenario that runs past it dates work in the future.
 func until(day int) int {
@@ -415,6 +419,14 @@ func (s *Scenario) growWorkItem(project *Project, generated GeneratedProject, sp
 	if version != nil && version.ReleaseDay != nil && *version.ReleaseDay >= item.CreatedDay {
 		item.FixVersions = []string{version.ID}
 	}
+	// A few of the bugs are what took production down. A delivery team that
+	// never marks one has no time to restore, which is a quarter of its
+	// delivery metrics missing.
+	incident := bug && random.Float64() < 0.18
+	if incident {
+		item.Labels = append(item.Labels, "incident")
+		item.Priority = "Highest"
+	}
 	// Some work is promised for a day. The calendar gadget and the due-date
 	// columns and queries have nothing to show without it, and a site where
 	// every piece of work is due is not one either.
@@ -444,6 +456,10 @@ func (s *Scenario) growWorkItem(project *Project, generated GeneratedProject, sp
 	finished := random.Float64() < 0.92
 	if endDay > 0 {
 		finished = random.Float64() < 0.35
+	}
+	// An outage is over: somebody stayed until it was.
+	if incident {
+		finished = true
 	}
 	if finished {
 		resolution := "Done"
@@ -526,18 +542,30 @@ func (s *Scenario) growDeliveries(project *Project, generated GeneratedProject, 
 			done = append(done, item)
 		}
 	}
+	// Work is in creation order, so a window over it is a window over the
+	// weeks before a deployment.
+	sort.SliceStable(done, func(first, second int) bool { return done[first].CreatedDay < done[second].CreatedDay })
 	interval := 7.0 / generated.DeploymentsPerWeek
+	first := 0
 	for day := float64(-plan.Days); day < 0; day += interval {
 		at := int(day)
+		// A deployment carries what was finished recently, not whatever the
+		// project has ever done. Redeploying a three-year-old work item makes
+		// the lead time of every commit on it read as three years, because a
+		// commit is measured against the first delivery that carried it.
+		for first < len(done) && done[first].CreatedDay < at-deliveryWindowDays {
+			first++
+		}
+		last := first
+		for last < len(done) && done[last].CreatedDay <= at {
+			last++
+		}
 		carried := []string{}
 		for attempt := 0; attempt < 3; attempt++ {
-			if len(done) == 0 {
+			if last <= first {
 				break
 			}
-			candidate := done[random.Intn(len(done))]
-			if candidate.CreatedDay <= at {
-				carried = append(carried, candidate.ID)
-			}
+			carried = append(carried, done[first+random.Intn(last-first)].ID)
 		}
 		if len(carried) == 0 {
 			continue

@@ -448,7 +448,8 @@
           }
         ]
       },
-      "template": "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic"
+      "template": "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic",
+      "incidentJql": "labels = incident ORDER BY created DESC"
     },
     {
       "id": "ops",
@@ -544,7 +545,8 @@
           "startDay": -28,
           "releaseDay": 7
         }
-      ]
+      ],
+      "incidentJql": "labels = incident ORDER BY created DESC"
     },
     {
       "id": "mob",
@@ -581,7 +583,8 @@
           "startDay": -28,
           "releaseDay": 10
         }
-      ]
+      ],
+      "incidentJql": "labels = incident ORDER BY created DESC"
     },
     {
       "id": "data",
@@ -609,7 +612,8 @@
         "id": "data-board",
         "name": "Data board",
         "type": "scrum"
-      }
+      },
+      "incidentJql": "labels = incident ORDER BY created DESC"
     },
     {
       "id": "web",
@@ -642,7 +646,8 @@
           "startDay": -28,
           "releaseDay": 7
         }
-      ]
+      ],
+      "incidentJql": "labels = incident ORDER BY created DESC"
     },
     {
       "id": "mkt",
@@ -692,7 +697,8 @@
         "id": "sec-board",
         "name": "Security board",
         "type": "scrum"
-      }
+      },
+      "incidentJql": "labels = incident ORDER BY created DESC"
     },
     {
       "id": "des",
@@ -2533,6 +2539,31 @@
           "from": "svc-reporting",
           "to": "inf-queue",
           "type": "depends on"
+        },
+        {
+          "from": "svc-reporting",
+          "to": "svc-payouts",
+          "type": "reports on"
+        },
+        {
+          "from": "svc-reporting",
+          "to": "svc-checkout",
+          "type": "reports on"
+        },
+        {
+          "from": "svc-portal",
+          "to": "svc-payouts",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-reporting",
+          "to": "svc-portal",
+          "type": "reports on"
+        },
+        {
+          "from": "svc-reporting",
+          "to": "svc-mobile",
+          "type": "reports on"
         }
       ]
     }
