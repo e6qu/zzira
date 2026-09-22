@@ -152,6 +152,11 @@ scenario declares the *shape* of its history and the generator writes it:
 - `approvalType` is the request type somebody has to approve, `approvers` the
   people who answer, and `assets` the objects an incident is about. Most access
   requests are approved, a few refused and closed, and a few left waiting.
+- A share of the generated bugs are the outages the team had: labelled
+  `incident`, raised at the highest priority and always resolved. Each project
+  has one in the last month, because a delivery report whose time to restore
+  says "No data" reads as a report that does not work. A project says what it
+  counts as an incident with `incidentJql`.
 - Generated work carries an `estimate` like curated work does, and about a
   third of it is `due` on a day, so the time tracking, user workload, version
   workload and calendar surfaces have something to show for every year of the

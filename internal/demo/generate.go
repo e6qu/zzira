@@ -3,6 +3,7 @@ package demo
 import (
 	"fmt"
 	"math/rand"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -323,8 +324,49 @@ func (s *Scenario) growProject(project *Project, generated GeneratedProject, pla
 		linkSprintWork(sprintWork, generated, people, random)
 		s.WorkItems = append(s.WorkItems, sprintWork...)
 	}
+	s.assureRecentIncident(project, generated, people, random)
 	s.growDeliveries(project, generated, plan, people, sprintDays, random)
 	return nil
+}
+
+// assureRecentIncident makes sure the last month holds one incident that was
+// recovered from. A team of this size has about one a month, so a freshly
+// built site lands on a month with none often enough -- and a delivery report
+// missing its time to restore reads as a report that does not work rather than
+// as a quiet month.
+func (s *Scenario) assureRecentIncident(project *Project, generated GeneratedProject, people []string, random *rand.Rand) {
+	for _, item := range s.WorkItems {
+		if item.Project == project.ID && item.CreatedDay >= -deliveryWindowDays && slices.Contains(item.Labels, "incident") {
+			return
+		}
+	}
+	themes := generated.Themes
+	if len(themes) == 0 {
+		themes = []string{strings.ToLower(project.Name)}
+	}
+	theme := themes[random.Intn(len(themes))]
+	assignee := ""
+	if len(people) > 0 {
+		assignee = people[random.Intn(len(people))]
+	}
+	day := until(-3 - random.Intn(10))
+	item := WorkItem{
+		Generated: true, ID: fmt.Sprintf("%s-gi1", project.ID), Project: project.ID, Type: "Bug",
+		Summary:     fmt.Sprintf("%s stopped working for everyone", capitalise(theme)),
+		Description: "Production was down until somebody put it back.",
+		Reporter:    assignee, Assignee: assignee, Priority: "Highest",
+		Labels:   []string{"incident", strings.ReplaceAll(theme, " ", "-")},
+		Estimate: "2h", CreatedDay: day,
+		Events: []Event{
+			{Day: day, Kind: "transition", Status: "In Progress", Actor: assignee},
+			{Day: day, Kind: "worklog", Actor: assignee, Seconds: 1800 * (1 + random.Intn(4))},
+			{Day: day, Kind: "transition", Status: "Done", Resolution: "Done", Actor: assignee},
+		},
+	}
+	if generated.Points != "" {
+		item.Fields = map[string]string{generated.Points: "2"}
+	}
+	s.WorkItems = append(s.WorkItems, item)
 }
 
 // releaseSeries is where a project's generated releases start numbering, so

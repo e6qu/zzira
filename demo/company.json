@@ -542,7 +542,7 @@
           "id": "plat-autumn",
           "name": "Autumn platform",
           "description": "What the platform ships for the autumn programme.",
-          "startDay": -28,
+          "startDay": -7,
           "releaseDay": 7
         }
       ],
@@ -580,7 +580,7 @@
           "id": "mob-autumn",
           "name": "Autumn mobile",
           "description": "The mobile half of the autumn programme.",
-          "startDay": -28,
+          "startDay": -7,
           "releaseDay": 10
         }
       ],
@@ -643,7 +643,7 @@
           "id": "web-autumn",
           "name": "Autumn storefront",
           "description": "The storefront half of the autumn programme.",
-          "startDay": -28,
+          "startDay": -7,
           "releaseDay": 7
         }
       ],
@@ -1743,6 +1743,49 @@
       ],
       "estimate": "1d",
       "due": 12
+    },
+    {
+      "id": "pay-30",
+      "project": "pay",
+      "type": "Bug",
+      "summary": "Checkout was down for forty minutes",
+      "description": "Card payments failed for every customer between 09:10 and 09:50. The processor's certificate had expired.",
+      "assignee": "ravi",
+      "reporter": "sara",
+      "createdDay": -6,
+      "labels": [
+        "payments",
+        "incident"
+      ],
+      "priority": "Highest",
+      "estimate": "4h",
+      "events": [
+        {
+          "day": -6,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "ravi"
+        },
+        {
+          "day": -6,
+          "kind": "comment",
+          "actor": "ravi",
+          "body": "Rotated the certificate and payments recovered."
+        },
+        {
+          "day": -6,
+          "kind": "worklog",
+          "actor": "ravi",
+          "seconds": 2400
+        },
+        {
+          "day": -6,
+          "kind": "transition",
+          "status": "Done",
+          "resolution": "Done",
+          "actor": "ravi"
+        }
+      ]
     }
   ],
   "deployments": [

@@ -121,3 +121,37 @@ func shippedThemes(t *testing.T) []string {
 	}
 	return themes
 }
+
+// A delivery team that has had no incident in the last month shows no time to
+// restore, which reads as a broken report rather than a quiet month. Every
+// project that grows a history has one it recovered from.
+func TestEveryDeliveryProjectHasARecentIncident(t *testing.T) {
+	file, err := os.Open(filepath.Join("..", "..", "demo", "company.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	scenario, err := demo.Read(file)
+	if err != nil {
+		t.Fatalf("read the shipped company: %v", err)
+	}
+	recovered := map[string]bool{}
+	for _, item := range scenario.WorkItems {
+		if item.CreatedDay < -30 || !strings.Contains(strings.Join(item.Labels, " "), "incident") {
+			continue
+		}
+		for _, event := range item.Events {
+			if event.Kind == "transition" && event.Resolution != "" {
+				recovered[item.Project] = true
+			}
+		}
+	}
+	for _, project := range scenario.Projects {
+		if project.Type != "software" {
+			continue
+		}
+		if !recovered[project.ID] {
+			t.Fatalf("%s has had no incident it recovered from in the last month, so its delivery report has no time to restore", project.ID)
+		}
+	}
+}
