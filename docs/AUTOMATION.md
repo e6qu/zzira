@@ -64,11 +64,14 @@ Base paths (the Cloud ID comes from `GET /_edge/tenant_info`):
   because it has just changed it.
 
 The editor offers every trigger, condition and action in the tables below and
-one branch placed last (its conditions, then its actions). The row's **More for
+the rule's branches placed last, each one its conditions and then its actions,
+with a blank branch for adding another. A rule that acts after a branch, or
+mixes a branch's order, stays as it is: saving it would change what it means. The row's **More for
 this action** fold holds what only some actions use: a create variable action's
-name, and the wiki page a comment or a label writes on (blank is the page the
-rule ran for). A branch over work matching JQL takes its query beside the link
-types. If a rule holds anything the editor cannot show, saving is turned off;
+name, the wiki page a comment or a label writes on (blank is the page the rule
+ran for), and how many work items a lookup keeps. A branch over work matching JQL takes its query beside the link
+types, and a branch over each item in a list takes the smart value holding it
+and what to call each item. If a rule holds anything the editor cannot show, saving is turned off;
 change such rules through the API.
 
 ## Triggers
@@ -194,30 +197,51 @@ values. Most actions set a desired state, so a replayed action does nothing.
 | `confluence.page.comment` | `comment`, optional `pageId` | Comments on the page as the actor. The page is the one named, else the page the run is about; a rule with neither fails rather than guessing. Text is escaped into storage format |
 | `confluence.page.label` | `label`, optional `pageId` and `prefix` (default `global`) | Attaches a label as the actor. A label the page already carries counts as done |
 | `confluence.page.create` | `spaceKey`, optional `title` | Creates a page as the actor (fails without view and create rights). Default title is the key and summary; the page names the rule and the work item |
+| `jira.issue.lookup` | `jql`, optional `limit` (1-100, default 100) | Runs the query as the rule actor and keeps what it found as `{{lookupIssues}}`, which reads as the work it found (`ZZ-3, ZZ-7`) and holds `{key, id, summary, status, assignee, project}` for each. `{{lookupIssues.size}}` is how many, and a branch over `{{lookupIssues}}` runs for each of them, reading `{{<item>.key}}` and the rest. Finding nothing is an answer, not a failure: the list is empty. Reading changes nothing, so a rule whose only action is a lookup reports no action |
 | `jira.create.variable` | `variableName`, `variableValue` | Names a value for the rest of the rule, read as `{{variableName}}`. The value is rendered before it is stored, so a variable can be built from other smart values. A name is a letter then letters, digits, `_` or `-`, at most 64, and cannot be one of the smart values a rule already has (`issue`, `triggerIssue`, `initiator`, `rule`, `now`, `webResponse`, `webhookData`, `userInputs`, `version`, `sprint`, `deletedIssue`). Setting one again replaces it. At most 50 per run, 32,768 characters each. Changes nothing about the work, so a rule whose only action is this one reports no action |
 
 `jira.issue.create`, `jira.issue.outgoing-webhook`, `jira.create.variable`,
-`confluence.page.create`, `confluence.page.comment` and `confluence.page.label`
-run without a work item. The others need one. (Until now `confluence.page.create`
+`jira.issue.lookup`, `confluence.page.create`, `confluence.page.comment` and
+`confluence.page.label` run without a work item. The others need one. (Until now `confluence.page.create`
 was refused without one, which is not what this said.)
 
 ## Branches
 
 A `BRANCH` of type `jira.issue.related` runs its `children` (conditions and
 actions) once for each work item it finds that the actor can see.
-- `value.relatedType` picks `sub-tasks`, `parent`, `linked` or `jql`.
+- `value.relatedType` picks `sub-tasks`, `parent`, `linked`, `jql`, `created`
+  or `smart-values`.
 - `linkTypes` narrows linked work by phrase (`blocks`, `is blocked by`) or by
   link type name.
+- `created` runs for the work this run has raised, in the order it raised it,
+  which is Jira's "for all created issues" and the only way to reach work that
+  did not exist when the rule began. A create action that changed nothing --
+  the work was already there -- raised nothing, so a rule that runs again
+  branches over nothing rather than failing.
 - `jql` is the query a `jql` branch runs for. Smart values in it are rendered
   first, so a branch can ask about what an earlier action found. A `jql` branch
   needs no work item, so a rule a version, a sprint or a deletion started can
   still branch over work.
+- `smartValue` and `variableName` are what a `smart-values` branch runs over
+  and what each item is called inside it, which is Jira's advanced branching.
+  The value is rendered first and then read as a list: a JSON array by its
+  elements, anything else comma-separated, as a rendered list reads. An item
+  is `{{<variableName>}}`, and an item that is an object is also readable by
+  its parts, `{{<variableName>.name}}`. A branch over a variable that holds a
+  list -- `{{lookupIssues}}` and the like -- runs over that list itself rather
+  than over the text it reads as. An item that names a work item the rule
+  actor can see -- by `key` or `id`, which is what `{{lookupIssues}}` holds --
+  becomes the work item the branch runs for, so a rule acts on each of them and
+  `{{issue.key}}` inside the branch is that work item. An item that names none
+  leaves the work item as it was, because the branch is over values. What the
+  list came from is never trusted: a work item the actor cannot see is skipped.
 - Limits: at most 100 items, and no nested branches.
 - Inside the branch, `issue` means the item the branch is running for and
   `triggerIssue` means the work item the rule started from.
 - A condition that fails skips only that item.
-- A variable a branch names belongs to the branch: each item starts from what
-  the rule had named outside it, and what the branch names is gone afterwards.
+- A variable a branch names belongs to the branch, whatever the branch runs
+  over: each item starts from what the rule had named outside it, and what the
+  branch names is gone afterwards. The item's own name works the same way.
 - A related work items *condition* takes `sub-tasks`, `parent` or `linked`
   only; asking what a query matches is what `jira.jql.condition` is for.
 
@@ -243,7 +267,9 @@ A wiki event carries the content it happened to: `{{page.title}}`,
 path into them.
 
 A rule's own variables are read by the name the create variable action gave
-them: `{{release_note}}`.
+them: `{{release_note}}`. A variable holding an object or a list is also read
+by its parts -- `{{release.name}}` -- and `{{<name>.size}}` is how many a list
+holds, which is what `{{lookupIssues.size}}` answers.
 
 A manual run carries what it was asked: `{{userInputs.<variableName>}}` is the
 answer to that rule's question, and is empty when the question was optional and
@@ -284,9 +310,8 @@ See [PLAN.md](../PLAN.md).
 - Confluence actions beyond creating, commenting on and labelling a page, and
   triggers for spaces, attachments and custom content.
 - Usage limits: no monthly execution quota or per-rule usage tracking.
-- The rest of Jira's trigger, condition, action and branch catalog, including
-  for-each branches over a smart value's list, and branching over the work a
-  rule created.
+- The rest of Jira's trigger, condition, action and branch catalog (watchers,
+  cloning, deleting comments and links), and branches nested inside branches.
 - Running a manual rule over a selection of work items: **Run automation** runs
   it on the work item it is on, while the API takes up to fifty objects.
 

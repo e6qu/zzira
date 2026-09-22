@@ -45,6 +45,8 @@ type automationActionView struct {
 	// Page is the wiki page a comment or label action writes on, when it
 	// names one rather than answering the page the rule ran for.
 	Page string
+	// Limit is how many work items a lookup keeps.
+	Limit string
 }
 
 // automationFormPrompts reads the questions a manual rule asks. A row with
@@ -172,8 +174,11 @@ type automationConditionView struct{ Field, Operator, Value string }
 type automationBranchView struct {
 	RelatedType, LinkTypes string
 	// JQL is what a branch over matching work runs for.
-	JQL     string
-	Actions []automationActionView
+	JQL string
+	// SmartValue is the list a branch over values runs over, and Variable
+	// what each item is called inside it.
+	SmartValue, Variable string
+	Actions              []automationActionView
 	// Conditions choose which related work items the branch acts on.
 	Conditions []automationConditionView
 }
@@ -197,6 +202,7 @@ var (
 	automationActionTypes = []automationOption{
 		{automation.VariableActionType, "Create variable"},
 		{automation.WikiCommentActionType, "Comment on a page"}, {automation.WikiLabelActionType, "Label a page"},
+		{automation.LookupActionType, "Look up work items"},
 		{"jira.issue.add-label", "Add label"}, {"jira.issue.remove-label", "Remove label"}, {"jira.issue.assign", "Assign work item"},
 		{"jira.issue.assign:round-robin", "Assign work item (round-robin)"}, {"jira.issue.assign:balanced", "Assign work item (balanced workload)"},
 		{"jira.issue.assign:random", "Assign work item (random)"}, {"jira.issue.transition", "Transition work item"},
@@ -212,7 +218,7 @@ var (
 		{automation.WebRequestActionType + ":GET", "Send web request (GET)"},
 		{automation.WebRequestActionType + ":DELETE", "Send web request (DELETE)"},
 	}
-	automationRelatedTypes    = []automationOption{{"sub-tasks", "Sub-tasks"}, {"parent", "Parent"}, {"linked", "Linked work items"}, {"jql", "Work matching JQL"}}
+	automationRelatedTypes    = []automationOption{{"sub-tasks", "Sub-tasks"}, {"parent", "Parent"}, {"linked", "Linked work items"}, {"jql", "Work matching JQL"}, {"created", "Work this rule created"}, {"smart-values", "Each item in a list"}}
 	automationConditionFields = []automationOption{
 		{"jql", "Matches JQL"}, {"related:sub-tasks", "Sub-tasks match JQL"}, {"related:parent", "Parent matches JQL"},
 		{"related:linked", "Linked work matches JQL"}, {"status", "Status"}, {"priority", "Priority"}, {"issuetype", "Work type"}, {"assignee", "Assignee"},
@@ -254,9 +260,10 @@ type automationEditorData struct {
 	// Unsupported names what the editor cannot show in the rule, which turns
 	// saving there off so it is not lost.
 	Unsupported string
-	// Branch is the rule's related work items branch, and RelatedTypes the
-	// work a branch can run for.
-	Branch       automationBranchView
+	// Branches are the rule's branches, in the order it runs them, with a
+	// blank one at the end to add another; RelatedTypes is the work a branch
+	// can run for.
+	Branches     []automationBranchView
 	RelatedTypes []automationOption
 	Runs         []automationRunView
 	Members      []*models.User
@@ -461,7 +468,7 @@ func (h *Handler) automationEditorData(r *http.Request, workspaceID string, rule
 	if rule == nil {
 		data.Trigger = automationTriggerView{Type: "jira.jql.scheduled", Prompts: []automationPromptView{{InputType: "TEXT"}}}
 		data.Conditions = []automationConditionView{{}}
-		data.Branch = automationBranchView{Actions: []automationActionView{}, Conditions: []automationConditionView{{}}}
+		data.Branches = []automationBranchView{blankAutomationBranch()}
 		data.Rule = &automation.Rule{State: "ENABLED", ActorID: h.currentUser(r).ID, ScheduleTimezone: h.currentUser(r).TimeZone}
 		if data.Rule.ScheduleTimezone == "" {
 			data.Rule.ScheduleTimezone = "UTC"
@@ -487,8 +494,10 @@ func (h *Handler) automationEditorData(r *http.Request, workspaceID string, rule
 	data.Trigger = parseAutomationTrigger(rule.Payload)
 	data.Conditions = append(parseAutomationConditions(rule.Payload), automationConditionView{})
 	data.Unsupported = automationEditorUnsupported(rule.Payload)
-	data.Branch = parseAutomationBranch(rule.Payload)
-	data.Branch.Conditions = append(data.Branch.Conditions, automationConditionView{})
+	data.Branches = parseAutomationBranches(rule.Payload)
+	// A blank branch at the end is how another one is added, as a blank row
+	// is how another action is.
+	data.Branches = append(data.Branches, blankAutomationBranch())
 	return data, nil
 }
 
@@ -629,26 +638,49 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 	actionComponents, err := automationFormActions(automationActionRows{
 		Types: r.PostForm["action_type"], Values: r.PostForm["action_value"], Projects: r.PostForm["action_project"],
 		Bodies: r.PostForm["action_body"], HeaderLines: r.PostForm["action_headers"], Variables: r.PostForm["action_variable"],
-		Pages: r.PostForm["action_page"],
+		Pages: r.PostForm["action_page"], Limits: r.PostForm["action_limit"],
 	})
 	if err != nil {
 		return nil, err
 	}
 	components = append(components, actionComponents...)
 	actions := len(actionComponents)
-	if related := strings.TrimSpace(r.PostFormValue("branch_related")); related != "" {
+	// Every branch section posts one of each of its own fields, so they line
+	// up by position, and each of a branch's rows carries the ordinal of the
+	// branch it belongs to. A rule can hold several branches, which the
+	// runner has always allowed.
+	rowsFor := func(ordinal int, indexes []string, columns ...[]string) [][]string {
+		picked := make([][]string, len(columns))
+		for row, index := range indexes {
+			if strings.TrimSpace(index) != strconv.Itoa(ordinal) {
+				continue
+			}
+			for column := range columns {
+				picked[column] = append(picked[column], formValueAt(columns[column], row))
+			}
+		}
+		return picked
+	}
+	for ordinal, related := range r.PostForm["branch_related"] {
+		related = strings.TrimSpace(related)
+		if related == "" {
+			continue
+		}
 		if automationOptionName(automationRelatedTypes, related) == "" {
 			return nil, fmt.Errorf("unsupported related work items")
 		}
+		conditionRows := rowsFor(ordinal, r.PostForm["branch_condition_index"],
+			r.PostForm["branch_condition_field"], r.PostForm["branch_condition_operator"], r.PostForm["branch_condition_value"])
 		// The branch's conditions choose which related work items its actions
 		// run for, so they come first.
-		children, err := automationFormConditions(r.PostForm["branch_condition_field"], r.PostForm["branch_condition_operator"], r.PostForm["branch_condition_value"])
+		children, err := automationFormConditions(conditionRows[0], conditionRows[1], conditionRows[2])
 		if err != nil {
 			return nil, err
 		}
+		actionRows := rowsFor(ordinal, r.PostForm["branch_action_index"],
+			r.PostForm["branch_action_type"], r.PostForm["branch_action_value"], r.PostForm["branch_action_variable"], r.PostForm["branch_action_page"])
 		branchActions, err := automationFormActions(automationActionRows{
-			Types: r.PostForm["branch_action_type"], Values: r.PostForm["branch_action_value"], Variables: r.PostForm["branch_action_variable"],
-			Pages: r.PostForm["branch_action_page"],
+			Types: actionRows[0], Values: actionRows[1], Variables: actionRows[2], Pages: actionRows[3],
 		})
 		if err != nil {
 			return nil, err
@@ -658,15 +690,26 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 		}
 		children = append(children, branchActions...)
 		value := map[string]any{"relatedType": related}
-		if linkTypes := splitLines(r.PostFormValue("branch_link_types")); related == "linked" && len(linkTypes) > 0 {
+		if linkTypes := splitLines(formValueAt(r.PostForm["branch_link_types"], ordinal)); related == "linked" && len(linkTypes) > 0 {
 			value["linkTypes"] = linkTypes
 		}
 		if related == "jql" {
-			query := strings.TrimSpace(r.PostFormValue("branch_jql"))
+			query := strings.TrimSpace(formValueAt(r.PostForm["branch_jql"], ordinal))
 			if query == "" {
 				return nil, fmt.Errorf("a branch over work matching JQL needs the query")
 			}
 			value["jql"] = query
+		}
+		if related == "smart-values" {
+			list := strings.TrimSpace(formValueAt(r.PostForm["branch_smart_value"], ordinal))
+			item := strings.TrimSpace(formValueAt(r.PostForm["branch_variable"], ordinal))
+			if list == "" {
+				return nil, fmt.Errorf("a branch over a list needs the smart value holding it")
+			}
+			if !manualPromptName.MatchString(item) {
+				return nil, fmt.Errorf("name each item like item or release: a letter, then letters, digits, _ or -")
+			}
+			value["smartValue"], value["variableName"] = list, item
 		}
 		components = append(components, map[string]any{"component": "BRANCH", "schemaVersion": 1, "type": "jira.issue.related", "value": value, "children": children})
 		actions += len(branchActions)
@@ -686,10 +729,32 @@ func automationPayload(r *http.Request) (json.RawMessage, error) {
 	return json.Marshal(map[string]any{"rule": rule, "connections": []any{}})
 }
 
+// automationLookupLimit reads how many a lookup keeps, which is a number in
+// the component and a string in the form.
+func automationLookupLimit(raw json.RawMessage) string {
+	var value struct {
+		Limit int `json:"limit"`
+	}
+	automationComponentValue(raw, &value)
+	if value.Limit <= 0 {
+		return ""
+	}
+	return strconv.Itoa(value.Limit)
+}
+
+// formValueAt reads one row of a form column, trimmed, answering nothing for
+// a row the form did not post.
+func formValueAt(column []string, row int) string {
+	if row < 0 || row >= len(column) {
+		return ""
+	}
+	return strings.TrimSpace(column[row])
+}
+
 // automationActionRows are the editor's action columns as the form posts
 // them, one entry per row: an action reads the columns it uses.
 type automationActionRows struct {
-	Types, Values, Projects, Bodies, HeaderLines, Variables, Pages []string
+	Types, Values, Projects, Bodies, HeaderLines, Variables, Pages, Limits []string
 }
 
 // automationFormActions reads the editor's action rows into rule components.
@@ -750,14 +815,9 @@ func automationFormConditions(fields, operators, values []string) ([]map[string]
 // brings no work item to take one from; it is empty for every other action.
 func automationFormActions(rows automationActionRows) ([]map[string]any, error) {
 	types, values, projects, bodies, headerLines, variables := rows.Types, rows.Values, rows.Projects, rows.Bodies, rows.HeaderLines, rows.Variables
-	pages := rows.Pages
+	pages, limits := rows.Pages, rows.Limits
 	components := []map[string]any{}
-	at := func(list []string, index int) string {
-		if index < len(list) {
-			return strings.TrimSpace(list[index])
-		}
-		return ""
-	}
+	at := formValueAt
 	for index, actionType := range types {
 		actionType = strings.TrimSpace(actionType)
 		if actionType == "" {
@@ -778,6 +838,25 @@ func automationFormActions(rows automationActionRows) ([]map[string]any, error) 
 			components = append(components, map[string]any{
 				"component": "ACTION", "schemaVersion": 1, "type": automation.VariableActionType,
 				"value": map[string]string{"variableName": at(variables, index), "variableValue": value},
+			})
+			continue
+		}
+		// A lookup asks the site a question and keeps the answer: the query
+		// is the row's value, and how many to keep is beside it.
+		if actionType == automation.LookupActionType {
+			if value == "" {
+				return nil, fmt.Errorf("a lookup work items action needs the query it runs")
+			}
+			lookup := map[string]any{"jql": value}
+			if kept := at(limits, index); kept != "" {
+				count, err := strconv.Atoi(kept)
+				if err != nil || count < 1 || count > 100 {
+					return nil, fmt.Errorf("a lookup keeps between 1 and 100 work items")
+				}
+				lookup["limit"] = count
+			}
+			components = append(components, map[string]any{
+				"component": "ACTION", "schemaVersion": 1, "type": automation.LookupActionType, "value": lookup,
 			})
 			continue
 		}
@@ -933,11 +1012,17 @@ func automationEditorUnsupported(payload json.RawMessage) string {
 				return "some of its conditions"
 			}
 		case "BRANCH":
-			// The editor shows one related work items branch, last: its
-			// conditions, then its actions. A branch that mixes the order would
-			// change meaning when saved, so it stays as it is.
-			if component.Type != "jira.issue.related" || index != len(rule.Components)-1 {
+			// The editor shows the rule's branches after everything else,
+			// each one its conditions and then its actions. A branch with
+			// something after it, or one that mixes the order, would change
+			// meaning when saved, so such a rule stays as it is.
+			if component.Type != "jira.issue.related" {
 				return "its branches"
+			}
+			for _, later := range rule.Components[index+1:] {
+				if later.Component != "BRANCH" {
+					return "its branches"
+				}
 			}
 			acting := false
 			for _, child := range component.Children {
@@ -1092,6 +1177,9 @@ func automationActionViews(components []automationComponentJSON) []automationAct
 			view.Value, view.Page = fields["comment"], fields["pageId"]
 		case automation.WikiLabelActionType:
 			view.Value, view.Page = fields["label"], fields["pageId"]
+		case automation.LookupActionType:
+			view.Value = fields["jql"]
+			view.Limit = automationLookupLimit(component.Value)
 		case "jira.issue.edit":
 			view.Type, view.Value = "jira.issue.edit:"+fields["field"], fields["value"]
 		case "jira.issue.link":
@@ -1111,6 +1199,30 @@ func automationActionViews(components []automationComponentJSON) []automationAct
 	return actions
 }
 
+// blankAutomationBranch is the empty branch the editor offers for adding one.
+func blankAutomationBranch() automationBranchView {
+	return automationBranchView{Actions: []automationActionView{}, Conditions: []automationConditionView{{}}}
+}
+
+// parseAutomationBranches reads every branch the rule holds, in order, each
+// with a blank condition row to add another.
+func parseAutomationBranches(payload json.RawMessage) []automationBranchView {
+	var rule struct {
+		Components []automationComponentJSON `json:"components"`
+	}
+	_ = json.Unmarshal(payload, &rule)
+	branches := []automationBranchView{}
+	for _, component := range rule.Components {
+		if component.Component != "BRANCH" {
+			continue
+		}
+		branch := automationBranchOf(component)
+		branch.Conditions = append(branch.Conditions, automationConditionView{})
+		branches = append(branches, branch)
+	}
+	return branches
+}
+
 // parseAutomationBranch reads the rule's related work items branch for the
 // editor.
 func parseAutomationBranch(payload json.RawMessage) automationBranchView {
@@ -1122,16 +1234,24 @@ func parseAutomationBranch(payload json.RawMessage) automationBranchView {
 		if component.Component != "BRANCH" {
 			continue
 		}
-		var value struct {
-			RelatedType string   `json:"relatedType"`
-			LinkTypes   []string `json:"linkTypes"`
-			JQL         string   `json:"jql"`
-		}
-		automationComponentValue(component.Value, &value)
-		return automationBranchView{RelatedType: value.RelatedType, LinkTypes: strings.Join(value.LinkTypes, ", "), JQL: value.JQL,
-			Actions: automationActionViews(component.Children), Conditions: automationConditionViews(component.Children)}
+		return automationBranchOf(component)
 	}
 	return automationBranchView{Actions: []automationActionView{}, Conditions: []automationConditionView{}}
+}
+
+// automationBranchOf reads one branch component as the editor shows it.
+func automationBranchOf(component automationComponentJSON) automationBranchView {
+	var value struct {
+		RelatedType  string   `json:"relatedType"`
+		LinkTypes    []string `json:"linkTypes"`
+		JQL          string   `json:"jql"`
+		SmartValue   string   `json:"smartValue"`
+		VariableName string   `json:"variableName"`
+	}
+	automationComponentValue(component.Value, &value)
+	return automationBranchView{RelatedType: value.RelatedType, LinkTypes: strings.Join(value.LinkTypes, ", "), JQL: value.JQL,
+		SmartValue: value.SmartValue, Variable: value.VariableName,
+		Actions: automationActionViews(component.Children), Conditions: automationConditionViews(component.Children)}
 }
 
 func splitLines(value string) []string {

@@ -184,13 +184,16 @@ condition catalog, and 14 action types including web requests and page creation.
 - Confluence actions beyond creating, commenting on and labelling a page.
   Triggers for pages created, updated, commented and labelled, and for blog
   posts, are done.
-- Branches: for-each on a smart value's list, over the work a rule created,
-  related work items at any level. JQL branches are done.
+- Branches: related work items at any level, and branches inside branches.
+  JQL branches, branching over each item in a list, over the work a rule
+  created, and several branches in one rule are done.
 - Web request custom bodies and headers, the manual trigger with its questions
   in the rule editor and on the work item, and variables (create variable
   action, `{{variable}}`) are done.
 - Running a manual rule over a selection of work items from the navigator.
-- Remaining Jira action catalog, compared action by action with Atlassian's list.
+- Remaining Jira action catalog, compared action by action with Atlassian's
+  list: watchers, cloning, deleting comments and links. Looking work items up
+  and keeping what was found is done.
 
 ## 8. Assets
 
