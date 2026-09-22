@@ -30,6 +30,22 @@ type Generation struct {
 	Projects []GeneratedProject `json:"projects,omitempty"`
 	// Service is the desk whose queue fills up over the same years.
 	Service *GeneratedService `json:"service,omitempty"`
+	// Knowledge is what the company wrote down as it went.
+	Knowledge *GeneratedKnowledge `json:"knowledge,omitempty"`
+}
+
+// GeneratedKnowledge is the pages and posts a company accumulates: meeting
+// notes, runbooks, decisions and the occasional announcement.
+type GeneratedKnowledge struct {
+	// Space is the key of the space they are written in.
+	Space string `json:"space"`
+	// PagesPerMonth and PostsPerQuarter are how much gets written.
+	PagesPerMonth   float64 `json:"pagesPerMonth"`
+	PostsPerQuarter float64 `json:"postsPerQuarter,omitempty"`
+	// Authors are the scenario person ids who write them, and Subjects what
+	// they write about.
+	Authors  []string `json:"authors,omitempty"`
+	Subjects []string `json:"subjects,omitempty"`
 }
 
 // GeneratedTeam is a group of people who work on the same projects, so the
@@ -108,8 +124,9 @@ var (
 		"Could you tell me which account this is on?", "This is fixed; please try again.",
 		"Passed this to the payments team.", "Sorry about that. It is back.",
 	}
-	generatedFeedback = []string{"Quick and clear, thank you.", "Sorted in a day.", "Fine once it was picked up.", "Fast answer."}
-	generatedPriority = []string{"Low", "Medium", "Medium", "High", "Highest"}
+	generatedPageKinds = []string{"how it works", "runbook", "what we decided", "meeting notes", "what went wrong", "how to change it"}
+	generatedFeedback  = []string{"Quick and clear, thank you.", "Sorted in a day.", "Fine once it was picked up.", "Fast answer."}
+	generatedPriority  = []string{"Low", "Medium", "Medium", "High", "Highest"}
 )
 
 // Expand writes the generated history into the scenario: sprints and versions
@@ -156,6 +173,11 @@ func (s *Scenario) Expand() error {
 	}
 	if plan.Service != nil {
 		if err := s.growService(plan, random); err != nil {
+			return err
+		}
+	}
+	if plan.Knowledge != nil {
+		if err := s.growKnowledge(plan, random); err != nil {
 			return err
 		}
 	}
@@ -464,6 +486,62 @@ func (s *Scenario) growService(plan *Generation, random *rand.Rand) error {
 			}
 		}
 		s.Service.Requests = append(s.Service.Requests, request)
+	}
+	return nil
+}
+
+// growKnowledge writes what the company wrote down as it went: a page every
+// few weeks and an announcement every quarter, which is what a space looks
+// like after three years rather than after a demo.
+func (s *Scenario) growKnowledge(plan *Generation, random *rand.Rand) error {
+	declared := plan.Knowledge
+	if declared.PagesPerMonth <= 0 && declared.PostsPerQuarter <= 0 {
+		return nil
+	}
+	if s.Wiki == nil {
+		s.Wiki = &Wiki{}
+	}
+	space := (*Space)(nil)
+	for index := range s.Wiki.Spaces {
+		if s.Wiki.Spaces[index].Key == declared.Space {
+			space = &s.Wiki.Spaces[index]
+		}
+	}
+	if space == nil {
+		return fmt.Errorf("the written history names the unknown space %q", declared.Space)
+	}
+	pick := func(from []string) string {
+		if len(from) == 0 {
+			return ""
+		}
+		return from[random.Intn(len(from))]
+	}
+	written := 0
+	if declared.PagesPerMonth > 0 {
+		interval := 30.0 / declared.PagesPerMonth
+		for day := float64(-plan.Days); day < 0; day += interval {
+			written++
+			subject := pick(declared.Subjects)
+			space.Pages = append(space.Pages, Page{
+				ID:    fmt.Sprintf("%s-gp%d", strings.ToLower(declared.Space), written),
+				Title: fmt.Sprintf("%s: %s", strings.ToUpper(subject[:1])+subject[1:], generatedPageKinds[written%len(generatedPageKinds)]),
+				Body: fmt.Sprintf("<p>%s</p><p>%s</p>", pick(generatedDetail),
+					"Written as this went out, and kept because the next one will ask the same questions."),
+				Author: pick(declared.Authors), CreatedDay: int(day),
+			})
+		}
+	}
+	posted := 0
+	if declared.PostsPerQuarter > 0 {
+		interval := 90.0 / declared.PostsPerQuarter
+		for day := float64(-plan.Days); day < 0; day += interval {
+			posted++
+			space.BlogPosts = append(space.BlogPosts, BlogPost{
+				Title:  fmt.Sprintf("%s, quarter %d", strings.ToUpper(pick(declared.Subjects)[:1])+pick(declared.Subjects)[1:], posted),
+				Body:   "<p>What we shipped, what we learned, and what is next.</p>",
+				Author: pick(declared.Authors), CreatedDay: int(day),
+			})
+		}
 	}
 	return nil
 }

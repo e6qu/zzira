@@ -41,6 +41,24 @@ func TestShippedCompanyHasYearsOfHistory(t *testing.T) {
 	if len(scenario.Commits) < 1000 {
 		t.Fatalf("%d commits went into three years of releases, which leaves the lead time unmeasurable", len(scenario.Commits))
 	}
+	pages, posts := 0, 0
+	if scenario.Wiki != nil {
+		var count func([]demo.Page)
+		count = func(tree []demo.Page) {
+			for _, page := range tree {
+				pages++
+				count(page.Children)
+			}
+		}
+		for _, space := range scenario.Wiki.Spaces {
+			count(space.Pages)
+			posts += len(space.BlogPosts)
+		}
+	}
+	t.Logf("pages=%d posts=%d", pages, posts)
+	if pages < 60 {
+		t.Fatalf("the company wrote %d pages in three years, which is not a knowledge base", pages)
+	}
 	if requests < 500 {
 		t.Fatalf("the desk answered %d requests in three years, which is not a support queue", requests)
 	}

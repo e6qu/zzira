@@ -2732,6 +2732,31 @@
         "a failed card",
         "the monthly report"
       ]
+    },
+    "knowledge": {
+      "space": "ENG",
+      "pagesPerMonth": 2.5,
+      "postsPerQuarter": 2,
+      "authors": [
+        "maya",
+        "ravi",
+        "ines",
+        "zoe",
+        "marta",
+        "aisha",
+        "nina",
+        "henrik"
+      ],
+      "subjects": [
+        "payments",
+        "the platform",
+        "the mobile apps",
+        "reporting",
+        "the storefront",
+        "on-call",
+        "releases",
+        "security"
+      ]
     }
   },
   "plans": [
