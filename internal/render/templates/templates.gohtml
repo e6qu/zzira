@@ -21,7 +21,7 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=53">
+<link rel="stylesheet" href="/static/css/workspace.css?v=54">
 <link rel="preload" href="/static/zzira-worker.wasm?v=4" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
@@ -954,7 +954,7 @@
       {{if .Data.TwoStepError}}<div class="form-error" role="alert"><strong>Two-step verification unchanged</strong><span>{{.Data.TwoStepError}}</span></div>{{end}}
       {{if not .Data.TwoStepConfigured}}<p>This site cannot keep a two-step secret until ZZIRA_IDENTITY_ENCRYPTION_KEY is set.</p>
       {{else if .Data.TwoStepRecoveryCodes}}<div class="profile-recovery-codes" role="status"><strong>Your recovery codes</strong><p>Each one signs you in once if your authenticator app is gone. They are shown now and never again.</p><ul>{{range .Data.TwoStepRecoveryCodes}}<li><code>{{.}}</code></li>{{end}}</ul></div>
-      {{else if .Data.TwoStepSecret}}<div class="profile-two-step-setup"><p>Add this key to your authenticator app, then confirm with the code it shows.</p><dl><div><dt>Key</dt><dd><code>{{.Data.TwoStepSecret}}</code></dd></div><div><dt>Setup link</dt><dd><code>{{.Data.TwoStepURI}}</code></dd></div></dl><form class="project-details-form" method="post" action="/profile/two-step"><input type="hidden" name="action" value="confirm"><label for="two-step-confirm-code">Code from your app</label><input id="two-step-confirm-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required><div class="project-form-actions"><button class="btn btn-primary" type="submit">Confirm</button></div></form></div>
+      {{else if .Data.TwoStepSecret}}<div class="profile-two-step-setup"><p>Scan this code with your authenticator app, or add the key by hand, then confirm with the code it shows.</p><svg class="two-step-qr" viewBox="0 0 {{.Data.TwoStepQRExtent}} {{.Data.TwoStepQRExtent}}" role="img" aria-label="QR code holding the setup link for this site"><rect width="{{.Data.TwoStepQRExtent}}" height="{{.Data.TwoStepQRExtent}}" fill="#ffffff"></rect><path d="{{.Data.TwoStepQR}}" fill="#000000"></path></svg><dl><div><dt>Key</dt><dd><code>{{.Data.TwoStepSecret}}</code></dd></div><div><dt>Setup link</dt><dd><code>{{.Data.TwoStepURI}}</code></dd></div></dl><form class="project-details-form" method="post" action="/profile/two-step"><input type="hidden" name="action" value="confirm"><label for="two-step-confirm-code">Code from your app</label><input id="two-step-confirm-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required><div class="project-form-actions"><button class="btn btn-primary" type="submit">Confirm</button></div></form></div>
       {{else if .Data.TwoStepConfirmed}}<p>{{.Data.TwoStepCodesLeft}} recovery code{{if ne .Data.TwoStepCodesLeft 1}}s{{end}} left. Turning two-step verification off asks for your password.</p><form class="project-details-form" method="post" action="/profile/two-step"><input type="hidden" name="action" value="disable"><label for="two-step-disable-password">Current password</label><input id="two-step-disable-password" name="currentPassword" type="password" autocomplete="current-password" required><div class="project-form-actions"><button class="btn btn-danger" type="submit">Turn off two-step verification</button></div></form>
       {{else}}<form method="post" action="/profile/two-step"><input type="hidden" name="action" value="start"><button class="btn btn-primary" type="submit">{{if .Data.TwoStepPending}}Start again{{else}}Set up two-step verification{{end}}</button></form>{{if .Data.TwoStepPending}}<p>An enrolment was started and never confirmed. Starting again issues a new key.</p>{{end}}{{end}}
     </section>{{end}}
@@ -1108,6 +1108,7 @@
     <h1 id="two-step-enrol-title">Set up two-step verification</h1>
     {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
     <p>Your organization asks for a code after your password. Add this key to an authenticator app, then enter the code it shows.</p>
+    <svg class="two-step-qr" viewBox="0 0 {{.QRExtent}} {{.QRExtent}}" role="img" aria-label="QR code holding the setup link for this site"><rect width="{{.QRExtent}}" height="{{.QRExtent}}" fill="#ffffff"></rect><path d="{{.QR}}" fill="#000000"></path></svg>
     <dl class="two-step-key"><div><dt>Key</dt><dd><code>{{.Secret}}</code></dd></div><div><dt>Setup link</dt><dd><code>{{.URI}}</code></dd></div></dl>
     <form method="post" action="/login/enrol">
       <label for="two-step-enrol-code">Code from your app</label>

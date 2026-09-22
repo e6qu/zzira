@@ -9,6 +9,7 @@ import (
 
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/qr"
 	"github.com/e6qu/zzira/internal/store"
 )
 
@@ -197,11 +198,28 @@ func (h *Handler) startTwoStep(w http.ResponseWriter, r *http.Request, user *mod
 	if issuer == "" {
 		issuer = "ZZIRA"
 	}
+	uri, path, extent, err := twoStepSetup(secret, issuer, user.Email)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	h.profilePageWith(w, r, user, func(data *profilePageData) {
 		data.TwoStepPending = true
 		data.TwoStepSecret = secret
-		data.TwoStepURI = authn.TOTPURI(secret, issuer, user.Email)
+		data.TwoStepURI = uri
+		data.TwoStepQR, data.TwoStepQRExtent = path, extent
 	}, http.StatusOK)
+}
+
+// twoStepSetup is the setup link an authenticator app reads, as text to type
+// and as a QR symbol to scan.
+func twoStepSetup(secret, issuer, account string) (uri, path string, extent int, err error) {
+	uri = authn.TOTPURI(secret, issuer, account)
+	symbol, err := qr.Encode(uri)
+	if err != nil {
+		return "", "", 0, err
+	}
+	return uri, symbol.SVGPath(), symbol.Extent(), nil
 }
 
 func (h *Handler) confirmTwoStep(w http.ResponseWriter, r *http.Request, user *models.User) {
@@ -314,7 +332,12 @@ func (h *Handler) EnrolTwoStepForm(w http.ResponseWriter, r *http.Request) {
 	if issuer == "" {
 		issuer = "ZZIRA"
 	}
-	writePage(w, "page_two_step_enrol", twoStepEnrolData{Secret: secret, URI: authn.TOTPURI(secret, issuer, person.Email)})
+	uri, path, extent, err := twoStepSetup(secret, issuer, person.Email)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writePage(w, "page_two_step_enrol", twoStepEnrolData{Secret: secret, URI: uri, QR: path, QRExtent: extent})
 }
 
 // pendingTwoStepSecret is the key an enrolment already offered this person,
@@ -335,7 +358,11 @@ func (h *Handler) pendingTwoStepSecret(r *http.Request, userID string) (string, 
 type twoStepEnrolData struct {
 	Secret string
 	URI    string
-	Error  string
+	// QR is the setup link as a QR symbol, and QRExtent how wide it is with
+	// its quiet zone, both as page_two_step_enrol draws them.
+	QR       string
+	QRExtent int
+	Error    string
 	// RecoveryCodes are shown once, on the answer that finishes both the
 	// enrolment and the sign-in.
 	RecoveryCodes []string
@@ -382,8 +409,13 @@ func (h *Handler) EnrolTwoStepSubmit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		uri, path, extent, err := twoStepSetup(string(plain), issuer, person.Email)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 		writePageStatus(w, "page_two_step_enrol", twoStepEnrolData{
-			Secret: string(plain), URI: authn.TOTPURI(string(plain), issuer, person.Email),
+			Secret: string(plain), URI: uri, QR: path, QRExtent: extent,
 			Error: "That code is not right. Use the one your authenticator app shows now.",
 		}, http.StatusUnauthorized)
 		return

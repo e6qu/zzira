@@ -98,8 +98,9 @@ The change ends every other session they left open and keeps the one they
 changed it from.
 
 **Two-step verification** is the RFC 6238 code an authenticator app shows.
-A person turns it on for their own account from their profile: the key is
-shown once, they confirm with a code from the app, and ten recovery codes are
+A person turns it on for their own account from their profile: the setup link
+is shown once, as a QR code their app's camera reads and as a key to type by
+hand, they confirm with a code from the app, and ten recovery codes are
 handed over -- once, and kept only as hashes. From then on a password earns a
 sign-in challenge rather than a session: `/login/verify` asks for the code, and
 a recovery code stands in for the app once each. A challenge lasts ten minutes
@@ -194,7 +195,7 @@ All operations of the pinned Organizations API (`api/specs/organization-admin.js
 | SAML SSO | Missing. |
 | SCIM user provisioning | `/scim/directory/{directoryId}` serves SCIM 2.0 Users and Groups ([SCIM.md](SCIM.md)). The organization bean reports `scimManaged: true` once a provider has written to the directory, and `/admin` shows where to point a provider, whether one has written, who it manages, and the keys it writes with: a key provisions one directory, is shown once, says when it was last used, and is revoked on its own. |
 | Authentication policies (enforced SSO, required two-step verification, session duration, shortest password, policy membership) | Built and enforced where each applies; see **Authentication policies** below. |
-| Two-step verification | Built: enrolment, recovery codes, the code at sign-in, a policy that requires it, and an administrator's reset. The key is shown as text and a setup link; there is no QR image. |
+| Two-step verification | Built: enrolment, recovery codes, the code at sign-in, a policy that requires it, and an administrator's reset. The setup link is drawn as a QR code to scan and shown as a key to type. |
 | Data security policies | Missing. |
 
 ## Authentication policies
@@ -246,7 +247,7 @@ Tracked in [PLAN.md](../PLAN.md).
 - SAML single sign-on.
 - SCIM provisions people and groups ([SCIM.md](SCIM.md)); product access is not provisioned with them, and a provider authenticates as an organization administrator rather than with a directory-scoped key. The browser page reads what a provider has written rather than connecting one.
 - Authentication policies enforce single sign-on, two-step verification, session duration and the shortest password; password expiry and the rest of Atlassian's password strength rules are missing, and a policy covers people one at a time rather than a whole group.
-- Two-step verification shows its key as text and a setup link rather than a QR image, and the authenticator app is the only second factor: no WebAuthn, no passkeys, no SMS.
+- Two-step verification offers the authenticator app and nothing else: no WebAuthn, no passkeys, no SMS.
 - Account claiming from verified domains (managed vs unmanaged accounts), and domain ownership checks across organizations.
 - The Atlassian user management API (`/users/{account_id}/manage/...`: profile, email, lifecycle, API tokens).
 - Organization API keys distinct from user API tokens.

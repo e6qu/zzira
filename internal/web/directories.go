@@ -93,6 +93,11 @@ type profilePageData struct {
 	// request that started the enrolment: they are the credential itself.
 	TwoStepSecret string
 	TwoStepURI    string
+	// TwoStepQR is the setup link as a QR symbol an authenticator app
+	// scans: the dark modules as one SVG path, and how wide the symbol is
+	// with its quiet zone.
+	TwoStepQR       string
+	TwoStepQRExtent int
 	// TwoStepRecoveryCodes are shown once, when the enrolment is confirmed.
 	TwoStepRecoveryCodes []string
 	TwoStepError         string
