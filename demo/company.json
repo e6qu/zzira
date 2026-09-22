@@ -3112,14 +3112,28 @@
                 "title": "On-call rotation",
                 "body": "<p>One engineer is on call each week, Monday to Monday.</p>",
                 "author": "ravi",
-                "createdDay": -70
+                "createdDay": -70,
+                "labels": [
+                  "engineering"
+                ],
+                "likes": [
+                  "nora"
+                ]
               },
               {
                 "id": "eng-review",
                 "title": "Code review",
                 "body": "<p>Two approvals for payment paths, one elsewhere.</p>",
                 "author": "ines",
-                "createdDay": -64
+                "createdDay": -64,
+                "labels": [
+                  "engineering"
+                ],
+                "likes": [
+                  "tom",
+                  "viktor",
+                  "ines"
+                ]
               },
               {
                 "id": "eng-incident",
@@ -3133,8 +3147,27 @@
                     "body": "Linked this from the support handbook.",
                     "day": -30
                   }
+                ],
+                "labels": [
+                  "engineering"
+                ],
+                "likes": [
+                  "lucas"
                 ]
               }
+            ],
+            "labels": [
+              "engineering",
+              "runbook"
+            ],
+            "files": [
+              "architecture.png",
+              "gateway.log"
+            ],
+            "likes": [
+              "arjun",
+              "tariq",
+              "tom"
             ]
           },
           {
@@ -3149,8 +3182,28 @@
                 "title": "Ledger invariants",
                 "body": "<p>Every movement balances. No row is ever updated in place.</p>",
                 "author": "ines",
-                "createdDay": -74
+                "createdDay": -74,
+                "labels": [
+                  "engineering"
+                ],
+                "likes": [
+                  "kofi"
+                ]
               }
+            ],
+            "labels": [
+              "engineering",
+              "runbook"
+            ],
+            "files": [
+              "architecture.png",
+              "gateway.log"
+            ],
+            "likes": [
+              "sara",
+              "omar",
+              "dan",
+              "lucas"
             ]
           }
         ],
@@ -3159,13 +3212,30 @@
             "title": "1.0 is live",
             "body": "<p>Card payments shipped this morning.</p>",
             "author": "maya",
-            "createdDay": -56
+            "createdDay": -56,
+            "labels": [
+              "announcement",
+              "engineering"
+            ],
+            "likes": [
+              "tom",
+              "tariq",
+              "zoe"
+            ]
           },
           {
             "title": "What we learned from the duplicate charge",
             "body": "<p>Idempotency keys must cover retries.</p>",
             "author": "ravi",
-            "createdDay": -35
+            "createdDay": -35,
+            "labels": [
+              "announcement",
+              "engineering"
+            ],
+            "likes": [
+              "lena",
+              "aisha"
+            ]
           }
         ],
         "content": [
@@ -3357,15 +3427,39 @@
                 "title": "Refunds: what we can do",
                 "body": "<p>Full refunds within 90 days; partial any time.</p>",
                 "author": "dan",
-                "createdDay": -50
+                "createdDay": -50,
+                "labels": [
+                  "support"
+                ],
+                "likes": [
+                  "hana"
+                ]
               },
               {
                 "id": "sup-escalate",
                 "title": "When to escalate",
                 "body": "<p>Money moved twice, or a customer is blocked from paying.</p>",
                 "author": "sara",
-                "createdDay": -45
+                "createdDay": -45,
+                "labels": [
+                  "support"
+                ],
+                "likes": [
+                  "nora",
+                  "sara",
+                  "tom"
+                ]
               }
+            ],
+            "labels": [
+              "support",
+              "how-to"
+            ],
+            "likes": [
+              "arjun",
+              "kofi",
+              "yuki",
+              "paulo"
             ]
           }
         ]
@@ -3394,6 +3488,14 @@
                     "body": "Added the interview template as a child page.",
                     "day": -110
                   }
+                ],
+                "labels": [
+                  "product"
+                ],
+                "likes": [
+                  "henrik",
+                  "caleb",
+                  "yuki"
                 ]
               },
               {
@@ -3401,14 +3503,27 @@
                 "title": "Interview template",
                 "body": "<p>Ten questions, none of them about the feature you had in mind.</p>",
                 "author": "maya",
-                "createdDay": -110
+                "createdDay": -110,
+                "labels": [
+                  "product"
+                ],
+                "likes": [
+                  "paulo",
+                  "omar"
+                ]
               },
               {
                 "id": "prd-pricing",
                 "title": "Pricing principles",
                 "body": "<p>Price the outcome, not the seat. Never price the thing that stops someone leaving.</p>",
                 "author": "nora",
-                "createdDay": -96
+                "createdDay": -96,
+                "labels": [
+                  "product"
+                ],
+                "likes": [
+                  "yuki"
+                ]
               },
               {
                 "id": "prd-launch",
@@ -3422,8 +3537,28 @@
                     "body": "The rollback step needs the runbook link.",
                     "day": -80
                   }
+                ],
+                "labels": [
+                  "product"
+                ],
+                "likes": [
+                  "sean",
+                  "fatima",
+                  "aisha",
+                  "sara"
                 ]
               }
+            ],
+            "labels": [
+              "product",
+              "decision"
+            ],
+            "files": [
+              "before-and-after.png"
+            ],
+            "likes": [
+              "jonas",
+              "lucas"
             ]
           },
           {
@@ -3438,22 +3573,56 @@
                 "title": "Card payments before wallets",
                 "body": "<p>Wallets reach fewer of our customers than the card processors we already use.</p>",
                 "author": "nora",
-                "createdDay": -112
+                "createdDay": -112,
+                "labels": [
+                  "product"
+                ],
+                "likes": [
+                  "sean",
+                  "arjun"
+                ]
               },
               {
                 "id": "prd-decision-mobile",
                 "title": "One mobile app, not two",
                 "body": "<p>A shared app costs less than two, and our customers do not care which store it came from.</p>",
                 "author": "gita",
-                "createdDay": -90
+                "createdDay": -90,
+                "labels": [
+                  "product"
+                ],
+                "likes": [
+                  "gita",
+                  "ines",
+                  "sara",
+                  "marta"
+                ]
               },
               {
                 "id": "prd-decision-search",
                 "title": "Search stays in-house",
                 "body": "<p>The hosted search we priced costs more than the cluster and answers slower for our shapes.</p>",
                 "author": "viktor",
-                "createdDay": -52
+                "createdDay": -52,
+                "labels": [
+                  "product"
+                ],
+                "likes": [
+                  "nina",
+                  "jonas",
+                  "henrik"
+                ]
               }
+            ],
+            "labels": [
+              "product",
+              "decision"
+            ],
+            "files": [
+              "before-and-after.png"
+            ],
+            "likes": [
+              "gita"
             ]
           },
           {
@@ -3468,6 +3637,16 @@
                 "body": "Invoicing needs the tax work first.",
                 "day": -35
               }
+            ],
+            "labels": [
+              "product",
+              "decision"
+            ],
+            "files": [
+              "before-and-after.png"
+            ],
+            "likes": [
+              "dan"
             ]
           }
         ],
@@ -3476,13 +3655,35 @@
             "title": "Why we said no to wallets, for now",
             "body": "<p>The short version: our customers pay by card, and the wallets we looked at reach fewer of them than the processors we already have.</p>",
             "author": "nora",
-            "createdDay": -112
+            "createdDay": -112,
+            "labels": [
+              "announcement",
+              "product"
+            ],
+            "likes": [
+              "priya",
+              "sara",
+              "tom",
+              "yuki"
+            ]
           },
           {
             "title": "What five customers told us about invoicing",
             "body": "<p>All five send invoices from a spreadsheet. None of them want a new spreadsheet.</p>",
             "author": "maya",
-            "createdDay": -64
+            "createdDay": -64,
+            "labels": [
+              "announcement",
+              "product"
+            ],
+            "likes": [
+              "fatima",
+              "arjun",
+              "nina",
+              "hana",
+              "sean",
+              "paulo"
+            ]
           }
         ]
       },
@@ -3503,14 +3704,28 @@
                 "title": "Colour and contrast",
                 "body": "<p>Every pairing meets WCAG AA. The dark theme is a set of tokens, not a filter.</p>",
                 "author": "zoe",
-                "createdDay": -108
+                "createdDay": -108,
+                "labels": [
+                  "design"
+                ],
+                "likes": [
+                  "mei",
+                  "kofi",
+                  "jonas"
+                ]
               },
               {
                 "id": "dsn-type",
                 "title": "Typography",
                 "body": "<p>One family, five sizes. A page that needs a sixth needs rewriting.</p>",
                 "author": "elin",
-                "createdDay": -104
+                "createdDay": -104,
+                "labels": [
+                  "design"
+                ],
+                "likes": [
+                  "viktor"
+                ]
               },
               {
                 "id": "dsn-forms",
@@ -3524,6 +3739,14 @@
                     "body": "We fixed the checkout form to match this.",
                     "day": -88
                   }
+                ],
+                "labels": [
+                  "design"
+                ],
+                "likes": [
+                  "lena",
+                  "omar",
+                  "tariq"
                 ]
               },
               {
@@ -3531,8 +3754,27 @@
                 "title": "Motion",
                 "body": "<p>Nothing moves for longer than 200ms, and nothing moves that a reader did not ask to move.</p>",
                 "author": "elin",
-                "createdDay": -70
+                "createdDay": -70,
+                "labels": [
+                  "design"
+                ],
+                "likes": [
+                  "jonas",
+                  "dan",
+                  "mei",
+                  "fatima"
+                ]
               }
+            ],
+            "labels": [
+              "design",
+              "reference"
+            ],
+            "files": [
+              "diagram.png"
+            ],
+            "likes": [
+              "henrik"
             ]
           },
           {
@@ -3547,8 +3789,29 @@
                 "title": "Error messages",
                 "body": "<p>Say what happened, then what to do. Never blame the person reading.</p>",
                 "author": "elin",
-                "createdDay": -84
+                "createdDay": -84,
+                "labels": [
+                  "design"
+                ],
+                "likes": [
+                  "rosa",
+                  "zoe",
+                  "arjun"
+                ]
               }
+            ],
+            "labels": [
+              "design",
+              "reference"
+            ],
+            "files": [
+              "diagram.png"
+            ],
+            "likes": [
+              "bruno",
+              "lena",
+              "lucas",
+              "gita"
             ]
           },
           {
@@ -3556,7 +3819,17 @@
             "title": "Research library",
             "body": "<p>Sessions, notes and the clips worth watching again.</p>",
             "author": "zoe",
-            "createdDay": -58
+            "createdDay": -58,
+            "labels": [
+              "design",
+              "reference"
+            ],
+            "files": [
+              "diagram.png"
+            ],
+            "likes": [
+              "paulo"
+            ]
           }
         ],
         "blogPosts": [
@@ -3564,7 +3837,16 @@
             "title": "The checkout form, before and after",
             "body": "<p>Four fields fewer, one clear error, and a third fewer abandoned carts in the first week.</p>",
             "author": "zoe",
-            "createdDay": -76
+            "createdDay": -76,
+            "labels": [
+              "announcement",
+              "design"
+            ],
+            "likes": [
+              "zoe",
+              "maya",
+              "jonas"
+            ]
           }
         ]
       },
@@ -3585,7 +3867,13 @@
                 "title": "Dispatch",
                 "body": "<p>Every order is picked, packed and scanned before it leaves the floor.</p>",
                 "author": "tariq",
-                "createdDay": -128
+                "createdDay": -128,
+                "labels": [
+                  "operations"
+                ],
+                "likes": [
+                  "arjun"
+                ]
               },
               {
                 "id": "ops-returns",
@@ -3599,6 +3887,15 @@
                     "body": "Refund timing changed in March; updated.",
                     "day": -60
                   }
+                ],
+                "labels": [
+                  "operations"
+                ],
+                "likes": [
+                  "caleb",
+                  "marta",
+                  "lena",
+                  "tom"
                 ]
               },
               {
@@ -3606,15 +3903,42 @@
                 "title": "Suppliers",
                 "body": "<p>Who we buy from, what we buy, and who to call when a pallet is late.</p>",
                 "author": "tariq",
-                "createdDay": -100
+                "createdDay": -100,
+                "labels": [
+                  "operations"
+                ],
+                "likes": [
+                  "tariq",
+                  "nora",
+                  "priya",
+                  "tom"
+                ]
               },
               {
                 "id": "ops-peak",
                 "title": "Peak season",
                 "body": "<p>Double the pickers, freeze the releases, and put the on-call engineer on the warehouse floor for a day.</p>",
                 "author": "rosa",
-                "createdDay": -48
+                "createdDay": -48,
+                "labels": [
+                  "operations"
+                ],
+                "likes": [
+                  "sara",
+                  "viktor"
+                ]
               }
+            ],
+            "labels": [
+              "operations",
+              "runbook"
+            ],
+            "files": [
+              "measurements.csv"
+            ],
+            "likes": [
+              "elin",
+              "aisha"
             ]
           },
           {
@@ -3622,7 +3946,20 @@
             "title": "Safety",
             "body": "<p>What to do about a spill, a fall, or a forklift that will not start.</p>",
             "author": "nina",
-            "createdDay": -96
+            "createdDay": -96,
+            "labels": [
+              "operations",
+              "runbook"
+            ],
+            "files": [
+              "measurements.csv"
+            ],
+            "likes": [
+              "mei",
+              "kofi",
+              "sean",
+              "tom"
+            ]
           }
         ],
         "blogPosts": [
@@ -3630,7 +3967,15 @@
             "title": "Peak is over",
             "body": "<p>We shipped 42,000 orders in six weeks, and lost fewer than 200 to damage.</p>",
             "author": "tariq",
-            "createdDay": -20
+            "createdDay": -20,
+            "labels": [
+              "announcement",
+              "operations"
+            ],
+            "likes": [
+              "maya",
+              "arjun"
+            ]
           }
         ]
       },
@@ -3651,7 +3996,13 @@
                 "title": "Time off",
                 "body": "<p>Twenty-eight days, plus public holidays where you live. Tell your team, not a form.</p>",
                 "author": "fatima",
-                "createdDay": -138
+                "createdDay": -138,
+                "labels": [
+                  "people"
+                ],
+                "likes": [
+                  "sara"
+                ]
               },
               {
                 "id": "ppl-hiring",
@@ -3665,6 +4016,13 @@
                     "body": "Added the product interview outline.",
                     "day": -118
                   }
+                ],
+                "labels": [
+                  "people"
+                ],
+                "likes": [
+                  "rosa",
+                  "arjun"
                 ]
               },
               {
@@ -3672,15 +4030,36 @@
                 "title": "First week",
                 "body": "<p>A laptop, an account, a buddy, and one small change shipped by Friday.</p>",
                 "author": "priya",
-                "createdDay": -112
+                "createdDay": -112,
+                "labels": [
+                  "people"
+                ],
+                "likes": [
+                  "nina",
+                  "caleb",
+                  "priya"
+                ]
               },
               {
                 "id": "ppl-expenses",
                 "title": "Expenses",
                 "body": "<p>Spend it as if it were yours. Keep the receipt.</p>",
                 "author": "fatima",
-                "createdDay": -90
+                "createdDay": -90,
+                "labels": [
+                  "people"
+                ],
+                "likes": [
+                  "kofi"
+                ]
               }
+            ],
+            "labels": [
+              "people",
+              "onboarding"
+            ],
+            "likes": [
+              "caleb"
             ]
           },
           {
@@ -3688,7 +4067,17 @@
             "title": "Working from anywhere",
             "body": "<p>Two hours of overlap with your team, and a desk that does not hurt your back.</p>",
             "author": "priya",
-            "createdDay": -72
+            "createdDay": -72,
+            "labels": [
+              "people",
+              "onboarding"
+            ],
+            "likes": [
+              "henrik",
+              "priya",
+              "yuki",
+              "dan"
+            ]
           }
         ],
         "blogPosts": [
@@ -3696,7 +4085,16 @@
             "title": "Welcome to the fourteen people who joined this quarter",
             "body": "<p>Support, warehouse, data and two engineers. Say hello.</p>",
             "author": "fatima",
-            "createdDay": -14
+            "createdDay": -14,
+            "labels": [
+              "announcement",
+              "people"
+            ],
+            "likes": [
+              "nora",
+              "sean",
+              "elin"
+            ]
           }
         ]
       },
@@ -3724,6 +4122,13 @@
                     "body": "Refunds now subtract in the same month.",
                     "day": -70
                   }
+                ],
+                "labels": [
+                  "data"
+                ],
+                "likes": [
+                  "ravi",
+                  "yuki"
                 ]
               },
               {
@@ -3731,15 +4136,42 @@
                 "title": "The warehouse",
                 "body": "<p>Everything lands in the warehouse by 04:00, and the dashboards read from it.</p>",
                 "author": "lucas",
-                "createdDay": -88
+                "createdDay": -88,
+                "labels": [
+                  "data"
+                ],
+                "likes": [
+                  "elin"
+                ]
               },
               {
                 "id": "dat-quality",
                 "title": "Data quality",
                 "body": "<p>Every table has an owner, a freshness check and a row count that has to move.</p>",
                 "author": "henrik",
-                "createdDay": -66
+                "createdDay": -66,
+                "labels": [
+                  "data"
+                ],
+                "likes": [
+                  "mei",
+                  "nina",
+                  "zoe"
+                ]
               }
+            ],
+            "labels": [
+              "data",
+              "reference"
+            ],
+            "files": [
+              "checks.json"
+            ],
+            "likes": [
+              "mei",
+              "ravi",
+              "viktor",
+              "caleb"
             ]
           },
           {
@@ -3747,7 +4179,19 @@
             "title": "Asking for a number",
             "body": "<p>Say the decision you are making. We will tell you which number answers it.</p>",
             "author": "lucas",
-            "createdDay": -44
+            "createdDay": -44,
+            "labels": [
+              "data",
+              "reference"
+            ],
+            "files": [
+              "checks.json"
+            ],
+            "likes": [
+              "zoe",
+              "hana",
+              "omar"
+            ]
           }
         ],
         "blogPosts": []
@@ -3759,24 +4203,42 @@
       "name": "My open work",
       "jql": "assignee = currentUser() AND resolution = Unresolved ORDER BY updated DESC",
       "owner": "maya",
-      "shared": true
+      "shared": true,
+      "favourites": [
+        "zoe",
+        "hana",
+        "jonas",
+        "nina",
+        "ravi"
+      ]
     },
     {
       "name": "Payments bugs",
       "jql": "project = PAY AND issuetype = Bug AND resolution = Unresolved ORDER BY priority DESC",
       "owner": "ravi",
-      "shared": true
+      "shared": true,
+      "favourites": [
+        "bruno",
+        "priya"
+      ]
     },
     {
       "name": "Resolved this month",
       "jql": "resolution != Unresolved AND resolutiondate >= -30d ORDER BY resolutiondate DESC",
-      "owner": "nora"
+      "owner": "nora",
+      "favourites": [
+        "nora"
+      ]
     },
     {
       "name": "Everything open",
       "jql": "resolution = Unresolved ORDER BY created ASC",
       "owner": "nora",
-      "shared": true
+      "shared": true,
+      "favourites": [
+        "zoe",
+        "nora"
+      ]
     }
   ],
   "dashboards": [

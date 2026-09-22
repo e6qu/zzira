@@ -1141,6 +1141,23 @@ func (a *Applier) filtersAndDashboards(ctx context.Context, scenario *Scenario) 
 			return fmt.Errorf("filter %s: %w", filter.Name, err)
 		}
 		saved[filter.Name] = created.ID
+		// A shared filter is one everybody signed in can read, which is what
+		// a company's "open bugs" filter is. Without the share it stays the
+		// owner's own, and nobody else can star it or put it on a dashboard.
+		if filter.Shared {
+			if _, err := a.Store.AddFilterPermission(ctx, a.workspaceID, owner, created.ID, store.FilterPermissionInput{Type: "authenticated", Rights: 1}); err != nil {
+				return fmt.Errorf("share filter %s: %w", filter.Name, err)
+			}
+		}
+		for _, person := range filter.Favourites {
+			starred := a.people[person]
+			if starred == "" {
+				continue
+			}
+			if err := a.Store.SetFilterFavourite(ctx, a.workspaceID, starred, created.ID, true); err != nil {
+				return fmt.Errorf("filter %s starred by %s: %w", filter.Name, person, err)
+			}
+		}
 	}
 	for _, dashboard := range scenario.Dashboards {
 		if err := a.dashboard(ctx, dashboard, saved); err != nil {
@@ -1614,13 +1631,18 @@ func (a *Applier) wiki(ctx context.Context, declared *Wiki) error {
 			if len(written) > 0 {
 				continue
 			}
+			var raised *models.WikiBlogPost
 			if err := a.at(ctx, post.CreatedDay, func(ctx context.Context) error {
-				_, err := a.Store.SaveWikiBlogPost(ctx, a.workspaceID, author, models.WikiBlogPost{
+				saved, err := a.Store.SaveWikiBlogPost(ctx, a.workspaceID, author, models.WikiBlogPost{
 					SpaceID: created.ID, Title: post.Title, Status: "current",
 					Body: models.WikiBody{Representation: "storage", Value: post.Body},
 				})
+				raised = saved
 				return err
 			}); err != nil {
+				return fmt.Errorf("blog post %s: %w", post.Title, err)
+			}
+			if err := a.postExtras(ctx, raised.ID, post); err != nil {
 				return fmt.Errorf("blog post %s: %w", post.Title, err)
 			}
 		}
@@ -1893,6 +1915,9 @@ func (a *Applier) pages(ctx context.Context, spaceID, parentID string, pages []P
 			saved = created
 			return err
 		}); err != nil {
+			return fmt.Errorf("page %s: %w", page.Title, err)
+		}
+		if err := a.pageExtras(ctx, saved.ID, page); err != nil {
 			return fmt.Errorf("page %s: %w", page.Title, err)
 		}
 		for _, comment := range page.Comments {
@@ -2222,4 +2247,66 @@ func automationComponent(action AutomationAction) map[string]any {
 		value["value"] = action.Value
 	}
 	return map[string]any{"component": "ACTION", "schemaVersion": 1, "type": action.Type, "value": value}
+}
+
+// pageExtras files a page where people look for it, attaches what it refers
+// to, and records who found it useful. A knowledge base with no labels, no
+// files and no likes shows none of what a wiki is read through.
+func (a *Applier) pageExtras(ctx context.Context, pageID string, page Page) error {
+	if len(page.Labels) > 0 {
+		labels := make([]models.WikiLabel, 0, len(page.Labels))
+		for _, label := range page.Labels {
+			labels = append(labels, models.WikiLabel{Name: label, Prefix: "global"})
+		}
+		if _, err := a.Store.AddWikiPageLabels(ctx, a.workspaceID, a.admin, pageID, labels); err != nil {
+			return fmt.Errorf("label: %w", err)
+		}
+	}
+	for _, name := range page.Files {
+		content, mime, err := demoFile(name)
+		if err != nil {
+			return err
+		}
+		ref := store.NewID("blob")
+		size, err := a.Commands.Blobs.Put(ctx, ref, bytes.NewReader(content))
+		if err != nil {
+			return fmt.Errorf("store the file %s: %w", name, err)
+		}
+		if _, err := a.Store.SaveWikiAttachment(ctx, a.workspaceID, a.admin, pageID, "", name, mime, "", "Attached with the page", false, size, ref); err != nil {
+			return fmt.Errorf("attach %s: %w", name, err)
+		}
+	}
+	for _, person := range page.Likes {
+		liked := a.people[person]
+		if liked == "" {
+			continue
+		}
+		if err := a.Store.SetWikiPageLike(ctx, a.workspaceID, liked, pageID, true); err != nil {
+			return fmt.Errorf("like by %s: %w", person, err)
+		}
+	}
+	return nil
+}
+
+// postExtras is the same for a blog post, which carries labels and likes.
+func (a *Applier) postExtras(ctx context.Context, postID string, post BlogPost) error {
+	if len(post.Labels) > 0 {
+		labels := make([]models.WikiLabel, 0, len(post.Labels))
+		for _, label := range post.Labels {
+			labels = append(labels, models.WikiLabel{Name: label, Prefix: "global"})
+		}
+		if _, err := a.Store.AddWikiBlogPostLabels(ctx, a.workspaceID, a.admin, postID, labels); err != nil {
+			return fmt.Errorf("label: %w", err)
+		}
+	}
+	for _, person := range post.Likes {
+		liked := a.people[person]
+		if liked == "" {
+			continue
+		}
+		if err := a.Store.SetWikiBlogPostLike(ctx, a.workspaceID, liked, postID, true); err != nil {
+			return fmt.Errorf("like by %s: %w", person, err)
+		}
+	}
+	return nil
 }

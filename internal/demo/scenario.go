@@ -507,14 +507,22 @@ type Page struct {
 	CreatedDay int           `json:"createdDay"`
 	Comments   []PageComment `json:"comments,omitempty"`
 	Children   []Page        `json:"children,omitempty"`
+	// Labels file the page where people look for it, Files are attached to
+	// it (their content comes from the name, as a work item's do), and Likes
+	// are the people who said it was useful.
+	Labels []string `json:"labels,omitempty"`
+	Files  []string `json:"files,omitempty"`
+	Likes  []string `json:"likes,omitempty"`
 }
 
 // BlogPost is one blog post in a space.
 type BlogPost struct {
-	Title      string `json:"title"`
-	Body       string `json:"body"`
-	Author     string `json:"author,omitempty"`
-	CreatedDay int    `json:"createdDay"`
+	Title      string   `json:"title"`
+	Body       string   `json:"body"`
+	Author     string   `json:"author,omitempty"`
+	CreatedDay int      `json:"createdDay"`
+	Labels     []string `json:"labels,omitempty"`
+	Likes      []string `json:"likes,omitempty"`
 }
 
 // PageComment is a comment on a page.
@@ -531,6 +539,9 @@ type Filter struct {
 	JQL         string `json:"jql"`
 	Owner       string `json:"owner,omitempty"`
 	Shared      bool   `json:"shared,omitempty"`
+	// Favourites are the people who starred it, which is what puts a filter
+	// in somebody's sidebar.
+	Favourites []string `json:"favourites,omitempty"`
 }
 
 // Dashboard is a saved dashboard and the gadgets on it.
@@ -1001,6 +1012,16 @@ func (s *Scenario) Validate() error {
 		}
 		if err := knownPerson("filter "+filter.Name, filter.Owner); err != nil {
 			return err
+		}
+		for _, person := range filter.Favourites {
+			if err := knownPerson("filter "+filter.Name, person); err != nil {
+				return err
+			}
+			// A filter nobody shared is the owner's own: anybody else
+			// starring it is a scenario that thinks they can see it.
+			if !filter.Shared && person != filter.Owner {
+				return fmt.Errorf("filter %q is not shared, so %s cannot star it", filter.Name, person)
+			}
 		}
 	}
 	// A dashboard names the filters and boards the rest of the scenario

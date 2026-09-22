@@ -536,6 +536,12 @@ func (s *Scenario) growWorkItem(project *Project, generated GeneratedProject, sp
 	return item
 }
 
+// generatedPageLabels are what a company files its writing under, and
+// generatedPageFiles what a page carries with it.
+var generatedPageLabels = []string{"runbook", "how-to", "reference", "decision", "postmortem", "onboarding", "architecture"}
+
+var generatedPageFiles = []string{"diagram.png", "measurements.csv", "notes.txt", "checks.json"}
+
 // generatedRequestFiles are what a customer sends a desk: what was on the
 // screen, what the browser said, or the export they were working from.
 var generatedRequestFiles = []string{"screenshot.png", "error.png", "console.log", "export.csv"}
@@ -834,7 +840,24 @@ func (s *Scenario) growKnowledge(plan *Generation, random *rand.Rand) error {
 		for day := float64(-plan.Days); day < 0; day += interval {
 			written++
 			subject := pick(declared.Subjects)
+			// A page is filed where people look for it, sometimes carries
+			// what it refers to, and sometimes says who found it useful.
+			labels := []string{generatedPageLabels[written%len(generatedPageLabels)]}
+			if random.Float64() < 0.4 {
+				labels = append(labels, generatedPageLabels[(written*3)%len(generatedPageLabels)])
+			}
+			files := []string(nil)
+			if random.Float64() < 0.25 {
+				files = []string{generatedPageFiles[written%len(generatedPageFiles)]}
+			}
+			likes := []string(nil)
+			for _, reader := range declared.Authors {
+				if random.Float64() < 0.2 {
+					likes = append(likes, reader)
+				}
+			}
 			space.Pages = append(space.Pages, Page{
+				Labels: labels, Files: files, Likes: likes,
 				ID: fmt.Sprintf("%s-gp%d", strings.ToLower(declared.Space), written),
 				// Numbered, because a page is matched by its title when a
 				// scenario is applied again: two pages called "Payments:
@@ -853,7 +876,14 @@ func (s *Scenario) growKnowledge(plan *Generation, random *rand.Rand) error {
 		interval := 90.0 / declared.PostsPerQuarter
 		for day := float64(-plan.Days); day < 0; day += interval {
 			posted++
+			postLikes := []string(nil)
+			for _, reader := range declared.Authors {
+				if random.Float64() < 0.35 {
+					postLikes = append(postLikes, reader)
+				}
+			}
 			space.BlogPosts = append(space.BlogPosts, BlogPost{
+				Labels: []string{"announcement", generatedPageLabels[posted%len(generatedPageLabels)]}, Likes: postLikes,
 				Title:  fmt.Sprintf("%s, quarter %d", capitalise(pick(declared.Subjects)), posted),
 				Body:   "<p>What we shipped, what we learned, and what is next.</p>",
 				Author: pick(declared.Authors), CreatedDay: int(day),
