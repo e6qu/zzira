@@ -3667,5 +3667,86 @@
         }
       ]
     }
+  ],
+  "translations": [
+    {
+      "kind": "issuetype",
+      "name": "Bug",
+      "locale": "es",
+      "translated": "Error",
+      "description": "Algo que no funciona."
+    },
+    {
+      "kind": "issuetype",
+      "name": "Story",
+      "locale": "es",
+      "translated": "Historia"
+    },
+    {
+      "kind": "issuetype",
+      "name": "Task",
+      "locale": "es",
+      "translated": "Tarea"
+    },
+    {
+      "kind": "issuetype",
+      "name": "Epic",
+      "locale": "es",
+      "translated": "Epopeya"
+    },
+    {
+      "kind": "issuetype",
+      "name": "Bug",
+      "locale": "pt-br",
+      "translated": "Erro"
+    },
+    {
+      "kind": "issuetype",
+      "name": "Story",
+      "locale": "pt-br",
+      "translated": "História"
+    },
+    {
+      "kind": "priority",
+      "name": "High",
+      "locale": "es",
+      "translated": "Alta"
+    },
+    {
+      "kind": "priority",
+      "name": "Medium",
+      "locale": "es",
+      "translated": "Media"
+    },
+    {
+      "kind": "priority",
+      "name": "Low",
+      "locale": "es",
+      "translated": "Baja"
+    },
+    {
+      "kind": "resolution",
+      "name": "Done",
+      "locale": "es",
+      "translated": "Hecho"
+    },
+    {
+      "kind": "resolution",
+      "name": "Won't Do",
+      "locale": "es",
+      "translated": "No se hará"
+    },
+    {
+      "kind": "status",
+      "name": "In Progress",
+      "locale": "es",
+      "translated": "En curso"
+    },
+    {
+      "kind": "status",
+      "name": "Done",
+      "locale": "es",
+      "translated": "Hecho"
+    }
   ]
 }

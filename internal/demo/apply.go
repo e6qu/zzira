@@ -192,6 +192,9 @@ func (a *Applier) run(ctx context.Context, scenario *Scenario, slug string) (*Re
 	if err := a.filtersAndDashboards(ctx, scenario); err != nil {
 		return nil, err
 	}
+	if err := a.translations(ctx, scenario.Translations); err != nil {
+		return nil, err
+	}
 	if err := a.retime(ctx); err != nil {
 		return nil, fmt.Errorf("retime the history: %w", err)
 	}
@@ -1476,6 +1479,61 @@ func (a *Applier) wiki(ctx context.Context, declared *Wiki) error {
 			}); err != nil {
 				return fmt.Errorf("blog post %s: %w", post.Title, err)
 			}
+		}
+	}
+	return nil
+}
+
+// translations names the words on a work item in the other languages the
+// company reads. A scenario names the thing by the name the site itself gives
+// it, which is what somebody writing one knows; the site's ids are found here.
+func (a *Applier) translations(ctx context.Context, declared []Translation) error {
+	if len(declared) == 0 {
+		return nil
+	}
+	named := map[string]map[string]string{}
+	workTypes, err := a.Store.IssueTypesForWorkspace(ctx, a.workspaceID)
+	if err != nil {
+		return fmt.Errorf("read the work types: %w", err)
+	}
+	named["issuetype"] = map[string]string{}
+	for _, workType := range workTypes {
+		named["issuetype"][strings.ToLower(workType.Name)] = workType.ID
+	}
+	priorities, err := a.Store.PrioritiesForWorkspace(ctx, a.workspaceID)
+	if err != nil {
+		return fmt.Errorf("read the priorities: %w", err)
+	}
+	named["priority"] = map[string]string{}
+	for _, priority := range priorities {
+		named["priority"][strings.ToLower(priority.Name)] = priority.ID
+	}
+	resolutions, err := a.Store.ResolutionsForWorkspace(ctx, a.workspaceID)
+	if err != nil {
+		return fmt.Errorf("read the resolutions: %w", err)
+	}
+	named["resolution"] = map[string]string{}
+	for _, resolution := range resolutions {
+		named["resolution"][strings.ToLower(resolution.Name)] = resolution.ID
+	}
+	statuses, err := a.Store.StatusDirectory(ctx, a.workspaceID)
+	if err != nil {
+		return fmt.Errorf("read the statuses: %w", err)
+	}
+	named["status"] = map[string]string{}
+	for _, status := range statuses {
+		named["status"][strings.ToLower(status.Status.Name)] = status.Status.ID
+	}
+	for _, translation := range declared {
+		id := named[translation.Kind][strings.ToLower(translation.Name)]
+		if id == "" {
+			return fmt.Errorf("%s %q is not on the site, so it cannot be named in %s", translation.Kind, translation.Name, translation.Locale)
+		}
+		if err := a.Store.SaveIssueMetadataTranslation(ctx, a.workspaceID, a.admin, store.MetadataTranslation{
+			EntityType: translation.Kind, EntityID: id, Locale: translation.Locale,
+			Name: translation.Translated, Description: translation.Description,
+		}); err != nil {
+			return fmt.Errorf("name %s %q in %s: %w", translation.Kind, translation.Name, translation.Locale, err)
 		}
 	}
 	return nil

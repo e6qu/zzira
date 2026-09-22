@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -451,6 +452,27 @@ func TestApplyDemoCompany(t *testing.T) {
 						declared.Title, len(database.Columns), len(database.Rows), len(declared.Columns), len(declared.Rows))
 				}
 			}
+		}
+	}
+
+	// The words on a work item in the other languages the company reads.
+	spanish, err := st.IssueMetadataNamesInLocale(ctx, result.WorkspaceID, "es")
+	if err != nil {
+		t.Fatalf("read the Spanish names: %v", err)
+	}
+	for _, translation := range scenario.Translations {
+		if translation.Locale != "es" {
+			continue
+		}
+		found := false
+		for key, named := range spanish {
+			if strings.HasPrefix(key, translation.Kind+":") && named.Name == translation.Translated {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("a reader of Spanish does not call any %s %q", translation.Kind, translation.Translated)
 		}
 	}
 

@@ -19,6 +19,7 @@ import (
 
 	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 // Scenario is a whole company, declared.
@@ -52,6 +53,10 @@ type Scenario struct {
 	Automation []AutomationRule `json:"automation,omitempty"`
 	// Plans are the cross-project plans people run the company by.
 	Plans []Plan `json:"plans,omitempty"`
+	// Translations are the words on a work item in the other languages the
+	// company reads: a site that speaks one language says nothing about what
+	// translating it does.
+	Translations []Translation `json:"translations,omitempty"`
 	// Generate is the history the scenario grows for itself: years of
 	// sprints, releases, work and deliveries that nobody would write out by
 	// hand. It is expanded before the scenario is checked.
@@ -918,6 +923,17 @@ func (s *Scenario) Validate() error {
 			}
 		}
 	}
+	for _, translation := range s.Translations {
+		if !slices.Contains(store.MetadataTranslationKinds, translation.Kind) {
+			return fmt.Errorf("a translation is of the unknown kind %q", translation.Kind)
+		}
+		if translation.Name == "" || translation.Translated == "" || translation.Locale == "" {
+			return fmt.Errorf("a %s translation needs a name, a language and the word in it", translation.Kind)
+		}
+		if store.NormalizeLocale(translation.Locale) == "" {
+			return fmt.Errorf("%q is not a language tag such as es or pt-br", translation.Locale)
+		}
+	}
 	for _, plan := range s.Plans {
 		if strings.TrimSpace(plan.Name) == "" {
 			return fmt.Errorf("a plan needs a name")
@@ -1154,6 +1170,20 @@ func validateSpaceContent(space Space, people map[string]bool) error {
 		}
 	}
 	return nil
+}
+
+// Translation is what the site calls one work type, priority, resolution or
+// status in another language. The thing is named by the name the site itself
+// gives it, because that is what a person writing a scenario knows.
+type Translation struct {
+	// Kind is "issuetype", "priority", "resolution" or "status".
+	Kind string `json:"kind"`
+	// Name is the site's own name for it, and Locale the language tag.
+	Name   string `json:"name"`
+	Locale string `json:"locale"`
+	// Translated is what that language calls it.
+	Translated  string `json:"translated"`
+	Description string `json:"description,omitempty"`
 }
 
 // Clock turns a scenario's day offsets into timestamps. Day 0 is the morning
