@@ -642,6 +642,87 @@
       "description": "Hiring, onboarding and everything after.",
       "type": "business",
       "lead": "priya"
+    },
+    {
+      "id": "sec",
+      "key": "SEC",
+      "name": "Security engineering",
+      "description": "Keeping the company's data where it belongs.",
+      "type": "software",
+      "lead": "viktor",
+      "template": "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic",
+      "components": [
+        {
+          "name": "Application security",
+          "lead": "viktor"
+        },
+        {
+          "name": "Infrastructure security",
+          "lead": "omar"
+        }
+      ],
+      "board": {
+        "id": "sec-board",
+        "name": "Security board",
+        "type": "scrum"
+      }
+    },
+    {
+      "id": "des",
+      "key": "DES",
+      "name": "Design",
+      "description": "How the product looks, reads and behaves.",
+      "type": "business",
+      "lead": "zoe"
+    },
+    {
+      "id": "it",
+      "key": "ITS",
+      "name": "IT service desk",
+      "description": "The desk everybody here writes to.",
+      "type": "service_desk",
+      "lead": "henrik",
+      "serviceDesk": {
+        "portalName": "Northwind IT",
+        "agents": [
+          "henrik",
+          "priya",
+          "jonas"
+        ],
+        "queues": [
+          {
+            "name": "Breached first response",
+            "jql": "\"Time to first response\" = everBreached() AND resolution = Unresolved ORDER BY created ASC"
+          },
+          {
+            "name": "Waiting on approval",
+            "jql": "approvals = myPendingApproval() ORDER BY created ASC"
+          },
+          {
+            "name": "Hardware",
+            "jql": "\"Request Type\" = \"Ask for hardware\" ORDER BY created DESC"
+          }
+        ],
+        "requestTypes": [
+          {
+            "id": "it-help",
+            "name": "Get IT help",
+            "description": "Something at work is not working."
+          },
+          {
+            "id": "it-incident",
+            "name": "Report an outage",
+            "description": "An internal system is down.",
+            "group": "incidents"
+          },
+          {
+            "id": "it-hardware",
+            "name": "Ask for hardware",
+            "description": "A laptop, a screen, a phone."
+          }
+        ]
+      },
+      "template": "com.atlassian.servicedesk:simplified-external-service-desk"
     }
   ],
   "workItems": [
@@ -2824,6 +2905,39 @@
         "projects": [
           "hr"
         ]
+      },
+      {
+        "name": "Security",
+        "members": [
+          "viktor",
+          "omar",
+          "aisha"
+        ],
+        "projects": [
+          "sec"
+        ]
+      },
+      {
+        "name": "Design",
+        "members": [
+          "zoe",
+          "marta",
+          "rosa"
+        ],
+        "projects": [
+          "des"
+        ]
+      },
+      {
+        "name": "IT",
+        "members": [
+          "henrik",
+          "priya",
+          "jonas"
+        ],
+        "projects": [
+          "it"
+        ]
       }
     ],
     "projects": [
@@ -2975,6 +3089,40 @@
         "impact": "impact",
         "linkShare": 0.18,
         "watchShare": 0.25
+      },
+      {
+        "project": "sec",
+        "board": "sec-board",
+        "workPerSprint": 6,
+        "releaseEvery": 4,
+        "deploymentsPerWeek": 1,
+        "failureRate": 0.04,
+        "bugShare": 0.22,
+        "themes": [
+          "access reviews",
+          "dependency patching",
+          "secrets rotation",
+          "threat modelling",
+          "audit evidence"
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.2,
+        "watchShare": 0.3
+      },
+      {
+        "project": "des",
+        "workPerSprint": 5,
+        "bugShare": 0.1,
+        "themes": [
+          "the checkout flow",
+          "the design system",
+          "onboarding",
+          "the mobile navigation",
+          "illustration"
+        ],
+        "linkShare": 0.12,
+        "watchShare": 0.2
       }
     ],
     "service": {
@@ -3048,7 +3196,56 @@
         "releases",
         "security"
       ]
-    }
+    },
+    "services": [
+      {
+        "project": "it",
+        "requestsPerWeek": 4,
+        "incidentShare": 0.12,
+        "customers": [
+          "ravi",
+          "ines",
+          "kofi",
+          "lena",
+          "arjun",
+          "mei",
+          "paulo",
+          "hana",
+          "marta",
+          "sean",
+          "nina",
+          "caleb",
+          "tariq",
+          "rosa"
+        ],
+        "agents": [
+          "henrik",
+          "priya",
+          "jonas"
+        ],
+        "requestTypes": [
+          "it-help",
+          "it-hardware"
+        ],
+        "incidentType": "it-incident",
+        "approvalType": "it-hardware",
+        "approvers": [
+          "nora",
+          "maya",
+          "tom"
+        ],
+        "subjects": [
+          "the VPN",
+          "a laptop",
+          "the wifi",
+          "a second screen",
+          "the printer",
+          "single sign-on",
+          "a phone",
+          "the meeting room screen"
+        ]
+      }
+    ]
   },
   "plans": [
     {

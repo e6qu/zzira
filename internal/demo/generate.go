@@ -29,8 +29,11 @@ type Generation struct {
 	Teams []GeneratedTeam `json:"teams,omitempty"`
 	// Projects are the projects that grow a history.
 	Projects []GeneratedProject `json:"projects,omitempty"`
-	// Service is the desk whose queue fills up over the same years.
-	Service *GeneratedService `json:"service,omitempty"`
+	// Service is a desk whose queue fills up over the same years, and
+	// Services are the rest of them: a company with an external desk and an
+	// internal one has two queues, not one twice the size.
+	Service  *GeneratedService  `json:"service,omitempty"`
+	Services []GeneratedService `json:"services,omitempty"`
 	// Knowledge is what the company wrote down as it went.
 	Knowledge *GeneratedKnowledge `json:"knowledge,omitempty"`
 }
@@ -208,8 +211,12 @@ func (s *Scenario) Expand() error {
 			return err
 		}
 	}
+	desks := plan.Services
 	if plan.Service != nil {
-		if err := s.growService(plan, random); err != nil {
+		desks = append([]GeneratedService{*plan.Service}, desks...)
+	}
+	for index := range desks {
+		if err := s.growService(&desks[index], plan.Days, random); err != nil {
 			return err
 		}
 	}
@@ -546,8 +553,7 @@ func (s *Scenario) growDeliveries(project *Project, generated GeneratedProject, 
 // of it broken and answered in a hurry, most of it answered and rated. An
 // incident that was resolved is what the delivery report reads to say how
 // long this company takes to recover.
-func (s *Scenario) growService(plan *Generation, random *rand.Rand) error {
-	declared := plan.Service
+func (s *Scenario) growService(declared *GeneratedService, days int, random *rand.Rand) error {
 	if declared.RequestsPerWeek <= 0 {
 		return nil
 	}
@@ -562,7 +568,7 @@ func (s *Scenario) growService(plan *Generation, random *rand.Rand) error {
 	}
 	interval := 7.0 / declared.RequestsPerWeek
 	raised := 0
-	for day := float64(-plan.Days); day < 0; day += interval {
+	for day := float64(-days); day < 0; day += interval {
 		at := int(day)
 		raised++
 		incident := random.Float64() < declared.IncidentShare

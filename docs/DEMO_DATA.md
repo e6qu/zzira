@@ -144,6 +144,10 @@ scenario declares the *shape* of its history and the generator writes it:
 - `linkShare` and `watchShare` are how much of a sprint's work is linked to the
   work beside it and watched by somebody. A link points backwards, at work
   already raised, because the timeline is replayed in order.
+- `service` is one desk and `services` are the rest: a company with an external
+  desk and an internal one has two queues filling over the same years, each
+  with its own agents, request types and customers. An internal desk's
+  customers are the people who work here, and raising a request enrols them.
 - `approvalType` is the request type somebody has to approve, `approvers` the
   people who answer, and `assets` the objects an incident is about. Most access
   requests are approved, a few refused and closed, and a few left waiting.

@@ -38,6 +38,9 @@ func shippedCompanyOver(t *testing.T, days int) *demo.Scenario {
 			// desk has a rough week.
 			service["incidentShare"] = 0.5
 		}
+		// The company's other desks are what a second desk exercises, and one
+		// desk's queue is enough for a test of the applier.
+		delete(plan, "services")
 	}
 	trimmed, err := json.Marshal(document)
 	if err != nil {

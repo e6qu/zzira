@@ -1268,6 +1268,18 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 	if err := a.assetInventory(ctx, declared.Assets); err != nil {
 		return err
 	}
+	// Somebody who raises a request is a customer of the site, whether or not
+	// they also have a seat on it: an internal desk is asked for things by the
+	// people who work here.
+	raisers := map[string]bool{}
+	for _, request := range declared.Requests {
+		if id := a.people[request.Customer]; id != "" && !raisers[id] {
+			raisers[id] = true
+			if err := a.Store.EnrollServiceCustomer(ctx, a.workspaceID, id); err != nil {
+				return fmt.Errorf("enrol %s as a customer: %w", request.Customer, err)
+			}
+		}
+	}
 	for _, request := range declared.Requests {
 		deskID := a.desks[request.Project]
 		if deskID == "" {
