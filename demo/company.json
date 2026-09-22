@@ -2459,8 +2459,25 @@
           "description": "What customers use, and what the company answers for.",
           "attributes": [
             "Owner",
-            "Tier",
-            "Runbook"
+            {
+              "name": "Tier",
+              "type": "select",
+              "required": true,
+              "options": [
+                "1",
+                "2",
+                "3"
+              ]
+            },
+            "Runbook",
+            {
+              "name": "Go live",
+              "type": "date"
+            },
+            {
+              "name": "Customer facing",
+              "type": "boolean"
+            }
           ],
           "objects": [
             {
@@ -2470,7 +2487,9 @@
               "values": {
                 "Owner": "Payments",
                 "Tier": "1",
-                "Runbook": "ENG/Checkout runbook"
+                "Runbook": "ENG/Checkout runbook",
+                "Go live": "2024-03-04",
+                "Customer facing": "true"
               }
             },
             {
@@ -2480,7 +2499,9 @@
               "values": {
                 "Owner": "Payments",
                 "Tier": "1",
-                "Runbook": "ENG/Payout runbook"
+                "Runbook": "ENG/Payout runbook",
+                "Go live": "2024-06-10",
+                "Customer facing": "false"
               }
             },
             {
@@ -2490,7 +2511,9 @@
               "values": {
                 "Owner": "Storefront",
                 "Tier": "2",
-                "Runbook": "ENG/Portal runbook"
+                "Runbook": "ENG/Portal runbook",
+                "Go live": "2023-11-20",
+                "Customer facing": "true"
               }
             },
             {
@@ -2500,7 +2523,9 @@
               "values": {
                 "Owner": "Data",
                 "Tier": "3",
-                "Runbook": "ENG/Reporting runbook"
+                "Runbook": "ENG/Reporting runbook",
+                "Go live": "2025-01-15",
+                "Customer facing": "false"
               }
             },
             {
@@ -2510,7 +2535,57 @@
               "values": {
                 "Owner": "Mobile",
                 "Tier": "2",
-                "Runbook": "ENG/Mobile runbook"
+                "Runbook": "ENG/Mobile runbook",
+                "Go live": "2024-09-02",
+                "Customer facing": "true"
+              }
+            },
+            {
+              "id": "svc-search",
+              "key": "SVC-6",
+              "label": "Product search",
+              "values": {
+                "Owner": "Storefront",
+                "Tier": "2",
+                "Runbook": "ENG/Search runbook",
+                "Go live": "2024-05-21",
+                "Customer facing": "true"
+              }
+            },
+            {
+              "id": "svc-notify",
+              "key": "SVC-7",
+              "label": "Notifications",
+              "values": {
+                "Owner": "Platform",
+                "Tier": "2",
+                "Runbook": "ENG/Notification runbook",
+                "Go live": "2023-08-09",
+                "Customer facing": "true"
+              }
+            },
+            {
+              "id": "svc-invoicing",
+              "key": "SVC-8",
+              "label": "Invoicing",
+              "values": {
+                "Owner": "Finance systems",
+                "Tier": "2",
+                "Runbook": "ENG/Invoicing runbook",
+                "Go live": "2025-02-03",
+                "Customer facing": "false"
+              }
+            },
+            {
+              "id": "svc-warehouse",
+              "key": "SVC-9",
+              "label": "Warehouse dispatch",
+              "values": {
+                "Owner": "Operations",
+                "Tier": "1",
+                "Runbook": "OPS/Dispatch runbook",
+                "Go live": "2022-10-17",
+                "Customer facing": "false"
               }
             }
           ]
@@ -2521,9 +2596,22 @@
           "name": "Infrastructure",
           "description": "The databases, queues and clusters the services run on.",
           "attributes": [
-            "Environment",
+            {
+              "name": "Environment",
+              "type": "select",
+              "required": true,
+              "options": [
+                "production",
+                "staging",
+                "development"
+              ]
+            },
             "Region",
-            "Owner"
+            "Owner",
+            {
+              "name": "Cores",
+              "type": "number"
+            }
           ],
           "objects": [
             {
@@ -2533,7 +2621,8 @@
               "values": {
                 "Environment": "production",
                 "Region": "eu-west-1",
-                "Owner": "Platform"
+                "Owner": "Platform",
+                "Cores": "16"
               }
             },
             {
@@ -2543,7 +2632,8 @@
               "values": {
                 "Environment": "production",
                 "Region": "eu-west-1",
-                "Owner": "Platform"
+                "Owner": "Platform",
+                "Cores": "8"
               }
             },
             {
@@ -2553,7 +2643,8 @@
               "values": {
                 "Environment": "production",
                 "Region": "eu-west-1",
-                "Owner": "Platform"
+                "Owner": "Platform",
+                "Cores": "24"
               }
             },
             {
@@ -2563,7 +2654,63 @@
               "values": {
                 "Environment": "production",
                 "Region": "eu-central-1",
-                "Owner": "Data"
+                "Owner": "Data",
+                "Cores": "32"
+              }
+            },
+            {
+              "id": "inf-search-cluster",
+              "key": "INF-5",
+              "label": "search-cluster",
+              "values": {
+                "Environment": "production",
+                "Region": "eu-west-1",
+                "Owner": "Platform",
+                "Cores": "24"
+              }
+            },
+            {
+              "id": "inf-cache",
+              "key": "INF-6",
+              "label": "session-cache",
+              "values": {
+                "Environment": "production",
+                "Region": "eu-west-1",
+                "Owner": "Platform",
+                "Cores": "8"
+              }
+            },
+            {
+              "id": "inf-staging-db",
+              "key": "INF-7",
+              "label": "payments-db (staging)",
+              "values": {
+                "Environment": "staging",
+                "Region": "eu-west-1",
+                "Owner": "Platform",
+                "Cores": "8"
+              }
+            },
+            {
+              "id": "inf-ci",
+              "key": "INF-8",
+              "label": "build-runners",
+              "values": {
+                "Environment": "development",
+                "Region": "eu-central-1",
+                "Owner": "Developer experience",
+                "Cores": "48"
+              }
+            },
+            {
+              "id": "inf-edge",
+              "key": "INF-9",
+              "label": "edge-cdn",
+              "values": {
+                "Environment": "production",
+                "Region": "global",
+                "Owner": "Platform",
+                "Cores": "0"
               }
             }
           ]
@@ -2575,7 +2722,19 @@
           "description": "The companies the services depend on.",
           "attributes": [
             "Contact",
-            "Contract"
+            "Contract",
+            {
+              "name": "Renewal",
+              "type": "date"
+            },
+            {
+              "name": "Seats",
+              "type": "number"
+            },
+            {
+              "name": "Support 24/7",
+              "type": "boolean"
+            }
           ],
           "objects": [
             {
@@ -2584,7 +2743,10 @@
               "label": "Card processor",
               "values": {
                 "Contact": "support@processor.test",
-                "Contract": "Renews each January"
+                "Contract": "Renews each January",
+                "Renewal": "2027-02-28",
+                "Seats": "0",
+                "Support 24/7": "true"
               }
             },
             {
@@ -2593,7 +2755,176 @@
               "label": "Payout bank",
               "values": {
                 "Contact": "ops@bank.test",
-                "Contract": "Renews each April"
+                "Contract": "Renews each April",
+                "Renewal": "2027-01-01",
+                "Seats": "0",
+                "Support 24/7": "false"
+              }
+            },
+            {
+              "id": "vnd-identity",
+              "key": "VND-3",
+              "label": "Identity provider",
+              "values": {
+                "Contact": "support@identity.example",
+                "Renewal": "2027-05-31",
+                "Seats": "400",
+                "Support 24/7": "true",
+                "Contract": "Renews each January"
+              }
+            },
+            {
+              "id": "vnd-observability",
+              "key": "VND-4",
+              "label": "Observability platform",
+              "values": {
+                "Contact": "help@observe.example",
+                "Renewal": "2026-11-30",
+                "Seats": "120",
+                "Support 24/7": "true",
+                "Contract": "Renews each January"
+              }
+            },
+            {
+              "id": "vnd-mail",
+              "key": "VND-5",
+              "label": "Email delivery",
+              "values": {
+                "Contact": "support@mailer.example",
+                "Contract": "Renews each July",
+                "Renewal": "2027-07-31",
+                "Seats": "0",
+                "Support 24/7": "false"
+              }
+            }
+          ]
+        },
+        {
+          "id": "lap",
+          "key": "LAP",
+          "name": "Laptops",
+          "description": "The machines the company hands out, and who holds them.",
+          "attributes": [
+            "Holder",
+            {
+              "name": "Model",
+              "type": "select",
+              "required": true,
+              "options": [
+                "MacBook Pro 14",
+                "MacBook Air 13",
+                "ThinkPad X1"
+              ]
+            },
+            {
+              "name": "Warranty ends",
+              "type": "date"
+            },
+            {
+              "name": "Encrypted",
+              "type": "boolean"
+            }
+          ],
+          "objects": [
+            {
+              "id": "lap-nora",
+              "key": "LAP-1",
+              "label": "Nora's laptop",
+              "values": {
+                "Holder": "Nora Whitfield",
+                "Model": "MacBook Pro 14",
+                "Warranty ends": "2027-04-18",
+                "Encrypted": "true"
+              }
+            },
+            {
+              "id": "lap-ravi",
+              "key": "LAP-2",
+              "label": "Ravi's laptop",
+              "values": {
+                "Holder": "Ravi Chandra",
+                "Model": "MacBook Pro 14",
+                "Warranty ends": "2026-12-02",
+                "Encrypted": "true"
+              }
+            },
+            {
+              "id": "lap-ines",
+              "key": "LAP-3",
+              "label": "Ines's laptop",
+              "values": {
+                "Holder": "Ines Moreau",
+                "Model": "MacBook Air 13",
+                "Warranty ends": "2027-07-30",
+                "Encrypted": "true"
+              }
+            },
+            {
+              "id": "lap-sean",
+              "key": "LAP-4",
+              "label": "Sean's laptop",
+              "values": {
+                "Holder": "Sean Okafor",
+                "Model": "ThinkPad X1",
+                "Warranty ends": "2026-10-11",
+                "Encrypted": "false"
+              }
+            }
+          ]
+        },
+        {
+          "id": "app",
+          "key": "APP",
+          "name": "Software subscriptions",
+          "description": "What the company pays for, per seat, and when it renews.",
+          "attributes": [
+            "Owner",
+            {
+              "name": "Seats",
+              "type": "number",
+              "required": true
+            },
+            {
+              "name": "Renewal",
+              "type": "date"
+            },
+            {
+              "name": "Single sign-on",
+              "type": "boolean"
+            }
+          ],
+          "objects": [
+            {
+              "id": "app-design",
+              "key": "APP-1",
+              "label": "Design suite",
+              "values": {
+                "Owner": "Design",
+                "Seats": "25",
+                "Renewal": "2027-03-15",
+                "Single sign-on": "true"
+              }
+            },
+            {
+              "id": "app-crm",
+              "key": "APP-2",
+              "label": "Customer CRM",
+              "values": {
+                "Owner": "Revenue",
+                "Seats": "80",
+                "Renewal": "2026-11-01",
+                "Single sign-on": "true"
+              }
+            },
+            {
+              "id": "app-analytics",
+              "key": "APP-3",
+              "label": "Analytics workspace",
+              "values": {
+                "Owner": "Data",
+                "Seats": "40",
+                "Renewal": "2027-01-20",
+                "Single sign-on": "false"
               }
             }
           ]
@@ -2669,6 +3000,86 @@
           "from": "svc-reporting",
           "to": "svc-mobile",
           "type": "reports on"
+        },
+        {
+          "from": "svc-search",
+          "to": "inf-search-cluster",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-search",
+          "to": "inf-edge",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-notify",
+          "to": "inf-queue",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-notify",
+          "to": "vnd-mail",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-invoicing",
+          "to": "inf-payments-db",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-invoicing",
+          "to": "vnd-processor",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-warehouse",
+          "to": "inf-queue",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-portal",
+          "to": "inf-cache",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-portal",
+          "to": "inf-edge",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-portal",
+          "to": "vnd-identity",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-mobile",
+          "to": "vnd-identity",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-checkout",
+          "to": "inf-edge",
+          "type": "depends on"
+        },
+        {
+          "from": "app-analytics",
+          "to": "inf-warehouse",
+          "type": "runs on"
+        },
+        {
+          "from": "app-crm",
+          "to": "vnd-identity",
+          "type": "depends on"
+        },
+        {
+          "from": "lap-nora",
+          "to": "app-design",
+          "type": "depends on"
+        },
+        {
+          "from": "lap-ines",
+          "to": "app-analytics",
+          "type": "depends on"
         }
       ]
     }

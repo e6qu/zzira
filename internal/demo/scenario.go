@@ -322,12 +322,57 @@ type Assets struct {
 
 // AssetSchema is one kind of thing the company keeps track of.
 type AssetSchema struct {
-	ID          string   `json:"id"`
-	Key         string   `json:"key"`
-	Name        string   `json:"name"`
-	Description string   `json:"description,omitempty"`
-	Attributes  []string `json:"attributes,omitempty"`
-	Objects     []Asset  `json:"objects,omitempty"`
+	ID          string           `json:"id"`
+	Key         string           `json:"key"`
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
+	Attributes  []AssetAttribute `json:"attributes,omitempty"`
+	Objects     []Asset          `json:"objects,omitempty"`
+}
+
+// assetAttributeTypes are the field types a schema may declare, which are
+// the ones the Assets pages offer.
+var assetAttributeTypes = []string{"text", "number", "date", "boolean", "select"}
+
+// AssetAttribute is one field of a schema. A scenario writes a bare name for
+// a text field -- "Owner" -- and an object when the field is typed:
+// {"name":"Tier","type":"select","required":true,"options":["1","2","3"]}.
+// A demo whose every field is text never shows a date, a number or a choice
+// on an object, or lets an Assets filter compare one.
+type AssetAttribute struct {
+	Name     string   `json:"name"`
+	Type     string   `json:"type,omitempty"`
+	Required bool     `json:"required,omitempty"`
+	Options  []string `json:"options,omitempty"`
+}
+
+// UnmarshalJSON reads either shape.
+func (a *AssetAttribute) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if strings.HasPrefix(trimmed, `"`) {
+		var name string
+		if err := json.Unmarshal(data, &name); err != nil {
+			return err
+		}
+		*a = AssetAttribute{Name: name, Type: "text"}
+		return nil
+	}
+	type plain AssetAttribute
+	value := plain{}
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*a = AssetAttribute(value)
+	if a.Type == "" {
+		a.Type = "text"
+	}
+	return nil
+}
+
+// Key is what the attribute is stored under, which is its name in lower case
+// with its spaces joined.
+func (a AssetAttribute) Key() string {
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(a.Name), " ", "_"))
 }
 
 // Asset is one thing the company owns or runs.
@@ -850,7 +895,16 @@ func (s *Scenario) Validate() error {
 				schemaKeys[schema.Key] = true
 				attributes := map[string]bool{}
 				for _, attribute := range schema.Attributes {
-					attributes[attribute] = true
+					if strings.TrimSpace(attribute.Name) == "" {
+						return fmt.Errorf("an attribute of %q has no name", schema.Name)
+					}
+					if !slices.Contains(assetAttributeTypes, attribute.Type) {
+						return fmt.Errorf("attribute %q of %q has the unsupported type %q", attribute.Name, schema.Name, attribute.Type)
+					}
+					if (attribute.Type == "select") != (len(attribute.Options) > 0) {
+						return fmt.Errorf("attribute %q of %q is a select with options, or another type with none", attribute.Name, schema.Name)
+					}
+					attributes[attribute.Name] = true
 				}
 				for _, object := range schema.Objects {
 					if object.ID == "" || object.Key == "" || object.Label == "" {

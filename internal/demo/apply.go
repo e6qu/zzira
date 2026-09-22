@@ -1512,7 +1512,8 @@ func (a *Applier) assetInventory(ctx context.Context, declared *Assets) error {
 			attributes := make([]models.ServiceAssetAttribute, 0, len(schema.Attributes))
 			for _, attribute := range schema.Attributes {
 				attributes = append(attributes, models.ServiceAssetAttribute{
-					Key: strings.ToLower(strings.ReplaceAll(attribute, " ", "_")), Name: attribute, Type: "text",
+					Key: attribute.Key(), Name: attribute.Name, Type: attribute.Type,
+					Required: attribute.Required, Options: attribute.Options,
 				})
 			}
 			created, err := a.Store.CreateServiceAssetSchema(ctx, a.workspaceID, a.admin, deskID, models.ServiceAssetSchema{
