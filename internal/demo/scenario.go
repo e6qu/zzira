@@ -409,6 +409,9 @@ type Gadget struct {
 	// created vs resolved shows running totals.
 	DateField  string `json:"dateField,omitempty"`
 	Cumulative bool   `json:"cumulative,omitempty"`
+	// BubbleAxis is what a bubble chart sizes its bubbles by: participants
+	// or votes.
+	BubbleAxis string `json:"bubbleAxis,omitempty"`
 }
 
 // AutomationRule is one rule the company runs. Trigger is the trigger type,

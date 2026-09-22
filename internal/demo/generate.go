@@ -483,6 +483,13 @@ func linkSprintWork(work []WorkItem, generated GeneratedProject, people []string
 				Day: until(work[index].CreatedDay + 1), Kind: "watch", Actor: people[random.Intn(len(people))],
 			})
 		}
+		// Some of it people ask for: a vote is what the voted work gadget and
+		// the votes column read, and what a bubble chart sizes by.
+		if generated.WatchShare > 0 && random.Float64() < generated.WatchShare/2 && len(people) > 0 {
+			work[index].Events = append(work[index].Events, Event{
+				Day: until(work[index].CreatedDay + 2), Kind: "vote", Actor: people[random.Intn(len(people))],
+			})
+		}
 	}
 	for index := range work {
 		sortEventsByDay(work[index].Events)

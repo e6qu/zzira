@@ -1130,6 +1130,7 @@ func (a *Applier) dashboard(ctx context.Context, declared Dashboard, filters map
 		config := models.GadgetConfig{
 			FilterID: filters[gadget.Filter], JQL: gadget.JQL, GroupBy: gadget.GroupBy, YGroupBy: gadget.YGroupBy,
 			Days: gadget.Days, DateField: gadget.DateField, Cumulative: gadget.Cumulative,
+			BubbleAxis: gadget.BubbleAxis,
 		}
 		if gadget.Project != "" {
 			config.ProjectKey = a.projects[gadget.Project].Key

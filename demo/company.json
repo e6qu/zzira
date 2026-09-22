@@ -2642,6 +2642,12 @@
       "name": "Resolved this month",
       "jql": "resolution != Unresolved AND resolutiondate >= -30d ORDER BY resolutiondate DESC",
       "owner": "nora"
+    },
+    {
+      "name": "Everything open",
+      "jql": "resolution = Unresolved ORDER BY created ASC",
+      "owner": "nora",
+      "shared": true
     }
   ],
   "dashboards": [
@@ -2793,6 +2799,49 @@
           "type": "calendar",
           "title": "Due this month",
           "jql": "resolution = Unresolved ORDER BY duedate ASC"
+        }
+      ]
+    },
+    {
+      "name": "Backlog health",
+      "owner": "maya",
+      "shared": true,
+      "gadgets": [
+        {
+          "type": "time-since",
+          "title": "Raised, changed and finished",
+          "project": "plat",
+          "days": 90,
+          "dateField": "created"
+        },
+        {
+          "type": "bubble-chart",
+          "title": "What people are pulling on",
+          "filter": "Everything open",
+          "bubbleAxis": "participants"
+        },
+        {
+          "type": "voted-issues",
+          "title": "What people voted for",
+          "jql": "ORDER BY votes DESC"
+        },
+        {
+          "type": "average-age",
+          "title": "How old the backlog is",
+          "project": "plat",
+          "days": 90
+        },
+        {
+          "type": "issue-statistics",
+          "title": "Security work by status",
+          "filter": "Everything open",
+          "groupBy": "status"
+        },
+        {
+          "type": "heat-map",
+          "title": "Where the work sits",
+          "filter": "Everything open",
+          "groupBy": "assignee"
         }
       ]
     }

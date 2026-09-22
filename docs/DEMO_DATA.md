@@ -216,6 +216,10 @@ agent of that desk; an approval answered before anybody asked for one.
 
 ## Tests
 
+Every gadget in the catalog is on one of the company's dashboards, and a test
+holds it there: a gadget nobody has put on a dashboard is one nobody has
+looked at.
+
 `internal/demo` checks that a scenario survives being written and read again,
 that each contradiction above is refused, that a scenario builds into the
 workspace it is given rather than its own, that a second run raises only what
