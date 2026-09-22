@@ -101,6 +101,7 @@ show.
 | `workItems` | Work with its parent, sprint, versions, labels, estimates and field values, plus `events` — the transitions, comments, worklogs, assignments, links, watches and votes that happened to it |
 | `deployments`, `commits` | Deliveries to environments and the changes they carried, which the delivery (DORA) report counts: deployments give the frequency and the failure rate, and commits paired with them give the lead time ([REPORTS.md](REPORTS.md)) |
 | `plans` | Cross-project plans, and the teams that work in them |
+| `automation` | The rules the company runs: what starts them, what they are scoped to, and what they do |
 | `service` | Customer organizations and the requests they raised, with their conversation and satisfaction rating |
 | `wiki` | Spaces, page trees, blog posts and comments |
 | `filters`, `dashboards` | The searches people saved, and the dashboards they keep, with the gadgets on them. A gadget names its `type` (the catalog key without `com.zzira:`) and whatever that kind reads: a `project` and `days` window, a scrum `board`, a saved `filter` or `jql`, a `groupBy` and `yGroupBy`, `dateField` or `cumulative` |
@@ -116,7 +117,9 @@ scenario declares the *shape* of its history and the generator writes it:
   "teams": [{ "name": "Payments", "members": ["ravi", "ines"], "projects": ["pay"] }],
   "projects": [{ "project": "pay", "board": "pay-board", "workPerSprint": 9,
                  "releaseEvery": 3, "deploymentsPerWeek": 5, "failureRate": 0.07,
-                 "bugShare": 0.3, "themes": ["card payments", "refunds"] }],
+                 "bugShare": 0.3, "points": "points", "impact": "impact",
+                 "linkShare": 0.18, "watchShare": 0.25,
+                 "themes": ["card payments", "refunds"] }],
   "service": { "project": "help", "requestsPerWeek": 6, "incidentShare": 0.18 },
   "knowledge": { "space": "ENG", "pagesPerMonth": 2.5, "postsPerQuarter": 2 }
 }
@@ -131,6 +134,16 @@ scenario declares the *shape* of its history and the generator writes it:
   so the two never collide.
 - Expanding consumes the plan: the scenario that reaches the applier has every
   sprint, release, work item, deployment, commit, request and page declared.
+- `points` names the field the work is estimated in. Without it a board has
+  nothing to draw a velocity, a burndown or a sprint health from, which is most
+  of what a board is for.
+- `impact` names a select field the work carries, so the site has custom field
+  values to group, filter and report on. A scenario names an option by its
+  value -- "Several customers" -- and the applier writes it the way an option
+  field reads it.
+- `linkShare` and `watchShare` are how much of a sprint's work is linked to the
+  work beside it and watched by somebody. A link points backwards, at work
+  already raised, because the timeline is replayed in order.
 
 Every entity has an `id` that the rest of the document refers to: a work item
 names its `parent` and `sprint`, a deployment names the `workItems` it carried,

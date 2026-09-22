@@ -3,6 +3,7 @@ package demo
 import (
 	"fmt"
 	"math/rand"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -103,6 +104,17 @@ type GeneratedProject struct {
 	// Components names the project's components the work is spread over;
 	// empty spreads it over every component the project declares.
 	Components []string `json:"components,omitempty"`
+	// Points is the scenario id of the story points field this project
+	// estimates in. Without one its board has nothing to draw a velocity or
+	// a burndown from, which is most of what a board is for.
+	Points string `json:"points,omitempty"`
+	// Impact is the scenario id of a select field the work carries, so the
+	// site has custom field values to group, filter and report on.
+	Impact string `json:"impact,omitempty"`
+	// LinkShare is how much of the work is linked to other work in the same
+	// sprint, and WatchShare how much somebody is watching.
+	LinkShare  float64 `json:"linkShare,omitempty"`
+	WatchShare float64 `json:"watchShare,omitempty"`
 }
 
 // generatedVerbs and generatedObjects build summaries that read like work.
@@ -127,6 +139,13 @@ var (
 	generatedPageKinds = []string{"how it works", "runbook", "what we decided", "meeting notes", "what went wrong", "how to change it"}
 	generatedFeedback  = []string{"Quick and clear, thank you.", "Sorted in a day.", "Fine once it was picked up.", "Fast answer."}
 	generatedPriority  = []string{"Low", "Medium", "Medium", "High", "Highest"}
+	// generatedPoints is what a team estimates in: a Fibonacci-ish scale,
+	// weighted towards the small end as a real backlog is.
+	generatedPoints = []string{"1", "2", "2", "3", "3", "5", "5", "8", "13"}
+	generatedLinks  = []string{"blocks", "relates to"}
+	// generatedImpacts are the options the shipped company's customer impact
+	// field offers; a scenario with another field says its own.
+	generatedImpacts = []string{"One customer", "Several customers", "Everyone"}
 )
 
 // Expand writes the generated history into the scenario: sprints and versions
@@ -270,11 +289,15 @@ func (s *Scenario) growProject(project *Project, generated GeneratedProject, pla
 			}
 			project.Versions = append(project.Versions, *version)
 		}
+		// The sprint's work, then what people did around it: work blocks or
+		// relates to work beside it, and somebody is watching some of it.
+		sprintWork := make([]WorkItem, 0, generated.WorkPerSprint)
 		for index := range generated.WorkPerSprint {
-			item := s.growWorkItem(project, generated, sprintID, version, people, components, themes,
-				startDay, endDay, round, index, random)
-			s.WorkItems = append(s.WorkItems, item)
+			sprintWork = append(sprintWork, s.growWorkItem(project, generated, sprintID, version, people, components, themes,
+				startDay, endDay, round, index, random))
 		}
+		linkSprintWork(sprintWork, generated, people, random)
+		s.WorkItems = append(s.WorkItems, sprintWork...)
 	}
 	s.growDeliveries(project, generated, plan, people, sprintDays, random)
 	return nil
@@ -329,10 +352,22 @@ func (s *Scenario) growWorkItem(project *Project, generated GeneratedProject, sp
 		Labels:      []string{strings.ReplaceAll(theme, " ", "-")},
 		Sprint:      sprintID,
 		Estimate:    pick(generatedEstimates),
+		Fields:      map[string]string{},
 		CreatedDay:  startDay + random.Intn(3),
 	}
 	if len(components) > 0 {
 		item.Components = []string{pick(components)}
+	}
+	// A board with no estimates has no velocity, no burndown and no sprint
+	// health: the numbers those draw are the points on the work.
+	if generated.Points != "" {
+		item.Fields[generated.Points] = pick(generatedPoints)
+	}
+	if generated.Impact != "" && random.Float64() < 0.6 {
+		item.Fields[generated.Impact] = pick(generatedImpacts)
+	}
+	if len(item.Fields) == 0 {
+		item.Fields = nil
 	}
 	if version != nil && version.ReleaseDay != nil && *version.ReleaseDay >= item.CreatedDay {
 		item.FixVersions = []string{version.ID}
@@ -374,6 +409,47 @@ func (s *Scenario) growWorkItem(project *Project, generated GeneratedProject, sp
 		})
 	}
 	return item
+}
+
+// linkSprintWork joins work in a sprint to the work beside it and puts
+// watchers on some of it. Both are read all over the site -- the related work
+// on a work item, a branch over linked work, the watched work gadget -- and
+// none of it means anything on a site where nothing is linked or watched.
+func linkSprintWork(work []WorkItem, generated GeneratedProject, people []string, random *rand.Rand) {
+	if len(work) < 2 {
+		return
+	}
+	for index := range work {
+		// A link points backwards, at work the applier has already raised:
+		// the timeline is replayed in order, so a link to work still to come
+		// would be a link to nothing.
+		if generated.LinkShare > 0 && index > 0 && random.Float64() < generated.LinkShare {
+			other := random.Intn(index)
+			if other != index {
+				// A link is recorded on the work item that acts: the one that
+				// blocks, as the applier reads it.
+				work[index].Events = append(work[index].Events, Event{
+					Day: work[index].CreatedDay + 1, Kind: "link",
+					LinkType: generatedLinks[random.Intn(len(generatedLinks))],
+					Target:   work[other].ID, Actor: work[index].Reporter,
+				})
+			}
+		}
+		if generated.WatchShare > 0 && random.Float64() < generated.WatchShare && len(people) > 0 {
+			work[index].Events = append(work[index].Events, Event{
+				Day: work[index].CreatedDay + 1, Kind: "watch", Actor: people[random.Intn(len(people))],
+			})
+		}
+	}
+	for index := range work {
+		sortEventsByDay(work[index].Events)
+	}
+}
+
+// sortEventsByDay keeps a work item's timeline in the order it happened,
+// which is what the applier replays and what the scenario is checked against.
+func sortEventsByDay(events []Event) {
+	sort.SliceStable(events, func(first, second int) bool { return events[first].Day < events[second].Day })
 }
 
 // growDeliveries writes what the project shipped: a steady stream of
@@ -523,8 +599,13 @@ func (s *Scenario) growKnowledge(plan *Generation, random *rand.Rand) error {
 			written++
 			subject := pick(declared.Subjects)
 			space.Pages = append(space.Pages, Page{
-				ID:    fmt.Sprintf("%s-gp%d", strings.ToLower(declared.Space), written),
-				Title: fmt.Sprintf("%s: %s", strings.ToUpper(subject[:1])+subject[1:], generatedPageKinds[written%len(generatedPageKinds)]),
+				ID: fmt.Sprintf("%s-gp%d", strings.ToLower(declared.Space), written),
+				// Numbered, because a page is matched by its title when a
+				// scenario is applied again: two pages called "Payments:
+				// runbook" are one page, and three years of writing makes
+				// that collision many times over.
+				Title: fmt.Sprintf("%s: %s (%d)", strings.ToUpper(subject[:1])+subject[1:],
+					generatedPageKinds[written%len(generatedPageKinds)], written),
 				Body: fmt.Sprintf("<p>%s</p><p>%s</p>", pick(generatedDetail),
 					"Written as this went out, and kept because the next one will ask the same questions."),
 				Author: pick(declared.Authors), CreatedDay: int(day),

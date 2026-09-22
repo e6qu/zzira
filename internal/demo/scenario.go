@@ -44,6 +44,9 @@ type Scenario struct {
 	// Filters and Dashboards are what people saved for themselves.
 	Filters    []Filter    `json:"filters,omitempty"`
 	Dashboards []Dashboard `json:"dashboards,omitempty"`
+	// Automation are the rules the company runs: a site where nothing is
+	// automated says nothing about what automation does.
+	Automation []AutomationRule `json:"automation,omitempty"`
 	// Plans are the cross-project plans people run the company by.
 	Plans []Plan `json:"plans,omitempty"`
 	// Generate is the history the scenario grows for itself: years of
@@ -340,6 +343,40 @@ type Gadget struct {
 	Cumulative bool   `json:"cumulative,omitempty"`
 }
 
+// AutomationRule is one rule the company runs. Trigger is the trigger type,
+// and the actions are the catalog's, named as the rule payload names them.
+type AutomationRule struct {
+	Name string `json:"name"`
+	// Actor is who the rule runs as; Author who wrote it.
+	Actor string `json:"actor"`
+	// State is "ENABLED" or "DISABLED".
+	State string `json:"state,omitempty"`
+	// Trigger is a trigger type such as jira.issue.event.trigger:created, a
+	// scheduled trigger, or the manual trigger.
+	Trigger string `json:"trigger"`
+	// JQL narrows an event trigger, or is what a scheduled rule runs for.
+	JQL string `json:"jql,omitempty"`
+	// IntervalMinutes is how often a scheduled rule runs.
+	IntervalMinutes int `json:"intervalMinutes,omitempty"`
+	// Projects are the scenario project ids the rule is scoped to; empty is
+	// the whole site.
+	Projects []string `json:"projects,omitempty"`
+	// Actions are what it does.
+	Actions []AutomationAction `json:"actions"`
+}
+
+// AutomationAction is one thing a demo rule does.
+type AutomationAction struct {
+	// Type is the action type, such as jira.issue.comment.
+	Type string `json:"type"`
+	// Value is what that action takes: the comment, the label, the query.
+	Value string `json:"value,omitempty"`
+	// Field and Variable are what an edit sets and what a lookup or a
+	// variable is called.
+	Field    string `json:"field,omitempty"`
+	Variable string `json:"variable,omitempty"`
+}
+
 // Plan is one cross-project plan: what it draws from, and the teams that do
 // the work in it. Teams come from the generated history, which is where the
 // company's teams are declared.
@@ -627,6 +664,22 @@ func (s *Scenario) Validate() error {
 	if s.Generate != nil {
 		for _, team := range s.Generate.Teams {
 			teams[team.Name] = true
+		}
+	}
+	for _, rule := range s.Automation {
+		if strings.TrimSpace(rule.Name) == "" || strings.TrimSpace(rule.Trigger) == "" {
+			return fmt.Errorf("an automation rule needs a name and a trigger")
+		}
+		if err := knownPerson("automation rule "+rule.Name, rule.Actor); err != nil {
+			return err
+		}
+		if len(rule.Actions) == 0 {
+			return fmt.Errorf("automation rule %q does nothing", rule.Name)
+		}
+		for _, project := range rule.Projects {
+			if !projects[project] {
+				return fmt.Errorf("automation rule %q is scoped to the unknown project %q", rule.Name, project)
+			}
 		}
 	}
 	for _, plan := range s.Plans {

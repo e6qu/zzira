@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/sync/errgroup"
 	"os"
 	"slices"
 	"sort"
@@ -16,8 +15,11 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/authn"
+	"github.com/e6qu/zzira/internal/automation"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -54,7 +56,11 @@ type Applier struct {
 	sprints     map[string]*models.Sprint
 	boards      map[string]*models.Board
 	fields      map[string]string
-	items       map[string]*models.Issue
+	// fieldTypes is what each declared custom field is, because a value is
+	// written differently for each kind: an option is named by its value,
+	// and everything else is written as it stands.
+	fieldTypes map[string]string
+	items      map[string]*models.Issue
 	// existing indexes the work already on the site by project and summary,
 	// so a re-run keeps it rather than raising it twice.
 	existing map[string]string
@@ -88,7 +94,8 @@ func Apply(ctx context.Context, st *store.Store, cmds *commands.Service, scenari
 		people: map[string]string{}, groups: map[string]string{}, projects: map[string]*models.Project{},
 		desks: map[string]string{}, requestType: map[string]string{}, versions: map[string]*models.Version{},
 		sprints: map[string]*models.Sprint{}, boards: map[string]*models.Board{}, fields: map[string]string{},
-		items: map[string]*models.Issue{}, existing: map[string]string{}, spaces: map[string]string{},
+		fieldTypes: map[string]string{},
+		items:      map[string]*models.Issue{}, existing: map[string]string{}, spaces: map[string]string{},
 	}
 	return applier.run(ctx, scenario, slug)
 }
@@ -171,6 +178,9 @@ func (a *Applier) run(ctx context.Context, scenario *Scenario, slug string) (*Re
 		}
 	}
 	if err := a.teamsAndPlans(ctx, scenario); err != nil {
+		return nil, err
+	}
+	if err := a.automationRules(ctx, scenario.Automation); err != nil {
 		return nil, err
 	}
 	if err := a.filtersAndDashboards(ctx, scenario); err != nil {
@@ -348,6 +358,7 @@ func (a *Applier) customFields(ctx context.Context, fields []CustomField) error 
 		return fmt.Errorf("read the custom fields: %w", err)
 	}
 	for _, field := range fields {
+		a.fieldTypes[field.ID] = field.Type
 		if made := customFieldNamed(existing, field.Name); made != "" {
 			a.fields[field.ID] = made
 			continue
@@ -371,7 +382,16 @@ func (a *Applier) customFields(ctx context.Context, fields []CustomField) error 
 				return err
 			}
 			if len(contexts) == 0 {
-				continue
+				// A field is created without one, and a select field with no
+				// context has nowhere to keep its options -- which is how
+				// this scenario shipped a field that offered none, and said
+				// nothing about it until something tried to set one.
+				made, err := a.Store.CreateCustomFieldContext(ctx, a.workspaceID, a.admin, id,
+					field.Name+" context", "Every project and work type", nil, nil)
+				if err != nil {
+					return fmt.Errorf("give %s a context to hold its options: %w", field.Name, err)
+				}
+				contexts = []*models.CustomFieldContext{made}
 			}
 			if _, err := a.Store.CreateCustomFieldOptions(ctx, a.workspaceID, a.admin, id, contexts[0].ID, field.Options); err != nil {
 				return fmt.Errorf("add options to %s: %w", field.Name, err)
@@ -379,6 +399,34 @@ func (a *Applier) customFields(ctx context.Context, fields []CustomField) error 
 		}
 	}
 	return nil
+}
+
+// encodeFieldValue writes a scenario's field value the way the field reads it.
+// An option field names its option by value -- which is what a scenario says,
+// "Several customers" rather than an id nobody wrote down -- and a bare string
+// would otherwise be read as an option id and rejected.
+func (a *Applier) encodeFieldValue(field, value string) (json.RawMessage, error) {
+	switch a.fieldTypes[field] {
+	case models.CustomFieldSelect:
+		return json.Marshal(map[string]string{"value": value})
+	case models.CustomFieldMultiSelect:
+		chosen := []map[string]string{}
+		for _, part := range strings.Split(value, ",") {
+			if trimmed := strings.TrimSpace(part); trimmed != "" {
+				chosen = append(chosen, map[string]string{"value": trimmed})
+			}
+		}
+		return json.Marshal(chosen)
+	case models.CustomFieldCascadingSelect:
+		parent, child, _ := strings.Cut(value, ":")
+		cascade := map[string]any{"value": strings.TrimSpace(parent)}
+		if child = strings.TrimSpace(child); child != "" {
+			cascade["child"] = map[string]string{"value": child}
+		}
+		return json.Marshal(cascade)
+	default:
+		return json.Marshal(value)
+	}
 }
 
 // customFieldNamed finds a custom field by the name a scenario gives it.
@@ -670,7 +718,7 @@ func (a *Applier) workItem(ctx context.Context, item WorkItem) error {
 	}
 	fields := map[string]json.RawMessage{}
 	for field, value := range item.Fields {
-		encoded, err := json.Marshal(value)
+		encoded, err := a.encodeFieldValue(field, value)
 		if err != nil {
 			return err
 		}
@@ -803,7 +851,15 @@ func (a *Applier) event(ctx context.Context, issue *models.Issue, event Event) e
 			})
 			return err
 		case "link":
+			a.mutex.Lock()
 			target := a.items[event.Target]
+			a.mutex.Unlock()
+			if target == nil {
+				// A scenario links to work by id, and the work it links to
+				// has to exist by the time the link is made: saying so beats
+				// a nil pointer three frames down.
+				return fmt.Errorf("links to %q, which has not been raised yet", event.Target)
+			}
 			linkType, err := a.linkTypeID(ctx, event.LinkType)
 			if err != nil {
 				return err
@@ -1475,4 +1531,99 @@ func (a *Applier) commits(ctx context.Context, declared []Commit) error {
 		return fmt.Errorf("record commits: %w", err)
 	}
 	return nil
+}
+
+// automationRules writes the rules the company runs. A site where nothing is
+// automated says nothing about what automation does, and these are the rules
+// a company like this one would have written: a triage rule, a release rule,
+// a rule somebody runs by hand.
+func (a *Applier) automationRules(ctx context.Context, declared []AutomationRule) error {
+	if len(declared) == 0 {
+		return nil
+	}
+	service := &automation.Service{Store: a.Store, Commands: a.Commands}
+	cloudID, err := service.WorkspaceCloudID(ctx, a.workspaceID)
+	if err != nil {
+		return err
+	}
+	existing, err := service.Rules(ctx, a.workspaceID, automation.SummaryFilter{Limit: 100})
+	if err != nil {
+		return err
+	}
+	written := map[string]bool{}
+	for _, rule := range existing.Rules {
+		written[rule.Name] = true
+	}
+	for _, rule := range declared {
+		if written[rule.Name] {
+			continue
+		}
+		components := make([]map[string]any, 0, len(rule.Actions))
+		for _, action := range rule.Actions {
+			components = append(components, automationComponent(action))
+		}
+		scope := make([]string, 0, len(rule.Projects))
+		for _, project := range rule.Projects {
+			scope = append(scope, "ari:cloud:jira:"+cloudID+":project/"+a.projects[project].ID)
+		}
+		state := rule.State
+		if state == "" {
+			state = "ENABLED"
+		}
+		trigger := map[string]any{"component": "TRIGGER", "schemaVersion": 1, "type": rule.Trigger, "value": automationTriggerValue(rule)}
+		body, err := json.Marshal(map[string]any{"rule": map[string]any{
+			"actor": map[string]string{"actor": a.people[rule.Actor], "type": "ACCOUNT_ID"},
+			"name":  rule.Name, "description": "", "state": state, "labels": []string{},
+			"ruleScopeARIs": scope, "components": components, "trigger": trigger,
+			"canOtherRuleTrigger": false, "notifyOnError": "FIRSTERROR", "writeAccessType": "OWNER_ONLY",
+		}, "connections": []any{}})
+		if err != nil {
+			return err
+		}
+		if _, err := service.CreateRule(ctx, a.workspaceID, a.admin, body); err != nil {
+			return fmt.Errorf("automation rule %s: %w", rule.Name, err)
+		}
+	}
+	return nil
+}
+
+// automationTriggerValue is what a demo rule's trigger carries: a schedule, a
+// query, or nothing.
+func automationTriggerValue(rule AutomationRule) map[string]any {
+	switch {
+	case rule.IntervalMinutes > 0:
+		return map[string]any{"intervalMinutes": rule.IntervalMinutes, "timezone": "UTC", "jql": rule.JQL}
+	case rule.Trigger == automation.ManualTriggerType:
+		return map[string]any{"inputPrompts": []any{}}
+	default:
+		return map[string]any{"jql": rule.JQL}
+	}
+}
+
+// automationComponent is one action as a rule's payload carries it.
+func automationComponent(action AutomationAction) map[string]any {
+	value := map[string]string{}
+	switch action.Type {
+	case "jira.issue.comment":
+		value["comment"] = action.Value
+	case "jira.issue.add-label", "jira.issue.remove-label":
+		value["label"] = action.Value
+	case "jira.issue.assign":
+		value["method"] = action.Value
+	case "jira.issue.transition":
+		value["statusId"] = action.Value
+	case "jira.issue.edit":
+		value["field"], value["value"] = action.Field, action.Value
+	case "jira.create.variable":
+		value["variableName"], value["variableValue"] = action.Variable, action.Value
+	case "jira.issue.lookup":
+		value["jql"] = action.Value
+	case "confluence.page.comment":
+		value["comment"] = action.Value
+	case "confluence.page.label":
+		value["label"] = action.Value
+	default:
+		value["value"] = action.Value
+	}
+	return map[string]any{"component": "ACTION", "schemaVersion": 1, "type": action.Type, "value": value}
 }

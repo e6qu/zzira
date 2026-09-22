@@ -2596,7 +2596,11 @@
           "fraud checks",
           "settlement",
           "disputes"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       },
       {
         "project": "plat",
@@ -2613,7 +2617,11 @@
           "rate limits",
           "service discovery",
           "observability"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       },
       {
         "project": "mob",
@@ -2629,7 +2637,11 @@
           "offline mode",
           "push notifications",
           "the wallet"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       },
       {
         "project": "data",
@@ -2644,7 +2656,11 @@
           "the warehouse",
           "revenue reporting",
           "event tracking"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       },
       {
         "project": "web",
@@ -2660,7 +2676,11 @@
           "search",
           "the basket",
           "accessibility"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       },
       {
         "project": "ops",
@@ -2672,7 +2692,11 @@
           "the office move",
           "security training",
           "budget reporting"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       },
       {
         "project": "mkt",
@@ -2684,7 +2708,11 @@
           "the newsletter",
           "conference season",
           "case studies"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       },
       {
         "project": "hr",
@@ -2696,7 +2724,11 @@
           "the review cycle",
           "the handbook",
           "benefits"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       }
     ],
     "service": {
@@ -2784,6 +2816,134 @@
       "teams": [
         "Mobile",
         "Storefront"
+      ]
+    }
+  ],
+  "automation": [
+    {
+      "name": "Triage new bugs",
+      "actor": "maya",
+      "state": "ENABLED",
+      "trigger": "jira.issue.event.trigger:created",
+      "jql": "issuetype = Bug",
+      "projects": [
+        "pay",
+        "plat"
+      ],
+      "actions": [
+        {
+          "type": "jira.issue.add-label",
+          "value": "triage"
+        },
+        {
+          "type": "jira.issue.comment",
+          "value": "Raised as a defect; the team reads this queue every morning."
+        }
+      ]
+    },
+    {
+      "name": "Spread the load",
+      "actor": "zoe",
+      "state": "ENABLED",
+      "trigger": "jira.issue.event.trigger:created",
+      "jql": "assignee IS EMPTY",
+      "projects": [
+        "plat"
+      ],
+      "actions": [
+        {
+          "type": "jira.issue.assign",
+          "value": "balanced"
+        }
+      ]
+    },
+    {
+      "name": "Chase stale work every Monday",
+      "actor": "nora",
+      "state": "ENABLED",
+      "trigger": "jira.jql.scheduled",
+      "intervalMinutes": 10080,
+      "jql": "resolution = Unresolved AND updated <= -14d",
+      "projects": [
+        "pay",
+        "plat",
+        "mob",
+        "data"
+      ],
+      "actions": [
+        {
+          "type": "jira.issue.add-label",
+          "value": "stale"
+        },
+        {
+          "type": "jira.issue.comment",
+          "value": "No change in a fortnight. Still needed, or should this go?"
+        }
+      ]
+    },
+    {
+      "name": "Write the release notes",
+      "actor": "nora",
+      "state": "ENABLED",
+      "trigger": "jira.version.event.trigger:released",
+      "actions": [
+        {
+          "type": "jira.issue.lookup",
+          "value": "resolution = Done AND resolved >= -14d ORDER BY resolved DESC"
+        },
+        {
+          "type": "jira.create.variable",
+          "variable": "shipped",
+          "value": "{{lookupIssues.size}}"
+        }
+      ]
+    },
+    {
+      "name": "Escalate this work",
+      "actor": "maya",
+      "state": "ENABLED",
+      "trigger": "jira.manual.trigger.issue.action",
+      "actions": [
+        {
+          "type": "jira.issue.add-label",
+          "value": "escalated"
+        },
+        {
+          "type": "jira.issue.comment",
+          "value": "Escalated by {{initiator.displayName}} on {{now.jiraDate}}."
+        }
+      ]
+    },
+    {
+      "name": "Answer a page that asks for work",
+      "actor": "zoe",
+      "state": "ENABLED",
+      "trigger": "confluence.page.created",
+      "actions": [
+        {
+          "type": "confluence.page.label",
+          "value": "read-by-a-rule"
+        },
+        {
+          "type": "confluence.page.comment",
+          "value": "Noted; the platform team reads new pages here each week."
+        }
+      ]
+    },
+    {
+      "name": "Label an incident the moment it lands",
+      "actor": "sara",
+      "state": "ENABLED",
+      "trigger": "jira.issue.event.trigger:created",
+      "jql": "project = HELP",
+      "projects": [
+        "help"
+      ],
+      "actions": [
+        {
+          "type": "jira.issue.add-label",
+          "value": "support"
+        }
       ]
     }
   ]
