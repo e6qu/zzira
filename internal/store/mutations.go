@@ -45,6 +45,17 @@ func WithActionTime(ctx context.Context, at time.Time) context.Context {
 	return context.WithValue(ctx, actionTimeKey{}, at)
 }
 
+// ActionTimeOr is when a write is happening: the time the context carries, or
+// the given fallback. Clocks a write starts or stops -- an SLA among them --
+// read it, so a site built with history behind it puts them where the history
+// says rather than where the wall clock is.
+func ActionTimeOr(ctx context.Context, fallback time.Time) time.Time {
+	if at := actionTimeFrom(ctx); at != nil {
+		return *at
+	}
+	return fallback
+}
+
 func actionTimeFrom(ctx context.Context) *time.Time {
 	if at, ok := ctx.Value(actionTimeKey{}).(time.Time); ok && !at.IsZero() {
 		return &at

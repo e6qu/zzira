@@ -16,6 +16,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/e6qu/zzira/internal/models"
 )
 
 // Scenario is a whole company, declared.
@@ -171,23 +173,28 @@ type RequestType struct {
 
 // WorkItem is one piece of work and everything that happened to it.
 type WorkItem struct {
-	ID          string            `json:"id"`
-	Project     string            `json:"project"`
-	Type        string            `json:"type"`
-	Summary     string            `json:"summary"`
-	Description string            `json:"description,omitempty"`
-	Reporter    string            `json:"reporter,omitempty"`
-	Assignee    string            `json:"assignee,omitempty"`
-	Priority    string            `json:"priority,omitempty"`
-	Labels      []string          `json:"labels,omitempty"`
-	Parent      string            `json:"parent,omitempty"`
-	Components  []string          `json:"components,omitempty"`
-	FixVersions []string          `json:"fixVersions,omitempty"`
-	Sprint      string            `json:"sprint,omitempty"`
-	Estimate    string            `json:"estimate,omitempty"`
-	Fields      map[string]string `json:"fields,omitempty"`
-	CreatedDay  int               `json:"createdDay"`
-	Events      []Event           `json:"events,omitempty"`
+	ID          string   `json:"id"`
+	Project     string   `json:"project"`
+	Type        string   `json:"type"`
+	Summary     string   `json:"summary"`
+	Description string   `json:"description,omitempty"`
+	Reporter    string   `json:"reporter,omitempty"`
+	Assignee    string   `json:"assignee,omitempty"`
+	Priority    string   `json:"priority,omitempty"`
+	Labels      []string `json:"labels,omitempty"`
+	Parent      string   `json:"parent,omitempty"`
+	Components  []string `json:"components,omitempty"`
+	FixVersions []string `json:"fixVersions,omitempty"`
+	Sprint      string   `json:"sprint,omitempty"`
+	// Estimate is the original estimate as Jira writes one -- "2d", "4h",
+	// "1w 2d" -- and logging work moves the remaining estimate down from it.
+	Estimate string `json:"estimate,omitempty"`
+	// Due is the day offset the work is due on, as a version has a release
+	// day. Nil leaves the work with no due date.
+	Due        *int              `json:"due,omitempty"`
+	Fields     map[string]string `json:"fields,omitempty"`
+	CreatedDay int               `json:"createdDay"`
+	Events     []Event           `json:"events,omitempty"`
 	// Generated marks work the generator wrote rather than a person. Such
 	// work refers to nothing outside its own project, so a project's history
 	// can be applied while another project's is being applied.
@@ -205,10 +212,14 @@ type Event struct {
 	// Resolution is set with a transition that finishes the work.
 	Resolution string `json:"resolution,omitempty"`
 	Body       string `json:"body,omitempty"`
-	Seconds    int    `json:"seconds,omitempty"`
-	Assignee   string `json:"assignee,omitempty"`
-	LinkType   string `json:"linkType,omitempty"`
-	Target     string `json:"target,omitempty"`
+	// Internal marks a comment on a service request as an agent's internal
+	// note rather than a reply the customer sees. A public reply is what
+	// stops the desk's first response clock; a note does not.
+	Internal bool   `json:"internal,omitempty"`
+	Seconds  int    `json:"seconds,omitempty"`
+	Assignee string `json:"assignee,omitempty"`
+	LinkType string `json:"linkType,omitempty"`
+	Target   string `json:"target,omitempty"`
 }
 
 // Deployment is one delivery to an environment, and what it carried.
@@ -575,6 +586,16 @@ func (s *Scenario) Validate() error {
 			if !fields[field] {
 				return fmt.Errorf("work item %q sets the unknown custom field %q", item.ID, field)
 			}
+		}
+		// An estimate the applier cannot read would be dropped silently, and
+		// the reports made of estimates would be empty without saying why.
+		if item.Estimate != "" {
+			if _, err := models.ParseJiraDuration(item.Estimate, models.TimeTrackingConfiguration{}); err != nil {
+				return fmt.Errorf("work item %q: estimate: %w", item.ID, err)
+			}
+		}
+		if item.Due != nil && *item.Due < item.CreatedDay {
+			return fmt.Errorf("work item %q is due on day %d, before it was raised on day %d", item.ID, *item.Due, item.CreatedDay)
 		}
 		if err := validateEvents("work item "+item.ID, item.CreatedDay, item.Events, people, items); err != nil {
 			return err

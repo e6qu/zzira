@@ -653,7 +653,8 @@
           "actor": "nora",
           "body": "Two releases out, payouts remain."
         }
-      ]
+      ],
+      "estimate": "4w"
     },
     {
       "id": "pay-e1",
@@ -675,7 +676,8 @@
           "actor": "maya"
         }
       ],
-      "parent": "pay-i1"
+      "parent": "pay-i1",
+      "estimate": "1w"
     },
     {
       "id": "pay-e2",
@@ -697,7 +699,8 @@
           "actor": "maya"
         }
       ],
-      "parent": "pay-i1"
+      "parent": "pay-i1",
+      "estimate": "1w"
     },
     {
       "id": "pay-e3",
@@ -719,7 +722,9 @@
           "actor": "maya"
         }
       ],
-      "parent": "pay-i1"
+      "parent": "pay-i1",
+      "estimate": "1w",
+      "due": 7
     },
     {
       "id": "pay-1",
@@ -779,7 +784,8 @@
       ],
       "fixVersions": [
         "pay-1-0"
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-2",
@@ -839,7 +845,8 @@
       ],
       "fixVersions": [
         "pay-1-0"
-      ]
+      ],
+      "estimate": "2h"
     },
     {
       "id": "pay-3",
@@ -899,7 +906,8 @@
       ],
       "fixVersions": [
         "pay-1-0"
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-4",
@@ -959,7 +967,8 @@
       ],
       "fixVersions": [
         "pay-1-1"
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-5",
@@ -1019,7 +1028,8 @@
       ],
       "fixVersions": [
         "pay-1-1"
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-6",
@@ -1079,7 +1089,8 @@
       ],
       "fixVersions": [
         "pay-1-1"
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-7",
@@ -1139,7 +1150,8 @@
       ],
       "fixVersions": [
         "pay-1-2"
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-8",
@@ -1199,7 +1211,8 @@
       ],
       "fixVersions": [
         "pay-1-2"
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-9",
@@ -1256,7 +1269,8 @@
           "actor": "tom",
           "resolution": "Done"
         }
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-10",
@@ -1303,7 +1317,9 @@
       ],
       "fixVersions": [
         "pay-1-2"
-      ]
+      ],
+      "estimate": "2d",
+      "due": 2
     },
     {
       "id": "pay-11",
@@ -1350,7 +1366,9 @@
       ],
       "fixVersions": [
         "pay-1-2"
-      ]
+      ],
+      "estimate": "2d",
+      "due": 9
     },
     {
       "id": "pay-12",
@@ -1394,7 +1412,9 @@
           "actor": "tom",
           "seconds": 7200
         }
-      ]
+      ],
+      "estimate": "2d",
+      "due": -1
     },
     {
       "id": "pay-20",
@@ -1433,7 +1453,8 @@
           "actor": "ravi",
           "resolution": "Done"
         }
-      ]
+      ],
+      "estimate": "4h"
     },
     {
       "id": "pay-21",
@@ -1468,7 +1489,9 @@
           "actor": "ines",
           "body": "Blocked on the reconciliation change landing first."
         }
-      ]
+      ],
+      "estimate": "4h",
+      "due": -2
     },
     {
       "id": "pay-22",
@@ -1494,7 +1517,9 @@
           "kind": "vote",
           "actor": "tom"
         }
-      ]
+      ],
+      "estimate": "1d",
+      "due": 4
     },
     {
       "id": "ops-1",
@@ -1519,7 +1544,8 @@
           "actor": "maya",
           "resolution": "Done"
         }
-      ]
+      ],
+      "estimate": "1d"
     },
     {
       "id": "ops-2",
@@ -1544,7 +1570,8 @@
           "actor": "nora",
           "resolution": "Done"
         }
-      ]
+      ],
+      "estimate": "1d"
     },
     {
       "id": "ops-3",
@@ -1562,7 +1589,9 @@
           "status": "In Progress",
           "actor": "maya"
         }
-      ]
+      ],
+      "estimate": "1d",
+      "due": 1
     },
     {
       "id": "ops-4",
@@ -1580,7 +1609,9 @@
           "status": "In Progress",
           "actor": "nora"
         }
-      ]
+      ],
+      "estimate": "1d",
+      "due": 12
     }
   ],
   "deployments": [

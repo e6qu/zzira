@@ -225,7 +225,7 @@ func (s *Service) afterServiceRequestComment(ctx context.Context, actorID, works
 		if canManage {
 			event = models.SLAConditionCommentForCustomers
 		}
-		if err := s.applyServiceSLAEvents(ctx, actorID, workspaceID, request.ServiceDesk.ID, request.Issue.ID, []string{event}, time.Now().UTC()); err != nil {
+		if err := s.applyServiceSLAEvents(ctx, actorID, workspaceID, request.ServiceDesk.ID, request.Issue.ID, []string{event}, store.ActionTimeOr(ctx, time.Now().UTC())); err != nil {
 			return err
 		}
 	}

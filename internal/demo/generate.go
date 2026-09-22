@@ -130,7 +130,16 @@ var (
 		"Split the rest into a follow-up.", "Checked with the customer; this is what they meant.",
 		"The numbers look right now.", "Rolled the change forward after the fix.",
 	}
-	generatedEstimates      = []string{"1h", "2h", "4h", "1d", "2d", "3d"}
+	generatedEstimates = []string{"1h", "2h", "4h", "1d", "2d", "3d"}
+	// generatedServiceNotes are what agents write to each other on a request:
+	// a note the customer never sees, which does not answer them.
+	generatedServiceNotes = []string{
+		"Checked the logs -- this looks like the retry bug.",
+		"Waiting on the payments team before I reply.",
+		"Same as the ticket from last week; reusing that answer.",
+		"Escalating: this account is on the enterprise plan.",
+		"Reproduced on staging.",
+	}
 	generatedServiceReplies = []string{
 		"Thanks for writing in -- taking a look now.", "I can see the error on our side.",
 		"Could you tell me which account this is on?", "This is fixed; please try again.",
@@ -372,6 +381,13 @@ func (s *Scenario) growWorkItem(project *Project, generated GeneratedProject, sp
 	if version != nil && version.ReleaseDay != nil && *version.ReleaseDay >= item.CreatedDay {
 		item.FixVersions = []string{version.ID}
 	}
+	// Some work is promised for a day. The calendar gadget and the due-date
+	// columns and queries have nothing to show without it, and a site where
+	// every piece of work is due is not one either.
+	if random.Float64() < 0.35 {
+		due := item.CreatedDay + 3 + random.Intn(12)
+		item.Due = &due
+	}
 	// What happened to it, in order: a day cursor walks forward so a comment
 	// never lands before the work was picked up, and the applier replays the
 	// timeline exactly as it reads.
@@ -543,7 +559,21 @@ func (s *Scenario) growService(plan *Generation, random *rand.Rand) error {
 			RequestType: requestType, Customer: pick(declared.Customers), Summary: summary,
 			Description: pick(generatedDetail), CreatedDay: at,
 		}
-		day := at + 1
+		// Most requests are answered the day they arrive, inside the desk's
+		// four working hours for a first response; the rest are answered the
+		// next day and breach it. A desk whose SLAs are all met, or all
+		// breached, shows nothing about what an SLA is for.
+		day := at
+		if random.Float64() < 0.3 {
+			day = at + 1
+		}
+		// Agents talk among themselves before they answer, and a note is not
+		// a reply: it leaves the first response clock running.
+		if random.Float64() < 0.25 {
+			request.Events = append(request.Events, Event{
+				Day: at, Kind: "comment", Actor: agent, Internal: true, Body: pick(generatedServiceNotes),
+			})
+		}
 		request.Events = append(request.Events, Event{Day: day, Kind: "comment", Actor: agent, Body: pick(generatedServiceReplies)})
 		// An incident is answered in hours and a question in days, which is
 		// what makes the two read differently in the reports.

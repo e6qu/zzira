@@ -755,13 +755,29 @@ func (a *Applier) workItem(ctx context.Context, item WorkItem) error {
 	if item.Parent != "" {
 		parent = a.items[item.Parent].ID
 	}
+	// An estimate is what the time tracking, user workload and version
+	// workload reports are made of, and logging work moves the remaining
+	// estimate down from it, so the work has to be raised carrying it.
+	var original, remaining *int64
+	if item.Estimate != "" {
+		seconds, err := models.ParseJiraDuration(item.Estimate, models.TimeTrackingConfiguration{})
+		if err != nil {
+			return fmt.Errorf("estimate: %w", err)
+		}
+		original, remaining = &seconds, &seconds
+	}
+	due := ""
+	if item.Due != nil {
+		due = a.Clock.Day(*item.Due)
+	}
 	var created *models.Issue
 	if err := a.at(ctx, item.CreatedDay, func(ctx context.Context) error {
 		issue, _, err := a.Commands.CreateIssue(ctx, commands.CreateIssueInput{
 			ActorID: actor, ReporterID: reporter, WorkspaceID: a.workspaceID, ProjectIDOrKey: project.ID,
 			Summary: item.Summary, Description: item.Description, IssueTypeID: item.Type,
 			AssigneeID: a.people[item.Assignee], PriorityID: item.Priority, Labels: item.Labels,
-			ParentIDOrKey: parent, Fields: fields,
+			ParentIDOrKey: parent, Fields: fields, DueDate: due,
+			OriginalEstimate: original, RemainingEstimate: remaining,
 		})
 		created = issue
 		return err
@@ -824,6 +840,26 @@ func (a *Applier) generatedWork(ctx context.Context, order []string, byProject m
 		})
 	}
 	return group.Wait()
+}
+
+// requestEvent replays one thing that happened to a service request. A comment
+// on a request is a reply the customer reads or a note only agents read, and
+// which of the two it is decides the desk's clocks: a public reply is what
+// stops time to first response. Everything else happens to a request as it
+// happens to any work item.
+func (a *Applier) requestEvent(ctx context.Context, issue *models.Issue, event Event) error {
+	if event.Kind != "comment" {
+		return a.event(ctx, issue, event)
+	}
+	actor := a.people[event.Actor]
+	if actor == "" {
+		actor = a.admin
+	}
+	return a.at(ctx, event.Day, func(ctx context.Context) error {
+		_, err := a.Commands.AddServiceRequestComment(ctx, actor, a.workspaceID, issue.ID,
+			adf.ParagraphDoc(event.Body), event.Body, !event.Internal)
+		return err
+	})
 }
 
 // event replays one thing that happened to a work item.
@@ -1206,7 +1242,7 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 		a.items[request.ID] = issue
 		a.mutex.Unlock()
 		for _, event := range request.Events {
-			if err := a.event(ctx, issue, event); err != nil {
+			if err := a.requestEvent(ctx, issue, event); err != nil {
 				return fmt.Errorf("request %s %s: %w", request.ID, event.Kind, err)
 			}
 		}

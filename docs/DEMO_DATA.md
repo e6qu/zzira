@@ -98,7 +98,7 @@ show.
 | `hierarchy` | Levels above Epic and the work types on them ([ISSUE_METADATA.md](ISSUE_METADATA.md#work-type-hierarchy)) |
 | `customFields` | Fields the work uses, with options for select lists |
 | `projects` | Projects with their type and template, components, versions, a board with its sprints, and a service desk with agents and request types |
-| `workItems` | Work with its parent, sprint, versions, labels, estimates and field values, plus `events` — the transitions, comments, worklogs, assignments, links, watches and votes that happened to it |
+| `workItems` | Work with its parent, sprint, versions, labels, `estimate`, `due` day and field values, plus `events` — the transitions, comments, worklogs, assignments, links, watches and votes that happened to it |
 | `deployments`, `commits` | Deliveries to environments and the changes they carried, which the delivery (DORA) report counts: deployments give the frequency and the failure rate, and commits paired with them give the lead time ([REPORTS.md](REPORTS.md)) |
 | `plans` | Cross-project plans, and the teams that work in them |
 | `automation` | The rules the company runs: what starts them, what they are scoped to, and what they do |
@@ -144,10 +144,27 @@ scenario declares the *shape* of its history and the generator writes it:
 - `linkShare` and `watchShare` are how much of a sprint's work is linked to the
   work beside it and watched by somebody. A link points backwards, at work
   already raised, because the timeline is replayed in order.
+- Generated work carries an `estimate` like curated work does, and about a
+  third of it is `due` on a day, so the time tracking, user workload, version
+  workload and calendar surfaces have something to show for every year of the
+  history rather than only for the curated weeks.
 
 Every entity has an `id` that the rest of the document refers to: a work item
 names its `parent` and `sprint`, a deployment names the `workItems` it carried,
 a request names its `requestType`.
+
+## Estimates and due dates
+
+`estimate` is the original estimate, written the way Jira writes one -- `2d`,
+`4h`, `1w 2d` -- in the site's working time of eight hours a day and five days
+a week. The applier raises the work carrying it as both the original and the
+remaining estimate, so a `worklog` event afterwards moves the remaining
+estimate down exactly as logging work in the site does, and work that logs more
+than it estimated reads as over-run in the time tracking report.
+
+`due` is a day offset, as a version's `releaseDay` is: `"due": -2` is work that
+was due the day before yesterday and is still open. It cannot fall before the
+day the work was raised.
 
 ## Events
 

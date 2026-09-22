@@ -198,6 +198,48 @@ func TestApplyDemoCompany(t *testing.T) {
 		t.Fatalf("%s has no changelog", resolved)
 	}
 
+	// Time tracking: an estimate the scenario declared is on the work, logging
+	// work moved the remaining estimate down from it, and some work is due on
+	// a day. Without these the time tracking, user workload, version workload
+	// and calendar surfaces are empty whatever else the company holds.
+	tracked := get(jira, "/rest/api/3/search/jql?jql="+
+		"project%20%3D%20PAY&maxResults=100&fields=timeoriginalestimate,timeestimate,timespent,duedate")
+	trackedIssues, _ := tracked["issues"].([]any)
+	estimated, logged, due := 0, 0, 0
+	for _, raw := range trackedIssues {
+		item, _ := raw.(map[string]any)
+		itemFields, _ := item["fields"].(map[string]any)
+		original, hasOriginal := itemFields["timeoriginalestimate"].(float64)
+		if hasOriginal && original > 0 {
+			estimated++
+		}
+		if itemFields["duedate"] != nil {
+			due++
+		}
+		spent, hasSpent := itemFields["timespent"].(float64)
+		if !hasSpent || spent <= 0 {
+			continue
+		}
+		logged++
+		remaining, hasRemaining := itemFields["timeestimate"].(float64)
+		if !hasOriginal || !hasRemaining {
+			t.Fatalf("%v logged %v seconds with no estimate to move", item["key"], spent)
+		}
+		if remaining > original-spent+1 {
+			t.Fatalf("%v logged %v seconds against an estimate of %v and has %v left, so logging work did not move the estimate",
+				item["key"], spent, original, remaining)
+		}
+	}
+	if estimated != len(trackedIssues) {
+		t.Fatalf("%d of %d work items in PAY carry an original estimate", estimated, len(trackedIssues))
+	}
+	if logged == 0 {
+		t.Fatal("nobody logged work in PAY, so the time tracking report has nothing to show")
+	}
+	if due == 0 {
+		t.Fatal("no work in PAY is due on a day, so the calendar gadget has nothing to show")
+	}
+
 	// Jira Software: the board and its sprints, including closed ones.
 	boards := get(software, "/rest/agile/1.0/board")
 	boardValues, _ := boards["values"].([]any)
