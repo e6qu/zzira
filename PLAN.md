@@ -118,7 +118,7 @@ and dependency checks.
 - Restore archived and trashed plans; duplicate copies scenarios.
 - Scenario edits: parent, rank, release, status, create work items.
 - Views: saved views, grouping, filters, rollups across the hierarchy.
-- Capacity from velocity; `inferredDates` and plan `customFields` take effect.
+- `inferredDates` and plan `customFields` take effect. (Capacity is read from velocity when nobody has typed one: [JIRA_SOFTWARE.md](docs/JIRA_SOFTWARE.md).)
 - Atlassian Teams REST API.
 
 ## 3. Cross-project releases

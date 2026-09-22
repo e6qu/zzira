@@ -125,7 +125,7 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
 - **Atlassian teams** are managed at `/teams` and `/teams/{id}`. **Plan-only teams** exist only inside one plan.
 - Every site has Jira's **Team** field.
 - Each team plans as Scrum or Kanban:
-  - **Scrum:** capacity is compared with estimates per sprint of the team's board. The default capacity is 30 points per sprint.
+  - **Scrum:** capacity is compared with estimates per sprint of the team's board. A team nobody has typed a number for takes what it has been taking: the mean of the work completed in its board's last closed sprints, and the plan says the capacity came from velocity. A board with no closed sprint falls back to 30 points per sprint.
   - **Kanban:** capacity is compared per week across 12 weeks, using time estimates.
 - Capacity can be overridden per iteration and per scenario (`POST /plans/{id}/capacity`).
 
