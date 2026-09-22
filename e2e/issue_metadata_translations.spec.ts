@@ -124,3 +124,66 @@ test('the words on a work item are named in each language a site speaks', async 
   }
   expect((await page.request.delete(`/rest/api/3/issuetype/${workTypeID}`, { headers: auth })).status()).toBe(204);
 });
+
+// A person chooses a language on their profile, and the work item reads in it:
+// the words the site chose are theirs, while everything they send is still the
+// site's own.
+test('a person reads a work item in the language they chose', async ({ page }) => {
+  await login(page);
+  const auth = { Authorization: apiAuthHeader() };
+  const stamp = Date.now().toString(36);
+  const frenchStatus = `À faire ${stamp}`;
+
+  const created = await page.request.post('/rest/api/3/issue', {
+    headers: auth,
+    data: { fields: { project: { key: 'ZZ' }, summary: `Lu en français ${stamp}`, issuetype: { name: 'Task' } } },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const key = (await created.json()).key as string;
+  const issue = await (await page.request.get(`/rest/api/3/issue/${key}`, { headers: auth })).json();
+  const statusName = issue.fields.status.name as string;
+
+  // A status is named in French where every other piece of metadata is.
+  await page.goto('/settings/statuses');
+  const status = page.locator('.status-directory-item').filter({ has: page.getByRole('heading', { name: statusName, exact: true }) }).first();
+  const statusTranslations = status.locator('.metadata-translations');
+  await statusTranslations.locator('summary').click();
+  await statusTranslations.getByLabel('Language', { exact: true }).fill('fr');
+  await statusTranslations.getByLabel('Name in that language').fill(frenchStatus);
+  await statusTranslations.getByRole('button', { name: /Save translation/ }).click();
+  await expect(page.getByRole('status')).toContainText('Translation saved.');
+
+  // Before anybody chooses French, the page reads as the site named it.
+  await page.goto(`/browse/${key}`);
+  await expect(page.locator('main')).toContainText(statusName);
+  await expect(page.locator('main')).not.toContainText(frenchStatus);
+
+  await page.goto('/profile');
+  const language = page.locator('.profile-language');
+  await expect(language).toBeVisible();
+  await language.getByLabel('Language').selectOption('fr');
+  await language.getByRole('button', { name: 'Save language' }).click();
+  await expect(page.getByRole('status')).toContainText('Reading the site in fr');
+  await accessible(page);
+
+  await page.goto(`/browse/${key}`);
+  await expect(page.locator('main')).toContainText(frenchStatus);
+  // The site's own word is what a search still takes.
+  const found = await page.request.get(`/rest/api/3/search/jql?jql=${encodeURIComponent(`key = ${key} AND status = "${statusName}"`)}`, { headers: auth });
+  expect(found.status(), await found.text()).toBe(200);
+  expect((await found.json()).issues).toHaveLength(1);
+
+  // Back to the site's own language, and the translation is taken away.
+  await page.goto('/profile');
+  await page.locator('.profile-language').getByLabel('Language').selectOption('');
+  await page.locator('.profile-language').getByRole('button', { name: 'Save language' }).click();
+  await expect(page.getByRole('status')).toContainText("Reading the site in its own language");
+  await page.goto('/settings/statuses');
+  const again = page.locator('.status-directory-item').filter({ has: page.getByRole('heading', { name: statusName, exact: true }) }).first().locator('.metadata-translations');
+  await again.locator('summary').click();
+  await again.getByRole('button', { name: /Remove/ }).first().click();
+  await expect(page.getByRole('status')).toContainText('Translation removed.');
+  await page.goto(`/browse/${key}`);
+  await expect(page.locator('main')).toContainText(statusName);
+});
+

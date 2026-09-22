@@ -199,6 +199,10 @@ type statusDirectoryData struct {
 	CanEdit      bool
 	Saved        string
 	Blocked      string
+	// Translations is what each status is called in the site's other
+	// languages, by status id. A status is read as often as a work type is,
+	// and the API has always translated it.
+	Translations map[string]metadataTranslationCard
 }
 
 type workflowSchemeCard struct {
@@ -800,8 +804,18 @@ func (h *Handler) StatusesPage(w http.ResponseWriter, r *http.Request) {
 		projectNames[project.ID] = project.Name
 	}
 	admin, _ := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	held, err := h.Store.IssueMetadataTranslations(r.Context(), workspaceID, "status")
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	named := make(map[string]string, len(items))
+	for _, item := range items {
+		named[item.Status.ID] = item.Status.Name
+	}
 	h.writeWorkspacePage(w, r, "page_statuses", user, workspaceID, statusDirectoryData{
 		Items: items, Projects: projects, ProjectNames: projectNames, CanEdit: admin, Saved: r.URL.Query().Get("saved"), Blocked: r.URL.Query().Get("blocked"),
+		Translations: metadataTranslationCards("status", "/settings/statuses", named, held),
 	}, "statuses", "")
 }
 
@@ -1083,6 +1097,16 @@ func statusAdminError(w http.ResponseWriter, err error) {
 func (h *Handler) CreateStatus(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.requireAdminPage(w, r)
 	if !ok || !parseForm(w, r) {
+		return
+	}
+	// The page also names a status in another language, which is the same
+	// form action every other metadata page carries.
+	if handled, notice, err := h.metadataTranslationAction(r, workspaceID, user.ID, "status"); handled {
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Redirect(w, r, "/settings/statuses?saved="+url.QueryEscape(notice), http.StatusSeeOther)
 		return
 	}
 	status, err := h.Store.CreateStatus(r.Context(), workspaceID, user.ID, statusForm(r))
