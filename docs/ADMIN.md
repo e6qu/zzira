@@ -192,7 +192,7 @@ All operations of the pinned Organizations API (`api/specs/organization-admin.js
 | OpenID Connect SSO (Google, Microsoft Entra ID, Atlassian, any discovered OIDC provider) | Built; see [shauth-sso.md](shauth-sso.md). |
 | IP allowlists | Built and enforced. |
 | SAML SSO | Missing. |
-| SCIM user provisioning | `/scim/directory/{directoryId}` serves SCIM 2.0 Users and Groups ([SCIM.md](SCIM.md)). The organization bean reports `scimManaged: true` once a provider has written to the directory, and `/admin` shows where to point a provider, whether one has written, and who it manages. |
+| SCIM user provisioning | `/scim/directory/{directoryId}` serves SCIM 2.0 Users and Groups ([SCIM.md](SCIM.md)). The organization bean reports `scimManaged: true` once a provider has written to the directory, and `/admin` shows where to point a provider, whether one has written, who it manages, and the keys it writes with: a key provisions one directory, is shown once, says when it was last used, and is revoked on its own. |
 | Authentication policies (enforced SSO, required two-step verification, session duration, shortest password, policy membership) | Built and enforced where each applies; see **Authentication policies** below. |
 | Two-step verification | Built: enrolment, recovery codes, the code at sign-in, a policy that requires it, and an administrator's reset. The key is shown as text and a setup link; there is no QR image. |
 | Data security policies | Missing. |
