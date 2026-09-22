@@ -398,7 +398,19 @@
           "description": "Card payments",
           "startDay": -84,
           "releaseDay": -56,
-          "released": true
+          "released": true,
+          "relatedWork": [
+            {
+              "category": "Release notes",
+              "title": "Payments 1.0 notes",
+              "url": "https://wiki.example.test/pay/1.0"
+            },
+            {
+              "category": "Pull request",
+              "title": "Ship 1.0",
+              "url": "https://code.example.test/pay/pull/100"
+            }
+          ]
         },
         {
           "id": "pay-1-1",
@@ -406,7 +418,19 @@
           "description": "Refunds",
           "startDay": -56,
           "releaseDay": -28,
-          "released": true
+          "released": true,
+          "relatedWork": [
+            {
+              "category": "Release notes",
+              "title": "Payments 1.1 notes",
+              "url": "https://wiki.example.test/pay/1.1"
+            },
+            {
+              "category": "Pull request",
+              "title": "Ship 1.1",
+              "url": "https://code.example.test/pay/pull/101"
+            }
+          ]
         },
         {
           "id": "pay-1-2",

@@ -536,6 +536,19 @@ func (a *Applier) project(ctx context.Context, project Project) error {
 			return fmt.Errorf("version %s: %w", version.Name, err)
 		}
 		a.versions[version.ID] = saved
+		held, err := a.Store.VersionRelatedWork(ctx, a.workspaceID, saved.ID)
+		if err != nil {
+			return fmt.Errorf("read what %s links to: %w", version.Name, err)
+		}
+		if len(held) == 0 {
+			for _, link := range version.RelatedWork {
+				if _, err := a.Store.CreateVersionRelatedWork(ctx, a.workspaceID, a.admin, saved.ID, models.VersionRelatedWork{
+					Category: link.Category, Title: link.Title, URL: link.URL,
+				}); err != nil {
+					return fmt.Errorf("version %s links to %s: %w", version.Name, link.Title, err)
+				}
+			}
+		}
 	}
 	if project.Board != nil {
 		if err := a.board(ctx, created, *project.Board); err != nil {

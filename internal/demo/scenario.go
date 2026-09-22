@@ -150,6 +150,16 @@ type Version struct {
 	StartDay    *int   `json:"startDay,omitempty"`
 	ReleaseDay  *int   `json:"releaseDay,omitempty"`
 	Released    bool   `json:"released,omitempty"`
+	// RelatedWork is what a release links out to: its notes, the pull
+	// request that carried it, the dashboard somebody watches after it ships.
+	RelatedWork []RelatedWork `json:"relatedWork,omitempty"`
+}
+
+// RelatedWork is one link a release keeps beside it.
+type RelatedWork struct {
+	Category string `json:"category"`
+	Title    string `json:"title,omitempty"`
+	URL      string `json:"url,omitempty"`
 }
 
 // Board is a project's board and the sprints it has run.

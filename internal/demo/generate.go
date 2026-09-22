@@ -306,11 +306,22 @@ func (s *Scenario) growProject(project *Project, generated GeneratedProject, pla
 			// Named for when it ships, so a generated release never collides
 			// with one the scenario declared by hand and a reader can tell
 			// at a glance when it went out.
+			name := fmt.Sprintf("%d.%d", series+versionsMade/10, (versionsMade-1)%10)
 			version = &Version{
 				ID:          fmt.Sprintf("%s-gv%d", project.ID, versionsMade),
-				Name:        fmt.Sprintf("%d.%d", series+versionsMade/10, (versionsMade-1)%10),
+				Name:        name,
 				Description: fmt.Sprintf("%s, released from %s", capitalise(pick(themes)), project.Name),
 				StartDay:    &start, ReleaseDay: &release, Released: released,
+			}
+			// A release that shipped has something to read beside it: what
+			// changed, and the change that carried it.
+			if released {
+				version.RelatedWork = []RelatedWork{
+					{Category: "Release notes", Title: fmt.Sprintf("%s %s notes", project.Name, name),
+						URL: fmt.Sprintf("https://wiki.example.test/%s/%s", strings.ToLower(project.ID), name)},
+					{Category: "Pull request", Title: fmt.Sprintf("Ship %s", name),
+						URL: fmt.Sprintf("https://code.example.test/%s/pull/%d", strings.ToLower(project.ID), 1000+versionsMade)},
+				}
 			}
 			project.Versions = append(project.Versions, *version)
 		}
