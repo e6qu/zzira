@@ -100,7 +100,7 @@ show.
 | `customFields` | Fields the work uses, with options for select lists |
 | `projects` | Projects with their type and template, components, versions, a board with its sprints, and a service desk with agents, request types (each with the `fields` its form asks, including an Assets object field's schema and AQL filter) and the queues its agents work from |
 | `workItems` | Work with its parent, sprint, versions, labels, `estimate`, `due` day and field values, plus `events` — the transitions, comments, worklogs, assignments, links, watches and votes that happened to it |
-| `deployments`, `commits` | Deliveries to environments and the changes they carried, which the delivery (DORA) report counts: deployments give the frequency and the failure rate, and commits paired with them give the lead time ([REPORTS.md](REPORTS.md)) |
+| `deployments`, `commits` | Deliveries to environments and the changes they carried, which the delivery (DORA) report counts: deployments give the frequency and the failure rate, and commits paired with them give the lead time ([REPORTS.md](REPORTS.md)) Each deployment also records the build that produced it, so a work item's development panel reads both. |
 | `plans` | Cross-project plans, the teams that work in them, and the cross-project `releases` that group versions from several projects into one delivery |
 | `translations` | What the site calls a work type, a priority, a resolution or a status in the other languages its people read ([ISSUE_METADATA](ISSUE_METADATA.md#translating-the-words-on-a-work-item)) |
 | `automation` | The rules the company runs: what starts them, what they are scoped to, and what they do |
