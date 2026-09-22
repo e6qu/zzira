@@ -69,8 +69,9 @@ Each numbered item is one or more substantial PRs.
   above the epic level would be ours, not Jira's.
 
 **Metadata and configuration UI.**
-- Per-language translations for work types, priorities, resolutions and
-  statuses (fields are translated).
+- Per-language translations reach the metadata resources and the settings
+  pages ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#translating-the-words-on-a-work-item)); the work item view, the board
+  and search results still read the site's own names, as JQL does.
 - The screen catalog includes Reporter, Environment, Attachment and Linked
   work items; `projectKey` honored on tab-field reads.
 - Issue security scheme form sends the level mapping for projects with secured
@@ -124,10 +125,13 @@ and dependency checks.
 
 Jira Plans create a cross-project release that groups same-named versions across
 projects. ZZIRA stores `crossProjectReleases` on a plan and returns it over REST,
-but nothing shows or uses it.
+and the release hub reads it back; nothing plans with it yet.
 
 - Create the member versions from the plan (today they are linked, not created).
-- Cross-project releases as auto-scheduler input, and on the release hub.
+- Cross-project releases as auto-scheduler input. The release hub reads them
+  back: a version says what ships with it, and the version page lists the other
+  projects' versions with their dates, progress and release state
+  ([RELEASES.md](docs/RELEASES.md)).
 - Release hub: deployments grouped across projects, release gates, environment
   promotion, drag reordering, dates in the viewer's locale and site time zone.
 
