@@ -581,6 +581,12 @@ func cleanWorkspace(t *testing.T, ctx context.Context, st *store.Store, workspac
 		`DELETE FROM wiki_blog_post_versions WHERE blog_post_id IN (SELECT id FROM wiki_blog_posts WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1))`,
 		`DELETE FROM wiki_blog_posts WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`,
 		`DELETE FROM wiki_spaces WHERE workspace_id=$1`,
+		// The labels the writing was filed under hold the site alive, and
+		// nothing cascades them: a site left behind is a site the next test
+		// finds, and enough of them break the tests that read the whole
+		// catalogue of work types.
+		`DELETE FROM wiki_labels WHERE workspace_id=$1`,
+		`DELETE FROM webhooks WHERE workspace_id=$1`,
 		`DELETE FROM issues WHERE workspace_id=$1`,
 		`DELETE FROM projects WHERE workspace_id=$1`,
 		`DELETE FROM memberships WHERE workspace_id=$1`,
