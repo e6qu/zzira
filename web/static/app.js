@@ -819,10 +819,11 @@
       form.querySelectorAll('input[name]:not([id]), textarea[name]:not([id]), select[name]:not([id])').forEach((field) => {
         typed[key + '|name:' + field.name] = field.value;
       });
-      // A rich editor holds what was written as markup rather than as a
-      // value, so it is kept as markup.
+      // A rich editor holds what was written as nodes rather than as a value,
+      // so the nodes themselves are kept: reading them back as markup would
+      // mean parsing the page's own text as HTML again.
       form.querySelectorAll('[data-rich-editor]').forEach((editor, index) => {
-        typed[key + '|rich:' + index] = editor.innerHTML;
+        typed[key + '|rich:' + index] = editor.cloneNode(true);
       });
     });
     return typed;
@@ -850,8 +851,13 @@
       }
       const editors = form.querySelectorAll('[data-rich-editor]');
       const editor = editors[Number(fieldPart.slice('rich:'.length))];
-      if (!editor || editor.innerHTML === typed[key]) return;
-      editor.innerHTML = typed[key];
+      const kept = typed[key];
+      // Comparing what each holds, so a form is only called dirty again when
+      // the swap really did lose something. Reading the markup is safe; it is
+      // writing it back that would mean parsing the page's text as HTML.
+      if (!editor || !kept || editor.innerHTML === kept.innerHTML) return;
+      // A fresh clone each time, so the same snapshot can be put back twice.
+      editor.replaceChildren(...kept.cloneNode(true).childNodes);
       form.dataset.dirty = 'true';
     });
   }

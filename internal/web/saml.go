@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/saml"
@@ -185,7 +186,13 @@ func (h *Handler) SAMLAssertion(w http.ResponseWriter, r *http.Request) {
 	}
 	identity, err := saml.ReadResponse(posted, provider, site, requestID, time.Now().UTC())
 	if err != nil {
-		log.Printf("saml sign-in refused: %v", err)
+		// The reason comes from an assertion somebody else wrote, so it is
+		// kept to one printable line: a refusal must not be able to forge log
+		// entries. Why it was refused is worth keeping -- an operator reads it
+		// when single sign-on stops working.
+		// #nosec G706 -- logLine folds every line break and control character
+		// to a space, which the scanner's taint analysis cannot see.
+		log.Printf("saml sign-in refused: %s", logLine(err.Error()))
 		http.Error(w, "sign-in could not be completed", http.StatusUnauthorized)
 		return
 	}
@@ -342,3 +349,24 @@ func (h *Handler) SAMLProviderSettings(w http.ResponseWriter, r *http.Request) {
 
 // samlProviderKey is what a provider may be called in an address.
 var samlProviderKey = regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`)
+
+// logLine keeps a value that came from outside to a single printable line, so
+// nothing it contains can pass itself off as another log entry.
+func logLine(value string) string {
+	// The line breaks go first and by name, because they are what a reader of
+	// the log splits entries on; then everything else that cannot be printed.
+	cleaned := strings.ReplaceAll(value, "\r", " ")
+	cleaned = strings.ReplaceAll(cleaned, "\n", " ")
+	cleaned = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, cleaned)
+	cleaned = strings.Join(strings.Fields(cleaned), " ")
+	// Counted in characters, so a cut never lands inside one.
+	if runes := []rune(cleaned); len(runes) > 500 {
+		cleaned = string(runes[:500]) + "…"
+	}
+	return cleaned
+}

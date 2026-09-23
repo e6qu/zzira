@@ -21,17 +21,21 @@ var macroElements = map[string]bool{
 }
 
 // panelMacros are Confluence's panel macros: a box around a body, with the
-// title it is given shown above it.
-var panelMacros = map[string]bool{"info": true, "note": true, "warning": true, "tip": true, "panel": true}
+// title it is given shown above it. The value is the word the rendering uses,
+// so what reaches the HTML is one of these rather than whatever the body
+// happened to say.
+var panelMacros = map[string]string{"info": "info", "note": "note", "warning": "warning", "tip": "tip", "panel": "panel"}
 
 // statusColours are the colours Confluence's status macro is drawn in. A
 // status whose colour is anything else is drawn grey, as Confluence draws it.
 var statusColours = map[string]bool{"grey": true, "red": true, "yellow": true, "green": true, "blue": true, "purple": true}
 
-// layoutTypes are the column arrangements a layout section takes.
-var layoutTypes = map[string]bool{
-	"single": true, "two_equal": true, "two_left_sidebar": true, "two_right_sidebar": true,
-	"three_equal": true, "three_with_sidebars": true,
+// layoutTypes are the column arrangements a layout section takes, each
+// mapping to the word the rendering uses for it.
+var layoutTypes = map[string]string{
+	"single": "single", "two_equal": "two_equal", "two_left_sidebar": "two_left_sidebar",
+	"two_right_sidebar": "two_right_sidebar", "three_equal": "three_equal",
+	"three_with_sidebars": "three_with_sidebars",
 }
 
 // tocMarker stands in for a table of contents while the page renders: the
@@ -57,14 +61,19 @@ type macroFrame struct {
 	language string
 }
 
+// macroIdentifier is what a macro's own identifier may look like: Confluence
+// writes a UUID, and anything that is not a plain identifier is left out
+// rather than written into an attribute.
+var macroIdentifier = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
+
 // macroIDAttribute keeps a macro's own identifier on the element it renders
 // as, so a body that goes through the editor comes back with the identifier
 // Confluence gave it.
 func macroIDAttribute(id string) string {
-	if id == "" {
+	if !macroIdentifier.MatchString(id) {
 		return ""
 	}
-	return ` data-macro-id="` + html.EscapeString(id) + `"`
+	return ` data-macro-id="` + id + `"`
 }
 
 // tocEntry is one heading a table of contents links to.
@@ -183,8 +192,9 @@ func Render(storage string) (string, error) {
 					id := acAttribute(t, "macro-id")
 					macros = append(macros, macroFrame{name: name, id: id})
 					switch {
-					case panelMacros[name]:
-						b.WriteString(`<div class="wiki-panel wiki-panel-` + name + `" data-macro="` + name + `"` + macroIDAttribute(id) + `>`)
+					case panelMacros[name] != "":
+						panel := panelMacros[name]
+						b.WriteString(`<div class="wiki-panel wiki-panel-` + panel + `" data-macro="` + panel + `"` + macroIDAttribute(id) + `>`)
 					case name == "toc":
 						if strings.ContainsRune(id, 0) {
 							return "", fmt.Errorf("a macro identifier cannot hold a NUL")
@@ -209,9 +219,9 @@ func Render(storage string) (string, error) {
 				case "layout":
 					b.WriteString(`<div class="wiki-layout" data-macro="layout">`)
 				case "layout-section":
-					layout := strings.ToLower(acAttribute(t, "type"))
-					if !layoutTypes[layout] {
-						return "", fmt.Errorf("unsupported layout section type %q", layout)
+					layout := layoutTypes[strings.ToLower(acAttribute(t, "type"))]
+					if layout == "" {
+						return "", fmt.Errorf("unsupported layout section type %q", acAttribute(t, "type"))
 					}
 					b.WriteString(`<div class="wiki-layout-section wiki-layout-` + layout + `" data-layout-type="` + layout + `">`)
 				case "layout-cell":
@@ -278,7 +288,7 @@ func Render(storage string) (string, error) {
 					frame := macros[len(macros)-1]
 					macros = macros[:len(macros)-1]
 					switch {
-					case panelMacros[frame.name]:
+					case panelMacros[frame.name] != "":
 						b.WriteString("</div>")
 					case frame.name == "status":
 						// A status is a word in a colour. Confluence draws one
@@ -296,7 +306,7 @@ func Render(storage string) (string, error) {
 						frame := &macros[len(macros)-1]
 						value := strings.TrimSpace(parameter.String())
 						switch {
-						case panelMacros[frame.name] && parameterName == "title" && value != "":
+						case panelMacros[frame.name] != "" && parameterName == "title" && value != "":
 							b.WriteString(`<p class="wiki-panel-title">` + html.EscapeString(value) + `</p>`)
 						case frame.name == "status" && parameterName == "title":
 							frame.title = value

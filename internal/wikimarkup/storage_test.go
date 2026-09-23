@@ -127,3 +127,25 @@ func TestTextExtractsReadableContentFromValidatedStorage(t *testing.T) {
 		t.Fatal("Text accepted unsupported storage markup")
 	}
 }
+
+// A macro identifier is written back onto the element it renders as, so only
+// an identifier's own shape is accepted: nothing from a page body reaches an
+// attribute where it could end the quoting.
+func TestMacroIdentifiersAreOnlyEchoedWhenTheyAreIdentifiers(t *testing.T) {
+	got, err := Render(`<ac:structured-macro ac:name="info" ac:macro-id="m-1"><ac:rich-text-body><p>x</p></ac:rich-text-body></ac:structured-macro>`)
+	if err != nil || !strings.Contains(got, `data-macro-id="m-1"`) {
+		t.Fatalf("a plain identifier = %s, %v", got, err)
+	}
+	for _, id := range []string{`" onclick="alert(1)`, "with space", strings.Repeat("x", 65), "quote\"inside"} {
+		rendered, renderErr := Render(`<ac:structured-macro ac:name="info" ac:macro-id="` + strings.ReplaceAll(id, `"`, "&quot;") + `"><ac:rich-text-body><p>x</p></ac:rich-text-body></ac:structured-macro>`)
+		if renderErr != nil {
+			t.Fatalf("Render(%q) = %v", id, renderErr)
+		}
+		if strings.Contains(rendered, "data-macro-id") {
+			t.Fatalf("identifier %q was written into an attribute: %s", id, rendered)
+		}
+		if strings.Contains(rendered, "onclick") {
+			t.Fatalf("identifier %q reached the markup: %s", id, rendered)
+		}
+	}
+}

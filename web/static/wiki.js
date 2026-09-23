@@ -4,6 +4,8 @@ const mentionStorage = (id, name) => `<ac:link><ri:user ri:account-id="${escapeS
 const mentionQuery = /(^|\s)@([^\s@<>]{0,40})$/;
 // The macros the editor draws, written back as the storage Confluence keeps.
 const panelMacros = ['info', 'note', 'warning', 'tip', 'panel'];
+const statusColours = ['grey', 'red', 'yellow', 'green', 'blue', 'purple'];
+const layoutTypes = ['two_equal', 'two_left_sidebar', 'two_right_sidebar', 'three_equal'];
 const macroIDStorage = (node) => (node.dataset.macroId ? ` ac:macro-id="${escapeStorage(node.dataset.macroId)}"` : '');
 const macroParameter = (name, value) => `<ac:parameter ac:name="${name}">${escapeStorage(value)}</ac:parameter>`;
 
@@ -758,6 +760,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // hands the focus to a toolbar control.
   document.addEventListener('selectionchange', rememberCaret);
   ['keyup', 'mouseup', 'input', 'focusout'].forEach((event) => editor.addEventListener(event, rememberCaret));
+  // The shapes the toolbar inserts, built as elements. An attribute is set
+  // rather than written into markup, so a value from a menu is a value and
+  // never a piece of HTML.
+  const el = (tag, attributes, ...children) => {
+    const node = document.createElement(tag);
+    Object.keys(attributes || {}).forEach((name) => node.setAttribute(name, attributes[name]));
+    children.forEach((child) => node.append(child));
+    return node;
+  };
   // The block of the page the caret is in: a child of the editor itself, so
   // a panel, a code block or a layout is put between blocks rather than
   // inside a paragraph.
@@ -770,11 +781,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Inserting through execCommand leaves the browser to decide what the
   // markup means: Chrome flattens a panel into styled spans and drops the
   // attributes that say what the macro is. These put the nodes in as written.
-  const insertBlocks = (html) => {
+  // They are built as elements rather than parsed from a string, so nothing
+  // the page holds is ever read back as markup.
+  const insertBlocks = (nodes) => {
     focusEditor();
-    const template = document.createElement('template');
-    template.innerHTML = html;
-    const nodes = [...template.content.childNodes];
     if (nodes.length === 0) return;
     const selection = document.getSelection();
     const anchor = selection && selection.rangeCount > 0 ? blockAt(selection.getRangeAt(0).startContainer) : null;
@@ -786,11 +796,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (selection) { selection.removeAllRanges(); selection.addRange(range); }
     caret = range.cloneRange();
   };
-  const insertInline = (html) => {
+  const insertInline = (node) => {
     focusEditor();
-    const template = document.createElement('template');
-    template.innerHTML = html;
-    const node = template.content.firstChild;
     if (!node) return;
     const selection = document.getSelection();
     if (!selection || selection.rangeCount === 0) {
@@ -866,7 +873,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (tableButton) {
     tableButton.addEventListener('mousedown', (event) => event.preventDefault());
     tableButton.addEventListener('click', () => {
-      insertBlocks('<table><thead><tr><th>Heading</th><th>Heading</th></tr></thead><tbody><tr><td>Cell</td><td>Cell</td></tr></tbody></table><p></p>');
+      insertBlocks([
+        el('table', {},
+          el('thead', {}, el('tr', {}, el('th', {}, 'Heading'), el('th', {}, 'Heading'))),
+          el('tbody', {}, el('tr', {}, el('td', {}, 'Cell'), el('td', {}, 'Cell')))),
+        el('p', {}),
+      ]);
     });
   }
   // A macro arrives as the shape it is drawn in, which somebody then types
@@ -880,19 +892,32 @@ document.addEventListener('DOMContentLoaded', () => {
       const macro = macroSelect.value;
       macroSelect.value = '';
       if (!macro) return;
-      const colour = statusColour ? statusColour.value : 'grey';
       const panelTitles = { info: 'Info', note: 'Note', warning: 'Warning', tip: 'Tip', panel: 'Panel' };
-      let markup = '';
       if (panelMacros.includes(macro)) {
-        markup = `<div class="wiki-panel wiki-panel-${macro}" data-macro="${macro}"><p class="wiki-panel-title">${panelTitles[macro]}</p><p>Write the panel here.</p></div><p></p>`;
-      } else if (macro === 'status') {
-        markup = `<span class="wiki-status wiki-status-${colour}" data-macro="status" data-colour="${colour}">Status</span>`;
-      } else if (macro === 'code') {
-        markup = '<pre class="wiki-code" data-macro="code">Write the code here.</pre><p></p>';
-      } else if (macro === 'toc') {
-        markup = '<nav class="wiki-toc" data-macro="toc" contenteditable="false" aria-label="Contents"><p>Table of contents</p></nav><p></p>';
+        insertBlocks([
+          el('div', { class: 'wiki-panel wiki-panel-' + macro, 'data-macro': macro },
+            el('p', { class: 'wiki-panel-title' }, panelTitles[macro]),
+            el('p', {}, 'Write the panel here.')),
+          el('p', {}),
+        ]);
+        return;
       }
-      if (macro === 'status') insertInline(markup); else insertBlocks(markup);
+      if (macro === 'status') {
+        const chosen = statusColour ? statusColour.value : 'grey';
+        const colour = statusColours.includes(chosen) ? chosen : 'grey';
+        insertInline(el('span', { class: 'wiki-status wiki-status-' + colour, 'data-macro': 'status', 'data-colour': colour }, 'Status'));
+        return;
+      }
+      if (macro === 'code') {
+        insertBlocks([el('pre', { class: 'wiki-code', 'data-macro': 'code' }, 'Write the code here.'), el('p', {})]);
+        return;
+      }
+      if (macro === 'toc') {
+        insertBlocks([
+          el('nav', { class: 'wiki-toc', 'data-macro': 'toc', contenteditable: 'false', 'aria-label': 'Contents' }, el('p', {}, 'Table of contents')),
+          el('p', {}),
+        ]);
+      }
     });
   }
   // A layout is a row of columns, each of which holds its own content.
@@ -902,11 +927,15 @@ document.addEventListener('DOMContentLoaded', () => {
     layoutSelect.addEventListener('change', () => {
       const layout = layoutSelect.value;
       layoutSelect.value = '';
-      if (!layout) return;
+      if (!layoutTypes.includes(layout)) return;
       const cells = layout.startsWith('three') ? 3 : 2;
-      const cell = (index) => `<div class="wiki-layout-cell"><p>Column ${index}</p></div>`;
-      const columns = Array.from({ length: cells }, (_, index) => cell(index + 1)).join('');
-      insertBlocks(`<div class="wiki-layout" data-macro="layout"><div class="wiki-layout-section wiki-layout-${layout}" data-layout-type="${layout}">${columns}</div></div><p></p>`);
+      const columns = Array.from({ length: cells }, (unused, index) =>
+        el('div', { class: 'wiki-layout-cell' }, el('p', {}, 'Column ' + (index + 1))));
+      insertBlocks([
+        el('div', { class: 'wiki-layout', 'data-macro': 'layout' },
+          el('div', { class: 'wiki-layout-section wiki-layout-' + layout, 'data-layout-type': layout }, ...columns)),
+        el('p', {}),
+      ]);
     });
   }
   // A table of contents is built from the page's headings, so it is read in
