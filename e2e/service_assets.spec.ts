@@ -90,6 +90,20 @@ test('service manager models assets and an agent calculates request impact', asy
   await commented.locator('.service-asset-history > summary').click();
   await expect(commented.locator('.service-asset-history')).toContainText('Changed capacity');
 
+  // What people keep about an object goes with it, and comes back down.
+  await commented.locator('.service-asset-files > summary').click();
+  await commented.getByLabel('Keep a file with DATABASE').setInputFiles({
+    name: 'rack.txt', mimeType: 'text/plain', buffer: Buffer.from('Rack 4, top shelf.'),
+  });
+  await commented.getByRole('button', { name: 'Add file' }).click();
+  const withFile = page.locator('#objects article').filter({ hasText: 'Checkout database' });
+  await withFile.locator('.service-asset-files > summary').click();
+  const kept = withFile.locator('.service-asset-files').getByRole('link', { name: 'rack.txt' });
+  await expect(kept).toBeVisible();
+  const download = await page.request.get((await kept.getAttribute('href'))!);
+  expect(download.status()).toBe(200);
+  expect(await download.text()).toBe('Rack 4, top shelf.');
+
   // A whole inventory arrives as a file rather than one form at a time, and a
   // row whose key is already in the schema updates that object.
   const assetImport = page.locator('#import');
