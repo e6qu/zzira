@@ -64,3 +64,24 @@ func TestStorageTasksMentionsAndDates(t *testing.T) {
 		t.Fatal(unnamed)
 	}
 }
+
+// Storage panels, statuses and code macros are part of what a page says, so
+// they become the document's own nodes and come back as the same macros.
+func TestFromHTMLReadsPanelsStatusesAndCode(t *testing.T) {
+	doc := FromHTML(`<ac:structured-macro ac:name="warning"><ac:parameter ac:name="title">Careful</ac:parameter>` +
+		`<ac:rich-text-body><p>Drain first</p></ac:rich-text-body></ac:structured-macro>` +
+		`<p>State: <ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Green</ac:parameter>` +
+		`<ac:parameter ac:name="title">Ready</ac:parameter></ac:structured-macro></p>` +
+		`<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">go</ac:parameter>` +
+		`<ac:plain-text-body>if a &lt; b {}</ac:plain-text-body></ac:structured-macro>`)
+	storage := ToStorage(doc)
+	for _, want := range []string{
+		`<ac:structured-macro ac:name="warning"><ac:rich-text-body><p><strong>Careful</strong></p><p>Drain first</p></ac:rich-text-body></ac:structured-macro>`,
+		`<ac:parameter ac:name="colour">green</ac:parameter><ac:parameter ac:name="title">Ready</ac:parameter>`,
+		"<pre><code>if a &lt; b {}",
+	} {
+		if !strings.Contains(storage, want) {
+			t.Fatalf("storage = %s, missing %s", storage, want)
+		}
+	}
+}

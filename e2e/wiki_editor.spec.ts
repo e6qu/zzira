@@ -64,6 +64,26 @@ test('a writer formats a page with the editor rather than by typing storage', as
   await toolbar.getByRole('button', { name: 'Table' }).click();
   await expect(editor.locator('table th')).toHaveCount(2);
 
+  // A panel, a status word, a table of contents and a two-column layout, each
+  // inserted as the shape it is drawn in.
+  await editor.click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await toolbar.getByLabel('Macro').selectOption('warning');
+  await expect(editor.locator('.wiki-panel-warning .wiki-panel-title')).toHaveText('Warning');
+  await editor.locator('.wiki-panel-warning p').nth(1).click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' Drain first.');
+  await editor.click();
+  await page.keyboard.press('End');
+  await toolbar.getByLabel('Status colour').selectOption('red');
+  await toolbar.getByLabel('Macro').selectOption('status');
+  await expect(editor.locator('[data-macro=status]')).toHaveText('Status');
+  await toolbar.getByLabel('Macro').selectOption('toc');
+  await expect(editor.locator('[data-macro=toc]')).toHaveAttribute('contenteditable', 'false');
+  await toolbar.getByLabel('Layout').selectOption('two_equal');
+  await expect(editor.locator('.wiki-layout-cell')).toHaveCount(2);
+
   await page.getByRole('button', { name: 'Save page' }).click();
   await expect(page.getByRole('heading', { name: `Runbook ${stamp}`, level: 1 })).toBeVisible();
   const article = page.getByRole('article', { name: 'Page content' });
@@ -85,4 +105,22 @@ test('a writer formats a page with the editor rather than by typing storage', as
   expect(body).toContain('<pre>');
   expect(body).toContain('<table>');
   expect(body).toContain('href="https://runbooks.example/queue"');
+  expect(body).toContain('<ac:structured-macro ac:name="warning">');
+  expect(body).toContain('<ac:parameter ac:name="title">Warning</ac:parameter>');
+  expect(body).toContain('Write the panel here. Drain first.');
+  expect(body).toContain('<ac:parameter ac:name="colour">red</ac:parameter>');
+  expect(body).toContain('<ac:structured-macro ac:name="toc"/>');
+  expect(body).toContain('<ac:layout-section ac:type="two_equal">');
+
+  // Reopening the page shows the macros drawn, and the editor still holds
+  // them: the body it wrote is one it can write again.
+  await page.goto(`${page.url()}/edit`);
+  await expect(page.locator('[data-wiki-editor] .wiki-panel-warning')).toBeVisible();
+  await expect(page.locator('[data-wiki-editor] [data-macro=status]')).toHaveText('Status');
+  await page.getByRole('button', { name: 'Save page' }).click();
+  const again = await page.request.get(`/wiki/api/v2/pages/${pageID}?body-format=storage`);
+  const secondBody = (await again.json()).body.storage.value as string;
+  expect(secondBody).toContain('<ac:structured-macro ac:name="warning">');
+  expect(secondBody).toContain('<ac:structured-macro ac:name="toc"/>');
+  expect(secondBody).toContain('<ac:layout-section ac:type="two_equal">');
 });

@@ -209,7 +209,10 @@ var (
 		{"jira.issue.assign:random", "Assign work item (random)"}, {"jira.issue.transition", "Transition work item"},
 		{"jira.issue.comment", "Comment on work item"}, {"jira.issue.edit:summary", "Edit summary"}, {"jira.issue.edit:duedate", "Set due date"},
 		{"jira.issue.edit:priority", "Set priority"}, {"jira.issue.edit:description", "Set description"},
-		{"jira.issue.edit:labels", "Set labels"},
+		{"jira.issue.edit:labels", "Set labels"}, {"jira.issue.edit:assignee", "Set assignee"},
+		{"jira.issue.edit:resolution", "Set resolution"},
+		{"jira.issue.edit:originalestimate", "Set original estimate"},
+		{"jira.issue.edit:remainingestimate", "Set remaining estimate"},
 		{"jira.issue.log-work", "Log work"}, {"jira.issue.delete", "Delete work item"}, {"jira.issue.create-subtask", "Create sub-task"},
 		{"jira.issue.clone", "Clone work item"},
 		{"jira.issue.watchers:add", "Add watcher"}, {"jira.issue.watchers:remove", "Remove watcher"},
@@ -900,7 +903,14 @@ func automationFormActions(rows automationActionRows) ([]map[string]any, error) 
 			})
 			continue
 		}
-		if value == "" {
+		// Clearing a field is an instruction rather than a mistake: an edit
+		// that sets a resolution, an estimate or a due date empties it when
+		// the box is left empty, as Jira's own edit does.
+		clearing := map[string]bool{
+			"jira.issue.edit:resolution": true, "jira.issue.edit:originalestimate": true,
+			"jira.issue.edit:remainingestimate": true, "jira.issue.edit:duedate": true,
+		}
+		if value == "" && !clearing[actionType] {
 			return nil, fmt.Errorf("every action needs a value")
 		}
 		var actionValue map[string]string
@@ -975,7 +985,8 @@ func automationFormActions(rows automationActionRows) ([]map[string]any, error) 
 		case automation.WikiPageActionType:
 			actionValue = map[string]string{"spaceKey": value}
 
-		case "jira.issue.edit:summary", "jira.issue.edit:duedate", "jira.issue.edit:priority", "jira.issue.edit:description", "jira.issue.edit:labels":
+		case "jira.issue.edit:summary", "jira.issue.edit:duedate", "jira.issue.edit:priority", "jira.issue.edit:description", "jira.issue.edit:labels",
+			"jira.issue.edit:assignee", "jira.issue.edit:resolution", "jira.issue.edit:originalestimate", "jira.issue.edit:remainingestimate":
 			actionValue = map[string]string{"field": strings.TrimPrefix(actionType, "jira.issue.edit:"), "value": value}
 			actionType = "jira.issue.edit"
 		default:

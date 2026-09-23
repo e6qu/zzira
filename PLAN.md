@@ -239,14 +239,17 @@ objects from a file, and an Assets REST API under the Assets workspace
 **Content.**
 - Blog posts: version restore and delete, historical macro reads, content states,
   relations.
-- Macro execution (`info`, `toc`, `code`, …); conversion context parameters.
+- Macro execution beyond the ones the site draws (panels, `status`, `code`,
+  `toc` and page layouts): `expand`, `include`, `excerpt`, `children`,
+  `jira`, charts and the rest; conversion context parameters.
 - Content states: configurable suggested states, set and shown in the page view
   and editor; `state/available` honors space settings.
 - Templates: modify and revert blueprints, app blueprints, `editor`/`view`/
   `export_view` bodies, `expand`, site template management UI.
 - Custom content: app-registered types, attachments, `atlas_doc_format`, UI.
-- Tasks: task lists, dates and macros in the rich editor; task report; personal
-  task list; due-date reminders.
+- Tasks: task lists, dates and the macros the editor does not draw (it draws
+  panels, status, code and a table of contents) in the rich editor; task
+  report; personal task list; due-date reminders.
 
 **Spaces and search.**
 - Import (Confluence XML, HTML, Markdown, Word) and export (XML full/custom, site,

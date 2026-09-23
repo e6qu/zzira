@@ -191,7 +191,7 @@ values. Most actions set a desired state, so a replayed action does nothing.
 | `jira.issue.assign` | `accountId` (`ACTOR`, `UNASSIGNED`) or `method` | `round-robin` picks whoever waited longest, `balanced` the fewest unresolved items, `random` anyone. Candidates are the project's assignee picker; no candidates stops the rule |
 | `jira.issue.transition` | `statusId` | Uses a valid transition of the current workflow |
 | `jira.issue.comment` | `comment` | Adds a comment |
-| `jira.issue.edit` | `field`, `value` | Sets `summary`, `duedate` (yyyy-MM-dd, blank clears), `priority` (name or ID), `description` or `labels` (comma-separated, replaces all) |
+| `jira.issue.edit` | `field`, `value` | Sets `summary`, `duedate` (yyyy-MM-dd, blank clears), `priority` (name or ID), `description`, `labels` (comma-separated, replaces all), `assignee` (an account id, `ACTOR`, or `UNASSIGNED` and blank for nobody), `resolution` (name or ID, blank clears) or `originalestimate` / `remainingestimate` (a duration such as `3h 30m`, read with the site's time tracking settings; blank removes the estimate). A field already holding what the rule names counts as done |
 | `jira.issue.log-work` | `duration` (e.g. `3h 30m`), optional `comment` | Uses the site's time tracking settings; zero or less stops the rule |
 | `jira.issue.watchers` | `action` (`add` or `remove`), `accountId` (smart values allowed) | Adds somebody to, or takes them off, the people a work item tells about itself; the rule actor needs Manage watchers |
 | `jira.issue.clone` | optional `summary` (default `Copy of {{issue.summary}}`) | Copies the work item in its own project, with its type, description, labels, priority and due date. Work of that summary already in the project means there is nothing to do, so a scheduled rule makes one copy. A branch over created work sees it |
@@ -326,7 +326,8 @@ See [PLAN.md](../PLAN.md).
   attachments and custom content.
 - Usage limits: no monthly execution quota or per-rule usage tracking.
 - The rest of Jira's trigger, condition, action and branch catalog (deleting
-  comments and links, and the rest of its edit actions). A branch inside a
+  comments and links, and editing components, fix versions, work type or a
+  custom field). A branch inside a
   branch is refused,
   as Jira refuses one, and what a branch names stays inside it, as it does in
   Jira.

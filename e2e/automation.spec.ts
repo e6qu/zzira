@@ -266,6 +266,59 @@ test('admin builds a rule that sets a description and logs work', async ({ page 
   await expect(page.getByRole('combobox', { name: 'Action', exact: true }).nth(1)).toHaveValue('jira.issue.log-work');
 });
 
+test('admin builds a rule that sets the assignee, resolution and estimate', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const fixture = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary: `Field edit rule work ${Date.now()}`, issuetype: { name: 'Task' } } } });
+  expect(fixture.status()).toBe(201);
+  const fixtureKey = (await fixture.json()).key as string;
+
+  await page.goto('/settings/automation');
+  await page.getByRole('link', { name: 'Create rule', exact: true }).click();
+  const name = `E2E field edits ${Date.now()}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByLabel('Run every').fill('60');
+  await page.getByLabel('Timezone').fill('UTC');
+  await page.getByLabel('JQL query').fill(`key = ${fixtureKey}`);
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.edit:assignee');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill('ACTOR');
+  await page.getByRole('combobox', { name: 'Additional action', exact: true }).selectOption('jira.issue.edit:resolution');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).nth(1).fill('Done');
+  // The estimates are offered here too; a rule takes one more action each
+  // time it is opened, so this one sets them after it is saved.
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).locator('option[value="jira.issue.edit:originalestimate"]')).toHaveCount(1);
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).locator('option[value="jira.issue.edit:remainingestimate"]')).toHaveCount(1);
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => {
+    await page.goto(ruleURL);
+    return await page.locator('.automation-audit tbody').innerText();
+  }, { timeout: 15_000 }).toContain('SUCCESS');
+
+  let issue = await (await page.request.get(`/rest/api/3/issue/${fixtureKey}`, { headers })).json();
+  expect(issue.fields.assignee?.displayName).toBe('Demo User');
+  expect(issue.fields.resolution?.name).toBe('Done');
+
+  // Both saved actions read back as what was chosen.
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue('jira.issue.edit:assignee');
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).nth(1)).toHaveValue('jira.issue.edit:resolution');
+
+  // The saved rule takes one more action: an estimate, read the way the site
+  // reads every other duration.
+  await page.getByRole('combobox', { name: 'Additional action', exact: true }).selectOption('jira.issue.edit:originalestimate');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).nth(2).fill('3h 30m');
+  await page.getByRole('button', { name: 'Save rule' }).click();
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => {
+    issue = await (await page.request.get(`/rest/api/3/issue/${fixtureKey}`, { headers })).json();
+    return issue.fields.timeoriginalestimate;
+  }, { timeout: 15_000 }).toBe(12600);
+});
+
 
 test('admin builds a rule that sends a web request', async ({ page }) => {
   await login(page);

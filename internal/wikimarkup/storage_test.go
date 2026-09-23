@@ -19,9 +19,9 @@ func TestStorageRenderingPreservesFormattingAndRejectsExecutableMarkup(t *testin
 }
 
 // TestStorageRendersMacrosAsTheContentTheyShow covers Confluence's structured
-// macros: the macro and its parameters are structure rather than markup, so a
-// reader sees the body the macro wraps and none of the ac elements reach the
-// HTML.
+// macros: a panel is a box around its body with the title it was given, and a
+// macro the site does not draw shows the body it wraps with its parameters
+// left out. No ac element reaches the HTML.
 func TestStorageRendersMacrosAsTheContentTheyShow(t *testing.T) {
 	storage := `<p>Intro</p><ac:structured-macro ac:name="info" ac:macro-id="m-1">` +
 		`<ac:parameter ac:name="title">Heads up</ac:parameter>` +
@@ -34,12 +34,84 @@ func TestStorageRendersMacrosAsTheContentTheyShow(t *testing.T) {
 	if strings.Contains(got, "ac:") || strings.Contains(got, "structured-macro") {
 		t.Fatalf("a macro element reached the rendering: %s", got)
 	}
+	// The macro keeps its own identifier, so a body that goes through the
+	// editor comes back as the one Confluence stored.
+	if !strings.Contains(got, `<div class="wiki-panel wiki-panel-info" data-macro="info" data-macro-id="m-1">`) {
+		t.Fatalf("the panel was not drawn: %s", got)
+	}
+	if !strings.Contains(got, `<p class="wiki-panel-title">Heads up</p>`) {
+		t.Fatalf("the panel title was not shown: %s", got)
+	}
 	if !strings.Contains(got, "<p>Careful <strong>here</strong></p>") {
 		t.Fatalf("the macro body was not rendered: %s", got)
 	}
-	// A parameter configures the macro; it is not something a reader sees.
-	if strings.Contains(got, "Heads up") {
-		t.Fatalf("a macro parameter was shown to the reader: %s", got)
+	// A macro the site draws no box for shows its body, and the parameters
+	// that describe it stay out of the reading.
+	other, err := Render(`<ac:structured-macro ac:name="expand"><ac:parameter ac:name="title">More</ac:parameter><ac:rich-text-body><p>Detail</p></ac:rich-text-body></ac:structured-macro>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other != "<p>Detail</p>" {
+		t.Fatalf("unrecognised macro = %s", other)
+	}
+}
+
+// TestStorageRendersStatusCodeAndContents covers the macros that are not a box
+// around a body: a status word in its colour, a code block in its language,
+// and a table of contents built from the headings the page holds.
+func TestStorageRendersStatusCodeAndContents(t *testing.T) {
+	got, err := Render(`<ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Green</ac:parameter><ac:parameter ac:name="title">Ready</ac:parameter></ac:structured-macro>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != `<span class="wiki-status wiki-status-green" data-macro="status" data-colour="green">Ready</span>` {
+		t.Fatalf("status = %s", got)
+	}
+	// A colour Confluence does not know is drawn grey rather than refused.
+	if got, err = Render(`<ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">chartreuse</ac:parameter><ac:parameter ac:name="title">Ready</ac:parameter></ac:structured-macro>`); err != nil || !strings.Contains(got, "wiki-status-grey") {
+		t.Fatalf("unknown status colour = %s, %v", got, err)
+	}
+	if got, err = Render(`<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">go</ac:parameter><ac:plain-text-body>if a &lt; b {}</ac:plain-text-body></ac:structured-macro>`); err != nil {
+		t.Fatal(err)
+	} else if got != `<pre class="wiki-code" data-macro="code" data-language="go">if a &lt; b {}</pre>` {
+		t.Fatalf("code macro = %s", got)
+	}
+	got, err = Render(`<ac:structured-macro ac:name="toc"/><h2>First &amp; foremost</h2><p>x</p><h3>Then</h3>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`<nav class="wiki-toc" data-macro="toc" aria-label="Contents">`,
+		`<li class="wiki-toc-level-2"><a href="#wiki-heading-1">First &amp; foremost</a></li>`,
+		`<li class="wiki-toc-level-3"><a href="#wiki-heading-2">Then</a></li>`,
+		`<h2 id="wiki-heading-1">`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("contents = %s, missing %s", got, want)
+		}
+	}
+	if strings.Contains(got, "\x00") {
+		t.Fatalf("the contents placeholder survived: %q", got)
+	}
+	if got, err = Render(`<ac:structured-macro ac:name="toc"/>`); err != nil || !strings.Contains(got, "no headings yet") {
+		t.Fatalf("contents without headings = %s, %v", got, err)
+	}
+}
+
+// TestStorageRendersLayoutSections covers Confluence's page layouts: a section
+// of columns, each holding its own content.
+func TestStorageRendersLayoutSections(t *testing.T) {
+	got, err := Render(`<ac:layout><ac:layout-section ac:type="two_equal"><ac:layout-cell><p>Left</p></ac:layout-cell><ac:layout-cell><p>Right</p></ac:layout-cell></ac:layout-section></ac:layout>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `<div class="wiki-layout" data-macro="layout"><div class="wiki-layout-section wiki-layout-two_equal" data-layout-type="two_equal">` +
+		`<div class="wiki-layout-cell"><p>Left</p></div><div class="wiki-layout-cell"><p>Right</p></div></div></div>`
+	if got != want {
+		t.Fatalf("layout = %s", got)
+	}
+	if _, err := Render(`<ac:layout><ac:layout-section ac:type="seventeen"><ac:layout-cell><p>x</p></ac:layout-cell></ac:layout-section></ac:layout>`); err == nil {
+		t.Fatal("accepted an unsupported layout section type")
 	}
 }
 

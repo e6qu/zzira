@@ -185,8 +185,9 @@ Tracked in [PLAN.md](../PLAN.md).
 
 - **Whiteboard canvas API.** There is no REST API for whiteboard objects and
   connectors, and no bulk import or export.
-- **Whiteboard editing.** No drag, resize or pan and zoom: positions are typed
-  into forms. Objects placed beyond the 1400 × 800 view are not shown.
+- **Whiteboard editing.** An object is dragged on the canvas and every field
+  is also typed into its form, but there is no resize, and no pan or zoom:
+  objects placed beyond the 1400 × 800 view are not shown.
 - **Whiteboard elements.** No shape kinds (rectangle, ellipse, diamond and so
   on), freehand drawing, images, frames, sections, lines without endpoints,
   connector anchors or routing, or arrowhead choice.

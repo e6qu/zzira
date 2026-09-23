@@ -3170,7 +3170,7 @@
           {
             "id": "eng-home",
             "title": "Engineering handbook",
-            "body": "<p>How we build and run Northwind.</p>",
+            "body": "<ac:structured-macro ac:name=\"toc\" ac:macro-id=\"eng-home-toc\"/><h2>How we work</h2><p>How we build and run Northwind.</p><ac:structured-macro ac:name=\"info\" ac:macro-id=\"eng-home-info\"><ac:parameter ac:name=\"title\">Start here</ac:parameter><ac:rich-text-body><p>New engineers read the on-call rotation and the code review page in their first week.</p></ac:rich-text-body></ac:structured-macro><h2>Where to look</h2><ac:layout><ac:layout-section ac:type=\"two_equal\"><ac:layout-cell><p><strong>Build</strong></p><p>Services, pipelines and the release train.</p></ac:layout-cell><ac:layout-cell><p><strong>Run</strong></p><p>On call, incidents and what each service is doing now.</p></ac:layout-cell></ac:layout-section></ac:layout>",
             "author": "maya",
             "createdDay": -80,
             "comments": [
@@ -3184,7 +3184,7 @@
               {
                 "id": "eng-oncall",
                 "title": "On-call rotation",
-                "body": "<p>One engineer is on call each week, Monday to Monday.</p>",
+                "body": "<p>One engineer is on call each week, Monday to Monday.</p><p>This week: <ac:structured-macro ac:name=\"status\" ac:macro-id=\"eng-oncall-status\"><ac:parameter ac:name=\"colour\">green</ac:parameter><ac:parameter ac:name=\"title\">Staffed</ac:parameter></ac:structured-macro></p><ac:structured-macro ac:name=\"warning\" ac:macro-id=\"eng-oncall-warning\"><ac:parameter ac:name=\"title\">Before you hand over</ac:parameter><ac:rich-text-body><p>Write what is still open into the handover page, and say so in the incident channel.</p></ac:rich-text-body></ac:structured-macro>",
                 "author": "ravi",
                 "createdDay": -70,
                 "labels": [
@@ -3197,7 +3197,7 @@
               {
                 "id": "eng-review",
                 "title": "Code review",
-                "body": "<p>Two approvals for payment paths, one elsewhere.</p>",
+                "body": "<p>Two approvals for payment paths, one elsewhere.</p><ac:structured-macro ac:name=\"tip\" ac:macro-id=\"eng-review-tip\"><ac:parameter ac:name=\"title\">Ask for the review you need</ac:parameter><ac:rich-text-body><p>Say what you want looked at, so a reviewer reads for that rather than for everything.</p></ac:rich-text-body></ac:structured-macro><p>Run the checks before asking:</p><ac:structured-macro ac:name=\"code\" ac:macro-id=\"eng-review-code\"><ac:parameter ac:name=\"language\">bash</ac:parameter><ac:plain-text-body>go test ./... &amp;&amp; npm --prefix e2e test</ac:plain-text-body></ac:structured-macro>",
                 "author": "ines",
                 "createdDay": -64,
                 "labels": [

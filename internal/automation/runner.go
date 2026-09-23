@@ -1427,6 +1427,80 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 				return false, nil
 			}
 			input.PriorityID = &text
+		case "assignee":
+			// Jira's edit sets the assignee the way its assign action does,
+			// naming the person, the rule's actor or nobody.
+			accountID := text
+			switch accountID {
+			case "ACTOR":
+				accountID = run.ActorID
+			case "UNASSIGNED", "":
+				accountID = ""
+			}
+			current := ""
+			if issue.Assignee != nil {
+				current = issue.Assignee.ID
+			}
+			if accountID == current {
+				return false, nil
+			}
+			input.AssigneeID = &accountID
+		case "resolution":
+			// A blank value clears the resolution, as clearing the field does.
+			id := ""
+			if text != "" {
+				resolutions, resolutionErr := r.Service.Store.ResolutionsForWorkspace(ctx, run.WorkspaceID)
+				if resolutionErr != nil {
+					return false, resolutionErr
+				}
+				for _, resolution := range resolutions {
+					if strings.EqualFold(resolution.Name, text) || resolution.ID == text {
+						id = resolution.ID
+						break
+					}
+				}
+				if id == "" {
+					return false, fmt.Errorf("edit action does not know the resolution %q", text)
+				}
+			}
+			current := ""
+			if issue.Resolution != nil {
+				current = issue.Resolution.ID
+			}
+			if id == current {
+				return false, nil
+			}
+			input.ResolutionID = &id
+		case "originalestimate", "remainingestimate":
+			// An estimate is read the way every other duration on the site is,
+			// and a blank value removes it.
+			seconds := store.ClearEstimate
+			if text != "" {
+				configuration, configErr := r.Service.Store.JiraSiteConfiguration(ctx, run.WorkspaceID)
+				if configErr != nil {
+					return false, configErr
+				}
+				parsed, parseErr := models.ParseJiraDuration(text, configuration.TimeTracking)
+				if parseErr != nil {
+					return false, fmt.Errorf("edit action: %w", parseErr)
+				}
+				if parsed <= 0 {
+					return false, errors.New("edit action needs an estimate above zero")
+				}
+				seconds = parsed
+			}
+			current := issue.OriginalEstimateSeconds
+			if value.Field == "remainingestimate" {
+				current = issue.RemainingEstimateSeconds
+			}
+			if (seconds == store.ClearEstimate && current == nil) || (current != nil && *current == seconds) {
+				return false, nil
+			}
+			if value.Field == "remainingestimate" {
+				input.RemainingEstimate = &seconds
+			} else {
+				input.OriginalEstimate = &seconds
+			}
 		default:
 			return false, fmt.Errorf("edit action cannot change %q", value.Field)
 		}

@@ -2,6 +2,7 @@ package adf
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -42,7 +43,7 @@ func TestToHTMLMentionEmojiHardBreak(t *testing.T) {
 }
 
 func TestToHTMLUnknownNodeDegrades(t *testing.T) {
-	doc := Doc(Node{Type: "panel", Content: []Node{
+	doc := Doc(Node{Type: "expand", Content: []Node{
 		Node{Type: "paragraph", Content: []Node{Text("inside unknown")}},
 	}})
 	got := ToHTML(doc)
@@ -55,7 +56,7 @@ func TestNormalizeStripsUnsupportedMarks(t *testing.T) {
 	raw, _ := json.Marshal(Doc(
 		Paragraph(
 			Node{Type: "text", Text: "kept", Mark: []Mark{{Type: "strong"}, {Type: "color", Attrs: map[string]any{"color": "#ff0000"}}}},
-			Node{Type: "status", Attrs: map[string]any{"text": "new"}},
+			Node{Type: "inlineCard", Attrs: map[string]any{"url": "https://example.test"}},
 		),
 	))
 	norm := Normalize(raw)
@@ -65,7 +66,7 @@ func TestNormalizeStripsUnsupportedMarks(t *testing.T) {
 	}
 	p := doc.Content[0]
 	if len(p.Content) != 1 {
-		t.Fatalf("unsupported status node should collapse to text: %+v", p)
+		t.Fatalf("an unsupported node should collapse to text: %+v", p)
 	}
 	marks := p.Content[0].Mark
 	if len(marks) != 1 || marks[0].Type != "strong" {
@@ -124,5 +125,39 @@ func TestMentionedAccounts(t *testing.T) {
 	}
 	if MentionedAccounts(nil) != nil || MentionedAccounts(json.RawMessage(`not json`)) != nil {
 		t.Fatal("an empty or broken document mentions nobody")
+	}
+}
+
+// A panel and a status word are part of what a page holds, so a document
+// keeps them and writes them back as the macros Confluence stores.
+func TestPanelsAndStatusesSurviveAndRenderAsMacros(t *testing.T) {
+	raw := Doc(
+		Node{Type: "panel", Attrs: map[string]any{"panelType": "warning"}, Content: []Node{Paragraph(Node{Type: "text", Text: "Careful"})}},
+		Paragraph(Node{Type: "status", Attrs: map[string]any{"text": "Ready", "color": "Green"}}),
+	)
+	if string(Normalize(raw)) != string(raw) {
+		t.Fatalf("a panel and a status did not survive Normalize: %s", Normalize(raw))
+	}
+	storage := ToStorage(raw)
+	for _, want := range []string{
+		`<ac:structured-macro ac:name="warning"><ac:rich-text-body><p>Careful</p></ac:rich-text-body></ac:structured-macro>`,
+		`<ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">green</ac:parameter><ac:parameter ac:name="title">Ready</ac:parameter></ac:structured-macro>`,
+	} {
+		if !strings.Contains(storage, want) {
+			t.Fatalf("storage = %s, missing %s", storage, want)
+		}
+	}
+	view := ToHTML(raw)
+	if !strings.Contains(view, `<div class="wiki-panel wiki-panel-warning" data-macro="warning">`) || !strings.Contains(view, `wiki-status-green`) {
+		t.Fatalf("view = %s", view)
+	}
+	// A panel of a kind the site does not draw is drawn as a plain one, and a
+	// colour it does not know is grey.
+	other := ToStorage(Doc(
+		Node{Type: "panel", Attrs: map[string]any{"panelType": "mystery"}, Content: []Node{Paragraph(Node{Type: "text", Text: "x"})}},
+		Paragraph(Node{Type: "status", Attrs: map[string]any{"text": "Odd", "color": "chartreuse"}}),
+	))
+	if !strings.Contains(other, `ac:name="panel"`) || !strings.Contains(other, `<ac:parameter ac:name="colour">grey</ac:parameter>`) {
+		t.Fatalf("unknown panel and colour = %s", other)
 	}
 }

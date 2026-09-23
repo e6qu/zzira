@@ -803,21 +803,56 @@
     const form = event.detail && event.detail.elt && event.detail.elt.closest && event.detail.elt.closest('form');
     if (form) form.removeAttribute('data-dirty');
   });
+  // A field is found again after the swap by its own id where it has one,
+  // and otherwise by the form it belongs to and its name -- a comment's
+  // hidden document field has no id, and losing it sends an empty comment.
+  function formKey(form) {
+    return 'form:' + (form.getAttribute('action') || form.id || '');
+  }
   function typedValues(root) {
     const typed = {};
-    root.querySelectorAll('form[data-dirty="true"] input[id], form[data-dirty="true"] textarea[id], form[data-dirty="true"] select[id]').forEach((field) => {
-      typed[field.id] = field.value;
+    root.querySelectorAll('form[data-dirty="true"]').forEach((form) => {
+      const key = formKey(form);
+      form.querySelectorAll('input[id], textarea[id], select[id]').forEach((field) => {
+        typed['#' + field.id] = field.value;
+      });
+      form.querySelectorAll('input[name]:not([id]), textarea[name]:not([id]), select[name]:not([id])').forEach((field) => {
+        typed[key + '|name:' + field.name] = field.value;
+      });
+      // A rich editor holds what was written as markup rather than as a
+      // value, so it is kept as markup.
+      form.querySelectorAll('[data-rich-editor]').forEach((editor, index) => {
+        typed[key + '|rich:' + index] = editor.innerHTML;
+      });
     });
     return typed;
   }
   function restoreTyped(typed) {
     if (!typed) return;
-    Object.keys(typed).forEach((id) => {
-      const field = document.getElementById(id);
-      if (!field || field.value === typed[id]) return;
-      field.value = typed[id];
-      const form = field.closest('form');
-      if (form) form.dataset.dirty = 'true';
+    Object.keys(typed).forEach((key) => {
+      if (key.startsWith('#')) {
+        const field = document.getElementById(key.slice(1));
+        if (!field || field.value === typed[key]) return;
+        field.value = typed[key];
+        const form = field.closest('form');
+        if (form) form.dataset.dirty = 'true';
+        return;
+      }
+      const [formPart, fieldPart] = key.split('|');
+      const form = Array.from(document.querySelectorAll('#issue-root form')).find((candidate) => formKey(candidate) === formPart);
+      if (!form) return;
+      if (fieldPart.startsWith('name:')) {
+        const field = form.querySelector(`[name="${fieldPart.slice('name:'.length)}"]:not([id])`);
+        if (!field || field.value === typed[key]) return;
+        field.value = typed[key];
+        form.dataset.dirty = 'true';
+        return;
+      }
+      const editors = form.querySelectorAll('[data-rich-editor]');
+      const editor = editors[Number(fieldPart.slice('rich:'.length))];
+      if (!editor || editor.innerHTML === typed[key]) return;
+      editor.innerHTML = typed[key];
+      form.dataset.dirty = 'true';
     });
   }
 
@@ -870,7 +905,7 @@
     // Also defer if the create/edit dialog is open (the user is mid-edit)
     const modalOpen = root.style.display === 'block' ||
       (document.getElementById('modal-root') && document.getElementById('modal-root').style.display === 'block');
-    if (editing || dirtyForm || modalOpen || mutationAwaitingSync) { pendingRootHtml = html; return; }
+    if (editing || dirtyForm || modalOpen || mutationAwaitingSync || pointerHeld) { pendingRootHtml = html; return; }
     if (root.outerHTML === html) { pendingRootHtml = null; return; } // no-op render
     const incomingSeq = seqOf(html);
     if (incomingSeq > 0 && incomingSeq < seqOfDom()) {
@@ -884,16 +919,43 @@
     hydrate(document.getElementById('issue-root'));
   }
 
-  document.addEventListener('focusout', () => {
+  // A press in progress is somebody pressing a button. Replacing the view
+  // under their finger takes the button away before the press finishes, and
+  // the thing they asked for never happens.
+  let pointerHeld = false;
+  document.addEventListener('pointerdown', () => { pointerHeld = true; }, true);
+  ['pointerup', 'pointercancel'].forEach((event) => document.addEventListener(event, () => {
+    pointerHeld = false;
     if (!pendingRootHtml) return;
-    // On the next tick, because focus has not landed anywhere yet: applying a
-    // held-back render goes through the same questions as any other one,
-    // including whether it is older than what the page already shows.
     const held = pendingRootHtml;
+    // After the click the press turns into, so a held render never lands
+    // between the two.
     setTimeout(() => {
+      if (pendingRootHtml === held) applyRootHtml(held);
+    }, 0);
+  }, true));
+  // Focus leaving a field is not the same as somebody having finished: it is
+  // also what happens on the way to the next one. A held render waits until
+  // the focus has settled away from the work item view, and any landing back
+  // inside it calls the render off, because replacing the view under somebody
+  // moving through it takes what they are typing with it.
+  let settleTimer = 0;
+  document.addEventListener('focusin', (event) => {
+    const root = document.getElementById('issue-root');
+    if (settleTimer && root && event.target instanceof Node && root.contains(event.target)) {
+      clearTimeout(settleTimer);
+      settleTimer = 0;
+    }
+  });
+  document.addEventListener('focusout', () => {
+    if (!pendingRootHtml || pointerHeld) return;
+    const held = pendingRootHtml;
+    if (settleTimer) clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => {
+      settleTimer = 0;
       if (pendingRootHtml !== held) return;
       applyRootHtml(held);
-    }, 0);
+    }, 250);
   });
 
   document.addEventListener('input', (event) => {
