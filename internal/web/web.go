@@ -1578,6 +1578,9 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 		}
 	}
 	params := parseNavigatorParams(values)
+	// The status filter offers the site's statuses, so it reads in the same
+	// language as the results below it. What it submits is still the id.
+	translateStatuses(h.readerMetadataNames(r.Context(), wsID, user.ID), statuses)
 	data := projectIssuesData{
 		Notice:  r.URL.Query().Get("notice"),
 		Project: project, Statuses: statuses, Members: members, Filters: filters, ActiveFilter: activeFilter,
@@ -1632,6 +1635,9 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 			if searchErr != nil {
 				data.JQLError = searchErr.Error()
 			} else {
+				// The results read in the language the person chose, as the
+				// work item view does; the JQL that found them is unchanged.
+				translateIssues(h.readerMetadataNames(r.Context(), wsID, user.ID), issues)
 				data.Issues, data.Total = issues, total
 				if len(issues) > 0 {
 					data.Selected = issues[0]
