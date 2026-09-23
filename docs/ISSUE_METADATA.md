@@ -171,8 +171,10 @@ name in that language and, if it helps, the description.
   then read in it wherever a page shows them: the work item view (the item,
   the work under and beside it, and the priorities and resolutions its fields
   offer), a board's cards and the statuses each column gathers, and the
-  navigator's results and its status filter. A board column's own name is the
-  board administrator's word, not the site's, so it is left alone. The site's
+  navigator's results and its status filter. On a board that is the work type
+  each card is labelled with and the statuses a column gathers when it gathers
+  more than one; a board column's own name is the board administrator's word,
+  not the site's, so it is left alone. The site's
   own words are unchanged underneath, so a search, a form and the REST API all
   still take them.
 
