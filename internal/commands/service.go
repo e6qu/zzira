@@ -20,7 +20,10 @@ type CreateServiceRequestInput struct {
 	CustomerID, Channel, Summary, Description          string
 	DescriptionADF                                     json.RawMessage
 	ParticipantIDs                                     []string
-	Fields                                             map[string]json.RawMessage
+	// OrganizationIDs are the organizations the customer shares the request
+	// with as they raise it, as the portal's "Share with" choice does.
+	OrganizationIDs []string
+	Fields          map[string]json.RawMessage
 }
 
 // CreateServiceRequest creates the canonical Jira issue first and compensates
@@ -126,6 +129,12 @@ func (s *Service) CreateServiceRequest(ctx context.Context, in CreateServiceRequ
 			return nil, errors.Join(err, cleanupErr)
 		}
 	}
+	if len(in.OrganizationIDs) > 0 {
+		if err := s.Store.ShareServiceRequest(ctx, in.WorkspaceID, issue.ID, in.OrganizationIDs); err != nil {
+			_, cleanupErr := s.deleteIssueUnchecked(ctx, in.ActorID, in.WorkspaceID, issue.ID, "service request sharing failed")
+			return nil, errors.Join(err, cleanupErr)
+		}
+	}
 	if err := s.notifyServiceRequestCreated(ctx, in.WorkspaceID, in.ServiceDeskID, in.CustomerID, issue.ID); err != nil {
 		return nil, err
 	}
@@ -168,6 +177,26 @@ func (s *Service) UpdateServiceRequestParticipants(ctx context.Context, actorID,
 		}
 	}
 	return s.Store.ServiceRequestParticipants(ctx, request.Issue.ID)
+}
+
+// ShareServiceRequest says which organizations a request is shared with, which
+// only the person who raised it or an agent of its desk decides.
+func (s *Service) ShareServiceRequest(ctx context.Context, actorID, workspaceID, issueIDOrKey string, organizationIDs []string) ([]models.ServiceOrganization, error) {
+	canManage, err := s.Store.CanManageServiceRequest(ctx, workspaceID, actorID, issueIDOrKey)
+	if err != nil {
+		return nil, err
+	}
+	request, err := s.Store.ServiceRequest(ctx, workspaceID, actorID, issueIDOrKey, canManage)
+	if err != nil {
+		return nil, fmt.Errorf("request does not exist")
+	}
+	if !canManage && request.Customer.ID != actorID {
+		return nil, fmt.Errorf("only the reporter or an agent may share a request")
+	}
+	if err := s.Store.ShareServiceRequest(ctx, workspaceID, request.Issue.ID, organizationIDs); err != nil {
+		return nil, err
+	}
+	return s.Store.ServiceRequestOrganizations(ctx, request.Issue.ID)
 }
 
 func (s *Service) CreateServiceCustomer(ctx context.Context, actorID, workspaceID, email, displayName string) (*models.User, error) {

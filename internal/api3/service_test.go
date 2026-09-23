@@ -1104,6 +1104,15 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	if _, err := st.Pool.Exec(ctx, `UPDATE service_sla_cycles SET started_at=$2 WHERE id=$1`, firstResponseCycleID, slaNow.Add(-90*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
+	// The pause the rule above opened started when the request was raised,
+	// which is however long this test has been running: elapsed time is the
+	// cycle's ninety minutes minus that, so a slow run would leave more of the
+	// goal remaining than the assertions below expect. The clock the fixture
+	// means is ninety minutes of running time and a pause of none, so the
+	// pause starts here.
+	if _, err := st.Pool.Exec(ctx, `UPDATE service_sla_cycle_pauses SET started_at=$2 WHERE cycle_id=$1 AND stopped_at IS NULL`, firstResponseCycleID, slaNow); err != nil {
+		t.Fatal(err)
+	}
 	issueSLAQuery := `key = ` + issueKey + ` AND "Time to first response" `
 	searchTotalAs(customerID, issueSLAQuery+`= paused()`, 1)
 	if err := handler.Commands.UpdateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, metricByKind["first_response"], "", (2 * time.Hour).Milliseconds()); err != nil {

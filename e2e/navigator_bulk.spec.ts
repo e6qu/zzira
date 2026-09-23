@@ -280,3 +280,76 @@ test('navigator bulk-edits cascading selects, people and groups', async ({ page,
 
   expect((await request.delete(`/rest/api/3/project/${projectKey}?enableUndo=false`, { headers: auth })).status()).toBe(204);
 });
+
+// An Assets object field across a selection: the objects are the inventory's,
+// and the field holds the one the editor picks.
+test('navigator bulk-edits an Assets object field', async ({ page, request }) => {
+  const auth = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const projectKey = `AB${stamp.toString(36).toUpperCase().slice(-8)}`;
+  const me = await (await request.get('/rest/api/3/myself', { headers: auth })).json();
+  expect((await request.post('/rest/api/3/project', {
+    headers: auth,
+    data: { key: projectKey, name: `Assets bulk ${stamp}`, projectTypeKey: 'service_desk', projectTemplateKey: 'com.atlassian.servicedesk:simplified-it-service-management', leadAccountId: me.accountId },
+  })).status()).toBe(201);
+  const desks = await (await request.get('/rest/servicedeskapi/servicedesk?limit=100', { headers: auth })).json();
+  const desk = desks.values.find((candidate: any) => candidate.projectKey === projectKey);
+  expect(desk).toBeTruthy();
+  const workspaces = await (await request.get('/rest/servicedeskapi/assets/workspace', { headers: auth })).json();
+  const assets = `/jsm/assets/workspace/${workspaces.values[0].workspaceId}/v1`;
+
+  const schema = await request.post(`${assets}/objectschema/create`, {
+    headers: auth,
+    data: { name: `Services ${stamp}`, objectSchemaKey: `SB${stamp.toString(36).toUpperCase().slice(-6)}`, serviceDeskId: desk.id, attributes: [{ id: 'tier', name: 'Tier' }] },
+  });
+  expect(schema.status(), await schema.text()).toBe(201);
+  const schemaID = (await schema.json()).id as string;
+  const objectID = async (key: string, label: string) => {
+    const created = await request.post(`${assets}/object/create`, {
+      headers: auth, data: { objectTypeId: schemaID, objectKey: key, label, attributes: { tier: '1' } },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    return (await created.json()).id as string;
+  };
+  const checkout = await objectID('CHECKOUT', `Checkout ${stamp}`);
+  await objectID('LEDGER', `Ledger ${stamp}`);
+
+  const field = await request.post('/rest/api/3/field', { headers: auth, data: { name: `Affected ${stamp}`, type: 'cmdb' } });
+  expect(field.status()).toBe(201);
+  const fieldID = (await field.json()).id as string;
+
+  const keys: string[] = [];
+  for (const summary of [`Assets bulk ${stamp} one`, `Assets bulk ${stamp} two`]) {
+    const created = await request.post('/rest/api/3/issue', {
+      headers: auth, data: { fields: { project: { key: projectKey }, summary, issuetype: { name: 'Task' } } },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    keys.push((await created.json()).key as string);
+  }
+
+  await login(page);
+  await page.goto(`/issues/${projectKey}?text=Assets+bulk+${stamp}`);
+  for (const key of keys) {
+    await page.locator('tr').filter({ hasText: key }).getByRole('checkbox').check();
+  }
+  await page.locator('summary').filter({ hasText: 'Edit selected' }).click();
+  const editor = page.locator('.bulk-edit-picker');
+  await expect(editor.locator(`input[name="field"][value="${fieldID}"]`)).toBeVisible();
+  await editor.locator(`input[name="field"][value="${fieldID}"]`).check();
+  await editor.locator(`select[name="valueCustom_${fieldID}"]`).selectOption({ label: `CHECKOUT · Checkout ${stamp} (Services ${stamp})` });
+  await accessible(page);
+  page.once('dialog', (dialog) => dialog.accept());
+  await editor.getByRole('button', { name: 'Start edit' }).click();
+  await expect(page.getByRole('heading', { name: /Bulk edit issues/ })).toBeVisible();
+
+  await expect(async () => {
+    for (const key of keys) {
+      const issue = await (await request.get(`/rest/api/3/issue/${key}`, { headers: auth })).json();
+      // The work item keeps the object's id, which is what an Assets field
+      // holds; the editor showed its key and label.
+      expect(JSON.stringify(issue.fields[fieldID])).toContain(checkout);
+    }
+  }).toPass({ timeout: 20_000 });
+
+  expect((await request.delete(`/rest/api/3/project/${projectKey}?enableUndo=false`, { headers: auth })).status()).toBe(204);
+});

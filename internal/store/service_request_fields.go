@@ -206,7 +206,9 @@ func (s *Store) ServicePortalFilteredAssetObjects(ctx context.Context, workspace
 }
 
 func (s *Store) servicePortalAssetObjects(ctx context.Context, workspaceID, serviceDeskID, assetSchemaID, filter string) ([]ServiceRequestFieldOption, error) {
-	where, args := "TRUE", []any{workspaceID, serviceDeskID, assetSchemaID}
+	// A picker offers its objects in the order the filter asks for, then in
+	// the inventory's own.
+	where, order, args := "TRUE", "", []any{workspaceID, serviceDeskID, assetSchemaID}
 	if strings.TrimSpace(filter) != "" {
 		query, err := aql.Parse(filter)
 		if err != nil {
@@ -215,16 +217,20 @@ func (s *Store) servicePortalAssetObjects(ctx context.Context, workspaceID, serv
 		// A filter names an attribute as its schema names it, and the value
 		// is stored under whatever key the schema gave it.
 		columns := aql.DefaultColumns()
+		columns.DeskID = serviceDeskID
 		if columns.Attributes, err = s.serviceAssetAttributeKeys(ctx, serviceDeskID); err != nil {
 			return nil, err
 		}
 		compiled := query.Compile(columns, len(args)+1)
 		where, args = compiled.Where, append(args, compiled.Args...)
+		if compiled.OrderBy != "" {
+			order = compiled.OrderBy + ","
+		}
 	}
 	rows, err := s.Pool.Query(ctx, `SELECT o.id::text,o.label,s.name
 		FROM service_asset_objects o JOIN service_asset_schemas s ON s.id=o.schema_id JOIN service_desks sd ON sd.id=s.service_desk_id
 		WHERE sd.workspace_id=$1 AND sd.id=$2 AND ($3='' OR s.id::text=$3) AND (`+where+`)
-		ORDER BY lower(s.name),lower(o.label),o.id`, args...)
+		ORDER BY `+order+`lower(s.name),lower(o.label),o.id`, args...)
 	if err != nil {
 		return nil, err
 	}

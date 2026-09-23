@@ -296,7 +296,10 @@ func TestSearchByAttachedFields(t *testing.T) {
 			t.Fatalf("a move inside one category moved the date from %s to %s", crossed, after)
 		}
 	}
-	if keys := keysFor(`statusCategoryChangedDate >= -1m AND key = ` + subject); len(keys) != 1 {
+	// An hour, not a minute: a loaded run can spend longer than that between
+	// the transition above and this search, and what is being proved is that
+	// the date is searchable and recent, not how fast the suite runs.
+	if keys := keysFor(`statusCategoryChangedDate >= -1h AND key = ` + subject); len(keys) != 1 {
 		t.Fatalf("searching by the category date matched %v", keys)
 	}
 }

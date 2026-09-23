@@ -190,7 +190,7 @@ Tracked in [PLAN.md](../PLAN.md).
 - Team-managed scoping (`scope`, `entityId`) is not modelled; every type is company-managed.
 - A priority scheme update applies its mappings before answering, so the 202 has no `task`.
 - The system avatar catalogue has five work type icons; Jira's is larger.
-- A translated name reaches the metadata resources, the settings pages and the work item view (the item, the work under and beside it, and the priorities and resolutions its fields offer). The board and the search results still read the site's own names, as JQL does.
+- A translated name reaches the metadata resources, the settings pages, the work item view (the item, the work under and beside it, and the priorities and resolutions its fields offer), the board's cards and the navigator's results and status filter. JQL itself reads the site's own words, as Jira's does.
 
 ## See also
 

@@ -148,9 +148,15 @@ func Login(ctx context.Context, st *store.Store, email, password string) (SignIn
 	if err != nil {
 		return SignIn{}, err
 	}
+	// A security key registered on the account is a second step too: whoever
+	// registered one expects to be asked for it.
+	keys, err := st.WebAuthnCredentials(ctx, id)
+	if err != nil {
+		return SignIn{}, err
+	}
 	// A policy that requires two steps holds a sign-in that has none in the
 	// same place a code would: the enrolment is what finishes it.
-	if enrolment.Confirmed || (policy.Enforced && policy.RequireTwoStep) {
+	if enrolment.Confirmed || len(keys) > 0 || (policy.Enforced && policy.RequireTwoStep) {
 		challenge, err := randomToken()
 		if err != nil {
 			return SignIn{}, err
@@ -546,6 +552,14 @@ func ProtectCookieMutations(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if crossSiteSignIn(r.URL.Path) {
+			// An identity provider posts its answer from its own site, which
+			// is the whole point of the binding. What makes that answer worth
+			// reading is the signature over it and the one-use sign-in it
+			// names, not where the browser came from.
+			next.ServeHTTP(w, r)
+			return
+		}
 		if _, err := r.Cookie(sessionCookie); err != nil {
 			next.ServeHTTP(w, r)
 			return
@@ -569,6 +583,12 @@ func ProtectCookieMutations(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// crossSiteSignIn reports the addresses an identity provider posts to, which
+// are cross-site by design: the SAML assertion consumer service.
+func crossSiteSignIn(path string) bool {
+	return strings.HasPrefix(path, "/saml/") && strings.HasSuffix(path, "/acs")
 }
 
 // SecurityHeaders installs browser hardening that applies equally to HTML,

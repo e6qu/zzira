@@ -22,6 +22,24 @@ Read formats (`body-format`):
 - single page: `storage`, `atlas_doc_format`, `view`, `export_view`, `anonymous_export_view`, `styled_view`, `editor`;
 - page lists: `storage`, `atlas_doc_format`.
 
+## The editor
+
+`/wiki/spaces/{space}/pages/new` and the edit view write a page in a rich
+editor: a box that holds the page as it will read, with a toolbar above it.
+The toolbar sets the block the caret is in -- paragraph, heading 2, 3 or 4, a
+quote or a code block -- makes text bold or emphasised, starts a bullet or
+numbered list, adds a link from an address typed beside the button, inserts a
+table with a header row and a row under it, and mentions somebody. What the
+editor holds is written back as storage when the page is saved, so the
+site keeps the same format however a page was written.
+
+- **Source mode** swaps the editor for the storage itself, which is how a page
+  carrying markup the toolbar does not write is edited.
+- **A link address** is held to `http`, `https` or `mailto`, because a link in
+  a page is a link every reader can follow.
+- Code: `web/static/wiki.js`, `internal/wikimarkup/storage.go` (the tags a
+  page may carry). Browser test: `e2e/wiki_editor.spec.ts`.
+
 ## Live docs
 
 `subtype: "live"` on create makes a live doc. Live docs are always published: creating one as a draft, or later saving it as a draft, is 400. The subtype cannot change after creation (400). `GET /pages?subtype=live` lists live docs; `subtype=page` excludes them. The editor offers **Live doc** on a new page, and the page view labels it.

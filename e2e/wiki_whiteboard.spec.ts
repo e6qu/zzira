@@ -62,6 +62,22 @@ test('knowledge collaborator builds and edits a connected whiteboard', async ({ 
   await build.getByRole('button', { name: 'Save Build', exact: true }).click();
   await expect(page.locator('.wiki-whiteboard-object-list article').filter({ has: page.locator('input[name="title"][value="Build"]') }).locator('[name="x"]')).toHaveValue('180');
 
+  // An object is dragged where it belongs, and the move is saved as it is
+  // let go: the form below the canvas reads the new place.
+  const dragged = page.locator('[data-whiteboard-object]').filter({ has: page.locator('title', { hasText: 'Deploy' }) }).first();
+  const before = await dragged.getAttribute('data-x');
+  const box = (await dragged.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 120, box.y + box.height / 2 + 40, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator('[data-whiteboard-status]')).toContainText('Deploy moved to');
+  const after = await page.locator('[data-whiteboard-object]').filter({ has: page.locator('title', { hasText: 'Deploy' }) }).first().getAttribute('data-x');
+  expect(Number(after)).toBeLessThan(Number(before));
+  await page.reload();
+  const deploy = page.locator('.wiki-whiteboard-object-list article').filter({ has: page.locator('input[name="title"][value="Deploy"]') });
+  await expect(deploy.locator('[name="x"]')).toHaveValue(String(after));
+
   await checkAccessibility(page);
   await page.locator('[data-theme-toggle]').click();
   await checkAccessibility(page);

@@ -17,7 +17,8 @@ work is in [PLAN.md](../PLAN.md); status per product is in
 
 ## Administration and identity
 
-- [Organization and site administration](ADMIN.md) — overview
+- [Organization and site administration](ADMIN.md) — overview, SAML single
+  sign-on, security keys and passkeys, authentication policies
 - [Identity provider sign-in](shauth-sso.md)
 - [SCIM 2.0 provisioning](SCIM.md)
 - [People, groups and avatars](PEOPLE.md)
@@ -76,7 +77,8 @@ work is in [PLAN.md](../PLAN.md); status per product is in
   [permissions](SPACE_PERMISSIONS.md),
   [permission transition](SPACE_PERMISSION_TRANSITION.md),
   [roles](CONFLUENCE_SPACE_ROLES.md), [site settings](SITE_SETTINGS.md)
-- Pages: [writing and reading](PAGE_WRITING.md),
+- Pages: [writing and reading](PAGE_WRITING.md) — including the editor's
+  toolbar,
   [content tree](CONTENT_TREE.md),
   [moving, copying and archiving](PAGE_MOVES.md),
   [drafts and deletion](CONTENT_DRAFTS.md),

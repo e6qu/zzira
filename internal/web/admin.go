@@ -67,11 +67,14 @@ type adminPageData struct {
 	CurrentUserID                     string
 	InvitationNotificationsConfigured bool
 	ProviderRegistrationConfigured    bool
-	AppRegistrationConfigured         bool
-	JiraConfiguration                 *models.JiraSiteConfiguration
-	TimeTrackingProviders             []store.InstalledTimeTrackingProvider
-	ApplicationProperties             []models.ApplicationProperty
-	NavigatorColumns                  []adminNavigatorColumn
+	// SAMLProviders are the SAML identity providers this site signs people
+	// in through, with the addresses each provider needs.
+	SAMLProviders             []samlProviderView
+	AppRegistrationConfigured bool
+	JiraConfiguration         *models.JiraSiteConfiguration
+	TimeTrackingProviders     []store.InstalledTimeTrackingProvider
+	ApplicationProperties     []models.ApplicationProperty
+	NavigatorColumns          []adminNavigatorColumn
 	// SignInLink is a sign-in link just issued, shown once on the response to
 	// the request that made it: it is a credential, so it is never carried in
 	// a redirect or written to the audit detail. SignInLinkAbsolute says
@@ -228,6 +231,10 @@ func (h *Handler) adminData(r *http.Request, workspaceID, message string) (admin
 		InvitationNotificationsConfigured: h.InvitationNotificationsConfigured,
 		ProviderRegistrationConfigured:    h.ProviderSecrets != nil,
 		AppRegistrationConfigured:         h.ProviderSecrets != nil,
+	}
+	data.SAMLProviders, err = h.samlProviderViews(r)
+	if err != nil {
+		return adminPageData{}, err
 	}
 	data.Apps, err = h.Store.AppInstallations(r.Context(), workspaceID)
 	if err != nil {

@@ -192,11 +192,83 @@ All operations of the pinned Organizations API (`api/specs/organization-admin.js
 | Managed accounts | Every directory account is reported `claimStatus: managed`; administrators edit profiles, suspend, restore and remove. Claim status is not derived from verified domains. |
 | OpenID Connect SSO (Google, Microsoft Entra ID, Atlassian, any discovered OIDC provider) | Built; see [shauth-sso.md](shauth-sso.md). |
 | IP allowlists | Built and enforced. |
-| SAML SSO | Missing. |
+| SAML SSO | Built: a site administrator configures a SAML 2.0 identity provider under **SAML single sign-on** on `/admin`, and it appears on the sign-in page. See **SAML single sign-on** below. |
 | SCIM user provisioning | `/scim/directory/{directoryId}` serves SCIM 2.0 Users and Groups ([SCIM.md](SCIM.md)). The organization bean reports `scimManaged: true` once a provider has written to the directory, and `/admin` shows where to point a provider, whether one has written, who it manages, and the keys it writes with: a key provisions one directory, is shown once, says when it was last used, and is revoked on its own. |
 | Authentication policies (enforced SSO, required two-step verification, session duration, shortest password, policy membership) | Built and enforced where each applies; see **Authentication policies** below. |
-| Two-step verification | Built: enrolment, recovery codes, the code at sign-in, a policy that requires it, and an administrator's reset. The setup link is drawn as a QR code to scan and shown as a key to type. |
+| Two-step verification | Built: enrolment, recovery codes, the code at sign-in, a policy that requires it, and an administrator's reset. The setup link is drawn as a QR code to scan and shown as a key to type. A security key or passkey answers the second step instead of a code; see **Security keys** below. |
 | Data security policies | Missing. |
+
+## Security keys
+
+A security key or passkey answers the second step a sign-in waits for, instead
+of the code an authenticator app shows. A person registers one from their own
+profile, under **Security keys**: the browser asks the key to sign a challenge
+this site issued, and the site keeps what the key registered — its id, its
+public key and its counter.
+
+- **What the site checks.** The browser's account of the ceremony must name the
+  challenge this site issued, be for this site's address, and not come from
+  inside another site's page. The bytes the key signed must be for this site's
+  domain and say somebody was there. The signature must be the key's own, ES256
+  or RS256. A counter that goes backwards refuses the sign-in, because that is
+  what a copied key looks like.
+- **A challenge is issued here and read once**, for registering or for signing
+  in, and expires in five minutes.
+- **At sign-in.** A registered key earns the second step by itself: a password
+  alone no longer signs that account in, because whoever registered a key
+  expects to be asked for it. The page offers the key beside the code, and an
+  account with a key but no authenticator app signs in with the key alone. A browser with no key of its own cannot answer
+  for somebody else, because the signature is the key's.
+- **Removing a key** leaves the account as it was: with no key and no
+  authenticator app, a password signs in again unless a policy requires the
+  second step.
+- Code: `internal/webauthn`, `internal/web/passkeys.go`,
+  `internal/store/webauthn.go`, `web/static/passkeys.js`. Browser test:
+  `e2e/passkeys.spec.ts`, which drives Chrome's own virtual authenticator.
+
+## SAML single sign-on
+
+A site signs people in through a SAML 2.0 identity provider beside its OpenID
+Connect ones. `/admin` writes the provider under **SAML single sign-on**: a
+provider key (the name it has in addresses), a display name, the provider's
+entity ID, its sign-in address, and the certificate it signs with, as PEM or
+as the bare base64 its metadata carries. Two certificates are pasted together
+while a provider rolls a key over. **Email attribute** and **Name attribute**
+name the attributes to read when the provider does not use the usual ones.
+
+- **What this site tells the provider.** Each provider's row carries the three
+  addresses to give it: this site's entity ID (`/saml/metadata`), the
+  assertion consumer service (`/saml/{provider}/acs`, HTTP-POST) and where a
+  person begins (`/saml/{provider}/login`). `GET /saml/{provider}/metadata`
+  serves the same as SAML metadata. The addresses come from
+  `ZZIRA_EXTERNAL_URL`, never from the request's Host header, so nobody can
+  make this site describe itself as somewhere else.
+- **What a sign-in is.** This site sends an `AuthnRequest` through the
+  HTTP-Redirect binding and remembers its id. The provider posts a response
+  back, and this site reads it only if it answers a sign-in this site began;
+  the record of that sign-in is read once, so a captured answer cannot be
+  posted again. Provider-initiated sign-in (an answer to no request) is
+  refused.
+- **What makes an assertion worth reading.** The signature over the assertion,
+  or over the response around it, must verify against a configured
+  certificate: RSA with SHA-256 or better over exclusive canonical XML, one
+  reference, covering exactly the element being read, through the
+  enveloped-signature transform. SHA-1 is refused. The certificate inside the
+  document is never trusted. Then: the issuer is the configured provider, the
+  audience is this site, the recipient and destination are this site's ACS,
+  the confirmation names this sign-in, and the conditions hold now, within two
+  minutes of clock skew. An assertion id is recorded until the assertion could
+  no longer be valid, so one assertion signs in once.
+- **Who signs in.** The address is the NameID when it is an email address, or
+  the attribute the provider was configured with, or the usual claim names.
+  The person is resolved as an OpenID Connect sign-in resolves one: an account
+  with that address signs in, and a new address becomes a new member.
+- **Turning it off.** A provider is disabled, which takes it off the sign-in
+  page and refuses sign-ins through it, or deleted, which takes it and its
+  waiting sign-ins away. Every change is in the organization's audit log.
+- Code: `internal/saml`, `internal/web/saml.go`,
+  `internal/store/saml_providers.go`. Browser test: `e2e/saml.spec.ts`, which
+  signs in through `e2e/fake-saml-idp.mjs`.
 
 ## Authentication policies
 
@@ -244,10 +316,9 @@ are editable in place.
 Tracked in [PLAN.md](../PLAN.md).
 
 - One server serves one site; an organization cannot hold several sites, and organization discovery returns only that site's organization.
-- SAML single sign-on.
-- SCIM provisions people and groups ([SCIM.md](SCIM.md)); product access is not provisioned with them, and a provider authenticates as an organization administrator rather than with a directory-scoped key. The browser page reads what a provider has written rather than connecting one.
-- Authentication policies enforce single sign-on, two-step verification, session duration and the shortest password; password expiry and the rest of Atlassian's password strength rules are missing, and a policy covers people one at a time rather than a whole group.
-- Two-step verification offers the authenticator app and nothing else: no WebAuthn, no passkeys, no SMS.
+- SCIM provisions people and groups ([SCIM.md](SCIM.md)) with a directory-scoped key issued on `/admin`; product access is not provisioned with them, as Atlassian's own SCIM does not provision it either — a person's access comes from the groups they are provisioned into.
+- Authentication policies enforce single sign-on, two-step verification, session duration and the shortest password, over the people and the groups they cover; password expiry and the rest of Atlassian's password strength rules are missing.
+- Two-step verification offers an authenticator app and a security key or passkey; there is no SMS, and a key is a second step rather than a way to sign in without a password.
 - Account claiming from verified domains (managed vs unmanaged accounts), and domain ownership checks across organizations.
 - The Atlassian user management API (`/users/{account_id}/manage/...`: profile, email, lifecycle, API tokens).
 - Organization API keys distinct from user API tokens.
@@ -265,4 +336,10 @@ Tracked in [PLAN.md](../PLAN.md).
 - `internal/authn/password_test.go`: changing a password, the rules that refuse one, the sessions a change ends, and the sign-in link's single use and expiry.
 - `e2e/password.spec.ts`: an invited person reached by a sign-in link, setting a password, replacing it from their profile, and the session that ends with it.
 - `e2e/two_step.spec.ts`: enrolling an authenticator app, the code at sign-in, a recovery code used once, and turning it off.
+- `internal/saml/signature_test.go`: an assertion signed by Shibboleth, read against the certificate that signed it; a changed audience, value, id or subject refused; a certificate that signed nothing refused; certificates read as PEM and as bare base64.
+- `internal/saml/response_test.go`: what an assertion must say to be read — this site's audience, this site's address, this sign-in, in date — and what is refused: an unsigned one, one signed by somebody else, one from another provider, and a forged assertion smuggled in beside the signed one.
+- `internal/store/saml_providers_test.go`: configuring a provider, two providers refusing to share an entity ID, a sign-in read once, an assertion used once, and what a deleted provider takes with it.
+- `internal/webauthn/webauthn_test.go`: a key registering and answering a sign-in, and what is refused — another challenge, another site's page, another site's key, a registration answering a sign-in, a signature from another key, and a counter that went backwards.
+- `e2e/passkeys.spec.ts`: registering a key from the profile with Chrome's virtual authenticator, signing in with it, a browser with no key refused, and what removing the key leaves behind.
+- `e2e/saml.spec.ts`: an administrator configuring a provider, the addresses it gives the identity provider, somebody signing in through it, an answer to no sign-in refused, and turning the provider off.
 - `e2e/admin.spec.ts`: group and product access, invitations, product activity, domains, policies, authentication policies (a member refused a password sign-in and admitted again once the policy goes), managed profiles, ordinary-user denial, accessibility, themes and 320px reflow.

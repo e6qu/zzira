@@ -577,7 +577,7 @@
                 "required": true,
                 "helpText": "Which service is down?",
                 "assetSchema": "SVC",
-                "assetFilter": "Tier IN (\"1\", \"2\")"
+                "assetFilter": "Tier IN (\"1\", \"2\") AND \"runs on\".Name IS NOT EMPTY"
               },
               {
                 "field": "impact",
@@ -2346,6 +2346,9 @@
         "feedback": "Fixed within the hour, thank you.",
         "participants": [
           "cust-nadia"
+        ],
+        "sharedWith": [
+          "riverbank"
         ]
       },
       {
@@ -2384,7 +2387,10 @@
           }
         ],
         "satisfaction": 4,
-        "feedback": "Clear explanation."
+        "feedback": "Clear explanation.",
+        "sharedWith": [
+          "harbour"
+        ]
       },
       {
         "id": "sr-3",
@@ -2424,6 +2430,9 @@
         "satisfaction": 5,
         "participants": [
           "cust-nadia"
+        ],
+        "sharedWith": [
+          "riverbank"
         ]
       },
       {
@@ -2935,7 +2944,8 @@
                 "Encrypted": "false"
               }
             }
-          ]
+          ],
+          "parent": "inf"
         },
         {
           "id": "app",
@@ -2992,7 +3002,8 @@
                 "Single sign-on": "false"
               }
             }
-          ]
+          ],
+          "parent": "vnd"
         }
       ],
       "relationships": [

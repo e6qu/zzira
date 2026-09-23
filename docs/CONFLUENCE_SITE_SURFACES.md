@@ -73,6 +73,11 @@ The canvas is edited only in the browser, at
 - **Rendering.** The page draws the canvas as an SVG with a 1400 × 800
   viewBox. The same objects and connectors are also listed as accessible
   forms.
+- **Moving an object.** An object is dragged on the canvas and the move is
+  saved as it is let go, through the same route the form below posts to; a
+  connector drawn to it follows while it moves, and a move that cannot be
+  saved puts the object back where it was. Everything the drag does is also
+  on the form, which is what a keyboard uses.
 - **Permissions.** Changing the canvas needs update permission on a current
   whiteboard. An archived whiteboard is read-only until restored.
 - **Storage.** Objects and connectors are stored in `wiki_whiteboard_objects`

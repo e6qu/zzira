@@ -116,9 +116,12 @@ The space page (`/wiki/spaces/{space}`) links to the following tools:
     included.
 
   - `space.json`: the same pages and blog posts in the storage the site keeps,
-    with each page's parent, its labels, the comments under it and the files
-    the archive carries for it. It is what an import reads. The HTML is for
-    reading; the manifest is for moving.
+    with each page's parent, its labels, the comments under it, the files the
+    archive carries for it, who may read and edit it (people by email, groups
+    by name, because an account id means nothing on another site), and what
+    the page said before now -- every earlier version with its author, its
+    date and what they said about the edit. It is what an import reads. The
+    HTML is for reading; the manifest is for moving.
 
   The space page lists the exporter's five latest exports and their status.
   The download (`GET /wiki/spaces/{space}/exports/{task}.zip`) is available
@@ -131,9 +134,15 @@ The space page (`/wiki/spaces/{space}`) links to the following tools:
   came from -- and default to the export's. A page's labels, the comments under
   it and the files the archive carries come back with it; a comment is written
   by the person importing, under a line naming who wrote it where it came from,
-  because the site it came from is not this one. Restrictions, page history and
-  the drafts nobody published are not carried, and neither is a file the export
-  left out for being too large. An archive with no manifest, or one written by
+  because the site it came from is not this one. A page with a past is written
+  the way it was written -- its oldest version first, then each later one -- so
+  its history comes with it, every version owned by the importer and saying who
+  wrote it where it came from. Who may read and edit a page comes back too,
+  matching a person by their email and a group by its name; somebody this site
+  does not have is named on the space the import made, because a page that
+  loses a restriction is a page more people can read. The drafts nobody
+  published are not carried, and neither is a file the export left out for
+  being too large. An archive with no manifest, or one written by
   a later version of the site, is refused rather than making an empty space.
   Code: `internal/store/wiki_space_import.go`.
 
@@ -145,9 +154,7 @@ assignments and content state settings.
 Tracked in [PLAN.md](../PLAN.md).
 
 - **Import.** A space is read back from this site's own export ([above](#space-tools-in-the-browser)); no Confluence XML, no
-  HTML or Markdown, and no Word or other document import. An imported space
-  carries pages and blog posts, not attachments, comments, labels or
-  restrictions.
+  HTML or Markdown, and no Word or other document import.
 - **Export formats.** No XML export (full or custom) for backup or migration,
   no site export, and no PDF, Word or CSV export of a space.
 - **Export contents.** The HTML export has no page hierarchy, comments,

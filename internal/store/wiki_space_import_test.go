@@ -52,6 +52,27 @@ func TestASpaceExportCanBeReadBackIn(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("write the child page: %v", err)
 	}
+	// The parent is edited, so it has a past to carry, and closed to one
+	// group, so it has a restriction to carry.
+	parent, err = st.SaveWikiPage(ctx, workspaceID, actorID, models.WikiPage{
+		ID: parent.ID, SpaceID: space.ID, Title: "Runbooks", Status: "current",
+		Body:    models.WikiBody{Representation: "storage", Value: "<p>How we keep it up, and who to call.</p>"},
+		Version: models.WikiVersion{Number: parent.Version.Number + 1, Message: "Say who to call"},
+	})
+	if err != nil {
+		t.Fatalf("edit the parent page: %v", err)
+	}
+	groupName := "Runbook readers " + key
+	group, err := st.CreateWikiGroup(ctx, workspaceID, actorID, groupName)
+	if err != nil {
+		t.Fatalf("create the group: %v", err)
+	}
+	t.Cleanup(func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM groups WHERE id::text=$1`, group.ID) })
+	if _, err := st.SetWikiPageRestrictions(ctx, workspaceID, actorID, parent.ID, "add", []models.WikiPageRestriction{{
+		Operation: "update", Groups: []models.WikiRestrictionSubject{{Type: "group", ID: group.ID, Name: group.Name}},
+	}}); err != nil {
+		t.Fatalf("restrict the page: %v", err)
+	}
 	// What the parent carries beside its body: a label and a comment.
 	if _, err := st.AddWikiPageLabels(ctx, workspaceID, actorID, parent.ID, []models.WikiLabel{{Name: "runbook", Prefix: "global"}}); err != nil {
 		t.Fatalf("label the page: %v", err)
@@ -145,6 +166,49 @@ func TestASpaceExportCanBeReadBackIn(t *testing.T) {
 	}
 	if len(files) != 1 || files[0].Filename != "runbook.txt" {
 		t.Fatalf("the imported page holds %+v", files)
+	}
+
+	// The page's past came with it: what it said before, and who wrote that.
+	if result.Versions == 0 {
+		t.Fatal("the import brought no history")
+	}
+	versions, err := st.WikiVersions(ctx, workspaceID, actorID, byTitle["Runbooks"].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(versions) < 2 {
+		t.Fatalf("the imported page has %d versions", len(versions))
+	}
+	if !strings.Contains(versions[0].Message, "Imported") {
+		t.Fatalf("the first version says %q", versions[0].Message)
+	}
+	bodies, err := st.WikiPageVersionBodies(ctx, workspaceID, actorID, byTitle["Runbooks"].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(bodies[1].Body, "How we keep it up.") {
+		t.Fatalf("the first version says %q", bodies[1].Body)
+	}
+	if !strings.Contains(byTitle["Runbooks"].Body.Value, "who to call") {
+		t.Fatalf("the page ends at %q", byTitle["Runbooks"].Body.Value)
+	}
+
+	// So did who may edit it.
+	if result.Restrictions != 1 || len(result.Unmatched) != 0 {
+		t.Fatalf("the import brought %d restrictions and could not match %v", result.Restrictions, result.Unmatched)
+	}
+	restrictions, err := st.WikiPageRestrictions(ctx, workspaceID, actorID, byTitle["Runbooks"].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restricted := false
+	for _, restriction := range restrictions {
+		for _, carried := range restriction.Groups {
+			restricted = restricted || (restriction.Operation == "update" && carried.Name == groupName)
+		}
+	}
+	if !restricted {
+		t.Fatalf("the imported page is restricted to %+v", restrictions)
 	}
 }
 

@@ -54,7 +54,13 @@ func (h *Handler) ServiceAssetsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load the files kept with these objects.", http.StatusInternalServerError)
 		return
 	}
-	data := servicePageData{Desk: desk, AssetInventory: inventory, CanAgent: true, CanAdmin: admin, AssetHistory: history, AssetComments: comments, AssetFiles: files}
+	// An object type says what it sits under by name, which the page has only
+	// as an id.
+	schemaNames := make(map[string]string, len(inventory.Schemas))
+	for _, schema := range inventory.Schemas {
+		schemaNames[schema.ID] = schema.Name
+	}
+	data := servicePageData{Desk: desk, AssetInventory: inventory, CanAgent: true, CanAdmin: admin, AssetHistory: history, AssetComments: comments, AssetFiles: files, AssetSchemaNames: schemaNames}
 	// An import redirects back here with what it wrote, so the inventory the
 	// page shows is the one the import left behind.
 	data.AssetImportError = r.URL.Query().Get("importError")
@@ -147,13 +153,16 @@ func (h *Handler) ServiceAssetSchemaSettings(w http.ResponseWriter, r *http.Requ
 	}
 	deskID := r.PathValue("desk")
 	var err error
-	if r.PostFormValue("action") == "delete" {
+	switch {
+	case r.PostFormValue("action") == "delete":
 		err = h.Commands.DeleteServiceAssetSchema(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("schemaId"))
-	} else {
+	case r.PostFormValue("action") == "parent":
+		err = h.Commands.SetServiceAssetSchemaParent(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("schemaId"), r.PostFormValue("parent"))
+	default:
 		var attributes []models.ServiceAssetAttribute
 		attributes, err = parseServiceAssetAttributes(r.PostFormValue("attributes"))
 		if err == nil {
-			_, err = h.Commands.CreateServiceAssetSchema(r.Context(), user.ID, workspaceID, deskID, models.ServiceAssetSchema{Key: r.PostFormValue("key"), Name: r.PostFormValue("name"), Description: r.PostFormValue("description"), Attributes: attributes})
+			_, err = h.Commands.CreateServiceAssetSchema(r.Context(), user.ID, workspaceID, deskID, models.ServiceAssetSchema{Key: r.PostFormValue("key"), Name: r.PostFormValue("name"), Description: r.PostFormValue("description"), ParentID: r.PostFormValue("parent"), Attributes: attributes})
 		}
 	}
 	if err != nil {

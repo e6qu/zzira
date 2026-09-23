@@ -958,6 +958,12 @@
       {{else if .Data.TwoStepConfirmed}}<p>{{.Data.TwoStepCodesLeft}} recovery code{{if ne .Data.TwoStepCodesLeft 1}}s{{end}} left. Turning two-step verification off asks for your password.</p><form class="project-details-form" method="post" action="/profile/two-step"><input type="hidden" name="action" value="disable"><label for="two-step-disable-password">Current password</label><input id="two-step-disable-password" name="currentPassword" type="password" autocomplete="current-password" required><div class="project-form-actions"><button class="btn btn-danger" type="submit">Turn off two-step verification</button></div></form>
       {{else}}<form method="post" action="/profile/two-step"><input type="hidden" name="action" value="start"><button class="btn btn-primary" type="submit">{{if .Data.TwoStepPending}}Start again{{else}}Set up two-step verification{{end}}</button></form>{{if .Data.TwoStepPending}}<p>An enrolment was started and never confirmed. Starting again issues a new key.</p>{{end}}{{end}}
     </section>{{end}}
+    {{if .Data.Self}}<section class="surface-card profile-passkeys" id="security-keys" aria-labelledby="profile-passkeys-title"><div class="section-heading"><div><span class="eyebrow">Security</span><h2 id="profile-passkeys-title">Security keys</h2><p>A security key or passkey answers a sign-in instead of a code. It is tied to this site, so a page pretending to be this one cannot use it.</p></div></div>
+      <ul class="profile-passkey-list">{{range .Data.Passkeys}}<li><span><strong>{{.Label}}</strong><small>Added {{.Added}}{{if .LastUsed}} · last used {{.LastUsed}}{{end}}{{if .UserVerified}} · checks who is using it{{end}}</small></span><form method="post" action="/profile/passkeys/{{.ID}}/delete"><button class="btn btn-subtle" type="submit">Remove<span class="sr-only"> {{.Label}}</span></button></form></li>{{else}}<li><small>No security key is registered on this account.</small></li>{{end}}</ul>
+      <p data-passkey-status hidden></p>
+      <div class="project-details-form"><label for="passkey-label">Name this key</label><input id="passkey-label" data-passkey-label maxlength="80" placeholder="Work laptop"><div class="project-form-actions"><button class="btn btn-primary" type="button" data-passkey-register>Register a security key</button></div></div>
+      <script src="/static/passkeys.js?v=1" defer></script>
+    </section>{{end}}
     {{if .Data.Self}}<section class="surface-card profile-password" id="password" aria-labelledby="profile-password-title"><div class="section-heading"><div><span class="eyebrow">Security</span><h2 id="profile-password-title">Password</h2><p>{{if .Data.PasswordManaged}}Your organization signs this account in through its identity provider, so it has no password to change.{{else}}A new password is at least {{.Data.PasswordMinimum}} characters, and changing it ends every other session you left open.{{end}}</p></div></div>{{if not .Data.PasswordManaged}}{{if .Data.PasswordError}}<div class="form-error" role="alert"><strong>Password not changed</strong><span>{{.Data.PasswordError}}</span></div>{{end}}<form class="project-details-form" method="post" action="/profile/password"><label for="profile-current-password">Current password</label><input id="profile-current-password" name="currentPassword" type="password" autocomplete="current-password" required><label for="profile-new-password">New password</label><input id="profile-new-password" name="newPassword" type="password" autocomplete="new-password" minlength="{{.Data.PasswordMinimum}}" maxlength="72" required><label for="profile-confirm-password">Confirm new password</label><input id="profile-confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="{{.Data.PasswordMinimum}}" maxlength="72" required><div class="project-form-actions"><button class="btn btn-primary" type="submit">Change password</button></div></form>{{end}}</section>{{end}}
     {{if and .Data.Self .Data.Locales}}<section class="surface-card profile-language" aria-labelledby="profile-language-title"><div class="section-heading"><div><span class="eyebrow">Language</span><h2 id="profile-language-title">Reading language</h2><p>The site's work types, priorities, resolutions and statuses read in the language you choose. Searching and everything you send still use the site's own words.</p></div></div><form class="project-details-form" method="post" action="/profile/language"><label for="profile-locale">Language</label><select id="profile-locale" name="locale"><option value="">The site's own language</option>{{range .Data.Locales}}<option value="{{.}}"{{if eq . $.Data.Locale}} selected{{end}}>{{.}}</option>{{end}}</select><div class="project-form-actions"><button class="btn btn-primary" type="submit">Save language</button></div></form></section>{{end}}
     {{if .Data.Self}}<section class="surface-card profile-notifications" aria-labelledby="profile-notifications-title"><div class="section-heading"><div><span class="eyebrow">Notifications</span><h2 id="profile-notifications-title">Email notifications</h2><p>Choose whether your own changes reach you and which work you follow.</p></div></div><form class="project-details-form" method="post" action="/profile/notifications"><label for="profile-own-changes">My changes</label><select id="profile-own-changes" name="ownChanges"><option value="false"{{if not .Data.NotifyOwnChanges}} selected{{end}}>Do not notify me</option><option value="true"{{if .Data.NotifyOwnChanges}} selected{{end}}>Notify me</option></select><label for="profile-autowatch">Autowatch</label><select id="profile-autowatch" name="autowatch"><option value="enabled"{{if .Data.Autowatch}} selected{{end}}>Watch work items I create or comment on</option><option value="disabled"{{if not .Data.Autowatch}} selected{{end}}>Do not watch automatically</option></select><label for="profile-wiki-autowatch">Wiki autowatch</label><select id="profile-wiki-autowatch" name="wikiAutowatch"><option value="enabled"{{if .Data.WikiAutowatch}} selected{{end}}>Watch pages I write or comment on</option><option value="disabled"{{if not .Data.WikiAutowatch}} selected{{end}}>Do not watch automatically</option></select><div class="project-form-actions"><button class="btn btn-primary" type="submit">Save notification preferences</button></div></form></section>{{end}}
@@ -1137,6 +1143,10 @@
       <input id="two-step-code" name="code" inputmode="text" autocomplete="one-time-code" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus>
       <button class="btn btn-primary btn-block" type="submit">Verify</button>
     </form>
+    {{if .Keys}}<p class="login-separator"><span>or use your security key</span></p>
+    <p class="form-error" data-passkey-signin-status hidden></p>
+    <button class="btn btn-secondary btn-block" type="button" data-passkey-signin>Use a security key</button>
+    <script src="/static/passkeys.js?v=1" defer></script>{{end}}
     <p><a href="/login">Sign in as someone else</a></p>
   </main>
 </body></html>
@@ -1206,7 +1216,7 @@
     <span class="eyebrow">Welcome back</span><h1>Log in to your workspace</h1><p class="login-intro">Continue to ZZIRA Software.</p>
     {{if .Providers}}
     <div class="login-providers" aria-label="Single sign-on providers">
-      {{range .Providers}}<a class="btn btn-secondary btn-block" href="/auth/{{.Key}}">Continue with {{.DisplayName}}</a>{{end}}
+      {{range .Providers}}<a class="btn btn-secondary btn-block" href="{{.Path}}">Continue with {{.DisplayName}}</a>{{end}}
     </div>
     {{if .Password}}<p class="login-separator"><span>or use your ZZIRA account</span></p>{{end}}
     {{end}}
@@ -1239,7 +1249,7 @@
     <p>You have been signed out of ZZIRA.</p>
     {{if .Providers}}
     <div class="login-providers" aria-label="Sign-in providers">
-      {{range .Providers}}<a class="btn btn-primary btn-block" href="/auth/{{.Key}}">Sign in with {{.DisplayName}}</a>{{end}}
+      {{range .Providers}}<a class="btn btn-primary btn-block" href="{{.Path}}">Sign in with {{.DisplayName}}</a>{{end}}
     </div>
     {{if .Password}}<a class="btn btn-secondary btn-block" href="/login">Use password</a>{{end}}
     {{else}}

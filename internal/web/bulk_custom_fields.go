@@ -73,6 +73,13 @@ func bulkCustomFieldKind(field models.CreateFieldMeta) string {
 		return "multiVersion"
 	case "array":
 		return "labels"
+	case "any":
+		// Jira reports an Assets object field by its own type key rather than
+		// a schema type, and the editor offers the objects behind it.
+		if field.TypeKey == models.CustomFieldTypeKeys[models.CustomFieldAsset] {
+			return "asset"
+		}
+		return ""
 	default:
 		return ""
 	}
@@ -83,7 +90,7 @@ func bulkCustomFieldKind(field models.CreateFieldMeta) string {
 func bulkCustomFieldChooses(kind string) bool {
 	switch kind {
 	case "singleSelect", "multiSelect", "cascadingSelect", "user", "multiUser", "group", "multiGroup",
-		"team", "project", "version", "multiVersion":
+		"team", "project", "version", "multiVersion", "asset", "multiAsset":
 		return true
 	}
 	return false
@@ -93,7 +100,7 @@ func bulkCustomFieldChooses(kind string) bool {
 // is how the page decides between a select and a multiple select.
 func (field bulkCustomField) MultiValued() bool {
 	switch field.Kind {
-	case "multiSelect", "multiUser", "multiGroup", "multiVersion":
+	case "multiSelect", "multiUser", "multiGroup", "multiVersion", "multiAsset":
 		return true
 	}
 	return false
@@ -169,6 +176,37 @@ func (h *Handler) bulkCustomFields(ctx context.Context, workspaceID, userID, pro
 				}
 			}
 			fields[index].Options = cascade
+		}
+	}
+	// An Assets object field offers the objects of the desks this person
+	// agents, and holds one or several of them as its context says.
+	assetFields := []string{}
+	for _, field := range fields {
+		if field.Kind == "asset" {
+			assetFields = append(assetFields, field.ID)
+		}
+	}
+	if len(assetFields) > 0 {
+		found, err := h.Store.SearchServiceAssetObjects(ctx, workspaceID, userID, "", "", 0, 0)
+		if err != nil {
+			return nil, err
+		}
+		options := make([]models.CreateFieldOption, 0, len(found.Objects))
+		for _, object := range found.Objects {
+			options = append(options, models.CreateFieldOption{ID: object.ID, Name: object.Key + " · " + object.Label + " (" + object.SchemaName + ")"})
+		}
+		multiple, err := h.Store.ServiceAssetFieldCardinality(ctx, projectID, assetFields)
+		if err != nil {
+			return nil, err
+		}
+		for index := range fields {
+			if fields[index].Kind != "asset" {
+				continue
+			}
+			fields[index].Options = options
+			if multiple[fields[index].ID] {
+				fields[index].Kind = "multiAsset"
+			}
 		}
 	}
 	sort.Slice(fields, func(i, j int) bool {
@@ -280,6 +318,19 @@ func bulkCustomFieldOperation(r *http.Request, field bulkCustomField) (store.Bul
 			groups = append(groups, map[string]string{"groupId": value})
 		}
 		return encode(groups)
+	case "asset":
+		// An Assets object is named by its id, as the work item's own editor
+		// and the portal both write it.
+		return encode(single)
+	case "multiAsset":
+		objects, seen := []string{}, map[string]bool{}
+		for _, value := range values {
+			if !seen[value] {
+				seen[value] = true
+				objects = append(objects, value)
+			}
+		}
+		return encode(objects)
 	case "labels":
 		return encode(values)
 	case "dateTime":

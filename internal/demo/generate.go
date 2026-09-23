@@ -698,6 +698,18 @@ func (s *Scenario) growService(declared *GeneratedService, days int, random *ran
 		}
 		return from[random.Intn(len(from))]
 	}
+	// A customer raising a request says who it is for. Someone who belongs to
+	// an organization this desk serves usually raises it for the organization,
+	// so their colleagues follow it; the rest keep it to themselves.
+	organizationsFor := map[string][]string{}
+	for _, organization := range s.Service.Organizations {
+		if len(organization.Desks) > 0 && !slices.Contains(organization.Desks, declared.Project) {
+			continue
+		}
+		for _, member := range organization.Members {
+			organizationsFor[member] = append(organizationsFor[member], organization.ID)
+		}
+	}
 	interval := 7.0 / declared.RequestsPerWeek
 	raised := 0
 	for day := float64(-days); day < 0; day += interval {
@@ -717,6 +729,9 @@ func (s *Scenario) growService(declared *GeneratedService, days int, random *ran
 			ID: fmt.Sprintf("%s-gr%d", declared.Project, raised), Project: declared.Project,
 			RequestType: requestType, Customer: customer, Summary: summary,
 			Description: pick(generatedDetail), CreatedDay: at,
+		}
+		if shared := organizationsFor[customer]; len(shared) > 0 && random.Float64() < 0.45 {
+			request.SharedWith = []string{shared[random.Intn(len(shared))]}
 		}
 		// Some requests are shared with a colleague, who then reads the
 		// replies as the person who raised it does.

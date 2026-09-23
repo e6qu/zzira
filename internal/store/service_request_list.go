@@ -50,16 +50,15 @@ func (s *Store) ServiceRequestList(ctx context.Context, workspaceID string, filt
 		ownership = append(ownership, "EXISTS(SELECT 1 FROM service_request_participants p WHERE p.request_issue_id=sr.issue_id AND p.user_id="+viewer()+")")
 	}
 	if filter.Organizations {
-		// A customer's request is shared with the organizations they belong
-		// to that the desk serves.
+		// A request is shared with the organizations the person who raised it
+		// chose, and everybody in one of them reads it.
 		organization := "TRUE"
 		if filter.OrganizationID != "" {
-			organization = "dso.organization_id=" + arg(filter.OrganizationID)
+			organization = "ro.organization_id=" + arg(filter.OrganizationID)
 		}
-		ownership = append(ownership, `EXISTS(SELECT 1 FROM service_desk_organizations dso
-			JOIN service_organization_users member ON member.organization_id=dso.organization_id AND member.user_id=`+viewer()+`
-			JOIN service_organization_users reporter ON reporter.organization_id=dso.organization_id AND reporter.user_id=sr.customer_id
-			WHERE dso.service_desk_id=sr.service_desk_id AND `+organization+`)`)
+		ownership = append(ownership, `EXISTS(SELECT 1 FROM service_request_organizations ro
+			JOIN service_organization_users member ON member.organization_id=ro.organization_id AND member.user_id=`+viewer()+`
+			WHERE ro.request_issue_id=sr.issue_id AND `+organization+`)`)
 	}
 	if filter.Approver {
 		decision := "TRUE"

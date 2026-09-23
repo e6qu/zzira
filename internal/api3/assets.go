@@ -57,6 +57,8 @@ func (h *Handler) assetsRoute(w http.ResponseWriter, r *http.Request) {
 		h.assetObjectTypes(w, r, workspaceID, actorID, assetsWorkspace, parts[1])
 	case len(parts) == 3 && parts[0] == "objectschema" && parts[2] == "import" && r.Method == http.MethodPost:
 		h.assetImport(w, r, workspaceID, actorID, assetsWorkspace, parts[1])
+	case len(parts) == 2 && parts[0] == "objecttype" && r.Method == http.MethodPut:
+		h.assetObjectTypeUpdate(w, r, workspaceID, actorID, assetsWorkspace, parts[1])
 	case len(parts) == 3 && parts[0] == "objecttype" && parts[2] == "attributes" && r.Method == http.MethodGet:
 		h.assetObjectTypeAttributes(w, r, workspaceID, actorID, parts[1])
 	case len(parts) == 2 && parts[0] == "object" && parts[1] == "create" && r.Method == http.MethodPost:
@@ -106,15 +108,20 @@ func (h *Handler) assetsBase(assetsWorkspace string) string {
 }
 
 func (h *Handler) assetSchemaBean(schema models.ServiceAssetSchema, assetsWorkspace string, objects int) map[string]any {
+	var parent any
+	if schema.ParentID != "" {
+		parent = schema.ParentID
+	}
 	return map[string]any{
-		"id":              schema.ID,
-		"name":            schema.Name,
-		"objectSchemaKey": schema.Key,
-		"description":     schema.Description,
-		"serviceDeskId":   schema.ServiceDeskID,
-		"objectCount":     objects,
-		"objectTypeCount": 1,
-		"_links":          map[string]string{"self": h.assetsBase(assetsWorkspace) + "/objectschema/" + schema.ID},
+		"parentObjectTypeId": parent,
+		"id":                 schema.ID,
+		"name":               schema.Name,
+		"objectSchemaKey":    schema.Key,
+		"description":        schema.Description,
+		"serviceDeskId":      schema.ServiceDeskID,
+		"objectCount":        objects,
+		"objectTypeCount":    1,
+		"_links":             map[string]string{"self": h.assetsBase(assetsWorkspace) + "/objectschema/" + schema.ID},
 	}
 }
 
@@ -182,26 +189,90 @@ func (h *Handler) assetSchema(w http.ResponseWriter, r *http.Request, workspaceI
 	writeJSON(w, http.StatusOK, h.assetSchemaBean(*schema, assetsWorkspace, objects.Total))
 }
 
-// assetObjectTypes reports the schema itself: this site has no type hierarchy
-// below a schema, so the flat list of object types holds exactly one.
+// assetObjectTypes reports the schema and every object type beneath it, which
+// is what a flat list of an object type hierarchy is.
 func (h *Handler) assetObjectTypes(w http.ResponseWriter, r *http.Request, workspaceID, actorID, assetsWorkspace, schemaID string) {
-	schema, _, err := h.Store.ServiceAssetSchema(r.Context(), workspaceID, actorID, schemaID)
+	schema, deskID, err := h.Store.ServiceAssetSchema(r.Context(), workspaceID, actorID, schemaID)
 	if err != nil {
 		assetError(w, err, "Could not load that Assets schema.")
 		return
 	}
-	attributes := make([]map[string]any, 0, len(schema.Attributes))
-	for _, attribute := range schema.Attributes {
-		attributes = append(attributes, assetAttributeBean(attribute, schema.ID))
+	inventory, err := h.Store.ServiceAssetInventory(r.Context(), workspaceID, actorID, deskID)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load that Assets schema.")
+		return
 	}
-	writeJSON(w, http.StatusOK, []map[string]any{{
-		"id":                 schema.ID,
-		"name":               schema.Name,
-		"objectSchemaId":     schema.ID,
-		"parentObjectTypeId": nil,
-		"attributes":         attributes,
-		"_links":             map[string]string{"self": h.assetsBase(assetsWorkspace) + "/objecttype/" + schema.ID},
-	}})
+	types := []map[string]any{}
+	for _, descendant := range serviceAssetSchemaTree(inventory.Schemas, schema.ID) {
+		attributes := make([]map[string]any, 0, len(descendant.Attributes))
+		for _, attribute := range descendant.Attributes {
+			attributes = append(attributes, assetAttributeBean(attribute, descendant.ID))
+		}
+		var parent any
+		if descendant.ParentID != "" {
+			parent = descendant.ParentID
+		}
+		types = append(types, map[string]any{
+			"id":                 descendant.ID,
+			"name":               descendant.Name,
+			"objectSchemaId":     descendant.ID,
+			"parentObjectTypeId": parent,
+			"attributes":         attributes,
+			"_links":             map[string]string{"self": h.assetsBase(assetsWorkspace) + "/objecttype/" + descendant.ID},
+		})
+	}
+	writeJSON(w, http.StatusOK, types)
+}
+
+// serviceAssetSchemaTree is one object type and everything beneath it, in the
+// order the inventory lists them.
+func serviceAssetSchemaTree(schemas []models.ServiceAssetSchema, rootID string) []models.ServiceAssetSchema {
+	tree := []models.ServiceAssetSchema{}
+	included := map[string]bool{rootID: true}
+	for _, schema := range schemas {
+		if schema.ID == rootID {
+			tree = append(tree, schema)
+		}
+	}
+	// A parent is listed before its children only by name, so the walk runs
+	// until it stops finding anything new.
+	for grew := true; grew; {
+		grew = false
+		for _, schema := range schemas {
+			if included[schema.ID] || schema.ParentID == "" || !included[schema.ParentID] {
+				continue
+			}
+			included[schema.ID] = true
+			tree = append(tree, schema)
+			grew = true
+		}
+	}
+	return tree
+}
+
+// assetObjectTypeUpdate moves an object type under another, or to the top.
+func (h *Handler) assetObjectTypeUpdate(w http.ResponseWriter, r *http.Request, workspaceID, actorID, assetsWorkspace, schemaID string) {
+	var body assetSchemaBody
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+		jiraError(w, http.StatusBadRequest, "The request body is not valid JSON.")
+		return
+	}
+	schema, deskID, err := h.Store.ServiceAssetSchema(r.Context(), workspaceID, actorID, schemaID)
+	if err != nil {
+		assetError(w, err, "Could not load that Assets object type.")
+		return
+	}
+	if err := h.Commands.SetServiceAssetSchemaParent(r.Context(), actorID, workspaceID, deskID, schemaID, body.ParentObjectTypeID); err != nil {
+		assetWriteError(w, err)
+		return
+	}
+	schema.ParentID = strings.TrimSpace(body.ParentObjectTypeID)
+	objects, err := h.Store.SearchServiceAssetObjects(r.Context(), workspaceID, actorID, schemaID, "", 0, 0)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "Could not load that Assets object type.")
+		return
+	}
+	writeJSON(w, http.StatusOK, h.assetSchemaBean(*schema, assetsWorkspace, objects.Total))
 }
 
 func (h *Handler) assetObjectTypeAttributes(w http.ResponseWriter, r *http.Request, workspaceID, actorID, schemaID string) {
@@ -385,7 +456,10 @@ type assetSchemaBody struct {
 	ObjectSchemaKey string `json:"objectSchemaKey"`
 	Description     string `json:"description"`
 	ServiceDeskID   string `json:"serviceDeskId"`
-	Attributes      []struct {
+	// ParentObjectTypeID is the object type this one sits under, as Assets
+	// nests object types.
+	ParentObjectTypeID string `json:"parentObjectTypeId"`
+	Attributes         []struct {
 		ID       string   `json:"id"`
 		Name     string   `json:"name"`
 		Type     string   `json:"type"`
@@ -416,7 +490,7 @@ func (h *Handler) assetSchemaCreate(w http.ResponseWriter, r *http.Request, work
 		jiraError(w, http.StatusNotFound, "That service desk does not exist.")
 		return
 	}
-	schema := models.ServiceAssetSchema{Key: body.ObjectSchemaKey, Name: body.Name, Description: body.Description}
+	schema := models.ServiceAssetSchema{Key: body.ObjectSchemaKey, Name: body.Name, Description: body.Description, ParentID: strings.TrimSpace(body.ParentObjectTypeID)}
 	for _, attribute := range body.Attributes {
 		key := attribute.ID
 		if key == "" {

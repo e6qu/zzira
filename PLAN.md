@@ -107,14 +107,17 @@ Each numbered item is one or more substantial PRs.
 
 Jira Plans (Advanced Roadmaps): cross-project plans over boards, projects and
 filters, with teams, capacity, scenarios and an auto-scheduler. ZZIRA has plan
-REST CRUD, sources, exclusions, scenarios with review changes, teams, capacity
-and dependency checks.
+REST CRUD, sources, exclusions, scenarios with review changes, teams, capacity,
+dependency checks, and a scheduler that fills each team's iterations by rank,
+capacity and dependencies into the scenario a planner then reviews
+([JIRA_SOFTWARE](docs/JIRA_SOFTWARE.md)).
 
-- Auto-scheduler: schedule by rank, dependencies, team capacity, sprints and
-  releases; preview and apply to a scenario.
-- Plan setup in the browser: a date custom field as a plan's date, and plan
-  custom fields (create, scheduling, sources, exclusions, permissions, teams
-  and cross-project releases are there).
+- Auto-scheduler: schedule against releases too, so a version's date bounds
+  what may go after it.
+- Plan setup in the browser: a date custom field as a plan's date, plan custom
+  fields, and adding or removing a team (create, scheduling, sources,
+  exclusions, permissions, how each team plans, and cross-project releases are
+  there).
 - Restore archived and trashed plans; duplicate copies scenarios.
 - Scenario edits: parent, rank, release, status, create work items.
 - Views: a saved zoom or column set. Work is grouped by team, sprint, project,
@@ -155,19 +158,21 @@ and the release hub reads it back; nothing plans with it yet.
 ## 6. Enterprise identity
 
 Atlassian Guard and organization administration. ZZIRA has OIDC sign-in (Google,
-Entra, Atlassian, custom), DNS domain verification, IP allowlists, SCIM user and
-group provisioning, authentication policies, and managed profile edit, suspend,
-restore and remove.
+Entra, Atlassian, custom), SAML 2.0 sign-in ([ADMIN.md](docs/ADMIN.md)), DNS
+domain verification, IP allowlists, SCIM user and group provisioning,
+authentication policies, and managed profile edit, suspend, restore and remove.
 
-- SAML single sign-on with multiple identity providers.
+- SAML: single logout, encrypted assertions, signed authentication requests,
+  and provider-initiated sign-in, which is refused today.
 - SCIM provisioning of product access, and a directory-scoped provisioning key
   (users and groups are provisioned, and `scimManaged` reflects it).
 - Authentication policies enforce single sign-on, two-step verification,
   session duration, the shortest password and per-policy membership; password
   expiry and the rest of Atlassian's strength rules are still missing, and a
   policy covers named people rather than a group.
-- Two-step verification is an authenticator app alone: no WebAuthn, no
-  passkeys. The setup link is drawn as a QR code and shown as a key.
+- Two-step verification is an authenticator app or a security key
+  ([ADMIN.md](docs/ADMIN.md)); a key is a second step rather than a way to
+  sign in without a password, and there is no SMS.
 - Managed accounts claimed through verified domains; domain ownership exclusive
   across organizations; `claimStatus` derived, not constant.
 - User management API (`/users/{id}/manage/...`).

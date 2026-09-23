@@ -212,10 +212,6 @@ advanced (`?mode=advanced`) modes and saves queries as
 
 See [PLAN.md](../PLAN.md).
 
-- `Organizations` searches the organizations a request is shared with, which
-  here means the ones its customer belongs to that its desk serves -- what the
-  portal already shows a colleague. A request is not shared with an
-  organization one at a time, as JSM lets a customer do when they raise it.
 - `versionedRepresentations` carry only the current value, not field history.
 - Value validation covers status, priority, resolution and work type (by name
   or id). A project, component, version, user or custom field option that does

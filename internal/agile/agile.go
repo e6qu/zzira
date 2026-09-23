@@ -337,6 +337,8 @@ func (h *Handler) createSprint(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name          string          `json:"name"`
 		Goal          string          `json:"goal"`
+		StartDate     string          `json:"startDate"`
+		EndDate       string          `json:"endDate"`
 		OriginBoard   json.RawMessage `json:"originBoardId"`
 		OriginBoardID string          `json:"-"`
 	}
@@ -355,6 +357,18 @@ func (h *Handler) createSprint(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusBadRequest, "The board does not exist.")
 		return
 	}
+	// A sprint may be created with the dates it will run between, as Jira's
+	// own create does; without them it is a future sprint with no dates.
+	startDate, err := parseSprintDate(req.StartDate)
+	if err != nil {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"startDate": err.Error()})
+		return
+	}
+	endDate, err := parseSprintDate(req.EndDate)
+	if err != nil {
+		jiraFieldError(w, http.StatusBadRequest, map[string]string{"endDate": err.Error()})
+		return
+	}
 	sprint, err := h.Commands.CreateSprint(r.Context(), userID, wsID, originBoard.ID, req.Name, req.Goal)
 	if errors.Is(err, commands.ErrPermission) {
 		jiraError(w, http.StatusForbidden, err.Error())
@@ -367,6 +381,19 @@ func (h *Handler) createSprint(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+	if startDate != nil || endDate != nil {
+		sprint, err = h.Commands.UpdateSprint(r.Context(), userID, wsID, sprint.ID, store.SprintUpdate{
+			Name: sprint.Name, Goal: sprint.Goal, State: sprint.State, StartDate: startDate, EndDate: endDate,
+		})
+		if errors.Is(err, store.ErrSprintValidation) || errors.Is(err, store.ErrSprintConflict) {
+			jiraError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
 	}
 	writeJSON(w, http.StatusCreated, h.sprintBean(sprint))
 }

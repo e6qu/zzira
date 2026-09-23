@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -402,5 +403,15 @@ func (h *Handler) WikiSpaceImport(w http.ResponseWriter, r *http.Request) {
 		redirectLocal(w, r, "/wiki?importError="+url.QueryEscape(message)+"#wiki-import-space")
 		return
 	}
-	redirectLocal(w, r, "/wiki/spaces/"+result.Space.ID)
+	// An import that could not put a restriction back says so on the space it
+	// made: a page that loses one is a page more people can read.
+	query := ""
+	if len(result.Unmatched) > 0 {
+		missing := result.Unmatched
+		if len(missing) > 5 {
+			missing = append(missing[:5:5], fmt.Sprintf("and %d more", len(result.Unmatched)-5))
+		}
+		query = "?importNotice=" + url.QueryEscape("This site has no "+strings.Join(missing, ", ")+", so the pages the export restricted to them are open to everyone who can read the space.")
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+result.Space.ID+query)
 }

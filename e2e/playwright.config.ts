@@ -12,10 +12,18 @@ export default defineConfig({
   projects: [
     { name: 'chromium', use: { browserName: 'chromium' } },
   ],
-  webServer: {
-    command: 'node fake-hydra.mjs',
-    url: 'http://127.0.0.1:8100/healthz',
-    reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
-  },
+  webServer: [
+    {
+      command: 'node fake-hydra.mjs',
+      url: 'http://127.0.0.1:8100/healthz',
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
+    {
+      command: 'node fake-saml-idp.mjs',
+      url: 'http://127.0.0.1:8200/healthz',
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
+  ],
 });

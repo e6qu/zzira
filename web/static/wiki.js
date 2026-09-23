@@ -717,6 +717,54 @@ document.addEventListener('DOMContentLoaded', () => {
       document.execCommand(button.dataset.wikiCommand, false, null);
     });
   });
+  // A heading, a quote or a code block is the block the caret is in, changed
+  // to another block; the select says which, and goes back to reading what
+  // the caret is in so it never claims the wrong one.
+  const style = toolbar.querySelector('[data-wiki-style]');
+  if (style) {
+    style.addEventListener('mousedown', (event) => event.stopPropagation());
+    style.addEventListener('change', () => {
+      editor.focus();
+      document.execCommand('formatBlock', false, style.value);
+      style.value = 'p';
+    });
+  }
+  // A link is added around what is selected, or as the address itself when
+  // nothing is. The address is checked here so nothing but http, https and
+  // mailto reaches the page.
+  const linkURL = toolbar.querySelector('[data-wiki-link-url]');
+  const linkButton = toolbar.querySelector('[data-wiki-link]');
+  if (linkURL && linkButton) {
+    linkButton.addEventListener('mousedown', (event) => event.preventDefault());
+    linkButton.addEventListener('click', () => {
+      const address = linkURL.value.trim();
+      if (!/^(https?:|mailto:)/i.test(address)) {
+        linkURL.setCustomValidity('A link address begins with http, https or mailto.');
+        linkURL.reportValidity();
+        return;
+      }
+      linkURL.setCustomValidity('');
+      editor.focus();
+      const selection = document.getSelection();
+      if (selection && !selection.isCollapsed) {
+        document.execCommand('createLink', false, address);
+      } else {
+        document.execCommand('insertHTML', false, `<a href="${escapeStorage(address)}">${escapeStorage(address)}</a>`);
+      }
+      linkURL.value = '';
+    });
+  }
+  // A table arrives as a header row and a row under it, which is the shape
+  // somebody then types into.
+  const tableButton = toolbar.querySelector('[data-wiki-table]');
+  if (tableButton) {
+    tableButton.addEventListener('mousedown', (event) => event.preventDefault());
+    tableButton.addEventListener('click', () => {
+      editor.focus();
+      document.execCommand('insertHTML', false,
+        '<table><thead><tr><th>Heading</th><th>Heading</th></tr></thead><tbody><tr><td>Cell</td><td>Cell</td></tr></tbody></table><p></p>');
+    });
+  }
   const mentionButton = toolbar.querySelector('[data-wiki-mention]');
   if (picker) {
     const adapter = editorMentions(editor);

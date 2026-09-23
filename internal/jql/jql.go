@@ -2097,18 +2097,14 @@ func (c *compiler) commentClause(cl Clause) string {
 // on it -- who watches it, who voted for it -- which is how Jira's watcher
 // and voter fields search.
 // requestOrganizationsClause searches the organizations a service request is
-// shared with. A request is shared with the organizations its customer belongs
-// to that its desk serves, which is what the portal shows a colleague of the
-// person who raised it, so that is what this asks about. An organization is
-// named as the portal names it -- "Riverbank" -- or by its id.
+// shared with: the ones the person who raised it chose to share it with, which
+// is what the portal shows their colleagues. An organization is named as the
+// portal names it -- "Riverbank" -- or by its id.
 func (c *compiler) requestOrganizationsClause(cl Clause) string {
 	shared := func(condition string) string {
-		return `EXISTS (SELECT 1 FROM service_requests organization_request
-			JOIN service_desk_organizations desk_organization ON desk_organization.service_desk_id=organization_request.service_desk_id
-			JOIN service_organization_users organization_member ON organization_member.organization_id=desk_organization.organization_id
-			  AND organization_member.user_id=organization_request.customer_id
-			JOIN service_organizations organization ON organization.id=desk_organization.organization_id
-			WHERE organization_request.issue_id=i.id AND (` + condition + `))`
+		return `EXISTS (SELECT 1 FROM service_request_organizations request_organization
+			JOIN service_organizations organization ON organization.id=request_organization.organization_id
+			WHERE request_organization.request_issue_id=i.id AND (` + condition + `))`
 	}
 	switch cl.Op {
 	case "empty":

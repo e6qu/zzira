@@ -383,6 +383,7 @@ func (s *Store) ServiceRequest(ctx context.Context, workspaceID, viewerID, issue
 		WHERE sr.workspace_id=$1 AND (sr.issue_id=$3 OR upper(i.key)=upper($3))
 		  AND ($4 OR sr.customer_id=$2
 		    OR EXISTS(SELECT 1 FROM service_request_participants p WHERE p.request_issue_id=sr.issue_id AND p.user_id=$2)
+		    OR EXISTS(SELECT 1 FROM service_request_organizations ro JOIN service_organization_users member ON member.organization_id=ro.organization_id AND member.user_id=$2 WHERE ro.request_issue_id=sr.issue_id)
 		    OR EXISTS(SELECT 1 FROM service_request_approvals a JOIN service_request_approvers ap ON ap.approval_id=a.id WHERE a.request_issue_id=sr.issue_id AND ap.user_id=$2))`, workspaceID, viewerID, issueIDOrKey, allowAll))
 }
 

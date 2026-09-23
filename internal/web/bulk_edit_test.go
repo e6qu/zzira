@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/e6qu/zzira/internal/models"
 )
 
 func bulkEditRequest(form url.Values) *http.Request {
@@ -165,5 +167,49 @@ func TestBulkEditOperationsSetCustomFields(t *testing.T) {
 		"valueCustom_customfield_99999": {"anything"},
 	}), fields); err == nil {
 		t.Fatal("a field outside the project was edited")
+	}
+}
+
+// An Assets object field is set across a selection like any other: one object
+// by id, or several when its context holds several. Jira reports such a field
+// with no schema type of its own, so the editor knows it by its type key.
+func TestBulkEditOperationsSetAssetFields(t *testing.T) {
+	if kind := bulkCustomFieldKind(models.CreateFieldMeta{Type: "any", TypeKey: models.CustomFieldTypeKeys[models.CustomFieldAsset]}); kind != "asset" {
+		t.Fatalf("an Assets object field is %q", kind)
+	}
+	if kind := bulkCustomFieldKind(models.CreateFieldMeta{Type: "any", TypeKey: "com.example.app__thing"}); kind != "" {
+		t.Fatalf("an app's own field is %q, and the editor leaves it alone", kind)
+	}
+	fields := []bulkCustomField{
+		{ID: "customfield_10200", Name: "Affected service", Kind: "asset"},
+		{ID: "customfield_10201", Name: "Affected services", Kind: "multiAsset"},
+	}
+	if !fields[0].Chooses() || fields[0].MultiValued() {
+		t.Fatal("a single Assets field is chosen from a list, one at a time")
+	}
+	if !fields[1].Chooses() || !fields[1].MultiValued() {
+		t.Fatal("an Assets field that holds several is chosen from a list, several at a time")
+	}
+	operations, err := bulkEditOperations(bulkEditRequest(url.Values{
+		"field":                         {"customfield_10200", "customfield_10201"},
+		"valueCustom_customfield_10200": {"obj-1"},
+		"valueCustom_customfield_10201": {"obj-2", "obj-3", "obj-2"},
+	}), fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(operations) != 2 || string(operations[0].Value) != `"obj-1"` || string(operations[1].Value) != `["obj-2","obj-3"]` {
+		t.Fatalf("operations = %+v, %s and %s", operations, operations[0].Value, operations[1].Value)
+	}
+	cleared, err := bulkEditOperations(bulkEditRequest(url.Values{
+		"field":                         {"customfield_10200", "customfield_10201"},
+		"valueCustom_customfield_10200": {""},
+		"valueCustom_customfield_10201": {""},
+	}), fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(cleared[0].Value) != `""` || string(cleared[1].Value) != `[]` {
+		t.Fatalf("cleared = %s and %s", cleared[0].Value, cleared[1].Value)
 	}
 }

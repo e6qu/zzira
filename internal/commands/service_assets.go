@@ -70,6 +70,15 @@ func (s *Service) CreateServiceAssetSchema(ctx context.Context, actorID, workspa
 	return s.Store.CreateServiceAssetSchema(ctx, workspaceID, actorID, deskID, schema)
 }
 
+// SetServiceAssetSchemaParent moves an object type under another of the same
+// desk, or back to the top.
+func (s *Service) SetServiceAssetSchemaParent(ctx context.Context, actorID, workspaceID, deskID, schemaID, parentID string) error {
+	if strings.TrimSpace(schemaID) == "" {
+		return fmt.Errorf("asset schema is required")
+	}
+	return s.Store.SetServiceAssetSchemaParent(ctx, workspaceID, actorID, deskID, schemaID, strings.TrimSpace(parentID))
+}
+
 func (s *Service) DeleteServiceAssetSchema(ctx context.Context, actorID, workspaceID, deskID, schemaID string) error {
 	if strings.TrimSpace(schemaID) == "" {
 		return fmt.Errorf("asset schema is required")

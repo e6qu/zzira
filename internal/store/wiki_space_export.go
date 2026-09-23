@@ -157,8 +157,23 @@ func (s *Store) executeWikiSpaceExport(ctx context.Context, task APITask, blobs 
 // beside their bodies: the labels on them and the comments under them, as the
 // person exporting can see them.
 func (s *Store) wikiSpaceExportExtras(ctx context.Context, ws, user string, pages []*models.WikiPage, posts []*models.WikiBlogPost) (wikiSpaceExtras, error) {
-	extras := wikiSpaceExtras{Labels: map[string][]string{}, Comments: map[string][]wikiSpaceManifestComment{}}
+	extras := wikiSpaceExtras{Labels: map[string][]string{}, Comments: map[string][]wikiSpaceManifestComment{},
+		Restrictions: map[string][]wikiSpaceManifestRestriction{}, History: map[string][]wikiSpaceManifestVersion{}}
 	for _, page := range pages {
+		restrictions, err := s.wikiSpaceExportRestrictions(ctx, ws, user, page.ID)
+		if err != nil {
+			return extras, err
+		}
+		if len(restrictions) > 0 {
+			extras.Restrictions[page.ID] = restrictions
+		}
+		history, err := s.wikiSpaceExportHistory(ctx, ws, user, page)
+		if err != nil {
+			return extras, err
+		}
+		if len(history) > 0 {
+			extras.History[page.ID] = history
+		}
 		labels, err := s.WikiPageLabels(ctx, ws, user, page.ID)
 		if err != nil {
 			return extras, err
@@ -184,6 +199,77 @@ func (s *Store) wikiSpaceExportExtras(ctx context.Context, ws, user string, page
 		}
 	}
 	return extras, nil
+}
+
+// wikiSpaceExportRestrictions is who may read and who may edit a page, named
+// the way another site can find them: a person by email, a group by name.
+func (s *Store) wikiSpaceExportRestrictions(ctx context.Context, ws, user, pageID string) ([]wikiSpaceManifestRestriction, error) {
+	restrictions, err := s.WikiPageRestrictions(ctx, ws, user, pageID)
+	if err != nil {
+		return nil, err
+	}
+	out := []wikiSpaceManifestRestriction{}
+	for _, restriction := range restrictions {
+		if len(restriction.Users) == 0 && len(restriction.Groups) == 0 {
+			continue
+		}
+		carried := wikiSpaceManifestRestriction{Operation: restriction.Operation}
+		for _, person := range restriction.Users {
+			var email string
+			if err := s.Pool.QueryRow(ctx, `SELECT email FROM users WHERE id=$1`, person.AccountID).Scan(&email); err != nil {
+				continue
+			}
+			carried.Users = append(carried.Users, email)
+		}
+		for _, group := range restriction.Groups {
+			if group.Name != "" {
+				carried.Groups = append(carried.Groups, group.Name)
+			}
+		}
+		if len(carried.Users) > 0 || len(carried.Groups) > 0 {
+			out = append(out, carried)
+		}
+	}
+	return out, nil
+}
+
+// wikiSpaceExportHistory is what a page said before its current version,
+// oldest first, with who wrote each version and when.
+func (s *Store) wikiSpaceExportHistory(ctx context.Context, ws, user string, page *models.WikiPage) ([]wikiSpaceManifestVersion, error) {
+	versions, err := s.WikiVersions(ctx, ws, user, page.ID)
+	if err != nil {
+		return nil, err
+	}
+	if len(versions) <= 1 {
+		return nil, nil
+	}
+	bodies, err := s.WikiPageVersionBodies(ctx, ws, user, page.ID)
+	if err != nil {
+		return nil, err
+	}
+	names := map[string]string{}
+	out := []wikiSpaceManifestVersion{}
+	for _, version := range versions {
+		if version.Number >= page.Version.Number {
+			continue
+		}
+		body, ok := bodies[version.Number]
+		if !ok {
+			continue
+		}
+		author := names[version.AuthorID]
+		if author == "" && version.AuthorID != "" {
+			if person, err := s.UserByID(ctx, version.AuthorID); err == nil {
+				author = person.DisplayName
+				names[version.AuthorID] = author
+			}
+		}
+		out = append(out, wikiSpaceManifestVersion{
+			Number: version.Number, Title: body.Title, Body: body.Body, Author: author,
+			Message: version.Message, CreatedAt: version.CreatedAt, MinorEdit: version.MinorEdit,
+		})
+	}
+	return out, nil
 }
 
 // wikiSpaceExportAttachmentLimit caps the attachment bytes one export carries;
@@ -280,6 +366,31 @@ type wikiSpaceManifestPage struct {
 	Labels         []string                      `json:"labels,omitempty"`
 	Comments       []wikiSpaceManifestComment    `json:"comments,omitempty"`
 	Attachments    []wikiSpaceManifestAttachment `json:"attachments,omitempty"`
+	// Restrictions are who may read and who may edit the page, by email and
+	// by group name: an account id means nothing on another site.
+	Restrictions []wikiSpaceManifestRestriction `json:"restrictions,omitempty"`
+	// History is what the page said before its current version, oldest first,
+	// so an import can bring the page's past with it.
+	History []wikiSpaceManifestVersion `json:"history,omitempty"`
+}
+
+// wikiSpaceManifestRestriction is one operation of a page and who may do it.
+type wikiSpaceManifestRestriction struct {
+	Operation string   `json:"operation"`
+	Users     []string `json:"users,omitempty"`
+	Groups    []string `json:"groups,omitempty"`
+}
+
+// wikiSpaceManifestVersion is one earlier version of a page: what it said,
+// who wrote it and when, on the site the export came from.
+type wikiSpaceManifestVersion struct {
+	Number    int    `json:"number"`
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	Author    string `json:"author,omitempty"`
+	Message   string `json:"message,omitempty"`
+	CreatedAt string `json:"createdAt,omitempty"`
+	MinorEdit bool   `json:"minorEdit,omitempty"`
 }
 
 // wikiSpaceManifestComment is one comment under a page or blog post. Who
@@ -299,9 +410,9 @@ type wikiSpaceManifestAttachment struct {
 	MediaType string `json:"mediaType,omitempty"`
 }
 
-// wikiSpaceManifestVersion is the shape of space.json this site writes. An
+// wikiSpaceManifestFormat is the shape of space.json this site writes. An
 // import reads this version and the ones before it.
-const wikiSpaceManifestVersion = 2
+const wikiSpaceManifestFormat = 3
 
 // withExtras puts each page's labels, comments and files beside its body.
 func withExtras(pages []wikiSpaceManifestPage, extras wikiSpaceExtras, files map[string][]wikiSpaceManifestAttachment) []wikiSpaceManifestPage {
@@ -309,6 +420,8 @@ func withExtras(pages []wikiSpaceManifestPage, extras wikiSpaceExtras, files map
 		pages[i].Labels = extras.Labels[pages[i].ID]
 		pages[i].Comments = extras.Comments[pages[i].ID]
 		pages[i].Attachments = files[pages[i].ID]
+		pages[i].Restrictions = extras.Restrictions[pages[i].ID]
+		pages[i].History = extras.History[pages[i].ID]
 	}
 	return pages
 }
@@ -347,8 +460,12 @@ func manifestPosts(posts []*models.WikiBlogPost) []wikiSpaceManifestPage {
 // wikiSpaceExtras is what a page or blog post carries beside its body, keyed
 // by its id: the labels on it and the comments under it.
 type wikiSpaceExtras struct {
-	Labels   map[string][]string
-	Comments map[string][]wikiSpaceManifestComment
+	// Restrictions is who may read and edit each page, and History what each
+	// page said before now.
+	Restrictions map[string][]wikiSpaceManifestRestriction
+	History      map[string][]wikiSpaceManifestVersion
+	Labels       map[string][]string
+	Comments     map[string][]wikiSpaceManifestComment
 }
 
 func buildWikiSpaceExport(space *models.WikiSpace, pages []*models.WikiPage, posts []*models.WikiBlogPost, attachments []wikiExportAttachment, extras wikiSpaceExtras) ([]byte, error) {
@@ -451,7 +568,7 @@ func buildWikiSpaceExport(space *models.WikiSpace, pages []*models.WikiPage, pos
 		files[owner] = append(files[owner], file)
 	}
 	manifest, err := json.Marshal(wikiSpaceManifest{
-		Version: wikiSpaceManifestVersion, Key: space.Key, Name: space.Name, Description: space.Description,
+		Version: wikiSpaceManifestFormat, Key: space.Key, Name: space.Name, Description: space.Description,
 		Pages:     withExtras(manifestPages(pages), extras, files),
 		BlogPosts: withExtras(manifestPosts(posts), extras, files),
 	})

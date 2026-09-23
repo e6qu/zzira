@@ -1616,3 +1616,50 @@ test('admin builds a rule that looks work up and acts on what it found', async (
   await page.getByRole('button', { name: 'Delete rule permanently' }).click();
   await expect(page).toHaveURL('/settings/automation');
 });
+
+// Two more of Jira's actions in the editor: a rule that watches a work item
+// for somebody, and one that copies it.
+test('admin builds rules that manage watchers and clone work', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const me = await (await page.request.get('/rest/api/3/myself', { headers })).json();
+  const created = await page.request.post('/rest/api/3/issue', {
+    headers, data: { fields: { project: { key: 'ZZ' }, summary: `Watched work ${stamp}`, issuetype: { name: 'Task' } } },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const key = (await created.json()).key as string;
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E watchers ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  // A scheduled rule, so Run now has the work item to act on.
+  await page.getByLabel('Cron expression').fill('0 0 9 ? * MON-FRI');
+  await page.getByLabel('JQL query').fill(`key = ${key}`);
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.watchers:add');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(me.accountId);
+  await accessible(page);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue('jira.issue.watchers:add');
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => {
+    const watchers = await (await page.request.get(`/rest/api/3/issue/${key}/watchers`, { headers })).json();
+    return watchers.watchCount as number;
+  }, { timeout: 15_000 }).toBeGreaterThan(0);
+
+  // A copy of the work item, with the summary Jira writes when a rule says
+  // nothing about it.
+  await page.goto('/settings/automation/new');
+  await page.getByLabel('Rule name').fill(`E2E clone ${stamp}`);
+  await page.getByLabel('Cron expression').fill('0 0 9 ? * MON-FRI');
+  await page.getByLabel('JQL query').fill(`key = ${key}`);
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.clone');
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  await page.getByRole('button', { name: 'Run now' }).click();
+  await expect.poll(async () => {
+    const found = await (await page.request.get(`/rest/api/3/search/jql?jql=${encodeURIComponent(`summary ~ "Copy of Watched work ${stamp}"`)}`, { headers })).json();
+    return (found.issues ?? []).length as number;
+  }, { timeout: 15_000 }).toBe(1);
+});

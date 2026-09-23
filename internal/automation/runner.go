@@ -96,7 +96,7 @@ func (r *Runner) Run(ctx context.Context, workspaceID string) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := r.DrainOnce(ctx, workspaceID); err != nil && !errors.Is(err, context.Canceled) {
+			if err := r.drain(ctx, workspaceID); err != nil && !errors.Is(err, context.Canceled) {
 				logger := r.Logf
 				if logger == nil {
 					logger = log.Printf
@@ -105,6 +105,41 @@ func (r *Runner) Run(ctx context.Context, workspaceID string) {
 			}
 		}
 	}
+}
+
+// runnerTickBudget is how many runs one tick works through. A tick that
+// executed a single run made the queue move at one run a second, so a rule
+// somebody asked to run now waited behind everything a busy minute had
+// enqueued; a tick now empties the queue, up to this many runs, and leaves
+// the rest to the next one.
+const runnerTickBudget = 50
+
+// drain enqueues what is due and then works the queue until it is empty or
+// this tick's budget is spent.
+func (r *Runner) drain(ctx context.Context, workspaceID string) error {
+	if r.Service == nil || r.Service.Store == nil || r.Service.Commands == nil {
+		return errors.New("automation runner is not configured")
+	}
+	if err := r.enqueueDue(ctx, workspaceID); err != nil {
+		return err
+	}
+	if err := r.enqueueEvents(ctx, workspaceID); err != nil {
+		return err
+	}
+	for worked := 0; worked < runnerTickBudget; worked++ {
+		run, err := r.claim(ctx, workspaceID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		matched, changed, executionErr := r.execute(ctx, run)
+		if err := r.finish(ctx, run, matched, changed, executionErr); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // DrainOnce enqueues due rules and executes one claimed run. The SQL claim
@@ -554,7 +589,7 @@ var actionsWithoutWork = map[string]bool{
 
 // Actions and conditions the runner executes.
 var (
-	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true, "jira.issue.delete": true, WikiPageActionType: true, VariableActionType: true, WikiCommentActionType: true, WikiLabelActionType: true, WikiAppendActionType: true, WikiArchiveActionType: true, LookupActionType: true}
+	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true, "jira.issue.delete": true, "jira.issue.watchers": true, "jira.issue.clone": true, WikiPageActionType: true, VariableActionType: true, WikiCommentActionType: true, WikiLabelActionType: true, WikiAppendActionType: true, WikiArchiveActionType: true, LookupActionType: true}
 	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true, "jira.issue.related.condition": true}
 )
 
@@ -1069,6 +1104,72 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 			ActorID: run.ActorID, WorkspaceID: run.WorkspaceID, ProjectIDOrKey: projectID,
 			Summary: summary, IssueTypeID: wanted.ID,
 		})
+		run.recordCreated(created)
+		return created != nil, err
+	case "jira.issue.watchers":
+		// Watching is what Jira's "Manage watchers" action does: somebody is
+		// added to, or taken off, the people a work item tells about itself.
+		var value struct {
+			Action    string `json:"action"`
+			AccountID string `json:"accountId"`
+		}
+		if err := json.Unmarshal(valueRaw, &value); err != nil {
+			return false, errors.New("watchers action requires value.action and value.accountId")
+		}
+		watching := value.Action != "remove"
+		if value.Action != "add" && value.Action != "remove" {
+			return false, errors.New("watchers action adds or removes")
+		}
+		accountID, err := render(value.AccountID)
+		if err != nil {
+			return false, err
+		}
+		if accountID = strings.TrimSpace(accountID); accountID == "" {
+			return false, errors.New("watchers action names nobody")
+		}
+		action, err := r.Service.Commands.SetWatcher(ctx, run.ActorID, run.WorkspaceID, issue.ID, accountID, watching)
+		return action != nil, err
+	case "jira.issue.clone":
+		// A copy of the work item, in its own project and of its own type,
+		// which is what Jira's "Clone issue" action makes. The rule's later
+		// branches see it as work this rule created.
+		var value struct {
+			Summary string `json:"summary"`
+		}
+		_ = json.Unmarshal(valueRaw, &value)
+		pattern := strings.TrimSpace(value.Summary)
+		if pattern == "" {
+			pattern = "Copy of {{issue.summary}}"
+		}
+		summary, err := render(pattern)
+		if err != nil {
+			return false, err
+		}
+		if summary = strings.TrimSpace(summary); summary == "" {
+			return false, errors.New("clone action rendered an empty summary")
+		}
+		// A copy that is already there is not made again, so a scheduled rule
+		// does not fill the project with copies.
+		project, err := r.Service.Store.ProjectByIDOrKey(ctx, run.WorkspaceID, issue.ProjectID)
+		if err != nil {
+			return false, err
+		}
+		existing, err := r.matchingWorkExists(ctx, run, fmt.Sprintf("project = %s AND summary = %s", jql.Quote(project.Key), jql.Quote(summary)))
+		if err != nil {
+			return false, err
+		}
+		if existing {
+			return false, nil
+		}
+		copied := commands.CreateIssueInput{
+			ActorID: run.ActorID, WorkspaceID: run.WorkspaceID, ProjectIDOrKey: issue.ProjectID,
+			Summary: summary, IssueTypeID: issue.IssueType.ID, DescriptionADF: issue.Description,
+			Labels: issue.Labels, DueDate: issue.DueDate,
+		}
+		if issue.Priority != nil {
+			copied.PriorityID = issue.Priority.ID
+		}
+		created, _, err := r.Service.Commands.CreateIssue(ctx, copied)
 		run.recordCreated(created)
 		return created != nil, err
 	case "jira.issue.create-subtask":

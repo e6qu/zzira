@@ -122,6 +122,19 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
   edit the plan can keep the pair under a name, and the saved views are links
   that open the plan that way (`?group=`, `?q=`, `?rollup=`, `?view=`). Saving
   over a name changes that view rather than adding another.
+- **Scheduling automatically** fills each team's iterations with the work
+  nobody has planned -- or with everything unfinished, when that is asked for
+  -- in the plan's own rank order. A work item goes into the earliest
+  iteration of its team that still has room for its estimate, never before the
+  day the run starts from, and never before the work that blocks it: a later
+  iteration when the plan's dependencies are Sequential, the same one when
+  they are Concurrent. Work bigger than a whole iteration goes into the first
+  one with room left. An epic is not placed: its bar is what the work beneath
+  it adds up to. What could not be placed is named with the reason -- no team,
+  a team with no iterations, or nothing left with room -- rather than left out
+  quietly, and work with no estimate is placed but takes no capacity. Every
+  answer is a change in the scenario, so **Review changes** still decides what
+  reaches Jira.
 - **Rolling up** reads a parent by the work under it: its bar spans the
   earliest start and latest end anywhere beneath it, and its estimate is what
   that work adds up to. The item's own dates and estimate are untouched --
@@ -207,12 +220,13 @@ Errors use the module format, `[{"message": …}]`. Provider rate limits are des
 ## Gaps
 
 - Plans:
-  - No auto-scheduler.
-  - No creating or configuring a plan in the browser (sources, exclusions, permissions and teams are REST-only).
+  - Adding a team to a plan, and removing one, are REST-only; how a team of
+    the plan plans is on the plan page.
   - No restoring an archived or trashed plan.
   - `inferredDates` and plan `customFields` are stored but not used.
-  - No capacity derived from velocity.
-  - No saved view of the timeline's zoom or columns, and no rollup of anything but dates and estimates.
+  - A saved view keeps the grouping, the filter and whether the plan rolls up;
+    the timeline's zoom and its columns are not part of it, and rolling up
+    covers dates and estimates.
 - Scenarios cannot change parent, rank, release or status, and cannot create work items.
 - Cross-project releases: the plan's `crossProjectReleases` list is validated and stored, but nothing shows it or plans against it. There is no multi-project release in the plan or the release hub.
 - No REST teams API (Atlassian's public teams API).

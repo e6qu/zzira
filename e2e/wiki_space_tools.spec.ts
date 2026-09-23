@@ -52,6 +52,23 @@ test('space manager keeps templates, starts pages from them, reads analytics and
   await page.getByRole('button', { name: 'Upload file', exact: true }).click();
   await expect(page.getByRole('link', { name: 'restart-checklist.txt', exact: true })).toBeVisible();
 
+  // Editing the page gives it a past to carry, and the group that may edit it
+  // is what the export has to bring back.
+  await page.getByRole('link', { name: 'Edit page', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Page content' }).fill('Check the dashboard. Then drain traffic.');
+  await page.getByRole('button', { name: 'Save page', exact: true }).click();
+  await expect(page.getByRole('article', { name: 'Page content' })).toContainText('Then drain traffic.');
+  const access = page.locator('#wiki-access');
+  await access.locator('summary').click();
+  const editableName = (await access.getByRole('checkbox', { name: /^Allow .* to edit$/ }).first().getAttribute('name'))!;
+  const editable = access.getByRole('checkbox', { name: /^Allow .* to edit$/ }).first();
+  const editableLabel = (await editable.evaluate((box) => box.closest('label')!.textContent))!.trim();
+  await editable.check();
+  await access.getByRole('button', { name: 'Save page access', exact: true }).click();
+  await page.locator('#wiki-access').locator('summary').click();
+  await expect(page.locator('#wiki-access').getByRole('checkbox', { name: editableLabel })).toBeChecked();
+  expect(editableName).toBe('updateUsers');
+
   // The site's custom look and feel colours the wiki page's headings.
   const origin = new URL(page.url()).origin;
   const customLook = await page.request.post('/wiki/rest/api/settings/lookandfeel/custom', { headers: { Origin: origin }, data: { headings: { color: '#0065FF' } } });
@@ -109,6 +126,32 @@ test('space manager keeps templates, starts pages from them, reads analytics and
   // The page's attachment travels with it.
   expect(zipBytes.includes(Buffer.from('restart-checklist.txt'))).toBe(true);
   expect(zipBytes.includes(Buffer.from('attachments/'))).toBe(true);
+
+  // The export is read back as a new space, and the page's past comes with
+  // it: the version the template gave it, then the edit above.
+  const importKey = `I${Date.now().toString(36).toUpperCase().slice(-6)}`;
+  await page.goto('/wiki');
+  await page.locator('summary').filter({ hasText: 'Import a space' }).click();
+  await page.getByLabel('Space export').setInputFiles({ name: 'export.zip', mimeType: 'application/zip', buffer: zipBytes });
+  await page.getByLabel('Name for the imported space').fill(`Imported operations ${importKey}`);
+  await page.getByLabel('Key for the imported space').fill(importKey);
+  await page.getByRole('button', { name: 'Import space', exact: true }).click();
+  await expect(page.getByRole('heading', { name: `Imported operations ${importKey}`, level: 1 })).toBeVisible();
+  const importedSpaceURL = page.url();
+  await page.getByRole('link', { name: `Restart the service ${key}`, exact: true }).click();
+  await expect(page.getByRole('article', { name: 'Page content' })).toContainText('Check the dashboard.');
+  await expect(page.getByRole('link', { name: 'restart-checklist.txt', exact: true })).toBeVisible();
+  await expect(page.getByRole('article', { name: 'Page content' })).toContainText('Then drain traffic.');
+  const history = page.locator('.wiki-history');
+  await history.locator('summary').click();
+  await expect(history).toContainText('Version 1');
+  await expect(history).toContainText('Imported');
+  // Who may edit the page came back with it.
+  const importedAccess = page.locator('#wiki-access');
+  await importedAccess.locator('summary').click();
+  await expect(importedAccess.getByRole('checkbox', { name: editableLabel })).toBeChecked();
+  await accessible(page);
+  await page.goto(importedSpaceURL);
 
   // The space is archived and restored. An archived space leaves the general
   // list in the directory for the archived list.

@@ -1067,7 +1067,7 @@ func (h *Handler) LoginForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	providers := h.loginProviders()
+	providers := h.loginProvidersFor(r.Context())
 	if len(providers) == 1 && providers[0].Key == "shauth" {
 		http.Redirect(w, r, "/auth/shauth", http.StatusSeeOther)
 		return
@@ -1181,6 +1181,35 @@ type signedOutData struct {
 	Password bool
 }
 
+// loginProvidersFor are the providers the sign-in page offers: the OpenID
+// Connect ones this server was started with or an administrator registered,
+// and the SAML ones the site trusts.
+func (h *Handler) loginProvidersFor(ctx context.Context) []LoginProvider {
+	providers := h.loginProviders()
+	if h.Store == nil {
+		return providers
+	}
+	workspaceID, err := h.Store.WorkspaceBySlug(ctx, h.WorkspaceSlug)
+	if err != nil {
+		return providers
+	}
+	saml, err := h.Store.SAMLProviders(ctx, workspaceID)
+	if err != nil {
+		return providers
+	}
+	for _, provider := range saml {
+		if !provider.Enabled {
+			continue
+		}
+		providers = append(providers, LoginProvider{
+			Key: provider.ProviderKey, DisplayName: provider.DisplayName, Kind: "SAML",
+			Issuer: provider.EntityID, Enabled: true, Source: "database",
+			SignInPath: "/saml/" + url.PathEscape(provider.ProviderKey) + "/login",
+		})
+	}
+	return providers
+}
+
 func (h *Handler) loginProviders() []LoginProvider {
 	if h.IdentityProviders != nil {
 		return h.IdentityProviders.LoginProviders()
@@ -1194,7 +1223,7 @@ func (h *Handler) loginProviders() []LoginProvider {
 func (h *Handler) SignedOut(w http.ResponseWriter, r *http.Request) {
 	noStoreAuthResponse(w)
 	authn.ClearSessionCookie(w)
-	writePage(w, "page_signed_out", signedOutData{Providers: h.loginProviders(), Password: !authn.LocalCredentialsRefused(r.Context())})
+	writePage(w, "page_signed_out", signedOutData{Providers: h.loginProvidersFor(r.Context()), Password: !authn.LocalCredentialsRefused(r.Context())})
 }
 
 // OIDCLogoutComplete is the registered post-logout redirect bridge Shauth

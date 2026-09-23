@@ -8,7 +8,10 @@ type ServiceAssetAttribute struct {
 
 type ServiceAssetSchema struct {
 	ID, AssetsWorkspaceID, ServiceDeskID, Key, Name, Description string
-	Attributes                                                   []ServiceAssetAttribute
+	// ParentID is the object type this one sits under, as Assets nests object
+	// types; empty for a type at the top.
+	ParentID   string
+	Attributes []ServiceAssetAttribute
 }
 
 type ServiceAssetObject struct {
