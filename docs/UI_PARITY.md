@@ -34,7 +34,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | Knowledge user diagrams or models data | 🟡 | `wiki_database`, `wiki_whiteboard` (objects dragged on the canvas) | Advanced whiteboard objects, rich embeds, exports ([CONFLUENCE_SITE_SURFACES](CONFLUENCE_SITE_SURFACES.md)) |
 | Space manager governs knowledge | ✅ | `wiki_space_admin` (details, custom roles, direct grants), `wiki_space_tools` (export and import a space), `wiki_page_lifecycle`, `classification_levels` | An imported space is read from this site's own export, not from Confluence XML or a document ([CONFLUENCE_SPACES](CONFLUENCE_SPACES.md#gaps)) |
 | Site admin manages people, access and Jira settings | ✅ | `admin`, `password`, `two_step`, `api_tokens`, `people`, `global_permissions`, `identity-providers`, `saml`, `passkeys`, `permission_schemes`, `permission_helper`, `notification_schemes`, `notification_helper`, `notification_preferences`, `notifications`, `issue_security_schemes` | A SCIM provider is pointed at the address `/admin` shows and holds a key issued there, as Atlassian's own is ([ADMIN](ADMIN.md), [SCIM](SCIM.md)) |
-| Site admin manages apps | 🟡 | `apps` | Several Connect module families; Forge compute; workflow modules ([APPS](APPS.md)) |
+| Site admin manages apps | 🟡 | `apps` (including an app's own configure page and the pages it adds to a profile) | Dialogs, web sections and keyboard shortcuts; Forge compute; workflow modules ([APPS](APPS.md)) |
 
 Evidence names refer to `e2e/<name>.spec.ts`. `wire-ids` and `accessibility` apply across all journeys; see [WIRE_IDS.md](WIRE_IDS.md) and [ACCESSIBILITY.md](ACCESSIBILITY.md).
 

@@ -364,6 +364,7 @@ func main() {
 	mux.HandleFunc("GET /admin/notification-helper", webHandler.NotificationHelperPage)
 	mux.HandleFunc("GET /admin/permission-helper", webHandler.PermissionHelperPage)
 	mux.HandleFunc("POST /admin/apps", webHandler.CreateAdminApp)
+	mux.HandleFunc("GET /admin/apps/configure/{appKey}", webHandler.AdminAppConfigurePage)
 	mux.HandleFunc("POST /admin/apps/{appKey}", webHandler.UpdateAdminApp)
 	mux.HandleFunc("POST /admin/apps/{appKey}/transfers", webHandler.CreateAdminAppTransfer)
 	mux.HandleFunc("POST /admin/identity-providers/{provider}", webHandler.UpdateAdminIdentityProvider)
@@ -583,6 +584,7 @@ func main() {
 	mux.HandleFunc("POST /password/set", webHandler.SetPasswordSubmit)
 	mux.HandleFunc("POST /profile/tokens", webHandler.CreateAPIToken)
 	mux.HandleFunc("POST /profile/tokens/{token}/revoke", webHandler.RevokeAPIToken)
+	mux.HandleFunc("GET /people/{id}/apps/{module}", webHandler.ProfileAppModulePage)
 	mux.HandleFunc("GET /people/{id}", func(w http.ResponseWriter, r *http.Request) {
 		webHandler.ProfilePage(w, r, r.PathValue("id"))
 	})

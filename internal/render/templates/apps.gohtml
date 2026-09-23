@@ -25,6 +25,15 @@
 </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
 {{end}}
 
+{{define "page_profile_app_module"}}
+<!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · {{.Data.Profile.DisplayName}} · {{(site $).Title}}</title>{{template "head" .}}</head>
+<body class="page-app-module"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
+<nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/people">People</a><span aria-hidden="true">/</span><a href="/people/{{.Data.Profile.ID}}">{{.Data.Profile.DisplayName}}</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Module.Title}}</span></nav>
+<header class="page-header"><div><span class="eyebrow">{{.Data.Module.AppName}} · Profile app</span><h1>{{.Data.Module.Title}}</h1><p>App content about {{.Data.Profile.DisplayName}}.</p></div></header>
+<section class="surface-card app-module-content" aria-labelledby="profile-app-module-content-heading"><h2 class="sr-only" id="profile-app-module-content-heading">Module content</h2><iframe class="app-module-frame" data-app-module="{{.Data.Module.ID}}" data-app-base="{{.Data.Module.BaseURL}}" src="{{.Data.FrameURL}}" title="{{.Data.Module.Title}}" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"></iframe><script src="/static/connect-host.js?v=1" defer></script></section>
+</main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
+{{end}}
+
 {{define "page_project_app_module"}}
 <!doctype html><html lang="en"><head><title>{{.Data.Module.Title}} · {{.Data.Project.Name}} · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="page-app-module"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">

@@ -64,6 +64,20 @@ type AppInstallation struct {
 	InstalledAt, UpdatedAt                                                                 time.Time
 }
 
+// Configurable reports whether the app offers a page for setting itself up,
+// which the app list links to beside the app.
+func (a AppInstallation) Configurable() bool {
+	if a.Status != "active" {
+		return false
+	}
+	for _, module := range a.Modules {
+		if module.Type == "jira:configurePage" {
+			return true
+		}
+	}
+	return false
+}
+
 type AppJQLFunctionArgument struct {
 	Name     string `json:"name"`
 	Required bool   `json:"required"`

@@ -326,12 +326,25 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	sort.Strings(wire.Scopes)
-	supported := map[string]bool{"adminPages": true, "generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "jiraIssueTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "jiraJqlFunctions": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true, "jiraProjectPermissions": true, "jiraGlobalPermissions": true, "jiraTimeTrackingProviders": true, "jiraEntityProperties": true}
+	supported := map[string]bool{"adminPages": true, "configurePage": true, "profilePages": true, "generalPages": true, "jiraProjectPages": true, "jiraProjectAdminTabPanels": true, "jiraReports": true, "jiraDashboardItems": true, "jiraIssueTabPanels": true, "webPanels": true, "contentBylineItems": true, "webhooks": true, "jiraIssueFields": true, "jiraJqlFunctions": true, "webItems": true, "jiraIssueContents": true, "jiraIssueContexts": true, "jiraIssueGlances": true, "jiraProjectPermissions": true, "jiraGlobalPermissions": true, "jiraTimeTrackingProviders": true, "jiraEntityProperties": true}
 	for moduleType, payload := range connect.Modules {
 		if !supported[moduleType] {
 			return models.AppDescriptor{}, fmt.Errorf("Connect module %q is not supported yet", moduleType)
 		}
 		switch moduleType {
+		case "configurePage":
+			// A Connect app has one configure page, which the app list links
+			// to beside the app itself rather than putting in the menu.
+			var module connectAdminPageWire
+			if err := json.Unmarshal(payload, &module); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect configurePage: %w", err)
+			}
+			translated, err := translateConnectConfigurePage(module)
+			if err != nil {
+				return models.AppDescriptor{}, err
+			}
+			wire.Modules = append(wire.Modules, translated)
+			scopes["read:jira-work"] = true
 		case "adminPages":
 			var modules []connectAdminPageWire
 			if err := json.Unmarshal(payload, &modules); err != nil {
@@ -512,6 +525,27 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 				wire.Webhooks = append(wire.Webhooks, webhookWire{Key: fmt.Sprintf("connect-webhook-%d", index+1), URL: hook.URL, JQL: hook.Filter, Events: []string{hook.Event}})
 			}
 			scopes["manage:webhooks"] = true
+		case "profilePages":
+			// A page on somebody's profile, which the profile itself shows
+			// beside what the site knows about them.
+			var modules []connectRemoteModuleWire
+			if err := json.Unmarshal(payload, &modules); err != nil {
+				return models.AppDescriptor{}, fmt.Errorf("invalid Connect profilePages: %w", err)
+			}
+			for _, module := range modules {
+				conditions, err := connectConditions(module.Conditions)
+				if err != nil {
+					return models.AppDescriptor{}, fmt.Errorf("Connect profile page %q: %w", module.Key, err)
+				}
+				if !connectModuleKeyPattern.MatchString(strings.TrimSpace(module.Key)) || strings.TrimSpace(module.Name.Value) == "" || !validAppCallbackPath(strings.TrimSpace(module.URL)) {
+					return models.AppDescriptor{}, fmt.Errorf("Connect profile page needs a valid key, name and relative URL")
+				}
+				wire.Modules = append(wire.Modules, moduleWire{
+					Key: strings.TrimSpace(module.Key), Type: "jira:profilePage", Location: "jira.profile",
+					Title: strings.TrimSpace(module.Name.Value), URL: strings.TrimSpace(module.URL), Conditions: conditions,
+				})
+			}
+			scopes["read:jira-work"] = true
 		case "generalPages", "webPanels", "contentBylineItems":
 			var modules []connectRemoteModuleWire
 			if err := json.Unmarshal(payload, &modules); err != nil {
@@ -543,6 +577,29 @@ func parseConnectDescriptor(raw []byte) (models.AppDescriptor, error) {
 		wire.Scopes = append(wire.Scopes, scope)
 	}
 	return validateDescriptorWire(wire)
+}
+
+// translateConnectConfigurePage reads the one page an app offers for setting
+// itself up. It takes no location: it belongs to the app, not to a menu.
+func translateConnectConfigurePage(module connectAdminPageWire) (moduleWire, error) {
+	module.Key = strings.TrimSpace(module.Key)
+	if module.Key == "" {
+		module.Key = "configure"
+	}
+	module.Name.Value = strings.TrimSpace(module.Name.Value)
+	if module.Name.Value == "" {
+		module.Name.Value = "Configure"
+	}
+	module.URL = strings.TrimSpace(module.URL)
+	if !connectModuleKeyPattern.MatchString(module.Key) || len(module.Name.Value) > 1500 || !validAppCallbackPath(module.URL) {
+		return moduleWire{}, fmt.Errorf("Connect configure page needs a valid key and relative URL")
+	}
+	conditions, err := connectConditions(module.Conditions)
+	if err != nil {
+		return moduleWire{}, fmt.Errorf("Connect configure page %q: %w", module.Key, err)
+	}
+	return moduleWire{Key: module.Key, Type: "jira:configurePage", Location: "jira.app.configure",
+		Title: module.Name.Value, URL: module.URL, Conditions: conditions}, nil
 }
 
 func translateConnectAdminPage(module connectAdminPageWire) (moduleWire, error) {

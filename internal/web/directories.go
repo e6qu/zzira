@@ -56,6 +56,9 @@ type profilePageData struct {
 	Reported   []*models.Issue
 	Identities []profileIdentityView
 	Saved      string
+	// AppModules are the pages installed apps add about a person, shown on
+	// everybody's profile rather than only the signed-in person's own.
+	AppModules []models.AppModule
 	// NotifyOwnChanges, Autowatch and WikiAutowatch are the signed-in
 	// person's own notification preferences. Confluence keeps its own
 	// autowatch setting, so this product does too.
@@ -464,6 +467,16 @@ func (h *Handler) buildProfileData(r *http.Request, user *models.User, wsID, acc
 		return profilePageData{}, err
 	}
 	data := profilePageData{Profile: profile, Self: profile.ID == user.ID, Assigned: assigned, Reported: reported, Saved: r.URL.Query().Get("saved")}
+	appModules, err := h.Store.AppModulesByLocation(r.Context(), wsID, "jira.profile")
+	if err != nil {
+		return profilePageData{}, err
+	}
+	facts := h.appConditionFactsFor(r.Context(), wsID, user, nil, nil)
+	for _, module := range appModules {
+		if appModuleShown(module, facts) {
+			data.AppModules = append(data.AppModules, module)
+		}
+	}
 	if !data.Self {
 		return data, nil
 	}

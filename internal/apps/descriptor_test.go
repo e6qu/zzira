@@ -62,6 +62,8 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
   "lifecycle":{"installed":"/installed","uninstalled":"/uninstalled"},
   "modules":{
     "generalPages":[{"key":"operations","url":"/operations","name":{"value":"Operations"}}],
+    "configurePage":{"key":"setup","url":"/setup","name":{"value":"Set up operations"}},
+    "profilePages":[{"key":"person-oncall","url":"/oncall?account={profileUser.accountId}","name":{"value":"On call"}}],
     "adminPages":[{"key":"site-controls","url":"/site-controls","name":{"value":"Site controls"},"weight":70,"params":{"source":"admin"}}],
     "webPanels":[{"key":"issue-risk","url":"/risk?issue={issue.key}","location":"atl.jira.view.issue.right.context","name":{"value":"Issue risk"}}],
     "contentBylineItems":[{"key":"review","url":"/review?content={content.id}","name":{"value":"Review"}}],
@@ -82,7 +84,7 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 13 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
+	if descriptor.Format != "connect" || descriptor.Version != "connect-v1" || len(descriptor.Modules) != 15 || len(descriptor.Webhooks) != 1 || len(descriptor.IssueFields) != 1 {
 		t.Fatalf("Connect descriptor = %+v", descriptor)
 	}
 	if descriptor.Key != "Connect.Operations" {
@@ -97,6 +99,8 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	issueGlance := false
 	issueTabPanel := false
 	adminPage := false
+	configurePage := false
+	profilePage := false
 	for _, module := range descriptor.Modules {
 		if module.RemoteURL != "" {
 			remoteModules++
@@ -122,11 +126,17 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 		if module.Key == "deployment-activity" && module.Type == "jira:issueTabPanel" && module.Location == "jira.issue.activity" && module.Position == 80 && strings.Contains(module.RemoteURL, "issue={issue.key}") && strings.Contains(module.RemoteURL, "source=activity") {
 			issueTabPanel = true
 		}
+		if module.Key == "setup" && module.Type == "jira:configurePage" && module.Location == "jira.app.configure" && module.Title == "Set up operations" {
+			configurePage = true
+		}
+		if module.Key == "person-oncall" && module.Type == "jira:profilePage" && module.Location == "jira.profile" && strings.Contains(module.RemoteURL, "account={profileUser.accountId}") {
+			profilePage = true
+		}
 		if module.Key == "site-controls" && module.Type == "jira:adminPage" && module.Location == "jira.admin" && module.Position == 70 && strings.Contains(module.RemoteURL, "source=admin") {
 			adminPage = true
 		}
 	}
-	if remoteModules != 13 || !projectPage || !projectAdminPage || !report || !dashboardItem || !issueContext || !issueGlance || !issueTabPanel || !adminPage || descriptor.Webhooks[0].Key != "connect-webhook-1" {
+	if remoteModules != 15 || !configurePage || !profilePage || !projectPage || !projectAdminPage || !report || !dashboardItem || !issueContext || !issueGlance || !issueTabPanel || !adminPage || descriptor.Webhooks[0].Key != "connect-webhook-1" {
 		t.Fatalf("translated modules = %+v, hooks = %+v", descriptor.Modules, descriptor.Webhooks)
 	}
 	for _, scope := range []string{"read:jira-work", "write:jira-work", "read:confluence-content", "write:confluence-content", "manage:webhooks"} {
@@ -174,6 +184,12 @@ func TestParseConnectDescriptorTranslatesSupportedModules(t *testing.T) {
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-tab","name":"Bad tab","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"jiraIssueTabPanels":[{"key":"activity","name":{"value":"Activity"},"url":"/activity","conditions":[{"condition":"entity_property_equal_to"}]}]}}`)); err == nil {
 		t.Fatal("accepted unsupported issue-tab conditions")
+	}
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-profile","name":"Bad profile","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"profilePages":[{"key":"person","name":{"value":"Person"},"url":"https://outside.example.test/person"}]}}`)); err == nil {
+		t.Fatal("accepted an absolute profile-page URL")
+	}
+	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-configure","name":"Bad configure","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"configurePage":{"key":"setup","name":{"value":"Setup"},"url":"https://outside.example.test/setup"}}}`)); err == nil {
+		t.Fatal("accepted an absolute configure-page URL")
 	}
 	if _, err := ParseDescriptor([]byte(`{"key":"connect.bad-admin","name":"Bad admin","baseUrl":"https://connect.example.test","authentication":{"type":"jwt"},"scopes":["READ"],"modules":{"adminPages":[{"key":"admin","name":{"value":"Admin"},"url":"/admin","fullPage":true}]}}`)); err == nil {
 		t.Fatal("accepted unsupported full-page admin behavior")
