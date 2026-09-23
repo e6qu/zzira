@@ -86,8 +86,10 @@ type wikiData struct {
 	Query                                 string
 	Status                                string
 	SpaceName, SpaceKey, SpaceDescription string
-	// ImportError is what went wrong reading an export somebody uploaded.
+	// ImportError is what went wrong reading an export somebody uploaded, and
+	// ImportNotice what an import could not bring with it.
 	ImportError   string
+	ImportNotice  string
 	Private       bool
 	WatchingSpace bool
 	// SpaceTemplates, SiteTemplates and BlueprintTemplates are what a space's
@@ -494,7 +496,7 @@ func (h *Handler) WikiSpacePage(w http.ResponseWriter, r *http.Request) {
 			grants = append(grants, view)
 		}
 	}
-	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{ContentStateSettings: stateSettings, SpaceExports: exports, Space: space, Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames, SpacePermissionCatalogue: catalogue, SpaceGrants: grants, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "")
+	h.writeWorkspacePage(w, r, "page_wiki_space", user, ws, wikiData{ContentStateSettings: stateSettings, SpaceExports: exports, Space: space, ImportNotice: r.URL.Query().Get("importNotice"), Pages: filtered, BlogPosts: filteredBlogs, Folders: folders, SmartLinks: smartLinks, Databases: databases, Whiteboards: whiteboards, ContentTree: contentTree, TreeTitles: treeTitles, TreeTargets: treeTargets, CanEditTree: canEditTree, Query: query, Status: status, WatchingSpace: watching, CanAdmin: admin, CanManageSpace: canManageSpace, SpaceProperties: properties, SpaceRoles: roles, SpaceRoleAssignments: assignments, SpaceRoleUsers: roleUsers, SpaceRoleGroups: roleGroups, SpaceRoleNames: roleNames, SpaceRolePrincipalNames: principalNames, SpacePermissionCatalogue: catalogue, SpaceGrants: grants, ClassificationLevels: classLevels, ClassificationNames: classNames, PublishedClassification: classPublished}, "wiki", "")
 }
 
 // WikiSpaceContentStateSettings saves whether the space's pages carry content

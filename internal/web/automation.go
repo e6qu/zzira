@@ -209,8 +209,13 @@ var (
 		{"jira.issue.assign:random", "Assign work item (random)"}, {"jira.issue.transition", "Transition work item"},
 		{"jira.issue.comment", "Comment on work item"}, {"jira.issue.edit:summary", "Edit summary"}, {"jira.issue.edit:duedate", "Set due date"},
 		{"jira.issue.edit:priority", "Set priority"}, {"jira.issue.edit:description", "Set description"},
-		{"jira.issue.edit:labels", "Set labels"},
+		{"jira.issue.edit:labels", "Set labels"}, {"jira.issue.edit:assignee", "Set assignee"},
+		{"jira.issue.edit:resolution", "Set resolution"},
+		{"jira.issue.edit:originalestimate", "Set original estimate"},
+		{"jira.issue.edit:remainingestimate", "Set remaining estimate"},
 		{"jira.issue.log-work", "Log work"}, {"jira.issue.delete", "Delete work item"}, {"jira.issue.create-subtask", "Create sub-task"},
+		{"jira.issue.clone", "Clone work item"},
+		{"jira.issue.watchers:add", "Add watcher"}, {"jira.issue.watchers:remove", "Remove watcher"},
 		{automation.WikiPageActionType, "Create page in space"},
 		{"jira.issue.email:assignee", "Email the assignee"}, {"jira.issue.email:reporter", "Email the reporter"},
 		{"jira.issue.email:watchers", "Email the watchers"},
@@ -890,7 +895,22 @@ func automationFormActions(rows automationActionRows) ([]map[string]any, error) 
 			})
 			continue
 		}
-		if value == "" {
+		// A copy takes a summary or the one Jira writes, so an empty box is
+		// an instruction rather than a mistake.
+		if actionType == "jira.issue.clone" {
+			components = append(components, map[string]any{
+				"component": "ACTION", "schemaVersion": 1, "type": "jira.issue.clone", "value": map[string]string{"summary": value},
+			})
+			continue
+		}
+		// Clearing a field is an instruction rather than a mistake: an edit
+		// that sets a resolution, an estimate or a due date empties it when
+		// the box is left empty, as Jira's own edit does.
+		clearing := map[string]bool{
+			"jira.issue.edit:resolution": true, "jira.issue.edit:originalestimate": true,
+			"jira.issue.edit:remainingestimate": true, "jira.issue.edit:duedate": true,
+		}
+		if value == "" && !clearing[actionType] {
 			return nil, fmt.Errorf("every action needs a value")
 		}
 		var actionValue map[string]string
@@ -959,10 +979,14 @@ func automationFormActions(rows automationActionRows) ([]map[string]any, error) 
 			actionValue = map[string]string{"summary": value}
 		case "jira.issue.log-work":
 			actionValue = map[string]string{"duration": value}
+		case "jira.issue.watchers:add", "jira.issue.watchers:remove":
+			actionValue = map[string]string{"action": strings.TrimPrefix(actionType, "jira.issue.watchers:"), "accountId": value}
+			actionType = "jira.issue.watchers"
 		case automation.WikiPageActionType:
 			actionValue = map[string]string{"spaceKey": value}
 
-		case "jira.issue.edit:summary", "jira.issue.edit:duedate", "jira.issue.edit:priority", "jira.issue.edit:description", "jira.issue.edit:labels":
+		case "jira.issue.edit:summary", "jira.issue.edit:duedate", "jira.issue.edit:priority", "jira.issue.edit:description", "jira.issue.edit:labels",
+			"jira.issue.edit:assignee", "jira.issue.edit:resolution", "jira.issue.edit:originalestimate", "jira.issue.edit:remainingestimate":
 			actionValue = map[string]string{"field": strings.TrimPrefix(actionType, "jira.issue.edit:"), "value": value}
 			actionType = "jira.issue.edit"
 		default:
@@ -1009,7 +1033,7 @@ func automationEditorUnsupported(payload json.RawMessage) string {
 		return "its trigger"
 	}
 	editableAction := func(component automationComponentJSON) bool {
-		return (component.Component == "" || component.Component == "ACTION") && (component.Type == "jira.issue.edit" || component.Type == "jira.issue.link" || component.Type == "jira.issue.email" || component.Type == "jira.issue.create" || component.Type == automation.WebRequestActionType || automationOptionName(automationActionTypes, component.Type) != "")
+		return (component.Component == "" || component.Component == "ACTION") && (component.Type == "jira.issue.edit" || component.Type == "jira.issue.link" || component.Type == "jira.issue.email" || component.Type == "jira.issue.create" || component.Type == "jira.issue.watchers" || component.Type == automation.WebRequestActionType || automationOptionName(automationActionTypes, component.Type) != "")
 	}
 	for index, component := range rule.Components {
 		switch component.Component {
@@ -1173,6 +1197,12 @@ func automationActionViews(components []automationComponentJSON) []automationAct
 			view.Value = fields["summary"]
 		case "jira.issue.log-work":
 			view.Value = fields["duration"]
+		case "jira.issue.clone":
+			view.Value = fields["summary"]
+		case "jira.issue.watchers":
+			// The editor offers adding and removing as two actions, as Jira's
+			// own rule builder does, and the rule stores one with a choice.
+			view.Type, view.Value = "jira.issue.watchers:"+fields["action"], fields["accountId"]
 		case automation.WikiPageActionType:
 			view.Value = fields["spaceKey"]
 		case "jira.issue.delete":

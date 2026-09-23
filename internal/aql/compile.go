@@ -10,6 +10,9 @@ import (
 type Compiled struct {
 	Where string
 	Args  []any
+	// OrderBy is what the filter's ORDER BY asks for, ready to follow the
+	// caller's own ORDER BY keyword, or empty when the filter has none.
+	OrderBy string
 }
 
 // Columns names the SQL the condition is written against: the object row, its
@@ -24,17 +27,27 @@ type Columns struct {
 	// is stored under. A filter names an attribute as the schema names it;
 	// what the value is stored under is the schema's business.
 	Attributes map[string]string
+	// ObjectID, SchemaID and DeskID are what a reference or an object type
+	// hierarchy is followed with: the object row's id, its schema's id, and
+	// the service desk whose inventory is being searched.
+	ObjectID string
+	SchemaID string
+	DeskID   string
 }
 
 // DefaultColumns are the aliases the service desk's own object query uses.
 func DefaultColumns() Columns {
-	return Columns{Label: "o.label", Key: "o.object_key", SchemaName: "s.name", Values: "o.values"}
+	return Columns{Label: "o.label", Key: "o.object_key", SchemaName: "s.name", Values: "o.values",
+		ObjectID: "o.id", SchemaID: "s.id"}
 }
 
 type compiler struct {
 	columns Columns
 	args    []any
 	offset  int
+	// depth counts the references walked so far, so each level's aliases are
+	// its own and a path through two relationships joins two sets of rows.
+	depth int
 }
 
 // Compile writes the filter as a SQL condition. first is the number the
@@ -46,7 +59,51 @@ func (q *Query) Compile(columns Columns, first int) Compiled {
 	}
 	c := &compiler{columns: columns, offset: first}
 	where := q.root.sql(c)
-	return Compiled{Where: where, Args: c.args}
+	return Compiled{Where: where, Args: c.args, OrderBy: q.orderBy(c)}
+}
+
+// orderBy writes the filter's ORDER BY against the same columns.
+func (q *Query) orderBy(c *compiler) string {
+	if q == nil || q.order == nil {
+		return ""
+	}
+	column, _ := c.column(q.order.field)
+	direction := " ASC"
+	if q.order.descending {
+		direction = " DESC"
+	}
+	return "lower(COALESCE(" + column + ",''))" + direction
+}
+
+// Order is the field a filter's ORDER BY names and whether it descends. A
+// caller that merges several queries' rows sorts them itself, because each
+// query only orders its own.
+func (q *Query) Order() (field string, descending, ok bool) {
+	if q == nil || q.order == nil {
+		return "", false, false
+	}
+	return q.order.field, q.order.descending, true
+}
+
+// AttributeKey is the key an attribute's value is stored under, given the name
+// a filter writes: lower case, with anything that is not a letter or a number
+// as an underscore.
+func AttributeKey(name string) string {
+	return strings.Trim(quoteAttribute(name), "'")
+}
+
+// IsObjectField reports whether a name is one of the object's own fields
+// rather than an attribute, and which one it is.
+func IsObjectField(name string) (kind string, ok bool) {
+	switch strings.ToLower(name) {
+	case "objecttype", "type", "schema":
+		return "schema", true
+	case "name", "label":
+		return "label", true
+	case "key", "objectkey":
+		return "key", true
+	}
+	return "", false
 }
 
 // arg records one value and answers the placeholder that reads it.
@@ -129,4 +186,66 @@ func quoteAttribute(name string) string {
 		return '_'
 	}, name)
 	return quoteLiteral(key)
+}
+
+// sql walks one relationship by name and asks the objects at the other end.
+func (n referenceNode) sql(c *compiler) string {
+	return c.through(n.inner, "lower(related_link"+strconv.Itoa(c.depth+1)+".relationship)=lower("+c.arg(n.relationship)+")", false)
+}
+
+// sql asks the objects on the other side of any relationship, in the
+// direction the function names.
+func (n referencesNode) sql(c *compiler) string {
+	return c.through(n.inner, "TRUE", n.inbound)
+}
+
+// through writes the EXISTS a reference compiles to: the relationship rows
+// this object is an end of, the object at the other end, and what the nested
+// condition asks of it.
+func (c *compiler) through(inner node, relationship string, inbound bool) string {
+	c.depth++
+	level := strconv.Itoa(c.depth)
+	link, object, schema := "related_link"+level, "related_object"+level, "related_schema"+level
+	near, far := link+".from_object_id", link+".to_object_id"
+	if inbound {
+		near, far = far, near
+	}
+	outer := c.columns
+	c.columns = Columns{
+		Label: object + ".label", Key: object + ".object_key", SchemaName: schema + ".name",
+		Values: object + ".values", Attributes: outer.Attributes,
+		ObjectID: object + ".id", SchemaID: schema + ".id", DeskID: outer.DeskID,
+	}
+	condition := inner.sql(c)
+	c.columns = outer
+	c.depth--
+	return "EXISTS (SELECT 1 FROM service_asset_relationships " + link +
+		" JOIN service_asset_objects " + object + " ON " + object + ".id=" + far +
+		" JOIN service_asset_schemas " + schema + " ON " + schema + ".id=" + object + ".schema_id" +
+		" WHERE " + near + "=" + outer.ObjectID + " AND " + relationship + " AND " + condition + ")"
+}
+
+// sql matches an object type and every type beneath it, which is what the
+// hierarchy an object type sits in is for.
+func (n typeAndChildrenNode) sql(c *compiler) string {
+	level := strconv.Itoa(c.depth)
+	roots := make([]string, 0, len(n.names))
+	for _, name := range n.names {
+		named := c.arg(name)
+		roots = append(roots, "lower(root"+level+".name)=lower("+named+") OR root"+level+".schema_key="+named+" OR root"+level+".id::text="+named)
+	}
+	desk := "TRUE"
+	if c.columns.DeskID != "" {
+		desk = "root" + level + ".service_desk_id=" + c.arg(c.columns.DeskID)
+	}
+	tree := "WITH RECURSIVE descendants" + level + " AS (" +
+		"SELECT root" + level + ".id FROM service_asset_schemas root" + level + " WHERE " + desk + " AND (" + strings.Join(roots, " OR ") + ")" +
+		" UNION ALL SELECT child" + level + ".id FROM service_asset_schemas child" + level +
+		" JOIN descendants" + level + " parent" + level + " ON child" + level + ".parent_id=parent" + level + ".id)" +
+		" SELECT id FROM descendants" + level
+	match := "(" + c.columns.SchemaID + " IN (" + tree + "))"
+	if n.negated {
+		return "(NOT " + match + ")"
+	}
+	return match
 }

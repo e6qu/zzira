@@ -96,6 +96,29 @@ func renderNode(b *strings.Builder, n Node, marks map[string]bool, storage bool)
 		b.WriteString("<blockquote>")
 		renderNodes(b, n.Content, marks, storage)
 		b.WriteString("</blockquote>")
+	case "panel":
+		// A panel is Confluence's box around a body. In storage it is the
+		// macro it came from; on a page it is drawn the way the wiki draws
+		// the same macro.
+		macro := panelMacro(n)
+		if storage {
+			b.WriteString(`<ac:structured-macro ac:name="` + macro + `"><ac:rich-text-body>`)
+			renderNodes(b, n.Content, marks, storage)
+			b.WriteString("</ac:rich-text-body></ac:structured-macro>")
+			break
+		}
+		b.WriteString(`<div class="wiki-panel wiki-panel-` + macro + `" data-macro="` + macro + `">`)
+		renderNodes(b, n.Content, marks, storage)
+		b.WriteString("</div>")
+	case "status":
+		text, _ := n.Attrs["text"].(string)
+		colour := panelStatusColour(n)
+		if storage {
+			b.WriteString(`<ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">` + colour +
+				`</ac:parameter><ac:parameter ac:name="title">` + html.EscapeString(text) + `</ac:parameter></ac:structured-macro>`)
+			break
+		}
+		b.WriteString(`<span class="wiki-status wiki-status-` + colour + `" data-macro="status" data-colour="` + colour + `">` + html.EscapeString(text) + "</span>")
 	case "hardBreak":
 		if storage {
 			b.WriteString("<br/>")
@@ -385,12 +408,39 @@ func Equal(a, b json.RawMessage) bool {
 	return string(ea) == string(eb)
 }
 
+// adfPanelTypes maps a document's panel to the Confluence macro that draws
+// it. A panel of any other kind is drawn as a plain one, as Confluence draws
+// a custom panel.
+var adfPanelTypes = map[string]string{"info": "info", "note": "note", "warning": "warning", "tip": "tip", "error": "warning", "success": "tip", "custom": "panel"}
+
+// adfStatusColours are the colours a status node is drawn in; anything else
+// is grey, as Confluence draws it.
+var adfStatusColours = map[string]bool{"grey": true, "red": true, "yellow": true, "green": true, "blue": true, "purple": true}
+
+func panelMacro(n Node) string {
+	kind, _ := n.Attrs["panelType"].(string)
+	if macro, ok := adfPanelTypes[strings.ToLower(strings.TrimSpace(kind))]; ok {
+		return macro
+	}
+	return "panel"
+}
+
+func panelStatusColour(n Node) string {
+	colour, _ := n.Attrs["color"].(string)
+	colour = strings.ToLower(strings.TrimSpace(colour))
+	if adfStatusColours[colour] {
+		return colour
+	}
+	return "grey"
+}
+
 // supportedNode reports whether a node type survives Normalize.
 func supportedNode(t string) bool {
 	switch t {
 	case "doc", "paragraph", "heading", "bulletList", "orderedList", "listItem",
 		"codeBlock", "blockquote", "hardBreak", "table", "tableRow",
-		"tableHeader", "tableCell", "mention", "emoji", "text", "taskList", "taskItem", "date", "rule":
+		"tableHeader", "tableCell", "mention", "emoji", "text", "taskList", "taskItem", "date", "rule",
+		"panel", "status":
 		return true
 	}
 	return false

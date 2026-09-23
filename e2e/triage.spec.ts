@@ -99,6 +99,12 @@ test('issue triage journey: inline fields, labels API, watchers, votes, links, a
   await linkedWork.getByRole('button', { name: 'Link', exact: true }).click();
   await expect(linkedWork.locator('.linked-work-list')).toContainText(linkedKey);
 
+  // The link is a change the replica syncs, and the view re-renders when it
+  // lands. Write the comment into the view that change leaves behind, rather
+  // than into one that is about to be replaced.
+  await expect
+    .poll(async () => (await page.locator('#sync-banner').textContent()) ?? '', { timeout: 20_000 })
+    .toContain('synced');
   await page.fill('.rich-editor', 'Unified activity comment');
   await page.locator('.comment-form button[type=submit]').click();
   await expect(page.locator('[data-activity-kind=comment]', { hasText: 'Unified activity comment' })).toBeVisible();
@@ -140,4 +146,71 @@ test('issue triage journey: inline fields, labels API, watchers, votes, links, a
   expect(unwatch.status()).toBe(204);
   const unvote = await request.delete(`/rest/api/3/issue/${key}/votes`, { headers: auth });
   expect(unvote.status()).toBe(204);
+});
+
+// A live update landing while somebody is writing must not take what they
+// wrote. The view holds its re-render back; the comment is sent as written,
+// and the newer view arrives after it.
+test('a live update while a comment is being written does not empty it', async ({ page, request }) => {
+  const marker = Date.now();
+  const key = await createIssue(request, `Live comment ${marker}`);
+  await login(page);
+  await page.goto(`/browse/${key}`);
+  const banner = page.locator('#sync-banner');
+  await expect.poll(async () => (await banner.textContent()) ?? '', { timeout: 20_000 }).toContain('synced');
+  const seqOf = async () => Number(((await banner.textContent()) ?? '').replace(/^.*seq /, '')) || 0;
+  const before = await seqOf();
+
+  const text = `Written while syncing ${marker}`;
+  await page.fill('.rich-editor', text);
+
+  // Somebody else changes the work item, so the page is told to re-render
+  // while the comment is still being written.
+  const renamed = `Live comment ${marker} renamed`;
+  const changed = await request.put(`/rest/api/3/issue/${key}`, {
+    headers: { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' },
+    data: { fields: { summary: renamed } },
+  });
+  expect(changed.status()).toBe(204);
+  // The replica says it has the change; the page is holding the render back.
+  await expect.poll(seqOf, { timeout: 30_000 }).toBeGreaterThan(before);
+
+  await page.locator('.comment-form button[type=submit]').click();
+  await expect(page.locator('[data-activity-kind=comment]', { hasText: text })).toBeVisible();
+  // The held render lands once the comment is sent.
+  await expect.poll(async () => await page.locator('#issue-root h1').innerText(), { timeout: 20_000 }).toContain(renamed);
+});
+
+// Moving from one field to the next is not the same as being finished. A
+// render held back while somebody typed must not land in the moment between
+// the two, on a machine slow enough for that moment to be wide.
+test('a held live update does not land between one field and the next', async ({ page, request }) => {
+  const marker = Date.now();
+  const key = await createIssue(request, `Held render ${marker}`);
+  await login(page);
+  await page.goto(`/browse/${key}`);
+  const banner = page.locator('#sync-banner');
+  await expect.poll(async () => (await banner.textContent()) ?? '', { timeout: 20_000 }).toContain('synced');
+  const seqOf = async () => Number(((await banner.textContent()) ?? '').replace(/^.*seq /, '')) || 0;
+  const before = await seqOf();
+
+  // Something is typed, so the view holds its next render back.
+  await page.getByText('Link work item', { exact: true }).click();
+  await page.fill('#link-issue', `${key}`);
+  const renamed = `Held render ${marker} renamed`;
+  const changed = await request.put(`/rest/api/3/issue/${key}`, {
+    headers: { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' },
+    data: { fields: { summary: renamed } },
+  });
+  expect(changed.status()).toBe(204);
+  await expect.poll(seqOf, { timeout: 30_000 }).toBeGreaterThan(before);
+
+  // A busy machine takes its time landing the focus in the next field.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 20 });
+  const text = `Typed on the way to the comment ${marker}`;
+  await page.fill('.rich-editor', text);
+  await page.locator('.comment-form button[type=submit]').click();
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  await expect(page.locator('[data-activity-kind=comment]', { hasText: text })).toBeVisible({ timeout: 20_000 });
 });

@@ -11,6 +11,7 @@ func TestProtectCookieMutations(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	tests := []struct {
 		name, method, origin, authorization, fetchSite string
+		path                                           string
 		want                                           int
 	}{
 		{name: "safe request", method: http.MethodGet, want: http.StatusNoContent},
@@ -26,10 +27,22 @@ func TestProtectCookieMutations(t *testing.T) {
 		// A sibling host is another origin here, whatever the browser calls
 		// the relationship: this site is served from one origin.
 		{name: "a sibling host", method: http.MethodPost, origin: "https://other.zzira.example", fetchSite: "same-site", want: http.StatusForbidden},
+		// An identity provider posts its answer from its own site, which is
+		// what the SAML HTTP-POST binding is: the signature over the
+		// assertion and the one-use sign-in it names are what make it worth
+		// reading, not where the browser came from.
+		{name: "a SAML assertion from the identity provider", method: http.MethodPost, path: "/saml/company/acs",
+			origin: "https://idp.example", fetchSite: "cross-site", want: http.StatusNoContent},
+		{name: "another site's form to a path that looks like one", method: http.MethodPost, path: "/saml/company/acs/../../admin",
+			origin: "https://attacker.example", fetchSite: "cross-site", want: http.StatusForbidden},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := httptest.NewRequest(tt.method, "https://zzira.example/rest/api/3/issue", nil)
+			path := tt.path
+			if path == "" {
+				path = "/rest/api/3/issue"
+			}
+			r := httptest.NewRequest(tt.method, "https://zzira.example"+path, nil)
 			r.AddCookie(&http.Cookie{Name: sessionCookie, Value: "session"})
 			r.Header.Set("Origin", tt.origin)
 			r.Header.Set("Sec-Fetch-Site", tt.fetchSite)

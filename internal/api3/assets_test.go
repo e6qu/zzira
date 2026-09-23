@@ -213,6 +213,25 @@ func TestTheAssetsAPIServesOneSiteInventory(t *testing.T) {
 		t.Fatal(read)
 	}
 
+	// A file kept with an object is listed, served and removed.
+	kept, err := st.SaveServiceAssetObjectAttachment(ctx, workspaceID, adminID, checkout.ID, "rack.txt", "text/plain", 7, "blob-asset-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := blobs.Put(ctx, "blob-asset-test", strings.NewReader("in rack")); err != nil {
+		t.Fatal(err)
+	}
+	if listed := call("GET", assets+"/object/"+checkout.ID+"/attachment", "", 200); !strings.Contains(listed, `"filename":"rack.txt"`) || !strings.Contains(listed, `"total":1`) {
+		t.Fatal(listed)
+	}
+	if content := call("GET", assets+"/object/"+checkout.ID+"/attachment/"+kept.ID, "", 200); content != "in rack" {
+		t.Fatalf("the file read back as %q", content)
+	}
+	call("DELETE", assets+"/object/"+checkout.ID+"/attachment/"+kept.ID, "", 204)
+	if listed := call("GET", assets+"/object/"+checkout.ID+"/attachment", "", 200); !strings.Contains(listed, `"total":0`) {
+		t.Fatal(listed)
+	}
+
 	// A schema is made and taken away over REST, the way the Assets page does
 	// both.
 	madeSchema := call("POST", assets+"/objectschema/create", `{"name":"Laptops","objectSchemaKey":"LAP","description":"What people carry","serviceDeskId":"`+deskID+`","attributes":[{"name":"Holder"},{"name":"Model","type":"select","required":true,"options":["Air","Pro"]}]}`, 201)

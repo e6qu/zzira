@@ -28,7 +28,9 @@ The version's row is removed; the page reads the same afterwards, because later 
 
 ## Macros in storage
 
-Storage bodies accept Confluence's structured macros: `ac:structured-macro`, `ac:parameter`, `ac:rich-text-body` and `ac:plain-text-body`, with the `name`, `macro-id`, `schema-version` and `local-id` attributes. Macros are structure, not markup: a reader sees the body a macro wraps, and parameters are stored but not rendered. Macros are not executed (an `info` macro renders as its body, not as a panel).
+Storage bodies accept Confluence's structured macros: `ac:structured-macro`, `ac:parameter`, `ac:rich-text-body` and `ac:plain-text-body`, with the `name`, `macro-id`, `schema-version`, `local-id` and layout `type` attributes, as well as `ac:layout`, `ac:layout-section` and `ac:layout-cell`.
+
+The macros the site draws are `info`, `note`, `warning`, `tip` and `panel` (a box with the title it was given), `status` (a word in its colour), `code` (its body as code in the language it names) and `toc` (built from the page's headings, each of which is given an identifier a link can reach). A layout section is drawn as its columns. A macro the site does not draw is still structure rather than markup: a reader sees the body it wraps, and its parameters are stored without being shown. See [page writing](PAGE_WRITING.md#the-editor) for what the editor writes back.
 
 ## Conversions
 
@@ -41,7 +43,7 @@ Storage bodies accept Confluence's structured macros: `ac:structured-macro`, `ac
 
 Any other pair fails with a reason instead of returning a body in the wrong format. The async operations record that failure as a `FAILED` result.
 
-- Storage to `atlas_doc_format` uses an HTML-to-ADF reader (`internal/adf/fromhtml.go`). An element it does not model contributes its text.
+- Storage to `atlas_doc_format` uses an HTML-to-ADF reader (`internal/adf/fromhtml.go`). An element it does not model contributes its text. A panel macro becomes a `panel` node (its title the bold line the document holds it as, since a panel node has no title of its own), a `status` macro a `status` node, and a `code` macro a `codeBlock`; writing the document back produces those macros again.
 - Wiki markup is read by `internal/wikimarkup/notation.go` (see [page writing](PAGE_WRITING.md#body-formats)).
 - Conversions finish before `asyncId` is returned, so a result is never `WORKING` or `QUEUED`. Results are kept for five minutes, then 404.
 - In a bulk read, an unknown or expired id is reported as `FAILED` without failing the others.

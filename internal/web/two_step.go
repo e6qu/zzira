@@ -32,6 +32,9 @@ func signInChallengeCookieName() string {
 
 type twoStepVerifyData struct {
 	Error string
+	// Keys says the account has a security key, so the page offers it beside
+	// the code.
+	Keys bool
 }
 
 // twoStepSecret opens the sealed secret an account's authenticator app holds.
@@ -90,18 +93,32 @@ func (h *Handler) VerifySignInForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login/enrol", http.StatusSeeOther)
 		return
 	}
-	writePage(w, "page_two_step_verify", twoStepVerifyData{})
+	writePage(w, "page_two_step_verify", twoStepVerifyData{Keys: h.waitingSignInKeys(r, challenge)})
 }
 
 // waitingSignInVerifies says whether the account this sign-in belongs to has
-// an authenticator app to answer with.
+// something to answer with: an authenticator app, or a security key.
 func (h *Handler) waitingSignInVerifies(r *http.Request, challenge string) bool {
 	userID, err := h.Store.SignInChallengeUser(r.Context(), authn.SessionHash(challenge))
 	if err != nil {
 		return false
 	}
-	enrolment, err := h.Store.TwoStep(r.Context(), userID)
-	return err == nil && enrolment.Confirmed
+	if enrolment, err := h.Store.TwoStep(r.Context(), userID); err == nil && enrolment.Confirmed {
+		return true
+	}
+	keys, err := h.Store.WebAuthnCredentials(r.Context(), userID)
+	return err == nil && len(keys) > 0
+}
+
+// waitingSignInKeys says whether the account this sign-in belongs to has a
+// security key, which is what the page offers beside the code.
+func (h *Handler) waitingSignInKeys(r *http.Request, challenge string) bool {
+	userID, err := h.Store.SignInChallengeUser(r.Context(), authn.SessionHash(challenge))
+	if err != nil {
+		return false
+	}
+	keys, err := h.Store.WebAuthnCredentials(r.Context(), userID)
+	return err == nil && len(keys) > 0
 }
 
 // VerifySignInSubmit answers a waiting sign-in with a code.
@@ -123,6 +140,7 @@ func (h *Handler) VerifySignInSubmit(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, store.ErrTwoStepCode) {
 		writePageStatus(w, "page_two_step_verify", twoStepVerifyData{
 			Error: "That code is not right. Use the code your authenticator app shows now, or one of your recovery codes.",
+			Keys:  h.waitingSignInKeys(r, challenge),
 		}, http.StatusUnauthorized)
 		return
 	}

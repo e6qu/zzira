@@ -43,6 +43,8 @@ var moduleRequirements = map[string]struct {
 	"jira:projectPage":             {Location: "jira.project.page", Scope: "read:jira-work"},
 	"jira:projectAdminPage":        {Location: "jira.project.settings", Scope: "read:jira-work"},
 	"jira:adminPage":               {Location: "jira.admin", Scope: "read:jira-work"},
+	"jira:configurePage":           {Location: "jira.app.configure", Scope: "read:jira-work"},
+	"jira:profilePage":             {Location: "jira.profile", Scope: "read:jira-work"},
 	"jira:report":                  {Location: "jira.report", Scope: "read:jira-work"},
 	"jira:issuePanel":              {Location: "jira.issue.view", Scope: "read:jira-work"},
 	"jira:issueTabPanel":           {Location: "jira.issue.activity", Scope: "read:jira-work"},

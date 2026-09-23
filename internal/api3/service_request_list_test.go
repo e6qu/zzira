@@ -124,6 +124,14 @@ func TestServiceRequestListFiltersAndExpansions(t *testing.T) {
 	}
 	callAs(adminID, http.MethodPost, "/rest/servicedeskapi/organization/"+organization.ID+"/user", `{"accountIds":["`+reporterID+`","`+colleagueID+`"],"usernames":[]}`, http.StatusNoContent)
 	callAs(adminID, http.MethodPost, "/rest/servicedeskapi/servicedesk/"+serviceDeskID+"/organization", `{"organizationId":`+organization.ID+`}`, http.StatusNoContent)
+	// Each of them raised something for the organization; the VPN outage the
+	// reporter kept to themselves is not the organization's, though they
+	// belong to it.
+	for _, shared := range []struct{ actor, key string }{{reporterID, printer}, {colleagueID, laptop}} {
+		if _, err = h.Commands.ShareServiceRequest(ctx, shared.actor, workspaceID, shared.key, []string{organization.ID}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// The API gives the request's client-facing issue id; the command takes the key.
 	if _, err = h.Commands.CreateServiceApproval(ctx, adminID, workspaceID, vpn, "Manager approval", []string{approverID}); err != nil {
 		t.Fatal(err)
@@ -158,7 +166,7 @@ func TestServiceRequestListFiltersAndExpansions(t *testing.T) {
 	expect(reporterID, "?requestOwnership=OWNED_REQUESTS", printer, vpn)
 	expect(colleagueID, "?requestOwnership=PARTICIPATED_REQUESTS", printer)
 	expect(colleagueID, "?requestOwnership=OWNED_REQUESTS&requestOwnership=PARTICIPATED_REQUESTS", printer, laptop)
-	expect(reporterID, "?requestOwnership=ORGANIZATION&organizationId="+organization.ID, printer, vpn, laptop)
+	expect(reporterID, "?requestOwnership=ORGANIZATION&organizationId="+organization.ID, printer, laptop)
 	expect(approverID, "?requestOwnership=ALL_ORGANIZATIONS")
 	expect(approverID, "?requestOwnership=APPROVER", vpn)
 	expect(approverID, "?requestOwnership=APPROVER&approvalStatus=MY_PENDING_APPROVAL", vpn)

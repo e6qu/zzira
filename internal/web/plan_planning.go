@@ -541,6 +541,82 @@ func (h *Handler) PlanCapacityChange(w http.ResponseWriter, r *http.Request) {
 	planBack(w, r, plan, scenario.ID, "", "notice", "Capacity set in "+scenario.Name+".")
 }
 
+// PlanAutoSchedule plans the scenario's work into its teams' iterations and
+// says what it did. Nothing reaches Jira: the answers are the scenario's
+// changes, which Review changes still decides on.
+func (h *Handler) PlanAutoSchedule(w http.ResponseWriter, r *http.Request) {
+	if !parseForm(w, r) {
+		return
+	}
+	user, workspaceID, plan, edit, _, scenario, ok := h.planContext(w, r)
+	if !ok {
+		return
+	}
+	if !edit {
+		http.Error(w, "You cannot edit this plan.", http.StatusForbidden)
+		return
+	}
+	now := time.Now()
+	request := store.PlanScheduleRequest{All: r.PostFormValue("scope") == "all", From: now.UTC()}
+	if from := strings.TrimSpace(r.PostFormValue("from")); from != "" {
+		day, err := time.Parse("2006-01-02", from)
+		if err != nil {
+			planBack(w, r, plan, scenario.ID, "", "error", "The day to start from is a date in the form yyyy-MM-dd.")
+			return
+		}
+		request.From = day
+	}
+	result, err := h.Store.AutoSchedulePlan(r.Context(), workspaceID, user.ID, plan, scenario.ID, request, now)
+	if err != nil {
+		if message := planErrorMessage(err); message != "" {
+			planBack(w, r, plan, scenario.ID, "", "error", message)
+			return
+		}
+		http.Error(w, "Could not schedule the plan.", http.StatusInternalServerError)
+		return
+	}
+	planBack(w, r, plan, scenario.ID, "", "notice", planScheduleMessage(result, scenario.Name))
+}
+
+// planScheduleMessage says what a run did in one sentence. Work it could not
+// place is grouped by the reason, because a plan of a busy board leaves the
+// same sentence against dozens of work items and a list of keys says nothing.
+func planScheduleMessage(result store.PlanScheduleResult, scenarioName string) string {
+	message := fmt.Sprintf("Planned %d work items into %s", result.Scheduled, scenarioName)
+	if result.Unestimated > 0 {
+		message += fmt.Sprintf("; %d of them carry no estimate and took no capacity", result.Unestimated)
+	}
+	if len(result.Skipped) > 0 {
+		order := []string{}
+		keys := map[string][]string{}
+		for _, skip := range result.Skipped {
+			if _, seen := keys[skip.Reason]; !seen {
+				order = append(order, skip.Reason)
+			}
+			keys[skip.Reason] = append(keys[skip.Reason], skip.Key)
+		}
+		groups := make([]string, 0, len(order))
+		for _, reason := range order {
+			named := keys[reason]
+			if len(named) == 1 {
+				groups = append(groups, named[0]+" because "+reason)
+				continue
+			}
+			shown := named
+			if len(shown) > 3 {
+				shown = shown[:3]
+			}
+			group := fmt.Sprintf("%d because %s (%s", len(named), reason, strings.Join(shown, ", "))
+			if len(named) > len(shown) {
+				group += fmt.Sprintf(" and %d more", len(named)-len(shown))
+			}
+			groups = append(groups, group+")")
+		}
+		message += ". Left where it was: " + strings.Join(groups, "; ")
+	}
+	return message + "."
+}
+
 // PlanSchedulingChange sets whether dependent work may share an iteration.
 // It is the one setting the plan page itself offers; the rest of a plan's
 // setup is on its settings page.

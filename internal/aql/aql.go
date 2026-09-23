@@ -5,9 +5,12 @@
 //
 // What is understood here is the part of AQL a form filter uses: the object's
 // own type, name and key, its attributes by name, the comparisons a picker
-// needs, and AND, OR, NOT and brackets between them. Everything else -- object
-// references, functions, ORDER BY -- is refused with a message that says so,
-// rather than silently matching everything.
+// needs, and AND, OR, NOT and brackets between them. Beside those it reads the
+// references between objects -- a dotted path through a relationship, and
+// inboundReferences()/outboundReferences() over the objects at the other end
+// -- the objectTypeAndChildren() function over the object type hierarchy, and
+// ORDER BY. Anything else is refused with a message that says so, rather than
+// silently matching everything.
 package aql
 
 import (
@@ -19,7 +22,14 @@ import (
 // Query is a parsed filter. Compile turns it into a condition over the objects
 // of one service desk.
 type Query struct {
-	root node
+	root  node
+	order *ordering
+}
+
+// ordering is an ORDER BY: the field to sort on and whether it descends.
+type ordering struct {
+	field      string
+	descending bool
 }
 
 // SyntaxError is a filter this package cannot read, with where it gave up.
@@ -35,6 +45,29 @@ type node interface{ sql(*compiler) string }
 type andNode struct{ left, right node }
 type orNode struct{ left, right node }
 type notNode struct{ inner node }
+
+// referenceNode is a dotted path: the objects one relationship leads to, and
+// what must be true of them. "Runs on".Tier = "1" is every object that runs on
+// something in tier one.
+type referenceNode struct {
+	relationship string
+	inner        node
+}
+
+// referencesNode is inboundReferences() or outboundReferences(): the objects
+// pointing at this one, or the ones it points at, whatever the relationship is
+// called.
+type referencesNode struct {
+	inbound bool
+	inner   node
+}
+
+// typeAndChildrenNode is objectTypeAndChildren(): an object type and every
+// type beneath it.
+type typeAndChildrenNode struct {
+	names   []string
+	negated bool
+}
 
 // comparison is one test: a field, an operator and the values it takes.
 type comparison struct {
@@ -58,10 +91,36 @@ func Parse(input string) (*Query, error) {
 	if err != nil {
 		return nil, err
 	}
+	order, err := parser.parseOrder()
+	if err != nil {
+		return nil, err
+	}
 	if !parser.done() {
 		return nil, &SyntaxError{Message: "unexpected " + strconv.Quote(parser.peek().text) + " after the filter", Offset: parser.peek().offset}
 	}
-	return &Query{root: root}, nil
+	return &Query{root: root, order: order}, nil
+}
+
+// parseOrder reads the ORDER BY a filter may end with.
+func (p *parser) parseOrder() (*ordering, error) {
+	start := p.at
+	if !p.takeWord("ORDER") {
+		return nil, nil
+	}
+	if !p.takeWord("BY") {
+		return nil, &SyntaxError{Message: "expected BY after ORDER", Offset: p.tokens[start].offset}
+	}
+	if p.done() || (p.peek().kind != tokenWord && p.peek().kind != tokenString) {
+		return nil, &SyntaxError{Message: "ORDER BY what?", Offset: p.tokens[start].offset}
+	}
+	order := &ordering{field: p.tokens[p.at].text}
+	p.at++
+	switch {
+	case p.takeWord("DESC"):
+		order.descending = true
+	case p.takeWord("ASC"):
+	}
+	return order, nil
 }
 
 // Empty reports a filter that selects everything, which is what no filter is.
@@ -222,6 +281,12 @@ func (p *parser) parseUnary() (node, error) {
 		}
 		return notNode{inner: inner}, nil
 	}
+	if !p.done() && p.peek().kind == tokenWord && p.at+1 < len(p.tokens) && p.tokens[p.at+1].kind == tokenOpen {
+		switch strings.ToLower(p.peek().text) {
+		case "inboundreferences", "outboundreferences":
+			return p.parseReferences()
+		}
+	}
 	if !p.done() && p.peek().kind == tokenOpen {
 		p.at++
 		inner, err := p.parseOr()
@@ -237,6 +302,24 @@ func (p *parser) parseUnary() (node, error) {
 	return p.parseComparison()
 }
 
+// parseReferences reads inboundReferences(<filter>) or
+// outboundReferences(<filter>): what must be true of the objects at the other
+// end of a relationship, whatever that relationship is called.
+func (p *parser) parseReferences() (node, error) {
+	name := p.tokens[p.at].text
+	inbound := strings.EqualFold(name, "inboundReferences")
+	p.at += 2 // the name and its opening bracket
+	inner, err := p.parseOr()
+	if err != nil {
+		return nil, err
+	}
+	if p.done() || p.peek().kind != tokenClose {
+		return nil, &SyntaxError{Message: name + "() is never closed", Offset: p.peek().offset}
+	}
+	p.at++
+	return referencesNode{inbound: inbound, inner: inner}, nil
+}
+
 // parseComparison reads one test: a field, an operator and what it is
 // compared with.
 func (p *parser) parseComparison() (node, error) {
@@ -248,6 +331,30 @@ func (p *parser) parseComparison() (node, error) {
 		return nil, &SyntaxError{Message: "expected something to compare, found " + strconv.Quote(field.text), Offset: field.offset}
 	}
 	p.at++
+	// A dotted path walks a relationship: "Runs on".Tier is the tier of
+	// whatever this object runs on. A quoted first segment is its own token,
+	// and the rest arrives as one word beginning with a dot.
+	path := splitPath(field.text)
+	for !p.done() && p.peek().kind == tokenWord && strings.HasPrefix(p.peek().text, ".") {
+		rest := strings.TrimPrefix(p.peek().text, ".")
+		p.at++
+		if rest != "" {
+			path = append(path, splitPath(rest)...)
+			continue
+		}
+		// A quoted step, such as "Runs on"."Depends on", arrives as a lone dot
+		// and then the quoted name.
+		if p.done() || (p.peek().kind != tokenWord && p.peek().kind != tokenString) {
+			return nil, &SyntaxError{Message: "a path through references has an empty step", Offset: field.offset}
+		}
+		path = append(path, p.tokens[p.at].text)
+		p.at++
+	}
+	for _, segment := range path {
+		if strings.TrimSpace(segment) == "" {
+			return nil, &SyntaxError{Message: "a path through references has an empty step", Offset: field.offset}
+		}
+	}
 	if p.done() {
 		return nil, &SyntaxError{Message: strconv.Quote(field.text) + " is compared with nothing", Offset: field.offset}
 	}
@@ -284,13 +391,85 @@ func (p *parser) parseComparison() (node, error) {
 		if negated {
 			operator = "IS NOT EMPTY"
 		}
-		return comparison{field: field.text, operator: operator}, nil
+		return throughReferences(path, comparison{field: path[len(path)-1], operator: operator}), nil
+	}
+	// objectType IN objectTypeAndChildren("Servers") asks for a type and
+	// everything beneath it, which is the one function a type takes.
+	if function, arguments, ok := p.takeFunction(); ok {
+		if !strings.EqualFold(function, "objectTypeAndChildren") {
+			return nil, &SyntaxError{Message: "unsupported function " + function + "()", Offset: field.offset}
+		}
+		if !isObjectTypeField(path[len(path)-1]) {
+			return nil, &SyntaxError{Message: "objectTypeAndChildren() compares an object type, not " + strconv.Quote(path[len(path)-1]), Offset: field.offset}
+		}
+		if len(arguments) == 0 {
+			return nil, &SyntaxError{Message: "objectTypeAndChildren() names an object type", Offset: field.offset}
+		}
+		switch operator {
+		case "=", "IN":
+			return throughReferences(path, typeAndChildrenNode{names: arguments}), nil
+		case "!=", "NOT IN":
+			return throughReferences(path, typeAndChildrenNode{names: arguments, negated: true}), nil
+		}
+		return nil, &SyntaxError{Message: "objectTypeAndChildren() compares with =, !=, IN or NOT IN", Offset: field.offset}
 	}
 	values, err := p.parseValues(operator)
 	if err != nil {
 		return nil, err
 	}
-	return comparison{field: field.text, operator: operator, values: values}, nil
+	return throughReferences(path, comparison{field: path[len(path)-1], operator: operator, values: values}), nil
+}
+
+// splitPath reads a field written as steps through references.
+func splitPath(field string) []string {
+	if !strings.Contains(field, ".") {
+		return []string{field}
+	}
+	return strings.Split(field, ".")
+}
+
+// throughReferences wraps a condition in the relationships its path walks, so
+// "Runs on".Tier = "1" asks the objects this one runs on about their tier.
+func throughReferences(path []string, inner node) node {
+	for index := len(path) - 2; index >= 0; index-- {
+		inner = referenceNode{relationship: path[index], inner: inner}
+	}
+	return inner
+}
+
+// isObjectTypeField reports the names AQL gives an object's own type.
+func isObjectTypeField(field string) bool {
+	switch strings.ToLower(field) {
+	case "objecttype", "type", "schema":
+		return true
+	}
+	return false
+}
+
+// takeFunction reads a function call where a value was expected, such as
+// objectTypeAndChildren("Servers").
+func (p *parser) takeFunction() (string, []string, bool) {
+	if p.done() || p.peek().kind != tokenWord || p.at+1 >= len(p.tokens) || p.tokens[p.at+1].kind != tokenOpen {
+		return "", nil, false
+	}
+	name := p.tokens[p.at].text
+	at := p.at + 2
+	arguments := []string{}
+	for at < len(p.tokens) {
+		switch p.tokens[at].kind {
+		case tokenWord, tokenString:
+			arguments = append(arguments, p.tokens[at].text)
+			at++
+		case tokenComma:
+			at++
+		case tokenClose:
+			p.at = at + 1
+			return name, arguments, true
+		default:
+			return "", nil, false
+		}
+	}
+	return "", nil, false
 }
 
 // parseValues reads what a comparison takes: one value, or a bracketed list

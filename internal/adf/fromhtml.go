@@ -53,7 +53,7 @@ func (p *htmlParser) blocks() []Node {
 			p.at = len(p.source)
 			break
 		}
-		if block, produced := blockNode(name, inner); produced {
+		if block, produced := blockNode(name, p.tag, inner); produced {
 			flush()
 			nodes = append(nodes, block)
 		} else {
@@ -147,8 +147,60 @@ func findClosing(source, name string, from int) int {
 	}
 }
 
-func blockNode(name, inner string) (Node, bool) {
+// macroParameter reads one of a structured macro's parameters.
+func macroParameter(inner, name string) string {
+	open := `<ac:parameter ac:name="` + name + `">`
+	at := strings.Index(inner, open)
+	if at < 0 {
+		return ""
+	}
+	rest := inner[at+len(open):]
+	end := strings.Index(rest, "</ac:parameter>")
+	if end < 0 {
+		return ""
+	}
+	return html.UnescapeString(strings.TrimSpace(rest[:end]))
+}
+
+// macroBody reads a macro's rich text or plain text body.
+func macroBody(inner, element string) string {
+	open, closing := "<"+element+">", "</"+element+">"
+	at := strings.Index(inner, open)
+	if at < 0 {
+		return ""
+	}
+	rest := inner[at+len(open):]
+	end := strings.Index(rest, closing)
+	if end < 0 {
+		return rest
+	}
+	return rest[:end]
+}
+
+// adfPanelKinds maps a Confluence panel macro to the kind of panel a document
+// holds.
+var adfPanelKinds = map[string]string{"info": "info", "note": "note", "warning": "warning", "tip": "tip", "panel": "custom"}
+
+func blockNode(name, tag, inner string) (Node, bool) {
 	switch name {
+	case "ac:structured-macro":
+		macro := strings.ToLower(attributeValue(tag, "ac:name"))
+		if kind, ok := adfPanelKinds[macro]; ok {
+			body := (&htmlParser{source: macroBody(inner, "ac:rich-text-body")}).blocks()
+			// The title a panel was given is not something a document holds,
+			// so it is kept as the bold line Confluence shows it as.
+			if title := macroParameter(inner, "title"); title != "" {
+				body = append([]Node{{Type: "paragraph", Content: []Node{{Type: "text", Text: title, Mark: []Mark{{Type: "strong"}}}}}}, body...)
+			}
+			return Node{Type: "panel", Attrs: map[string]any{"panelType": kind}, Content: body}, true
+		}
+		if macro == "code" {
+			return Node{Type: "codeBlock", Content: textNodes(stripTags(macroBody(inner, "ac:plain-text-body")))}, true
+		}
+		// A macro the document format has no node for is read as the body it
+		// wraps, which is what the rest of this parser does with markup it
+		// does not model.
+		return Node{}, false
 	case "p":
 		return Node{Type: "paragraph", Content: inlineNodes(inner)}, true
 	case "h1", "h2", "h3", "h4", "h5", "h6":
@@ -279,6 +331,18 @@ func inlineNodes(source string) []Node {
 				}
 			}
 			nodes = append(nodes, mention)
+		case "ac:structured-macro":
+			// A status is a word in a colour, which a document holds as its
+			// own node; any other macro here is read as what it wraps.
+			if strings.ToLower(attributeValue(parser.tag, "ac:name")) != "status" {
+				nodes = append(nodes, inlineNodes(inner)...)
+				break
+			}
+			colour := strings.ToLower(macroParameter(inner, "colour"))
+			if !adfStatusColours[colour] {
+				colour = "grey"
+			}
+			nodes = append(nodes, Node{Type: "status", Attrs: map[string]any{"text": macroParameter(inner, "title"), "color": colour}})
 		case "time":
 			if day, err := time.Parse("2006-01-02", attributeValue(parser.tag, "datetime")); err == nil {
 				nodes = append(nodes, Node{Type: "date", Attrs: map[string]any{"timestamp": strconv.FormatInt(day.UnixMilli(), 10)}})

@@ -17,13 +17,99 @@ import (
 var macroElements = map[string]bool{
 	"structured-macro": true, "parameter": true, "rich-text-body": true, "plain-text-body": true,
 	"task-list": true, "task": true, "task-id": true, "task-uuid": true, "task-status": true, "task-body": true,
+	"layout": true, "layout-section": true, "layout-cell": true,
 }
+
+// panelMacros are Confluence's panel macros: a box around a body, with the
+// title it is given shown above it. The value is the word the rendering uses,
+// so what reaches the HTML is one of these rather than whatever the body
+// happened to say.
+var panelMacros = map[string]string{"info": "info", "note": "note", "warning": "warning", "tip": "tip", "panel": "panel"}
+
+// statusColours are the colours Confluence's status macro is drawn in. A
+// status whose colour is anything else is drawn grey, as Confluence draws it.
+var statusColours = map[string]bool{"grey": true, "red": true, "yellow": true, "green": true, "blue": true, "purple": true}
+
+// layoutTypes are the column arrangements a layout section takes, each
+// mapping to the word the rendering uses for it.
+var layoutTypes = map[string]string{
+	"single": "single", "two_equal": "two_equal", "two_left_sidebar": "two_left_sidebar",
+	"two_right_sidebar": "two_right_sidebar", "three_equal": "three_equal",
+	"three_with_sidebars": "three_with_sidebars",
+}
+
+// tocMarker stands in for a table of contents while the page renders: the
+// headings it lists are only all known once the whole body has been read. It
+// carries the macro's own identifier, and cannot come from a page body,
+// because a NUL is not valid XML.
+var tocMarker = regexp.MustCompile("\x00wiki-toc:([^\x00]*)\x00")
 
 // storageDate is the only form a time element's datetime takes in storage.
 var storageDate = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 var macroAttributes = map[string]bool{
-	"name": true, "macro-id": true, "schema-version": true, "local-id": true,
+	"name": true, "macro-id": true, "schema-version": true, "local-id": true, "type": true,
+}
+
+// macroFrame is one structured macro being read, with the parameters that
+// describe how it is drawn.
+type macroFrame struct {
+	name     string
+	id       string
+	title    string
+	colour   string
+	language string
+}
+
+// macroIdentifier is what a macro's own identifier may look like: Confluence
+// writes a UUID, and anything that is not a plain identifier is left out
+// rather than written into an attribute.
+var macroIdentifier = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
+
+// macroIDAttribute keeps a macro's own identifier on the element it renders
+// as, so a body that goes through the editor comes back with the identifier
+// Confluence gave it.
+func macroIDAttribute(id string) string {
+	if !macroIdentifier.MatchString(id) {
+		return ""
+	}
+	// Quoted the way every other attribute in this file is, so the quoting is
+	// one thing to read rather than one to trust twice.
+	return ` data-macro-id=` + quotedAttribute(id)
+}
+
+// tocEntry is one heading a table of contents links to.
+type tocEntry struct {
+	level int
+	id    string
+	text  string
+}
+
+// acAttribute reads one of a Confluence element's ac attributes.
+func acAttribute(start xml.StartElement, name string) string {
+	for _, attr := range start.Attr {
+		if attr.Name.Local == name {
+			return strings.TrimSpace(attr.Value)
+		}
+	}
+	return ""
+}
+
+// renderTableOfContents lists the headings a page holds, in the order they
+// appear, each linking to the heading itself.
+func renderTableOfContents(headings []tocEntry, id string) string {
+	open := `<nav class="wiki-toc" data-macro="toc"` + macroIDAttribute(id) + ` aria-label="Contents">`
+	if len(headings) == 0 {
+		return open + `<p>This page has no headings yet.</p></nav>`
+	}
+	var b strings.Builder
+	b.WriteString(open + `<ol>`)
+	for _, heading := range headings {
+		b.WriteString(fmt.Sprintf(`<li class="wiki-toc-level-%d"><a href="#%s">%s</a></li>`,
+			heading.level, html.EscapeString(heading.id), html.EscapeString(heading.text)))
+	}
+	b.WriteString("</ol></nav>")
+	return b.String()
 }
 
 // A mention is Confluence's user link: an ac:link holding an ri:user that names
@@ -46,6 +132,14 @@ func Render(storage string) (string, error) {
 	suppressed := 0
 	rootSeen := false
 	taskStatus, inTaskStatus := "", false
+	// The macros being read, the parameter one of them is being told, and the
+	// headings a table of contents would list.
+	var macros []macroFrame
+	var parameter strings.Builder
+	parameterName, inParameter := "", false
+	var headings []tocEntry
+	var headingText strings.Builder
+	headingLevel := 0
 	for {
 		token, err := d.Token()
 		if err == io.EOF {
@@ -95,7 +189,46 @@ func Render(storage string) (string, error) {
 					}
 				}
 				switch tag {
-				case "parameter", "task-id", "task-uuid":
+				case "structured-macro":
+					name := strings.ToLower(acAttribute(t, "name"))
+					id := acAttribute(t, "macro-id")
+					macros = append(macros, macroFrame{name: name, id: id})
+					switch {
+					case panelMacros[name] != "":
+						panel := panelMacros[name]
+						b.WriteString(`<div class="wiki-panel wiki-panel-` + panel + `" data-macro="` + panel + `"` + macroIDAttribute(id) + `>`)
+					case name == "toc":
+						if strings.ContainsRune(id, 0) {
+							return "", fmt.Errorf("a macro identifier cannot hold a NUL")
+						}
+						b.WriteString("\x00wiki-toc:" + id + "\x00")
+					}
+				case "parameter":
+					suppressed++
+					inParameter = true
+					parameterName = strings.ToLower(acAttribute(t, "name"))
+					parameter.Reset()
+				case "plain-text-body":
+					// A code macro shows its body as the code it is, in the
+					// language it says it is written in.
+					if len(macros) > 0 && macros[len(macros)-1].name == "code" {
+						b.WriteString(`<pre class="wiki-code" data-macro="code"` + macroIDAttribute(macros[len(macros)-1].id))
+						if language := macros[len(macros)-1].language; language != "" {
+							b.WriteString(` data-language="` + html.EscapeString(language) + `"`)
+						}
+						b.WriteString(`>`)
+					}
+				case "layout":
+					b.WriteString(`<div class="wiki-layout" data-macro="layout">`)
+				case "layout-section":
+					layout := layoutTypes[strings.ToLower(acAttribute(t, "type"))]
+					if layout == "" {
+						return "", fmt.Errorf("unsupported layout section type %q", acAttribute(t, "type"))
+					}
+					b.WriteString(`<div class="wiki-layout-section wiki-layout-` + layout + `" data-layout-type="` + layout + `">`)
+				case "layout-cell":
+					b.WriteString(`<div class="wiki-layout-cell">`)
+				case "task-id", "task-uuid":
 					suppressed++
 				case "task-status":
 					suppressed++
@@ -128,6 +261,16 @@ func Render(storage string) (string, error) {
 			if t.Name.Space != "" || !tags[tag] {
 				return "", fmt.Errorf("unsupported storage element: %s", tag)
 			}
+			// A heading is given an identifier so a table of contents, or a
+			// link somebody shares, can reach it.
+			if len(tag) == 2 && tag[0] == 'h' && tag[1] >= '1' && tag[1] <= '6' {
+				headingLevel = int(tag[1] - '0')
+				headingText.Reset()
+				headings = append(headings, tocEntry{level: headingLevel, id: fmt.Sprintf("wiki-heading-%d", len(headings)+1)})
+				b.WriteString("<" + tag + ` id="` + headings[len(headings)-1].id + `"`)
+				b.WriteString(">")
+				continue
+			}
 			b.WriteString("<" + tag)
 			for _, a := range t.Attr {
 				if tag != "a" || a.Name.Local != "href" || a.Name.Space != "" {
@@ -143,7 +286,46 @@ func Render(storage string) (string, error) {
 		case xml.EndElement:
 			if t.Name.Space == "ac" {
 				switch t.Name.Local {
-				case "parameter", "task-id", "task-uuid":
+				case "structured-macro":
+					frame := macros[len(macros)-1]
+					macros = macros[:len(macros)-1]
+					switch {
+					case panelMacros[frame.name] != "":
+						b.WriteString("</div>")
+					case frame.name == "status":
+						// A status is a word in a colour. Confluence draws one
+						// whose colour it does not know in grey.
+						colour := frame.colour
+						if !statusColours[colour] {
+							colour = "grey"
+						}
+						b.WriteString(`<span class="wiki-status wiki-status-` + colour + `" data-macro="status" data-colour="` + colour + `"` + macroIDAttribute(frame.id) + `>` + html.EscapeString(frame.title) + `</span>`)
+					}
+				case "parameter":
+					suppressed--
+					inParameter = false
+					if len(macros) > 0 {
+						frame := &macros[len(macros)-1]
+						value := strings.TrimSpace(parameter.String())
+						switch {
+						case panelMacros[frame.name] != "" && parameterName == "title" && value != "":
+							b.WriteString(`<p class="wiki-panel-title">` + html.EscapeString(value) + `</p>`)
+						case frame.name == "status" && parameterName == "title":
+							frame.title = value
+						case frame.name == "status" && parameterName == "colour":
+							frame.colour = strings.ToLower(value)
+						case frame.name == "code" && parameterName == "language":
+							frame.language = value
+						}
+					}
+					parameterName = ""
+				case "plain-text-body":
+					if len(macros) > 0 && macros[len(macros)-1].name == "code" {
+						b.WriteString("</pre>")
+					}
+				case "layout", "layout-section", "layout-cell":
+					b.WriteString("</div>")
+				case "task-id", "task-uuid":
 					suppressed--
 				case "task-status":
 					suppressed--
@@ -159,6 +341,10 @@ func Render(storage string) (string, error) {
 			if t.Name.Space == "" && t.Name.Local == "time" {
 				suppressed--
 			}
+			if headingLevel > 0 && t.Name.Local == fmt.Sprintf("h%d", headingLevel) {
+				headings[len(headings)-1].text = strings.Join(strings.Fields(headingText.String()), " ")
+				headingLevel = 0
+			}
 			if depth > 1 && t.Name.Local != "br" && t.Name.Local != "hr" {
 				b.WriteString("</" + t.Name.Local + ">")
 			}
@@ -170,6 +356,12 @@ func Render(storage string) (string, error) {
 			if inTaskStatus {
 				taskStatus += string(t)
 			}
+			if inParameter {
+				parameter.Write(t)
+			}
+			if headingLevel > 0 && suppressed == 0 {
+				headingText.Write(t)
+			}
 			if suppressed == 0 {
 				b.WriteString(html.EscapeString(string(t)))
 			}
@@ -179,7 +371,10 @@ func Render(storage string) (string, error) {
 			return "", fmt.Errorf("storage directives are not supported")
 		}
 	}
-	return b.String(), nil
+	rendered := tocMarker.ReplaceAllStringFunc(b.String(), func(marker string) string {
+		return renderTableOfContents(headings, tocMarker.FindStringSubmatch(marker)[1])
+	})
+	return rendered, nil
 }
 
 // Text returns readable plain text from validated storage markup for search

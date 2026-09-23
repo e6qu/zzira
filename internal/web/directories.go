@@ -56,6 +56,9 @@ type profilePageData struct {
 	Reported   []*models.Issue
 	Identities []profileIdentityView
 	Saved      string
+	// AppModules are the pages installed apps add about a person, shown on
+	// everybody's profile rather than only the signed-in person's own.
+	AppModules []models.AppModule
 	// NotifyOwnChanges, Autowatch and WikiAutowatch are the signed-in
 	// person's own notification preferences. Confluence keeps its own
 	// autowatch setting, so this product does too.
@@ -93,6 +96,8 @@ type profilePageData struct {
 	TwoStepCodesLeft  int
 	// TwoStepPending is an enrolment that was started and never confirmed.
 	TwoStepPending bool
+	// Passkeys are the security keys this account answers a sign-in with.
+	Passkeys []passkeyView
 	// TwoStepSecret and TwoStepURI are shown once, on the answer to the
 	// request that started the enrolment: they are the credential itself.
 	TwoStepSecret string
@@ -436,6 +441,12 @@ func (h *Handler) ProfilePage(w http.ResponseWriter, r *http.Request, accountID 
 	h.writeWorkspacePage(w, r, "page_profile", user, wsID, data, "people", "")
 }
 
+// passkeyView is one security key as the profile page lists it.
+type passkeyView struct {
+	ID, Label, Added, LastUsed string
+	UserVerified               bool
+}
+
 // errProfileNotFound is a profile the reader cannot see, or that is not there.
 var errProfileNotFound = errors.New("profile not found")
 
@@ -456,6 +467,16 @@ func (h *Handler) buildProfileData(r *http.Request, user *models.User, wsID, acc
 		return profilePageData{}, err
 	}
 	data := profilePageData{Profile: profile, Self: profile.ID == user.ID, Assigned: assigned, Reported: reported, Saved: r.URL.Query().Get("saved")}
+	appModules, err := h.Store.AppModulesByLocation(r.Context(), wsID, "jira.profile")
+	if err != nil {
+		return profilePageData{}, err
+	}
+	facts := h.appConditionFactsFor(r.Context(), wsID, user, nil, nil)
+	for _, module := range appModules {
+		if appModuleShown(module, facts) {
+			data.AppModules = append(data.AppModules, module)
+		}
+	}
 	if !data.Self {
 		return data, nil
 	}
@@ -498,6 +519,17 @@ func (h *Handler) buildProfileData(r *http.Request, user *models.User, wsID, acc
 	data.TwoStepConfirmed = enrolment.Confirmed
 	data.TwoStepPending = len(enrolment.Secret) > 0 && !enrolment.Confirmed
 	data.TwoStepCodesLeft = enrolment.RecoveryCodesLeft
+	keys, err := h.Store.WebAuthnCredentials(r.Context(), user.ID)
+	if err != nil {
+		return profilePageData{}, err
+	}
+	for _, key := range keys {
+		view := passkeyView{ID: key.ID, Label: key.Label, UserVerified: key.UserVerified, Added: key.CreatedAt.UTC().Format("2006-01-02")}
+		if key.LastUsedAt != nil {
+			view.LastUsed = key.LastUsedAt.UTC().Format("2006-01-02")
+		}
+		data.Passkeys = append(data.Passkeys, view)
+	}
 	data.TokenRequestID = store.NewID("tkreq")
 	identities, err := h.Store.OIDCIdentitiesByUser(r.Context(), user.ID)
 	if err != nil {

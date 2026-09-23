@@ -53,8 +53,10 @@ type Applier struct {
 	projects    map[string]*models.Project
 	desks       map[string]string
 	requestType map[string]string
-	// assets maps a scenario asset id to the object the site holds.
-	assets map[string]string
+	// assets maps a scenario asset id to the object the site holds, and
+	// organizations a scenario organization id to the customer organization.
+	assets        map[string]string
+	organizations map[string]string
 	// deskForms are the request type forms waiting for their desk's Assets
 	// inventory, which is built after the desks are.
 	deskForms []deskForm
@@ -100,7 +102,7 @@ func Apply(ctx context.Context, st *store.Store, cmds *commands.Service, scenari
 	applier := &Applier{
 		Store: st, Commands: cmds, Clock: clock,
 		people: map[string]string{}, groups: map[string]string{}, projects: map[string]*models.Project{},
-		desks: map[string]string{}, requestType: map[string]string{}, assets: map[string]string{},
+		desks: map[string]string{}, requestType: map[string]string{}, assets: map[string]string{}, organizations: map[string]string{},
 		versions: map[string]*models.Version{},
 		sprints:  map[string]*models.Sprint{}, boards: map[string]*models.Board{}, fields: map[string]string{},
 		fieldTypes: map[string]string{},
@@ -1443,6 +1445,7 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 			}
 			created = made
 		}
+		a.organizations[organization.ID] = created.ID
 		members := make([]string, 0, len(organization.Members))
 		for _, member := range organization.Members {
 			members = append(members, a.people[member])
@@ -1510,12 +1513,23 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 			a.mutex.Unlock()
 			continue
 		}
+		// A customer raising a request says who it is for: themselves, or one
+		// of their organizations, whose members all read it.
+		shared := make([]string, 0, len(request.SharedWith))
+		for _, organization := range request.SharedWith {
+			id := a.organizations[organization]
+			if id == "" {
+				return fmt.Errorf("request %s is shared with the unknown organization %q", request.ID, organization)
+			}
+			shared = append(shared, id)
+		}
 		var raised *models.ServiceRequest
 		if err := a.at(ctx, request.CreatedDay, func(ctx context.Context) error {
 			created, err := a.Commands.CreateServiceRequest(ctx, commands.CreateServiceRequestInput{
 				ActorID: customer, WorkspaceID: a.workspaceID, ServiceDeskID: deskID,
 				RequestTypeID: a.requestType[request.RequestType], CustomerID: customer, Channel: "portal",
 				Summary: request.Summary, Description: request.Description,
+				OrganizationIDs: shared,
 			})
 			raised = created
 			return err
@@ -1592,7 +1606,11 @@ func (a *Applier) assetInventory(ctx context.Context, declared *Assets) error {
 	for _, object := range held.Objects {
 		objects[object.SchemaKey+"\x00"+object.Key] = object.ID
 	}
-	for _, schema := range declared.Schemas {
+	// A type is created before the ones that sit under it, so its parent is
+	// already there when the child arrives.
+	declaredSchemas := orderedAssetSchemas(declared.Schemas)
+	byScenarioID := map[string]string{}
+	for _, schema := range declaredSchemas {
 		schemaID, ok := schemas[schema.Key]
 		if !ok {
 			attributes := make([]models.ServiceAssetAttribute, 0, len(schema.Attributes))
@@ -1603,13 +1621,20 @@ func (a *Applier) assetInventory(ctx context.Context, declared *Assets) error {
 				})
 			}
 			created, err := a.Store.CreateServiceAssetSchema(ctx, a.workspaceID, a.admin, deskID, models.ServiceAssetSchema{
-				Key: schema.Key, Name: schema.Name, Description: schema.Description, Attributes: attributes,
+				Key: schema.Key, Name: schema.Name, Description: schema.Description,
+				ParentID: byScenarioID[schema.Parent], Attributes: attributes,
 			})
 			if err != nil {
 				return fmt.Errorf("asset schema %s: %w", schema.Key, err)
 			}
 			schemaID = created.ID
+		} else if schema.Parent != "" {
+			// A re-run puts a type back under the one it was declared under.
+			if err := a.Store.SetServiceAssetSchemaParent(ctx, a.workspaceID, a.admin, deskID, schemaID, byScenarioID[schema.Parent]); err != nil {
+				return fmt.Errorf("asset schema %s under %s: %w", schema.Key, schema.Parent, err)
+			}
 		}
+		byScenarioID[schema.ID] = schemaID
 		for _, object := range schema.Objects {
 			if id, ok := objects[schema.Key+"\x00"+object.Key]; ok {
 				a.assets[object.ID] = id
@@ -1646,6 +1671,35 @@ func (a *Applier) assetInventory(ctx context.Context, declared *Assets) error {
 		}
 	}
 	return nil
+}
+
+// orderedAssetSchemas lists declared object types parents first, so a type is
+// created after the one it sits under. A type whose parent is missing is left
+// where it is and refused by the applier, not silently reordered away.
+func orderedAssetSchemas(declared []AssetSchema) []AssetSchema {
+	ordered := make([]AssetSchema, 0, len(declared))
+	placed := map[string]bool{}
+	for len(ordered) < len(declared) {
+		grew := false
+		for _, schema := range declared {
+			if placed[schema.ID] || (schema.Parent != "" && !placed[schema.Parent]) {
+				continue
+			}
+			ordered = append(ordered, schema)
+			placed[schema.ID] = true
+			grew = true
+		}
+		if !grew {
+			// A cycle, which validation refuses; keep the rest in order.
+			for _, schema := range declared {
+				if !placed[schema.ID] {
+					ordered = append(ordered, schema)
+					placed[schema.ID] = true
+				}
+			}
+		}
+	}
+	return ordered
 }
 
 // serviceOrganizationNamed finds a customer organization by name.

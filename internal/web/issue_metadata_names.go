@@ -71,3 +71,25 @@ func translateIssueView(names map[string]store.MetadataTranslation, view *models
 		view.Resolutions[i].Name = translatedName(names, "resolution", view.Resolutions[i].ID, view.Resolutions[i].Name)
 	}
 }
+
+// translateIssues renames the metadata of a list of work items, which is what
+// the navigator's results and a board's cards are.
+func translateIssues(names map[string]store.MetadataTranslation, issues []*models.Issue) {
+	if len(names) == 0 {
+		return
+	}
+	for _, issue := range issues {
+		translateIssue(names, issue)
+	}
+}
+
+// translateStatuses renames the statuses a page offers as choices, so a
+// filter or a column reads in the same language as the work under it.
+func translateStatuses(names map[string]store.MetadataTranslation, statuses []models.Status) {
+	if len(names) == 0 {
+		return
+	}
+	for i := range statuses {
+		statuses[i].Name = translatedName(names, "status", statuses[i].ID, statuses[i].Name)
+	}
+}

@@ -106,10 +106,14 @@ type servicePageData struct {
 	CustomerNotifications []serviceCustomerNotificationView
 	SLAGoals              map[string][]models.ServiceSLAGoal
 	// SLAGoalOrder says which conditional goals start and end their metric's order.
-	SLAGoalOrder        map[string]serviceSLAGoalOrder
-	SLAs                []models.ServiceSLA
-	Customers           []*models.User
-	Organizations       []models.ServiceOrganization
+	SLAGoalOrder  map[string]serviceSLAGoalOrder
+	SLAs          []models.ServiceSLA
+	Customers     []*models.User
+	Organizations []models.ServiceOrganization
+	// SharedWith are the organizations a request is shared with, and
+	// ShareOptions the ones the person who raised it may choose between.
+	SharedWith          []models.ServiceOrganization
+	ShareOptions        []models.ServiceOrganization
 	DeskOrganizations   map[string]bool
 	OrganizationUsers   map[string][]*models.User
 	KnowledgeArticles   []models.ServiceKnowledgeArticle
@@ -145,6 +149,9 @@ type servicePageData struct {
 	IncidentRoles        []models.ServiceIncidentRole
 	IncidentStakeholders []models.ServiceIncidentStakeholder
 	AssetInventory       *models.ServiceAssetInventory
+	// AssetSchemaNames names each object type of the desk by id, so a type
+	// can say what it sits under.
+	AssetSchemaNames map[string]string
 	// AssetImport is what the last import of objects wrote, and
 	// AssetImportError why one was refused.
 	AssetImport      *models.ServiceAssetImport
@@ -154,6 +161,8 @@ type servicePageData struct {
 	AssetHistory map[string][]models.ServiceAssetObjectChange
 	// AssetComments is what people have said about each object, by object id.
 	AssetComments map[string][]models.ServiceAssetObjectComment
+	// AssetFiles are the files kept with each object, by object id.
+	AssetFiles    map[string][]models.ServiceAssetObjectAttachment
 	RequestAssets []models.ServiceRequestAsset
 	FieldValues   map[string]string
 	// FieldOptions are the options each select field on a portal form offers,
@@ -1380,8 +1389,13 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load request fields.", http.StatusInternalServerError)
 		return
 	}
+	shareOptions, err := h.Store.ServiceRequestShareOptions(r.Context(), desk.ID, user.ID)
+	if err != nil {
+		http.Error(w, "Could not load the organizations you belong to.", http.StatusInternalServerError)
+		return
+	}
 	data := servicePageData{Desk: desk, RequestType: requestType, RequestTypeFields: fields, FieldValues: map[string]string{},
-		FieldOptions: map[string][]store.ServiceRequestFieldOption{}, FieldChoices: map[string][]string{}}
+		FieldOptions: map[string][]store.ServiceRequestFieldOption{}, FieldChoices: map[string][]string{}, ShareOptions: shareOptions}
 	for _, field := range fields {
 		switch field.Type {
 		case models.CustomFieldSelect, models.CustomFieldMultiSelect, models.CustomFieldCascadingSelect:
@@ -1492,7 +1506,15 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 			h.writeWorkspacePageStatus(w, r, "page_service_request_form", user, workspaceID, data, "service", desk.ProjectID, status)
 			return
 		}
-		request, err := h.Commands.CreateServiceRequest(r.Context(), commands.CreateServiceRequestInput{ActorID: user.ID, WorkspaceID: workspaceID, ServiceDeskID: desk.ID, RequestTypeID: requestType.ID, Channel: "portal", Summary: data.Summary, Description: data.Description, DescriptionADF: descriptionADF, Fields: customFields})
+		// "Share with" is a single organization, as the portal offers it: the
+		// customer shares the request with one of their organizations or
+		// keeps it to themselves.
+		sharedWith := []string{}
+		if chosen := r.PostFormValue("share_with"); chosen != "" {
+			data.FieldValues["share_with"] = chosen
+			sharedWith = append(sharedWith, chosen)
+		}
+		request, err := h.Commands.CreateServiceRequest(r.Context(), commands.CreateServiceRequestInput{ActorID: user.ID, WorkspaceID: workspaceID, ServiceDeskID: desk.ID, RequestTypeID: requestType.ID, Channel: "portal", Summary: data.Summary, Description: data.Description, DescriptionADF: descriptionADF, Fields: customFields, OrganizationIDs: sharedWith})
 		if err == nil {
 			redirectLocal(w, r, "/service/requests/"+request.Issue.Key)
 			return
@@ -1959,7 +1981,20 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load the service desk.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Desk: desk, Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, IncidentUpdates: incidentUpdates, EscalationSteps: escalationSteps, IncidentRoles: incidentRoles, IncidentStakeholders: incidentStakeholders, DeskAgents: incidentAgents, AssetInventory: assetInventory, RequestAssets: requestAssets, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: desk.FeedbackEnabled && request.Customer.ID == user.ID && request.Issue.Resolution != nil}, "service", request.Issue.ProjectID)
+	sharedWith, err := h.Store.ServiceRequestOrganizations(r.Context(), request.Issue.ID)
+	if err != nil {
+		http.Error(w, "Could not load who the request is shared with.", http.StatusInternalServerError)
+		return
+	}
+	shareOptions := []models.ServiceOrganization{}
+	if canManage || request.Customer.ID == user.ID {
+		shareOptions, err = h.Store.ServiceRequestShareOptions(r.Context(), request.ServiceDesk.ID, request.Customer.ID)
+		if err != nil {
+			http.Error(w, "Could not load the organizations the request may be shared with.", http.StatusInternalServerError)
+			return
+		}
+	}
+	h.writeWorkspacePage(w, r, "page_service_request", user, workspaceID, servicePageData{Desk: desk, Request: request, RequestFieldValues: requestFields, OperationsProfile: operations, ChangeConflicts: changeConflicts, IncidentUpdates: incidentUpdates, EscalationSteps: escalationSteps, IncidentRoles: incidentRoles, IncidentStakeholders: incidentStakeholders, DeskAgents: incidentAgents, AssetInventory: assetInventory, RequestAssets: requestAssets, Comments: comments, Attachments: attachments, Links: linkViews, LinkTypes: linkTypes, Approvals: approvals, Feedback: feedback, Participants: participants, SharedWith: sharedWith, ShareOptions: shareOptions, Members: members, SLAs: slas, Transitions: transitions, CanAgent: canManage, CanManageParticipants: canManage || request.Customer.ID == user.ID, CurrentUserID: user.ID, Subscribed: subscribed, CanLeaveFeedback: desk.FeedbackEnabled && request.Customer.ID == user.ID && request.Issue.Resolution != nil}, "service", request.Issue.ProjectID)
 }
 
 func (h *Handler) ServiceRequestLink(w http.ResponseWriter, r *http.Request) {
@@ -2030,6 +2065,27 @@ func (h *Handler) ServiceRequestParticipant(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+request.Issue.Key+"#participants")
+}
+
+// ServiceRequestShare records the portal's "Share with" choice on a request
+// that already exists.
+func (h *Handler) ServiceRequestShare(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	organizations := []string{}
+	if chosen := strings.TrimSpace(r.PostFormValue("share_with")); chosen != "" {
+		organizations = append(organizations, chosen)
+	}
+	if _, err := h.Commands.ShareServiceRequest(r.Context(), user.ID, workspaceID, r.PathValue("key"), organizations); err != nil {
+		http.Error(w, err.Error(), commandErrorStatus(err))
+		return
+	}
+	redirectLocal(w, r, "/service/requests/"+r.PathValue("key")+"#shared-with")
 }
 
 func (h *Handler) ServiceRequestComment(w http.ResponseWriter, r *http.Request) {

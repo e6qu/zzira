@@ -90,6 +90,20 @@ test('service manager models assets and an agent calculates request impact', asy
   await commented.locator('.service-asset-history > summary').click();
   await expect(commented.locator('.service-asset-history')).toContainText('Changed capacity');
 
+  // What people keep about an object goes with it, and comes back down.
+  await commented.locator('.service-asset-files > summary').click();
+  await commented.getByLabel('Keep a file with DATABASE').setInputFiles({
+    name: 'rack.txt', mimeType: 'text/plain', buffer: Buffer.from('Rack 4, top shelf.'),
+  });
+  await commented.getByRole('button', { name: 'Add file' }).click();
+  const withFile = page.locator('#objects article').filter({ hasText: 'Checkout database' });
+  await withFile.locator('.service-asset-files > summary').click();
+  const kept = withFile.locator('.service-asset-files').getByRole('link', { name: 'rack.txt' });
+  await expect(kept).toBeVisible();
+  const download = await page.request.get((await kept.getAttribute('href'))!);
+  expect(download.status()).toBe(200);
+  expect(await download.text()).toBe('Rack 4, top shelf.');
+
   // A whole inventory arrives as a file rather than one form at a time, and a
   // row whose key is already in the schema updates that object.
   const assetImport = page.locator('#import');
@@ -155,5 +169,39 @@ test('service manager models assets and an agent calculates request impact', asy
   await expect(page.locator('#asset-impact')).toContainText('Affected directly');
   await expect(page.locator('#asset-impact')).toContainText('STOREFRONT · Customer storefront');
   await expect(page.locator('#asset-impact')).toContainText('Impacted through 1 relationship');
+  await accessible(page);
+
+  // A filter can ask about what a relationship leads to rather than an
+  // object's own attributes: what the storefront depends on is the database,
+  // so that is what the field offers now.
+  await page.goto(deskURL);
+  const referenceForm = page.locator('.service-request-type-forms form').filter({ hasText: 'Get IT help' }).first();
+  await referenceForm.locator('fieldset').filter({ hasText: `Affected service ${key}` }).getByLabel('Narrow them with AQL').fill('inboundReferences(Name LIKE storefront)');
+  await referenceForm.getByRole('button', { name: /Save/ }).click();
+  await page.goto(`/service/portals/${deskID}`);
+  // The portal now also lists the request raised above, whose link names its
+  // request type, so this is the request type card rather than that request.
+  await page.locator('.service-type-card').filter({ hasText: 'Get IT help' }).click();
+  const referencePicker = page.locator(`#request-field-${fieldID}`);
+  await expect(referencePicker).toContainText('Checkout database');
+  await expect(referencePicker).not.toContainText('Customer storefront');
+
+  // An object type may sit under another, which is what a filter asking for a
+  // type and everything beneath it reads.
+  await page.goto(`/service/agent/${deskID}/assets`);
+  const childCreate = page.locator('details').filter({ hasText: 'Create schema' });
+  await childCreate.locator('summary').click();
+  await childCreate.getByLabel('Schema name').fill('Racks');
+  await childCreate.getByLabel('Schema key').fill('RACK');
+  await childCreate.getByLabel('Sits under').selectOption({ label: 'Business services' });
+  await childCreate.getByLabel('Attributes').fill('room | Room | text');
+  await childCreate.getByRole('button', { name: 'Create schema' }).click();
+  // Every card offers every other type as a parent, so a card is found by
+  // the name it carries rather than by any mention of it.
+  const schemaCard = (name: string) => page.locator('#schemas article').filter({ has: page.locator('strong', { hasText: name }) });
+  await expect(schemaCard('Racks')).toContainText('under Business services');
+  await schemaCard('Racks').getByLabel('Sits under').selectOption({ label: 'Nothing — a top-level type' });
+  await schemaCard('Racks').getByRole('button', { name: 'Move' }).click();
+  await expect(schemaCard('Racks')).not.toContainText('under Business services');
   await accessible(page);
 });

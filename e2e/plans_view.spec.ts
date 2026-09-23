@@ -273,3 +273,103 @@ test('a planner groups and filters a plan, and keeps the view', async ({ page, r
   await expect(page.getByRole('status')).toContainText('The view was deleted.');
   await expect(page.locator('.plan-view-list')).toHaveCount(0);
 });
+
+// A ranked backlog nobody has dated: the planner asks the plan to schedule it
+// and reviews what came back.
+test('a planner schedules a scenario automatically and reviews what it did', async ({ page, request }) => {
+  test.setTimeout(120_000);
+  const headers = { Authorization: apiAuthHeader() };
+  const stamp = Date.now();
+  const fields = await (await request.get('/rest/api/3/field', { headers })).json() as Array<{ id: string; name: string; schema?: { type?: string } }>;
+  const teamField = fields.find(field => field.name === 'Team' && field.schema?.type === 'team');
+  const points = fields.find(field => field.name === 'Story point estimate');
+  expect(teamField && points).toBeTruthy();
+
+  await page.goto('/login');
+  await page.fill('#login-email', DEMO.email);
+  await page.fill('#login-password', DEMO.password);
+  await page.click('button[type=submit]');
+  await page.goto('/teams');
+  await page.getByLabel('Team name').fill(`Scheduling squad ${stamp}`);
+  await page.getByLabel('Description').fill('Takes what the scheduler gives it');
+  await page.getByRole('button', { name: 'Create team' }).click();
+  await expect(page).toHaveURL(/\/teams\/[0-9a-f-]{36}\?saved=/);
+  const teamID = (await page.locator('main header code').textContent())!.trim();
+
+  // A project of its own, so the plan holds exactly the work this journey
+  // ranks and the run's answer is about that work alone.
+  const projectKey = `SC${stamp.toString(36).toUpperCase().slice(-6)}`;
+  const me = await (await request.get('/rest/api/3/myself', { headers })).json();
+  expect((await request.post('/rest/api/3/project', {
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    data: { key: projectKey, name: `Scheduling ${stamp}`, projectTypeKey: 'software', projectTemplateKey: 'com.pyxis.greenhopper.jira:gh-simplified-agility-scrum', leadAccountId: me.accountId },
+  })).status()).toBe(201);
+  const boards = await (await request.get(`/rest/agile/1.0/board?projectKeyOrId=${projectKey}&type=scrum`, { headers })).json();
+  const boardID = boards.values[0].id;
+  const sprintOf = async (name: string, start: string, end: string) => {
+    const created = await request.post('/rest/agile/1.0/sprint', { headers, data: { name, originBoardId: boardID, startDate: start, endDate: end } });
+    expect(created.status(), await created.text()).toBe(201);
+    return (await created.json()).id as string;
+  };
+  await sprintOf(`Early ${stamp}`, '2027-02-01T09:00:00.000Z', '2027-02-12T17:00:00.000Z');
+  await sprintOf(`Late ${stamp}`, '2027-02-15T09:00:00.000Z', '2027-02-26T17:00:00.000Z');
+
+  const createIssue = async (summary: string, extra: Record<string, unknown>) => {
+    const response = await request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: projectKey }, summary, issuetype: { name: 'Story' }, ...extra } } });
+    expect(response.status(), await response.text()).toBe(201);
+    return (await response.json()).key as string;
+  };
+  const first = await createIssue(`Schedule one ${stamp}`, { [teamField!.id]: { id: teamID }, [points!.id]: 8 });
+  const second = await createIssue(`Schedule two ${stamp}`, { [teamField!.id]: { id: teamID }, [points!.id]: 8 });
+  const homeless = await createIssue(`Schedule three ${stamp}`, { [points!.id]: 2 });
+
+  const created = await request.post('/rest/api/3/plans/plan', {
+    headers,
+    data: { name: `Scheduler plan ${stamp}`, scheduling: { estimation: 'StoryPoints' }, issueSources: [{ type: 'Board', value: boardID }], exclusionRules: { numberOfDaysToShowCompletedIssues: 30 } },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const planID = await created.json();
+  expect((await request.post(`/rest/api/3/plans/plan/${planID}/team/atlassian`, { headers, data: { id: teamID, planningStyle: 'Scrum', capacity: 10, sprintLength: 2 } })).status()).toBe(204);
+
+  await page.goto(`/plans/${planID}`);
+  const teamName = `Scheduling squad ${stamp}`;
+  const teamsTable = page.getByRole('table', { name: 'Plan teams' });
+  await teamsTable.getByText(`Settings for ${teamName}`).click();
+  await teamsTable.getByLabel('Issue source').selectOption({ index: 1 });
+  await teamsTable.getByRole('button', { name: 'Save team settings' }).click();
+  await expect(page.getByRole('status')).toHaveText('Team settings saved.');
+
+  // Ten points a sprint: the first item fills one sprint and the second goes
+  // into the next. The work with no team is named rather than dropped.
+  await page.getByLabel('Schedule automatically').selectOption('unplanned');
+  await page.getByLabel('From', { exact: true }).fill('2027-01-25');
+  await page.getByRole('button', { name: 'Schedule into iterations' }).click();
+  const notice = page.getByRole('status');
+  await expect(notice).toContainText('Planned 2 work items');
+  await expect(notice).toContainText(`${homeless} because it has no team`);
+
+  const plannedWork = page.getByRole('table', { name: 'Planned work with dates, teams, sprints and estimates' });
+  const rowOf = (key: string) => plannedWork.getByRole('row').filter({ has: page.getByRole('rowheader').getByRole('link', { name: key, exact: true }) });
+  // The row reads the dates in the site's own format; what the run wrote is
+  // read exactly in Review changes below.
+  await expect(rowOf(first)).toContainText(`Early ${stamp}`);
+  await expect(rowOf(first).locator('.plan-flag')).toHaveCount(3);
+  await expect(rowOf(second)).toContainText(`Late ${stamp}`);
+  await expect(rowOf(second).locator('.plan-flag')).toHaveCount(3);
+  await accessible(page);
+
+  // Everything it did is a scenario change, waiting to be reviewed.
+  await page.getByRole('link', { name: /Review changes \(6\)/ }).click();
+  const changes = page.getByRole('table', { name: /Unsaved changes in the .* scenario/ });
+  await expect(changes).toContainText(`Sprint: None → Early ${stamp}`);
+  await expect(changes).toContainText('Start date: None → 2027-02-01');
+  await expect(changes).toContainText('End date: None → 2027-02-26');
+  await accessible(page);
+
+  // Running it again finds nothing left to plan, because the first run planned it.
+  await page.goto(`/plans/${planID}`);
+  await page.getByRole('button', { name: 'Schedule into iterations' }).click();
+  await expect(page.getByRole('status')).toContainText('Planned 0 work items');
+  expect((await request.put(`/rest/api/3/plans/plan/${planID}/trash`, { headers })).status()).toBe(204);
+  expect((await request.delete(`/rest/api/3/project/${projectKey}?enableUndo=false`, { headers })).status()).toBe(204);
+});

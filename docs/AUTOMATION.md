@@ -191,8 +191,10 @@ values. Most actions set a desired state, so a replayed action does nothing.
 | `jira.issue.assign` | `accountId` (`ACTOR`, `UNASSIGNED`) or `method` | `round-robin` picks whoever waited longest, `balanced` the fewest unresolved items, `random` anyone. Candidates are the project's assignee picker; no candidates stops the rule |
 | `jira.issue.transition` | `statusId` | Uses a valid transition of the current workflow |
 | `jira.issue.comment` | `comment` | Adds a comment |
-| `jira.issue.edit` | `field`, `value` | Sets `summary`, `duedate` (yyyy-MM-dd, blank clears), `priority` (name or ID), `description` or `labels` (comma-separated, replaces all) |
+| `jira.issue.edit` | `field`, `value` | Sets `summary`, `duedate` (yyyy-MM-dd, blank clears), `priority` (name or ID), `description`, `labels` (comma-separated, replaces all), `assignee` (an account id, `ACTOR`, or `UNASSIGNED` and blank for nobody), `resolution` (name or ID, blank clears) or `originalestimate` / `remainingestimate` (a duration such as `3h 30m`, read with the site's time tracking settings; blank removes the estimate). A field already holding what the rule names counts as done |
 | `jira.issue.log-work` | `duration` (e.g. `3h 30m`), optional `comment` | Uses the site's time tracking settings; zero or less stops the rule |
+| `jira.issue.watchers` | `action` (`add` or `remove`), `accountId` (smart values allowed) | Adds somebody to, or takes them off, the people a work item tells about itself; the rule actor needs Manage watchers |
+| `jira.issue.clone` | optional `summary` (default `Copy of {{issue.summary}}`) | Copies the work item in its own project, with its type, description, labels, priority and due date. Work of that summary already in the project means there is nothing to do, so a scheduled rule makes one copy. A branch over created work sees it |
 | `jira.issue.delete` | `{}` | Needs Delete issues. Sub-tasks are handled as in a normal delete. Nothing after it runs |
 | `jira.issue.create-subtask` | `summary` | Uses the scheme's sub-task type. A sub-task with the same summary counts as done. Fails on a sub-task, or when the project has no sub-task type |
 | `jira.issue.create` | `issueTypeId`, `summary`, optional `projectId` | Creates with a type from the project's scheme, not a sub-task type. The project is the one named, else the triggering work item's, else the single project the rule is scoped to; without any of those the action fails rather than the run. The same type and summary already existing counts as done |
@@ -243,7 +245,7 @@ actions) once for each work item it finds that the actor can see.
   `{{issue.key}}` inside the branch is that work item. An item that names none
   leaves the work item as it was, because the branch is over values. What the
   list came from is never trusted: a work item the actor cannot see is skipped.
-- Limits: at most 100 items, and no nested branches.
+- Limits: at most 100 items, and no nested branches, which Jira refuses too.
 - Inside the branch, `issue` means the item the branch is running for and
   `triggerIssue` means the work item the rule started from.
 - A condition that fails skips only that item.
@@ -302,6 +304,10 @@ invoked a manual rule. Unknown values render empty. Rendered text is limited to
   event. Workers claim runs with `FOR UPDATE SKIP LOCKED`, and a `RUNNING`
   claim older than two minutes can be reclaimed. **Run now** uses the same
   queue.
+- **Pace:** the worker wakes every second and works the queue until it is
+  empty or it has run fifty rules, so a burst is cleared in one wake rather
+  than trickling out at one run a second. A rule somebody asked to run now
+  therefore waits for the rules queued before it, not for a second each.
 - **Retries:** exponential backoff capped at 30 minutes. Ten failures in a row
   disable the rule; a successful or no-action run resets the count.
 - **Audit log:** scheduled time, state (`SUCCESS`, `NO_ACTIONS`, `FAILED`),
@@ -319,8 +325,12 @@ See [PLAN.md](../PLAN.md).
   writing at the end of it and archiving it, and triggers for spaces,
   attachments and custom content.
 - Usage limits: no monthly execution quota or per-rule usage tracking.
-- The rest of Jira's trigger, condition, action and branch catalog (watchers,
-  cloning, deleting comments and links), and branches nested inside branches.
+- The rest of Jira's trigger, condition, action and branch catalog (deleting
+  comments and links, and editing components, fix versions, work type or a
+  custom field). A branch inside a
+  branch is refused,
+  as Jira refuses one, and what a branch names stays inside it, as it does in
+  Jira.
 
 ## See also
 

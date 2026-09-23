@@ -35,9 +35,12 @@ type boardColumn struct {
 }
 
 type boardColumnHeader struct {
-	StatusID     string
-	Name         string
+	StatusID string
+	Name     string
+	// StatusNames are the statuses this column gathers, and StatusIDs the
+	// same statuses by id, so a reader's language can be put on them.
 	StatusNames  []string
+	StatusIDs    []string
 	Category     string
 	VisibleCount int
 	TotalCount   int
@@ -216,6 +219,7 @@ func (h *Handler) buildBoardView(r *http.Request, user *models.User, wsID string
 				header.Category = status.Category
 			}
 			header.StatusNames = append(header.StatusNames, status.Name)
+			header.StatusIDs = append(header.StatusIDs, statusID)
 			header.VisibleCount += len(columns[statusID])
 			header.TotalCount += len(allColumns[statusID])
 		}
@@ -384,6 +388,20 @@ func (h *Handler) buildBoardView(r *http.Request, user *models.User, wsID string
 		}, order, names, "Everything else")
 	default:
 		lanes = append(lanes, laneIssues{id: "all", name: "All work", issues: columns})
+	}
+	// The board reads in the language the person chose, wherever the site put
+	// a word of its own on it: the cards, and the statuses a column gathers.
+	// A column's own name is the board administrator's word, not the site's.
+	if names := h.readerMetadataNames(r.Context(), wsID, user.ID); len(names) > 0 {
+		for _, issues := range columns {
+			translateIssues(names, issues)
+		}
+		for index := range data.ColumnHeaders {
+			header := &data.ColumnHeaders[index]
+			for i := range header.StatusNames {
+				header.StatusNames[i] = translatedName(names, "status", header.StatusIDs[i], header.StatusNames[i])
+			}
+		}
 	}
 	for _, lane := range lanes {
 		view := boardSwimlane{ID: lane.id, Name: lane.name}

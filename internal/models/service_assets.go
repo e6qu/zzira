@@ -8,7 +8,10 @@ type ServiceAssetAttribute struct {
 
 type ServiceAssetSchema struct {
 	ID, AssetsWorkspaceID, ServiceDeskID, Key, Name, Description string
-	Attributes                                                   []ServiceAssetAttribute
+	// ParentID is the object type this one sits under, as Assets nests object
+	// types; empty for a type at the top.
+	ParentID   string
+	Attributes []ServiceAssetAttribute
 }
 
 type ServiceAssetObject struct {
@@ -72,5 +75,18 @@ type ServiceAssetObjectComment struct {
 	AuthorID     string
 	AuthorName   string
 	Body         string
+	At           string
+}
+
+// ServiceAssetObjectAttachment is a file kept with an object: the photograph
+// of the rack, the signed contract, the licence export.
+type ServiceAssetObjectAttachment struct {
+	ID, ObjectID string
+	AuthorID     string
+	AuthorName   string
+	Filename     string
+	MediaType    string
+	Size         int64
+	BlobRef      string
 	At           string
 }

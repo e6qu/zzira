@@ -143,7 +143,7 @@ active first. Values of `requestOwnership` combine:
 |---|---|
 | `OWNED_REQUESTS` | Raised by or for the caller |
 | `PARTICIPATED_REQUESTS` | Caller is a participant |
-| `ORGANIZATION` (+ `organizationId`), `ALL_ORGANIZATIONS` | Raised by members of the caller's organizations that the desk serves |
+| `ORGANIZATION` (+ `organizationId`), `ALL_ORGANIZATIONS` | Shared with an organization the caller belongs to |
 | `APPROVER` (+ `approvalStatus` `MY_PENDING_APPROVAL` or `MY_HISTORY_APPROVAL`) | Caller is an approver |
 | `ALL_REQUESTS` | Every request on the caller's desks (site admins: every request) |
 
@@ -212,6 +212,13 @@ active first. Values of `requestOwnership` combine:
   - Only site administrators delete organizations; the UI shows the button only
     to them.
   - Organizations carry Jira's generated `uuid` and `created`.
+- **Request sharing:** a customer raising a request in the portal chooses
+  "Share with": a private request, or one of the organizations they belong to
+  that the desk serves. Everyone in that organization reads the request and
+  its public replies, and it is listed for them under
+  `requestOwnership=ORGANIZATION`. The person who raised it, or an agent,
+  changes the choice on the request afterwards. `Organizations` in JQL reads
+  exactly this ([JQL.md](JQL.md)).
 - **Customer visibility:** customers see only their own organizations and
   properties. Agents can filter and inspect the whole customer directory.
 - **Customers in REST:** returned as Jira's UserDTO (self, `jiraRest` and avatar
@@ -276,8 +283,8 @@ active first. Values of `requestOwnership` combine:
   - All start on.
   - A disabled notification stops both the inbox entry and the email to
     customers; agents still get theirs.
-  - Organizations are linked to desks rather than to single requests, so
-    there is no Organization added notification.
+  - Sharing a request with an organization does not notify its members, as
+    JSM's customer notifications do not carry one.
 
 ## Attachments and feedback
 
@@ -421,6 +428,10 @@ active first. Values of `requestOwnership` combine:
 - **Comments:** an object carries what its attributes cannot say -- why a
   service is tier 1, what the vendor answered. Agents of the desk read and
   write them; whoever wrote one, and any site administrator, can remove it.
+- **Files:** an object also carries what people keep about it -- the
+  photograph of the rack, the signed contract, the licence export -- up to
+  32 MB each. Agents of the desk add and read them; whoever added one, and any
+  site administrator, removes it, and the file goes with it.
 - **Access:** agents can view. Only site administrators create, edit, move or
   delete. Customers cannot read inventory.
 - **Workspace page:** shows the dependency map (SVG) and an accessible
@@ -468,6 +479,9 @@ caller does not agent answers 404, the same as an id that was never there.
 | `GET /object/{id}/history` | What has happened to the object, oldest first: who wrote it, when, and which fields that write changed |
 | `GET/POST /object/{id}/comment` | What people have said about the object, and saying something new (`{"comment"}`) |
 | `DELETE /object/{id}/comment/{commentId}` | Removes a comment: its author may, and so may a site administrator |
+| `GET /object/{id}/attachment` | The files kept with the object, each with where to read it |
+| `GET /object/{id}/attachment/{attachmentId}` | The file itself |
+| `DELETE /object/{id}/attachment/{attachmentId}` | Removes a file: whoever kept it may, and so may a site administrator |
 | `POST /objectschema/create` | `{"name","objectSchemaKey","description","serviceDeskId","attributes"}`; an attribute with no type is text |
 | `DELETE /objectschema/{id}` | Deletes the schema, its objects and everything that named them |
 | `POST /objectschema/{id}/import` | The import above, as `{"file"}` or the body itself. `{"reconcile":true}` (or `?reconcile=true`) makes the file the whole schema: an object it leaves out is deleted |
@@ -530,19 +544,29 @@ NOT (objectType = Vendors)
 - The comparisons are `=`, `!=`, `IN`, `NOT IN`, `LIKE` (contains),
   `IS EMPTY` and `IS NOT EMPTY`, joined with `AND`, `OR`, `NOT` and brackets.
   Values are quoted with `"` or `'`, doubling the quote to include one.
+- A dotted path walks a relationship to the objects at the other end:
+  `"runs on".Name = "Ledger database"` is everything that runs on it, and
+  `"runs on"."depends on".Tier = "1"` follows two steps. `inboundReferences()`
+  and `outboundReferences()` ask the same of whatever points at an object, or
+  whatever it points at, whatever the relationship is called:
+  `inboundReferences(objectType = "Business services")`.
+- `objectType IN objectTypeAndChildren("Infrastructure")` is an object type
+  and every type beneath it, named by name, key or id. An object type sits
+  under another of the same desk, chosen on the Assets page or through
+  `PUT /objecttype/{id}` with `parentObjectTypeId`; a type cannot sit under
+  itself or under one of its own children.
+- `ORDER BY <field>` with an optional `ASC` or `DESC` ends a filter and says
+  which object a picker offers first.
 - A filter is read when it is saved, so a form never carries one the site
   cannot read, and a field whose filter fails offers nothing rather than
   everything.
-- What AQL has that this does not: references between objects, functions such
-  as `objectTypeAndChildren()`, dot paths through reference attributes, and
-  `ORDER BY`.
 
 ## Gaps
 
 See [PLAN.md](../PLAN.md).
-- Assets: attachments on an object.
-- Assets object type hierarchy, typed reference attributes and AQL in JQL
-  (`aqlFunction()`).
+- Assets: typed reference attributes on an object, which here are the
+  relationships between objects ([the filter above](#assets-filters) says what
+  AQL reads), and AQL in JQL (`aqlFunction()`).
 - Request type restrictions (`RESTRICTED` returns nothing).
 - Email channel: requests created from incoming mail. Channels are `portal`
   (the default), whatever a REST caller passes in `channel`, and `api` for
@@ -550,11 +574,8 @@ See [PLAN.md](../PLAN.md).
 - Customizable customer notification email templates.
 - Knowledge base ranking and article analytics.
 - Incident review templates.
-- Sharing a request with one organization when it is raised. `Organizations`
-  is searchable ([JQL.md](JQL.md)) and reads the organizations the customer
-  belongs to that the desk serves, which is what the portal shows their
-  colleagues; picking one request at a time is what remains. Everything a
-  queue, an SLA goal or an automation rule may write is the site's own JQL.
+- Everything a queue, an SLA goal or an automation rule may write is the
+  site's own JQL, including `Organizations` ([JQL.md](JQL.md)).
 
 ## See also
 

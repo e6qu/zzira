@@ -45,6 +45,18 @@ type LoginProvider struct {
 	Enabled     bool
 	Source      string
 	Manageable  bool
+	// SignInPath is where the sign-in page sends somebody who chooses this
+	// provider. It is empty for the OpenID Connect providers, which are all
+	// under /auth.
+	SignInPath string
+}
+
+// Path is where the sign-in page sends somebody who chooses this provider.
+func (p LoginProvider) Path() string {
+	if p.SignInPath != "" {
+		return p.SignInPath
+	}
+	return "/auth/" + p.Key
 }
 
 type StoredProviderInput struct {

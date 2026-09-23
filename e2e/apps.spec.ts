@@ -169,6 +169,10 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote deployment activity</h1><p>Issue activity context received.</p></main></body></html>' });
       return;
     }
+    if (target.pathname.endsWith('/remote-configure')) {
+      await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>App settings</h1><p>Configure page received.</p></main></body></html>' });
+      return;
+    }
     if (target.pathname.endsWith('/remote-site-admin')) {
       expect(target.searchParams.get('source')).toBe('site');
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote site controls</h1><p>Administrator context received.</p></main></body></html>' });
@@ -220,6 +224,13 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote page review</h1><p>Content context received.</p></main></body></html>' });
       return;
     }
+    if (target.pathname.endsWith('/remote-profile')) {
+      expect(target.searchParams.get('profileUser.accountId')).toBeTruthy();
+      expect(target.searchParams.get('profileUser.name')).toBeTruthy();
+      expect(target.searchParams.get('account')).toBe(target.searchParams.get('profileUser.accountId'));
+      await route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><body><main><h1>Remote on call</h1><p>On call: ${target.searchParams.get('profileUser.name')}</p></main></body></html>` });
+      return;
+    }
     if (target.pathname.endsWith('/remote-shortcut')) {
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><main><h1>Remote team shortcut</h1><p>Web item context received.</p></main></body></html>' });
       return;
@@ -257,6 +268,7 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   const issueGlanceTitle = `Legacy glance ${suffix}`;
   const issueActivityTitle = `Deployments ${suffix}`;
   const siteAdminTitle = `Site controls ${suffix}`;
+  const profilePageTitle = `On call ${suffix}`;
   const descriptor = {
     key: `connect.journey.${suffix}`,
     name: appName,
@@ -269,6 +281,8 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
         { key: 'newcomer-guide', url: '/remote-page?view=guide', name: { value: hiddenPageTitle }, conditions: [{ condition: 'user_is_admin', invert: true }] },
       ],
       adminPages: [{ key: 'site-controls', url: '/remote-site-admin', name: { value: siteAdminTitle }, weight: 70, params: { source: 'site' } }],
+      configurePage: { key: 'configure', url: '/remote-configure', name: { value: 'Configure the app' } },
+      profilePages: [{ key: 'person-on-call', url: '/remote-profile?account={profileUser.accountId}', name: { value: profilePageTitle } }],
       webPanels: [
         { key: 'remote-risk', url: '/remote-panel?selected={issue.key}', location: 'atl.jira.view.issue.right.context', name: { value: panelTitle }, conditions: [{ condition: 'has_issue_permission', params: { permission: 'EDIT_ISSUES' } }] },
         { key: 'assignee-notes', url: '/remote-panel?selected={issue.key}', location: 'atl.jira.view.issue.right.context', name: { value: hiddenPanelTitle }, conditions: [{ condition: 'is_issue_reported_by_current_user', invert: true }] },
@@ -300,6 +314,12 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await expect(app).toContainText('/remote-page?view=releases');
   await expect(app).toContainText(fieldName);
   await expect(app).toContainText(`${descriptor.key}__remote-risk-score`);
+  // The app's own configure page is linked beside the app, not in the menu.
+  await app.locator('.admin-app-actions').getByRole('link', { name: /^Configure / }).click();
+  await expect(page.getByRole('heading', { name: 'Configure the app', level: 1 })).toBeVisible();
+  await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'App settings' })).toBeVisible();
+  await accessible(page);
+  await page.goto('/admin');
   await page.locator('#workspace-navigation').getByRole('link', { name: siteAdminTitle }).click();
   await expect(page.getByRole('heading', { name: siteAdminTitle, level: 1 })).toBeVisible();
   await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote site controls' })).toBeVisible();
@@ -420,6 +440,17 @@ test('admin installs a standard Connect descriptor and opens its signed remote p
   await expect(appContent.frameLocator('iframe').getByRole('heading', { name: 'Remote incident runbook' })).toBeVisible();
   await appContent.getByRole('button', { name: 'Remove' }).click();
   await expect(page.getByRole('button', { name: `Add ${contentTitle}` })).toBeVisible();
+
+  // A profile page the app adds is offered on everybody's profile, and is
+  // told who it is about.
+  await page.goto('/profile');
+  const profileAppLink = page.locator('.profile-app-modules').getByRole('link', { name: profilePageTitle });
+  await expect(profileAppLink).toBeVisible();
+  await profileAppLink.click();
+  await expect(page.getByRole('heading', { name: profilePageTitle, level: 1 })).toBeVisible();
+  await expect(page.frameLocator('iframe.app-module-frame').getByRole('heading', { name: 'Remote on call' })).toBeVisible();
+  await expect(page.frameLocator('iframe.app-module-frame').getByText('On call: Demo User')).toBeVisible();
+  await accessible(page);
 
   await page.goto(wikiPageURL);
   await page.getByRole('link', { name: bylineTitle }).click();

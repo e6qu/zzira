@@ -106,7 +106,7 @@ browser answers 409 with the same sentence, and so does `PUT
 ## Gaps
 
 - A version still belongs to exactly one project (`project_versions.project_id`); a plan's cross-project release groups such versions ([Jira Software](JIRA_SOFTWARE.md#plans)). The hub and the version page read the group back from the plans the viewer may see: the list notes what a version ships with, and the version page lists the other projects' versions with their dates, progress and release state, and says when they are not all due on the same day.
-- No grouping of deployments across projects. The hub says what each environment is running and what is waiting to be promoted into it; promotion itself is the provider's, and there are no promotion policies.
+- No grouping of deployments across projects. The hub says what each environment is running and what is waiting to be promoted into it; promotion itself is the delivery provider's, as it is in Jira. What the site can say about a deployment before it happens is a service desk's deployment gating ([SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md)).
 - Dates are shown in fixed English format; the user's locale and the site time zone are not applied.
 - The release hub needs a connection. Versions are not stored in the offline replica.
 - Versions are paged by offset, so pages can shift when versions change between requests.

@@ -2,6 +2,12 @@
 const escapeStorage = (text) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 const mentionStorage = (id, name) => `<ac:link><ri:user ri:account-id="${escapeStorage(id)}" /><ac:plain-text-link-body>${escapeStorage(name)}</ac:plain-text-link-body></ac:link>`;
 const mentionQuery = /(^|\s)@([^\s@<>]{0,40})$/;
+// The macros the editor draws, written back as the storage Confluence keeps.
+const panelMacros = ['info', 'note', 'warning', 'tip', 'panel'];
+const statusColours = ['grey', 'red', 'yellow', 'green', 'blue', 'purple'];
+const layoutTypes = ['two_equal', 'two_left_sidebar', 'two_right_sidebar', 'three_equal'];
+const macroIDStorage = (node) => (node.dataset.macroId ? ` ac:macro-id="${escapeStorage(node.dataset.macroId)}"` : '');
+const macroParameter = (name, value) => `<ac:parameter ac:name="${name}">${escapeStorage(value)}</ac:parameter>`;
 
 // Typing @ in a page, blog post or comment offers the site's people; choosing
 // one writes a Confluence user mention, which tells that person.
@@ -699,7 +705,34 @@ document.addEventListener('DOMContentLoaded', () => {
     if (tag === 'a' && (node.getAttribute('href') || '').startsWith('/people/')) {
       return mentionStorage(decodeURIComponent(node.getAttribute('href').slice('/people/'.length)), node.textContent.replace(/^@/, ''));
     }
+    const macro = node.dataset ? node.dataset.macro : '';
+    if (macro === 'toc') {
+      // A table of contents lists the page's own headings; the page it is
+      // written back into builds the list again.
+      return `<ac:structured-macro ac:name="toc"${macroIDStorage(node)}/>`;
+    }
+    if (macro === 'status') {
+      return `<ac:structured-macro ac:name="status"${macroIDStorage(node)}>` +
+        `${macroParameter('colour', node.dataset.colour || 'grey')}${macroParameter('title', node.textContent)}</ac:structured-macro>`;
+    }
+    if (macro === 'code') {
+      return `<ac:structured-macro ac:name="code"${macroIDStorage(node)}>` +
+        `${node.dataset.language ? macroParameter('language', node.dataset.language) : ''}` +
+        `<ac:plain-text-body>${escapeStorage(node.textContent)}</ac:plain-text-body></ac:structured-macro>`;
+    }
+    if (panelMacros.includes(macro)) {
+      const title = node.querySelector(':scope > .wiki-panel-title');
+      const body = [...node.childNodes].filter((child) => child !== title).map(serialize).join('');
+      return `<ac:structured-macro ac:name="${macro}"${macroIDStorage(node)}>` +
+        `${title && title.textContent.trim() ? macroParameter('title', title.textContent.trim()) : ''}` +
+        `<ac:rich-text-body>${body}</ac:rich-text-body></ac:structured-macro>`;
+    }
     const content = [...node.childNodes].map(serialize).join('');
+    if (macro === 'layout') return `<ac:layout>${content}</ac:layout>`;
+    if (node.classList && node.classList.contains('wiki-layout-section')) {
+      return `<ac:layout-section ac:type="${escapeStorage(node.dataset.layoutType || 'two_equal')}">${content}</ac:layout-section>`;
+    }
+    if (node.classList && node.classList.contains('wiki-layout-cell')) return `<ac:layout-cell>${content}</ac:layout-cell>`;
     if (tag === 'span') return content;
     if (tag === 'br' || tag === 'hr') return `<${tag}/>`;
     const normalized = tag === 'div' ? 'p' : tag;
@@ -710,20 +743,211 @@ document.addEventListener('DOMContentLoaded', () => {
   source.hidden = true;
   toolbar.hidden = false;
   document.querySelector('#wiki-body-label').removeAttribute('for');
+  // Where the caret last was in the editor. A toolbar control that takes the
+  // focus -- a link address, a colour, a menu -- leaves the document with no
+  // selection inside the editor, and a command with nowhere to go does
+  // nothing at all; so the editor is given its own place back before every
+  // command runs.
+  let caret = null;
+  const rememberCaret = () => {
+    const selection = document.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (editor.contains(range.commonAncestorContainer)) caret = range.cloneRange();
+  };
+  // Typing does not raise a selection change in every browser, so the caret
+  // is read after each of the ways it moves, and once more as the editor
+  // hands the focus to a toolbar control.
+  document.addEventListener('selectionchange', rememberCaret);
+  ['keyup', 'mouseup', 'input', 'focusout'].forEach((event) => editor.addEventListener(event, rememberCaret));
+  // The shapes the toolbar inserts, built as elements. An attribute is set
+  // rather than written into markup, so a value from a menu is a value and
+  // never a piece of HTML.
+  const el = (tag, attributes, ...children) => {
+    const node = document.createElement(tag);
+    Object.keys(attributes || {}).forEach((name) => node.setAttribute(name, attributes[name]));
+    children.forEach((child) => node.append(child));
+    return node;
+  };
+  // The block of the page the caret is in: a child of the editor itself, so
+  // a panel, a code block or a layout is put between blocks rather than
+  // inside a paragraph.
+  const blockAt = (node) => {
+    let block = node;
+    if (block === editor) return editor.lastElementChild;
+    while (block && block.parentNode !== editor) block = block.parentNode;
+    return block;
+  };
+  // Inserting through execCommand leaves the browser to decide what the
+  // markup means: Chrome flattens a panel into styled spans and drops the
+  // attributes that say what the macro is. These put the nodes in as written.
+  // They are built as elements rather than parsed from a string, so nothing
+  // the page holds is ever read back as markup.
+  const insertBlocks = (nodes) => {
+    focusEditor();
+    if (nodes.length === 0) return;
+    const selection = document.getSelection();
+    const anchor = selection && selection.rangeCount > 0 ? blockAt(selection.getRangeAt(0).startContainer) : null;
+    if (anchor) anchor.after(...nodes); else editor.append(...nodes);
+    const caretIn = nodes[nodes.length - 1];
+    const range = document.createRange();
+    range.selectNodeContents(caretIn);
+    range.collapse(false);
+    if (selection) { selection.removeAllRanges(); selection.addRange(range); }
+    caret = range.cloneRange();
+  };
+  const insertInline = (node) => {
+    focusEditor();
+    if (!node) return;
+    const selection = document.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      editor.append(node);
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(node);
+    range.setStartAfter(node);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    caret = range.cloneRange();
+  };
+  const focusEditor = () => {
+    editor.focus();
+    const selection = document.getSelection();
+    // The place the person last had the caret is where they mean the command
+    // to land. A browser refocusing a box of its own accord puts the caret at
+    // the start, which is not where they were writing.
+    if (!selection || !caret || !caret.startContainer.isConnected || !editor.contains(caret.commonAncestorContainer)) return;
+    selection.removeAllRanges();
+    selection.addRange(caret);
+  };
   toolbar.querySelectorAll('[data-wiki-command]').forEach((button) => {
     button.addEventListener('mousedown', (event) => event.preventDefault());
     button.addEventListener('click', () => {
-      editor.focus();
+      focusEditor();
       document.execCommand(button.dataset.wikiCommand, false, null);
     });
   });
+  // A heading, a quote or a code block is the block the caret is in, changed
+  // to another block; the select says which, and goes back to reading what
+  // the caret is in so it never claims the wrong one.
+  const style = toolbar.querySelector('[data-wiki-style]');
+  if (style) {
+    style.addEventListener('mousedown', (event) => event.stopPropagation());
+    style.addEventListener('change', () => {
+      focusEditor();
+      document.execCommand('formatBlock', false, style.value);
+      style.value = 'p';
+    });
+  }
+  // A link is added around what is selected, or as the address itself when
+  // nothing is. The address is checked here so nothing but http, https and
+  // mailto reaches the page.
+  const linkURL = toolbar.querySelector('[data-wiki-link-url]');
+  const linkButton = toolbar.querySelector('[data-wiki-link]');
+  if (linkURL && linkButton) {
+    linkButton.addEventListener('mousedown', (event) => event.preventDefault());
+    linkButton.addEventListener('click', () => {
+      const address = linkURL.value.trim();
+      if (!/^(https?:|mailto:)/i.test(address)) {
+        linkURL.setCustomValidity('A link address begins with http, https or mailto.');
+        linkURL.reportValidity();
+        return;
+      }
+      linkURL.setCustomValidity('');
+      focusEditor();
+      const selection = document.getSelection();
+      if (selection && !selection.isCollapsed) {
+        document.execCommand('createLink', false, address);
+      } else {
+        document.execCommand('insertHTML', false, `<a href="${escapeStorage(address)}">${escapeStorage(address)}</a>`);
+      }
+      linkURL.value = '';
+    });
+  }
+  // A table arrives as a header row and a row under it, which is the shape
+  // somebody then types into.
+  const tableButton = toolbar.querySelector('[data-wiki-table]');
+  if (tableButton) {
+    tableButton.addEventListener('mousedown', (event) => event.preventDefault());
+    tableButton.addEventListener('click', () => {
+      insertBlocks([
+        el('table', {},
+          el('thead', {}, el('tr', {}, el('th', {}, 'Heading'), el('th', {}, 'Heading'))),
+          el('tbody', {}, el('tr', {}, el('td', {}, 'Cell'), el('td', {}, 'Cell')))),
+        el('p', {}),
+      ]);
+    });
+  }
+  // A macro arrives as the shape it is drawn in, which somebody then types
+  // into: a panel with a title, a status word, a code block or the page's own
+  // table of contents.
+  const macroSelect = toolbar.querySelector('[data-wiki-macro]');
+  const statusColour = toolbar.querySelector('[data-wiki-status-colour]');
+  if (macroSelect) {
+    macroSelect.addEventListener('mousedown', (event) => event.stopPropagation());
+    macroSelect.addEventListener('change', () => {
+      const macro = macroSelect.value;
+      macroSelect.value = '';
+      if (!macro) return;
+      const panelTitles = { info: 'Info', note: 'Note', warning: 'Warning', tip: 'Tip', panel: 'Panel' };
+      if (panelMacros.includes(macro)) {
+        insertBlocks([
+          el('div', { class: 'wiki-panel wiki-panel-' + macro, 'data-macro': macro },
+            el('p', { class: 'wiki-panel-title' }, panelTitles[macro]),
+            el('p', {}, 'Write the panel here.')),
+          el('p', {}),
+        ]);
+        return;
+      }
+      if (macro === 'status') {
+        const chosen = statusColour ? statusColour.value : 'grey';
+        const colour = statusColours.includes(chosen) ? chosen : 'grey';
+        insertInline(el('span', { class: 'wiki-status wiki-status-' + colour, 'data-macro': 'status', 'data-colour': colour }, 'Status'));
+        return;
+      }
+      if (macro === 'code') {
+        insertBlocks([el('pre', { class: 'wiki-code', 'data-macro': 'code' }, 'Write the code here.'), el('p', {})]);
+        return;
+      }
+      if (macro === 'toc') {
+        insertBlocks([
+          el('nav', { class: 'wiki-toc', 'data-macro': 'toc', contenteditable: 'false', 'aria-label': 'Contents' }, el('p', {}, 'Table of contents')),
+          el('p', {}),
+        ]);
+      }
+    });
+  }
+  // A layout is a row of columns, each of which holds its own content.
+  const layoutSelect = toolbar.querySelector('[data-wiki-layout]');
+  if (layoutSelect) {
+    layoutSelect.addEventListener('mousedown', (event) => event.stopPropagation());
+    layoutSelect.addEventListener('change', () => {
+      const layout = layoutSelect.value;
+      layoutSelect.value = '';
+      if (!layoutTypes.includes(layout)) return;
+      const cells = layout.startsWith('three') ? 3 : 2;
+      const columns = Array.from({ length: cells }, (unused, index) =>
+        el('div', { class: 'wiki-layout-cell' }, el('p', {}, 'Column ' + (index + 1))));
+      insertBlocks([
+        el('div', { class: 'wiki-layout', 'data-macro': 'layout' },
+          el('div', { class: 'wiki-layout-section wiki-layout-' + layout, 'data-layout-type': layout }, ...columns)),
+        el('p', {}),
+      ]);
+    });
+  }
+  // A table of contents is built from the page's headings, so it is read in
+  // the editor rather than typed into.
+  editor.querySelectorAll('[data-macro=toc]').forEach((contents) => { contents.contentEditable = 'false'; });
   const mentionButton = toolbar.querySelector('[data-wiki-mention]');
   if (picker) {
     const adapter = editorMentions(editor);
     picker.attach(editor, adapter);
     mentionButton.addEventListener('mousedown', (event) => event.preventDefault());
     mentionButton.addEventListener('click', () => {
-      editor.focus();
+      focusEditor();
       document.execCommand('insertText', false, '@');
       picker.update(editor, adapter);
     });

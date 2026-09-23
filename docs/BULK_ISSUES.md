@@ -130,9 +130,11 @@ See [PLAN.md](../PLAN.md).
 - The navigator's bulk edit offers the six built-in fields above and the
   custom fields every work type in the project shares: text, a number, a date,
   a date and time, a URL, a single or multiple select, a cascading select, a
-  person, a group, a team, a project, one or several versions, and a list of
-  values. Assets fields are REST-only, as are work type and status, which the
-  navigator changes through bulk move and bulk transition instead.
+  person, a group, a team, a project, one or several versions, a list of
+  values, and an Assets object field -- one object, or several where its
+  context holds several, chosen from the inventories of the desks the person
+  agents. Work type and status stay REST-only, because the navigator changes
+  them through bulk move and bulk transition instead.
 
 ## In the navigator
 

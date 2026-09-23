@@ -167,11 +167,16 @@ name in that language and, if it helps, the description.
   other way round: the region is dropped before the language is given up.
 - Removing a translation takes that language back to the site's own name.
 - **In the browser:** a person chooses their language on their profile, from
-  the languages the site has been translated into, and the work item view then
-  reads in it: the item's work type, priority, resolution and status, the work
-  under and beside it, and the priorities and resolutions its fields offer.
-  The site's own words are unchanged underneath, so a search, a form and the
-  REST API all still take them.
+  the languages the site has been translated into, and the site's own words
+  then read in it wherever a page shows them: the work item view (the item,
+  the work under and beside it, and the priorities and resolutions its fields
+  offer), a board's cards and the statuses each column gathers, and the
+  navigator's results and its status filter. On a board that is the work type
+  each card is labelled with and the statuses a column gathers when it gathers
+  more than one; a board column's own name is the board administrator's word,
+  not the site's, so it is left alone. The site's
+  own words are unchanged underneath, so a search, a form and the REST API all
+  still take them.
 
 The names live in `issue_metadata_translations`, keyed by the kind of thing and
 its id, and each write is recorded in the governance log like every other
@@ -185,7 +190,7 @@ Tracked in [PLAN.md](../PLAN.md).
 - Team-managed scoping (`scope`, `entityId`) is not modelled; every type is company-managed.
 - A priority scheme update applies its mappings before answering, so the 202 has no `task`.
 - The system avatar catalogue has five work type icons; Jira's is larger.
-- A translated name reaches the metadata resources, the settings pages and the work item view (the item, the work under and beside it, and the priorities and resolutions its fields offer). The board and the search results still read the site's own names, as JQL does.
+- A translated name reaches the metadata resources, the settings pages, the work item view (the item, the work under and beside it, and the priorities and resolutions its fields offer), the board's cards and the navigator's results and status filter. JQL itself reads the site's own words, as Jira's does.
 
 ## See also
 

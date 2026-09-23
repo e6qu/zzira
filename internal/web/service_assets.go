@@ -3,12 +3,14 @@ package web
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 func (h *Handler) ServiceAssetsPage(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +49,18 @@ func (h *Handler) ServiceAssetsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load what people have said about these objects.", http.StatusInternalServerError)
 		return
 	}
-	data := servicePageData{Desk: desk, AssetInventory: inventory, CanAgent: true, CanAdmin: admin, AssetHistory: history, AssetComments: comments}
+	files, err := h.Store.ServiceAssetInventoryAttachments(r.Context(), workspaceID, user.ID, deskID)
+	if err != nil {
+		http.Error(w, "Could not load the files kept with these objects.", http.StatusInternalServerError)
+		return
+	}
+	// An object type says what it sits under by name, which the page has only
+	// as an id.
+	schemaNames := make(map[string]string, len(inventory.Schemas))
+	for _, schema := range inventory.Schemas {
+		schemaNames[schema.ID] = schema.Name
+	}
+	data := servicePageData{Desk: desk, AssetInventory: inventory, CanAgent: true, CanAdmin: admin, AssetHistory: history, AssetComments: comments, AssetFiles: files, AssetSchemaNames: schemaNames}
 	// An import redirects back here with what it wrote, so the inventory the
 	// page shows is the one the import left behind.
 	data.AssetImportError = r.URL.Query().Get("importError")
@@ -140,13 +153,16 @@ func (h *Handler) ServiceAssetSchemaSettings(w http.ResponseWriter, r *http.Requ
 	}
 	deskID := r.PathValue("desk")
 	var err error
-	if r.PostFormValue("action") == "delete" {
+	switch {
+	case r.PostFormValue("action") == "delete":
 		err = h.Commands.DeleteServiceAssetSchema(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("schemaId"))
-	} else {
+	case r.PostFormValue("action") == "parent":
+		err = h.Commands.SetServiceAssetSchemaParent(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("schemaId"), r.PostFormValue("parent"))
+	default:
 		var attributes []models.ServiceAssetAttribute
 		attributes, err = parseServiceAssetAttributes(r.PostFormValue("attributes"))
 		if err == nil {
-			_, err = h.Commands.CreateServiceAssetSchema(r.Context(), user.ID, workspaceID, deskID, models.ServiceAssetSchema{Key: r.PostFormValue("key"), Name: r.PostFormValue("name"), Description: r.PostFormValue("description"), Attributes: attributes})
+			_, err = h.Commands.CreateServiceAssetSchema(r.Context(), user.ID, workspaceID, deskID, models.ServiceAssetSchema{Key: r.PostFormValue("key"), Name: r.PostFormValue("name"), Description: r.PostFormValue("description"), ParentID: r.PostFormValue("parent"), Attributes: attributes})
 		}
 	}
 	if err != nil {
@@ -242,4 +258,96 @@ func (h *Handler) ServiceAssetObjectComment(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	redirectLocal(w, r, "/service/agent/"+deskID+"/assets#objects")
+}
+
+// serviceAssetFileLimit is the largest file kept on an Assets object.
+const serviceAssetFileLimit = 32 << 20
+
+// ServiceAssetObjectFile keeps a file with an object, or takes one away.
+// Agents of the desk keep files; whoever put one there, and any site
+// administrator, removes it.
+func (h *Handler) ServiceAssetObjectFile(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	deskID := r.PathValue("desk")
+	back := "/service/agent/" + deskID + "/assets#objects"
+	r.Body = http.MaxBytesReader(w, r.Body, serviceAssetFileLimit+(1<<20))
+	if err := r.ParseMultipartForm(serviceAssetFileLimit); err != nil { // #nosec G120 -- body capped by MaxBytesReader above
+		http.Error(w, "Could not read the file.", http.StatusBadRequest)
+		return
+	}
+	defer func() {
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+	}()
+	objectID := r.PostFormValue("objectId")
+	if r.PostFormValue("action") == "delete" {
+		blobRef, err := h.Store.DeleteServiceAssetObjectAttachment(r.Context(), workspaceID, user.ID, objectID, r.PostFormValue("fileId"))
+		if err != nil {
+			http.Error(w, "Could not remove that file: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := h.Commands.Blobs.Delete(r.Context(), blobRef); err != nil {
+			log.Printf("remove asset file blob %s: %s", strconv.Quote(blobRef), strconv.Quote(err.Error()))
+		}
+		redirectLocal(w, r, back)
+		return
+	}
+	upload, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Choose a file to keep with this object.", http.StatusBadRequest)
+		return
+	}
+	defer func() { _ = upload.Close() }()
+	ref := store.NewID("blob")
+	size, err := h.Commands.Blobs.Put(r.Context(), ref, io.LimitReader(upload, serviceAssetFileLimit+1))
+	if err != nil {
+		http.Error(w, "Could not store that file.", http.StatusInternalServerError)
+		return
+	}
+	if size > serviceAssetFileLimit {
+		if err := h.Commands.Blobs.Delete(r.Context(), ref); err != nil {
+			log.Printf("remove oversized asset file blob %s: %s", strconv.Quote(ref), strconv.Quote(err.Error()))
+		}
+		http.Error(w, "That file is larger than 32 MB.", http.StatusBadRequest)
+		return
+	}
+	if _, err := h.Store.SaveServiceAssetObjectAttachment(r.Context(), workspaceID, user.ID, objectID,
+		header.Filename, header.Header.Get("Content-Type"), size, ref); err != nil {
+		if deleteErr := h.Commands.Blobs.Delete(r.Context(), ref); deleteErr != nil {
+			log.Printf("remove unrecorded asset file blob %s: %s", strconv.Quote(ref), strconv.Quote(deleteErr.Error()))
+		}
+		http.Error(w, "Could not keep that file: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, back)
+}
+
+// ServiceAssetObjectFileDownload serves a file kept with an object to the
+// agents of its desk.
+func (h *Handler) ServiceAssetObjectFileDownload(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	file, err := h.Store.ServiceAssetObjectAttachment(r.Context(), workspaceID, user.ID, r.PathValue("object"), r.PathValue("file"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	reader, _, err := h.Commands.Blobs.Get(r.Context(), file.BlobRef)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer func() { _ = reader.Close() }()
+	w.Header().Set("Content-Type", file.MediaType)
+	w.Header().Set("Content-Length", strconv.FormatInt(file.Size, 10))
+	w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(file.Filename))
+	if _, err := io.Copy(w, reader); err != nil {
+		log.Printf("serve asset file %s: %s", strconv.Quote(file.ID), strconv.Quote(err.Error()))
+	}
 }

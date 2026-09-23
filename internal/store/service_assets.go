@@ -32,14 +32,14 @@ func (s *Store) ServiceAssetInventory(ctx context.Context, ws, actor, deskID str
 		return nil, ErrProjectPermission
 	}
 	inventory := &models.ServiceAssetInventory{}
-	rows, err := s.Pool.Query(ctx, `SELECT s.id::text,s.assets_workspace_id::text,s.service_desk_id,s.schema_key,s.name,s.description,s.attributes FROM service_asset_schemas s JOIN service_desks sd ON sd.id=s.service_desk_id WHERE sd.workspace_id=$1 AND s.service_desk_id=$2 ORDER BY lower(s.name),s.id`, ws, deskID)
+	rows, err := s.Pool.Query(ctx, `SELECT s.id::text,s.assets_workspace_id::text,s.service_desk_id,s.schema_key,s.name,s.description,COALESCE(s.parent_id::text,''),s.attributes FROM service_asset_schemas s JOIN service_desks sd ON sd.id=s.service_desk_id WHERE sd.workspace_id=$1 AND s.service_desk_id=$2 ORDER BY lower(s.name),s.id`, ws, deskID)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var schema models.ServiceAssetSchema
 		var attributes []byte
-		if err := rows.Scan(&schema.ID, &schema.AssetsWorkspaceID, &schema.ServiceDeskID, &schema.Key, &schema.Name, &schema.Description, &attributes); err != nil {
+		if err := rows.Scan(&schema.ID, &schema.AssetsWorkspaceID, &schema.ServiceDeskID, &schema.Key, &schema.Name, &schema.Description, &schema.ParentID, &attributes); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -127,8 +127,12 @@ func (s *Store) CreateServiceAssetSchema(ctx context.Context, ws, actor, deskID 
 		return nil, err
 	}
 	schema.ServiceDeskID = deskID
-	err = tx.QueryRow(ctx, `INSERT INTO service_asset_schemas(assets_workspace_id,service_desk_id,schema_key,name,description,attributes)
-SELECT aw.id,sd.id,$3,$4,$5,$6 FROM service_desks sd JOIN service_assets_workspaces aw ON aw.workspace_id=sd.workspace_id WHERE sd.workspace_id=$1 AND sd.id=$2 RETURNING id::text,assets_workspace_id::text`, ws, deskID, schema.Key, schema.Name, schema.Description, raw).Scan(&schema.ID, &schema.AssetsWorkspaceID)
+	// An object type sits under another of the same desk, or at the top.
+	if err := checkServiceAssetParent(ctx, tx, deskID, "", schema.ParentID); err != nil {
+		return nil, err
+	}
+	err = tx.QueryRow(ctx, `INSERT INTO service_asset_schemas(assets_workspace_id,service_desk_id,schema_key,name,description,parent_id,attributes)
+SELECT aw.id,sd.id,$3,$4,$5,NULLIF($6,'')::uuid,$7 FROM service_desks sd JOIN service_assets_workspaces aw ON aw.workspace_id=sd.workspace_id WHERE sd.workspace_id=$1 AND sd.id=$2 RETURNING id::text,assets_workspace_id::text`, ws, deskID, schema.Key, schema.Name, schema.Description, schema.ParentID, raw).Scan(&schema.ID, &schema.AssetsWorkspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -136,6 +140,66 @@ SELECT aw.id,sd.id,$3,$4,$5,$6 FROM service_desks sd JOIN service_assets_workspa
 		return nil, err
 	}
 	return &schema, tx.Commit(ctx)
+}
+
+// checkServiceAssetParent refuses a parent that is not this desk's, and a
+// cycle: an object type cannot end up beneath itself.
+func checkServiceAssetParent(ctx context.Context, tx pgx.Tx, deskID, schemaID, parentID string) error {
+	if parentID == "" {
+		return nil
+	}
+	if parentID == schemaID {
+		return fmt.Errorf("an object type cannot sit under itself")
+	}
+	var desk string
+	if err := tx.QueryRow(ctx, `SELECT service_desk_id FROM service_asset_schemas WHERE id::text=$1`, parentID).Scan(&desk); err != nil {
+		return fmt.Errorf("that object type does not exist")
+	}
+	if desk != deskID {
+		return fmt.Errorf("an object type sits under one of the same desk")
+	}
+	if schemaID == "" {
+		return nil
+	}
+	var loops bool
+	if err := tx.QueryRow(ctx, `WITH RECURSIVE ancestors AS (
+		SELECT id,parent_id FROM service_asset_schemas WHERE id::text=$1
+		UNION ALL SELECT parent.id,parent.parent_id FROM service_asset_schemas parent JOIN ancestors child ON parent.id=child.parent_id)
+		SELECT EXISTS(SELECT 1 FROM ancestors WHERE id::text=$2)`, parentID, schemaID).Scan(&loops); err != nil {
+		return err
+	}
+	if loops {
+		return fmt.Errorf("an object type cannot sit beneath one of its own children")
+	}
+	return nil
+}
+
+// SetServiceAssetSchemaParent moves an object type under another, or to the
+// top when the parent is empty.
+func (s *Store) SetServiceAssetSchemaParent(ctx context.Context, ws, actor, deskID, schemaID, parentID string) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := projectAdmin(ctx, tx, ws, actor); err != nil {
+		return err
+	}
+	var owner string
+	if err := tx.QueryRow(ctx, `SELECT s.service_desk_id FROM service_asset_schemas s JOIN service_desks sd ON sd.id=s.service_desk_id
+		WHERE sd.workspace_id=$1 AND s.id::text=$2`, ws, schemaID).Scan(&owner); err != nil || owner != deskID {
+		return ErrAssetNotFound
+	}
+	if err := checkServiceAssetParent(ctx, tx, deskID, schemaID, parentID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE service_asset_schemas SET parent_id=NULLIF($2,'')::uuid,updated_at=now() WHERE id::text=$1`, schemaID, parentID); err != nil {
+		return err
+	}
+	if err := serviceAssetAction(ctx, tx, ws, actor, "service_asset_schema", schemaID, models.OpUpsert, map[string]string{"parent": parentID}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) DeleteServiceAssetSchema(ctx context.Context, ws, actor, deskID, schemaID string) error {

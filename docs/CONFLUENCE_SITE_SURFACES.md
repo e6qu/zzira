@@ -73,6 +73,11 @@ The canvas is edited only in the browser, at
 - **Rendering.** The page draws the canvas as an SVG with a 1400 × 800
   viewBox. The same objects and connectors are also listed as accessible
   forms.
+- **Moving an object.** An object is dragged on the canvas and the move is
+  saved as it is let go, through the same route the form below posts to; a
+  connector drawn to it follows while it moves, and a move that cannot be
+  saved puts the object back where it was. Everything the drag does is also
+  on the form, which is what a keyboard uses.
 - **Permissions.** Changing the canvas needs update permission on a current
   whiteboard. An archived whiteboard is read-only until restored.
 - **Storage.** Objects and connectors are stored in `wiki_whiteboard_objects`
@@ -180,8 +185,9 @@ Tracked in [PLAN.md](../PLAN.md).
 
 - **Whiteboard canvas API.** There is no REST API for whiteboard objects and
   connectors, and no bulk import or export.
-- **Whiteboard editing.** No drag, resize or pan and zoom: positions are typed
-  into forms. Objects placed beyond the 1400 × 800 view are not shown.
+- **Whiteboard editing.** An object is dragged on the canvas and every field
+  is also typed into its form, but there is no resize, and no pan or zoom:
+  objects placed beyond the 1400 × 800 view are not shown.
 - **Whiteboard elements.** No shape kinds (rectangle, ellipse, diamond and so
   on), freehand drawing, images, frames, sections, lines without endpoints,
   connector anchors or routing, or arrowhead choice.

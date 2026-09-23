@@ -173,6 +173,13 @@ test('a person reads a work item in the language they chose', async ({ page }) =
   expect(found.status(), await found.text()).toBe(200);
   expect((await found.json()).issues).toHaveLength(1);
 
+  // The results and the filter above them read in it too. A board shows the
+  // status as its column, which the board administrator named, so there is
+  // nothing of the site's own words on it to translate.
+  await page.goto('/issues/ZZ');
+  await expect(page.locator('main')).toContainText(frenchStatus);
+  await expect(page.getByLabel('Status').locator('option', { hasText: frenchStatus })).toHaveCount(1);
+
   // Back to the site's own language, and the translation is taken away.
   await page.goto('/profile');
   await page.locator('.profile-language').getByLabel('Language').selectOption('');

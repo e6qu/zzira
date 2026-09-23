@@ -10,6 +10,7 @@ import (
 
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/commands"
+	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
 
@@ -104,6 +105,26 @@ func TestAWorkItemReadsInTheLanguageItsReaderChose(t *testing.T) {
 	if got := read(otherID); got != "Task · To Do" {
 		t.Fatalf("the other reader now reads %q", got)
 	}
+	// A list of work reads in the same language, and so do the statuses a
+	// filter offers.
+	listed := []*models.Issue{{ID: issue.ID, IssueType: issue.IssueType, Status: issue.Status}}
+	french := h.readerMetadataNames(ctx, workspaceID, readerID)
+	translateIssues(french, listed)
+	if listed[0].Status.Name != "À faire" || listed[0].IssueType.Name != "Tâche" {
+		t.Fatalf("the list reads %q · %q", listed[0].IssueType.Name, listed[0].Status.Name)
+	}
+	offered := []models.Status{{ID: issue.Status.ID, Name: issue.Status.Name}}
+	translateStatuses(french, offered)
+	if offered[0].Name != "À faire" {
+		t.Fatalf("the filter offers %q", offered[0].Name)
+	}
+	// Nobody else's page changes: a reader with no language reads the site's.
+	plain := []*models.Issue{{ID: issue.ID, IssueType: issue.IssueType, Status: issue.Status}}
+	translateIssues(h.readerMetadataNames(ctx, workspaceID, otherID), plain)
+	if plain[0].Status.Name != "To Do" {
+		t.Fatalf("the other reader's list reads %q", plain[0].Status.Name)
+	}
+
 	// The site's own words are what a search takes, so they are unchanged.
 	stored, err := st.IssueByIDOrKey(ctx, workspaceID, issue.Key)
 	if err != nil || stored.Status.Name != "To Do" {

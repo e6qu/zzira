@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/aql"
@@ -102,6 +103,30 @@ type ServiceAssetObjectSearch struct {
 	Total   int
 }
 
+// ServiceAssetFieldCardinality says, for each Assets object field, whether the
+// context governing it in this project holds several objects rather than one.
+func (s *Store) ServiceAssetFieldCardinality(ctx context.Context, projectID string, fieldIDs []string) (map[string]bool, error) {
+	cardinality := map[string]bool{}
+	if len(fieldIDs) == 0 {
+		return cardinality, nil
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT cf.id,COALESCE((SELECT cx.assets_multiple FROM custom_field_contexts cx WHERE cx.id=jira_custom_field_context(cf.id,$2,NULL)),FALSE)
+		FROM custom_fields cf WHERE cf.id = ANY($1)`, fieldIDs, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var multiple bool
+		if err := rows.Scan(&id, &multiple); err != nil {
+			return nil, err
+		}
+		cardinality[id] = multiple
+	}
+	return cardinality, rows.Err()
+}
+
 // SearchServiceAssetObjects runs an AQL filter across the desks the actor
 // agents, or one schema when a schema is named.
 func (s *Store) SearchServiceAssetObjects(ctx context.Context, ws, actor, schemaID, filter string, start, limit int) (*ServiceAssetObjectSearch, error) {
@@ -130,6 +155,33 @@ func (s *Store) SearchServiceAssetObjects(ctx context.Context, ws, actor, schema
 		}
 		matched = append(matched, objects...)
 	}
+	// Each desk's rows come back in the order the filter asked for, so rows
+	// from several desks are put in that order together.
+	if strings.TrimSpace(filter) != "" && len(deskIDs) > 1 {
+		query, err := aql.Parse(filter)
+		if err != nil {
+			return nil, fmt.Errorf("the Assets filter %q: %w", filter, err)
+		}
+		if field, descending, ok := query.Order(); ok {
+			sortValue := func(object models.ServiceAssetObject) string {
+				switch kind, own := aql.IsObjectField(field); {
+				case own && kind == "schema":
+					return strings.ToLower(object.SchemaName)
+				case own && kind == "key":
+					return strings.ToLower(object.Key)
+				case own:
+					return strings.ToLower(object.Label)
+				}
+				return strings.ToLower(object.Values[aql.AttributeKey(field)])
+			}
+			sort.SliceStable(matched, func(i, j int) bool {
+				if descending {
+					return sortValue(matched[i]) > sortValue(matched[j])
+				}
+				return sortValue(matched[i]) < sortValue(matched[j])
+			})
+		}
+	}
 	found.Total = len(matched)
 	if start < 0 {
 		start = 0
@@ -146,23 +198,29 @@ func (s *Store) SearchServiceAssetObjects(ctx context.Context, ws, actor, schema
 }
 
 func (s *Store) serviceAssetObjectsMatching(ctx context.Context, ws, deskID, schemaID, filter string) ([]models.ServiceAssetObject, error) {
-	where, args := "TRUE", []any{ws, deskID, schemaID}
+	// A filter may say how to order what it matches; the inventory's own
+	// order follows it, so an object the filter does not rank keeps its place.
+	where, order, args := "TRUE", "", []any{ws, deskID, schemaID}
 	if strings.TrimSpace(filter) != "" {
 		query, err := aql.Parse(filter)
 		if err != nil {
 			return nil, fmt.Errorf("the Assets filter %q: %w", filter, err)
 		}
 		columns := aql.DefaultColumns()
+		columns.DeskID = deskID
 		if columns.Attributes, err = s.serviceAssetAttributeKeys(ctx, deskID); err != nil {
 			return nil, err
 		}
 		compiled := query.Compile(columns, len(args)+1)
 		where, args = compiled.Where, append(args, compiled.Args...)
+		if compiled.OrderBy != "" {
+			order = compiled.OrderBy + ","
+		}
 	}
 	rows, err := s.Pool.Query(ctx, `SELECT o.id::text,o.schema_id::text,s.schema_key,s.name,o.object_key,o.label,o.values,o.x,o.y
 		FROM service_asset_objects o JOIN service_asset_schemas s ON s.id=o.schema_id JOIN service_desks sd ON sd.id=s.service_desk_id
 		WHERE sd.workspace_id=$1 AND sd.id=$2 AND ($3='' OR s.id::text=$3) AND (`+where+`)
-		ORDER BY lower(s.name),lower(o.label),o.id`, args...)
+		ORDER BY `+order+`lower(s.name),lower(o.label),o.id`, args...)
 	if err != nil {
 		return nil, err
 	}

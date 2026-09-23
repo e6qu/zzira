@@ -57,6 +57,36 @@ func (h *Handler) ProjectAppModulePage(w http.ResponseWriter, r *http.Request) {
 	}, "project-app-module:"+module.ID, project.ID)
 }
 
+// profileAppModulePageData is an app's page about one person.
+type profileAppModulePageData struct {
+	Profile  *models.User
+	Module   *models.AppModule
+	FrameURL string
+}
+
+// ProfileAppModulePage opens an app's page about the person whose profile it
+// is, with that person as its context.
+func (h *Handler) ProfileAppModulePage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	profile, err := h.Store.MemberByID(r.Context(), workspaceID, r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	module, err := h.Store.ActiveAppModule(r.Context(), workspaceID, r.PathValue("module"))
+	if err != nil || module.Location != "jira.profile" || !appModuleShown(*module, h.appConditionFactsFor(r.Context(), workspaceID, user, nil, nil)) {
+		http.NotFound(w, r)
+		return
+	}
+	contextValues := url.Values{"profileUser.accountId": {profile.ID}}
+	h.writeWorkspacePage(w, r, "page_profile_app_module", user, workspaceID, profileAppModulePageData{
+		Profile: profile, Module: module, FrameURL: remoteModuleFramePath(module, contextValues),
+	}, "profile-app-module:"+module.ID, "")
+}
+
 func (h *Handler) ProjectAdminAppModulePage(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.requireAdminPage(w, r)
 	if !ok {
@@ -91,6 +121,34 @@ func (h *Handler) AdminAppModulePage(w http.ResponseWriter, r *http.Request) {
 	h.writeWorkspacePage(w, r, "page_admin_app_module", user, workspaceID, appModulePageData{
 		Module: module, FrameURL: remoteModuleFramePath(module, nil),
 	}, "admin-app-module:"+module.ID, "")
+}
+
+// AdminAppConfigurePage opens the page an app offers for setting itself up,
+// which the app list links to beside the app rather than putting in a menu.
+func (h *Handler) AdminAppConfigurePage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	installation, err := h.Store.AppInstallation(r.Context(), workspaceID, r.PathValue("appKey"))
+	if err != nil || installation.Status != "active" {
+		http.NotFound(w, r)
+		return
+	}
+	var page *models.AppModule
+	for index := range installation.Modules {
+		if installation.Modules[index].Type == "jira:configurePage" {
+			page = &installation.Modules[index]
+			break
+		}
+	}
+	if page == nil || !appModuleShown(*page, h.appConditionFactsFor(r.Context(), workspaceID, user, nil, nil)) {
+		http.NotFound(w, r)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_admin_app_module", user, workspaceID, appModulePageData{
+		Module: page, FrameURL: remoteModuleFramePath(page, nil),
+	}, "admin-app-module:"+page.ID, "")
 }
 
 func remoteModuleFramePath(module *models.AppModule, values url.Values) string {
@@ -128,6 +186,17 @@ func (h *Handler) AppModuleFrame(w http.ResponseWriter, r *http.Request) {
 	// A frame opens only for someone the module's conditions admit, in the
 	// project and on the work item its context names.
 	contextValues := appModuleContextValues(r)
+	// A profile page is told who it is about. The name comes from the
+	// directory rather than the query, so a crafted link cannot put words of
+	// its own choosing in front of the app.
+	if accountID := contextValues.Get("profileUser.accountId"); accountID != "" {
+		profile, profileErr := h.Store.MemberByID(r.Context(), workspaceID, accountID)
+		if profileErr != nil {
+			http.NotFound(w, r)
+			return
+		}
+		contextValues.Set("profileUser.name", profile.DisplayName)
+	}
 	if len(module.Conditions) > 0 {
 		var project *models.Project
 		var issue *models.Issue
@@ -437,6 +506,11 @@ func appModuleContextValues(r *http.Request) url.Values {
 		values.Set("project.id", projectID)
 	} else if projectID := strings.TrimSpace(r.URL.Query().Get("project.id")); projectID != "" {
 		values.Set("project.id", projectID)
+	}
+	if accountID := strings.TrimSpace(r.URL.Query().Get("accountId")); accountID != "" {
+		values.Set("profileUser.accountId", accountID)
+	} else if accountID := strings.TrimSpace(r.URL.Query().Get("profileUser.accountId")); accountID != "" {
+		values.Set("profileUser.accountId", accountID)
 	}
 	for queryKey, contextKey := range map[string]string{"dashboardId": "dashboard.id", "dashboardItemId": "dashboardItem.id", "dashboardItemKey": "dashboardItem.key", "dashboardItemViewType": "dashboardItem.viewType"} {
 		if value := strings.TrimSpace(r.URL.Query().Get(queryKey)); value != "" {

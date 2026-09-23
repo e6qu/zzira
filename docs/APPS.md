@@ -107,6 +107,8 @@ values can be up to 1,500 characters.
 |---|---|
 | `generalPages` | Global page in product navigation |
 | `adminPages` | Site administration navigation, administrators only. Only the default location. `cacheable` and `fullPage` are refused. Accepts `params` and `weight` |
+| `profilePages` | A page about one person, listed on their profile under **App pages** and opened at `/people/{accountId}/apps/{module}`. The frame is told `profileUser.accountId` and `profileUser.name`, both read from the directory rather than from the link |
+| `configurePage` | The one page an app offers for setting itself up, linked as **Configure** beside the app on `/admin` rather than put in a menu, and opened at `/admin/apps/configure/{appKey}` by site administrators. The key defaults to `configure` and the name to "Configure" |
 | `jiraProjectPages` | Project navigation, ordered by `weight`, with a signed `iconUrl`. Context: `project.key`, `project.id` |
 | `jiraProjectAdminTabPanels` | Project settings for administrators, at `projectgroup1`–`projectgroup4`, ordered by group and then weight. `params` are appended to the URL |
 | `jiraReports` | Project report directory. Category is `agile`, `issue_analysis`, `forecast_management` or `other`. Signed thumbnail. Context: project |
@@ -376,10 +378,10 @@ See [PLAN.md](../PLAN.md).
   Forge app properties and UI modifications APIs exist
   ([JIRA_PLATFORM.md](JIRA_PLATFORM.md)).
 - Jira Connect families not built:
-  - `configurePage`, `dialogs`, `webSections`, `keyboardShortcuts`;
+  - `dialogs`, `webSections`, `keyboardShortcuts`;
   - `jiraWorkflowConditions`, `jiraWorkflowValidators`,
     `jiraWorkflowPostFunctions`;
-  - `jiraSearchRequestViews`, `jiraBackgroundScripts`, `profilePages`,
+  - `jiraSearchRequestViews`, `jiraBackgroundScripts`,
     `jiraProjectTabPanels`.
 - Confluence Connect families not built:
   - `dynamicContentMacros`, `staticContentMacros`;

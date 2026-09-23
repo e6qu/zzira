@@ -70,9 +70,10 @@ blog posts alike.
   date.
 - **Completing tasks.** Pages and blog posts list their tasks with
   **Complete** and **Reopen** buttons.
-- **Editors.** The rich editor handles text, formatting, links and mentions.
-  A body that contains task lists, macros or dates opens in the storage
-  editor instead, so none of them are lost.
+- **Editors.** The rich editor handles text, formatting, links, mentions, the
+  macros it draws and page layouts. A body that contains task lists, dates or
+  a macro it does not draw opens in the storage editor instead, so none of
+  them are lost.
 
 ## Storage
 
@@ -83,8 +84,10 @@ their pages into the page bodies.
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- **Rich editor.** It cannot insert or edit task lists, dates or macros; that
-  needs the storage editor.
+- **Rich editor.** It cannot insert or edit task lists or dates, nor the
+  macros it does not draw; that needs the storage editor. The panels, status,
+  code and table-of-contents macros it does draw are written from its toolbar
+  ([PAGE_WRITING](PAGE_WRITING.md)).
 - **Task reports.** No "Tasks" macro or report, and no personal task list
   page.
 - **Reminders.** No due-date reminders.

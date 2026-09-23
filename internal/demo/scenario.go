@@ -336,12 +336,16 @@ type Assets struct {
 
 // AssetSchema is one kind of thing the company keeps track of.
 type AssetSchema struct {
-	ID          string           `json:"id"`
-	Key         string           `json:"key"`
-	Name        string           `json:"name"`
-	Description string           `json:"description,omitempty"`
-	Attributes  []AssetAttribute `json:"attributes,omitempty"`
-	Objects     []Asset          `json:"objects,omitempty"`
+	ID          string `json:"id"`
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	// Parent is the scenario id of the object type this one sits under, as
+	// Assets nests object types. A filter asking for a type and everything
+	// beneath it reads this.
+	Parent     string           `json:"parent,omitempty"`
+	Attributes []AssetAttribute `json:"attributes,omitempty"`
+	Objects    []Asset          `json:"objects,omitempty"`
 }
 
 // assetAttributeTypes are the field types a schema may declare, which are
@@ -432,6 +436,10 @@ type ServiceRequest struct {
 	// Participants are the colleagues the customer shared it with, who read
 	// it and its public replies as they do their own requests.
 	Participants []string `json:"participants,omitempty"`
+	// SharedWith are the organizations the customer shared it with as they
+	// raised it, whose every member reads it. Empty keeps the request to the
+	// customer, their participants and the service team.
+	SharedWith []string `json:"sharedWith,omitempty"`
 }
 
 // Wiki is the knowledge base.
@@ -908,17 +916,25 @@ func (s *Scenario) Validate() error {
 		for _, person := range s.People {
 			customers[person.ID] = true
 		}
+		// A request may only be shared with an organization its customer
+		// belongs to that its desk serves, which is what a customer may
+		// choose in the portal, so the scenario is held to the same rule.
+		organizationMembers := map[string]map[string]bool{}
+		organizationDesks := map[string][]string{}
 		for _, organization := range s.Service.Organizations {
+			organizationMembers[organization.ID] = map[string]bool{}
 			for _, member := range organization.Members {
 				if !customers[member] {
 					return fmt.Errorf("organization %q names the unknown person %q", organization.Name, member)
 				}
+				organizationMembers[organization.ID][member] = true
 			}
 			for _, desk := range organization.Desks {
 				if !projects[desk] {
 					return fmt.Errorf("organization %q is a customer of the unknown project %q", organization.Name, desk)
 				}
 			}
+			organizationDesks[organization.ID] = organization.Desks
 		}
 		assets := map[string]bool{}
 		if inventory := s.Service.Assets; inventory != nil {
@@ -926,6 +942,10 @@ func (s *Scenario) Validate() error {
 				return fmt.Errorf("the asset inventory is on the unknown project %q", inventory.Project)
 			}
 			schemaKeys := map[string]bool{}
+			// An object type sits under another declared here, and never
+			// under itself.
+			schemaIDs := map[string]bool{}
+			schemaParents := [][2]string{}
 			for _, schema := range inventory.Schemas {
 				if schema.ID == "" || schema.Key == "" || schema.Name == "" {
 					return fmt.Errorf("an asset schema needs an id, a key and a name")
@@ -934,6 +954,10 @@ func (s *Scenario) Validate() error {
 					return fmt.Errorf("two asset schemas share the key %q", schema.Key)
 				}
 				schemaKeys[schema.Key] = true
+				schemaIDs[schema.ID] = true
+				if schema.Parent != "" {
+					schemaParents = append(schemaParents, [2]string{schema.ID, schema.Parent})
+				}
 				attributes := map[string]bool{}
 				for _, attribute := range schema.Attributes {
 					if strings.TrimSpace(attribute.Name) == "" {
@@ -962,6 +986,14 @@ func (s *Scenario) Validate() error {
 					}
 				}
 			}
+			for _, pair := range schemaParents {
+				if pair[0] == pair[1] {
+					return fmt.Errorf("asset schema %q sits under itself", pair[0])
+				}
+				if !schemaIDs[pair[1]] {
+					return fmt.Errorf("asset schema %q sits under the unknown schema %q", pair[0], pair[1])
+				}
+			}
 			for _, relation := range inventory.Relationships {
 				if !assets[relation.From] || !assets[relation.To] {
 					return fmt.Errorf("a relationship names an unknown asset (%q to %q)", relation.From, relation.To)
@@ -980,6 +1012,19 @@ func (s *Scenario) Validate() error {
 			}
 			if err := knownPerson("request "+request.ID, request.Customer); err != nil {
 				return err
+			}
+			for _, organization := range request.SharedWith {
+				members, known := organizationMembers[organization]
+				if !known {
+					return fmt.Errorf("request %q is shared with the unknown organization %q", request.ID, organization)
+				}
+				if !members[request.Customer] {
+					return fmt.Errorf("request %q is shared with %q, which %q does not belong to", request.ID, organization, request.Customer)
+				}
+				desks := organizationDesks[organization]
+				if len(desks) > 0 && !slices.Contains(desks, request.Project) {
+					return fmt.Errorf("request %q is shared with %q, which is not a customer of %q", request.ID, organization, request.Project)
+				}
 			}
 			if request.Satisfaction < 0 || request.Satisfaction > 5 {
 				return fmt.Errorf("request %q rates satisfaction %d, which is not 1 to 5", request.ID, request.Satisfaction)

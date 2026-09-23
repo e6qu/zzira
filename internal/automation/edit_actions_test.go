@@ -111,3 +111,112 @@ func TestLogWorkRefusesAnUnreadableDuration(t *testing.T) {
 		t.Fatalf("detail = %q, want the log work refusal", runs[0].Detail)
 	}
 }
+
+// A rule sets the fields Jira's own edit action reaches beyond the summary:
+// who the work is for, how it was resolved, and what it was estimated at.
+func TestEditActionSetsAssigneeResolutionAndEstimates(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID := store.NewID("prj")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,workflow_id,lead_account_id) VALUES($1,$2,'EDFLD','Edit fields','wf_default',$3)`, projectID, fx.ws, fx.admin); err != nil {
+		t.Fatal(err)
+	}
+	issue, _, err := fx.store.CreateIssue(fx.ctx, fx.admin, projectID, "edit fields",
+		json.RawMessage(`{"type":"doc","version":1,"content":[]}`), "st_todo", "it_task", "pr_medium", "", nil, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	base := "/gateway/api/automation/public/jira/" + fx.cloudID + "/rest/v1/rule"
+	actions := []map[string]any{
+		{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "assignee", "value": "ACTOR"}},
+		{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "resolution", "value": "Done"}},
+		{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "originalestimate", "value": "2h"}},
+		{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "remainingestimate", "value": "30m"}},
+	}
+	created := fx.call(fx.admin, http.MethodPost, base, webhookRuleBody("Edit fields", fx.admin, "ENABLED", true, actions), http.StatusCreated)
+	uuid, _ := created["ruleUuid"].(string)
+	rule, err := fx.service.Rule(fx.ctx, fx.ws, uuid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.service.TriggerWebhook(fx.ctx, rule.WebhookToken, "", json.RawMessage(`{"issues":["`+issue.Key+`"]}`)); err != nil {
+		t.Fatal(err)
+	}
+	runner := &Runner{Service: fx.service}
+	if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	runs, err := fx.service.Runs(fx.ctx, fx.ws, uuid, 5)
+	if err != nil || len(runs) != 1 || runs[0].State != "SUCCESS" {
+		t.Fatalf("runs = %+v, err=%v", runs, err)
+	}
+	updated, err := fx.store.IssueByIDOrKey(fx.ctx, fx.ws, issue.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Assignee == nil || updated.Assignee.ID != fx.admin {
+		t.Fatalf("assignee = %+v, want the rule's actor", updated.Assignee)
+	}
+	if updated.Resolution == nil || updated.Resolution.Name != "Done" {
+		t.Fatalf("resolution = %+v", updated.Resolution)
+	}
+	if updated.OriginalEstimateSeconds == nil || *updated.OriginalEstimateSeconds != 7200 {
+		t.Fatalf("original estimate = %v, want 2h", updated.OriginalEstimateSeconds)
+	}
+	if updated.RemainingEstimateSeconds == nil || *updated.RemainingEstimateSeconds != 1800 {
+		t.Fatalf("remaining estimate = %v, want 30m", updated.RemainingEstimateSeconds)
+	}
+
+	// Running again changes nothing: every field already reads as the rule
+	// would leave it.
+	if _, err := fx.service.TriggerWebhook(fx.ctx, rule.WebhookToken, "", json.RawMessage(`{"issues":["`+issue.Key+`"]}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	runs, err = fx.service.Runs(fx.ctx, fx.ws, uuid, 5)
+	if err != nil || len(runs) != 2 || runs[0].State != "NO_ACTIONS" {
+		t.Fatalf("second run = %+v, err=%v", runs, err)
+	}
+
+	// A blank value clears what it names, as clearing the field does.
+	clearing := []map[string]any{
+		{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "resolution", "value": ""}},
+		{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "remainingestimate", "value": ""}},
+	}
+	cleared := fx.call(fx.admin, http.MethodPost, base, webhookRuleBody("Clear fields", fx.admin, "ENABLED", true, clearing), http.StatusCreated)
+	clearedUUID, _ := cleared["ruleUuid"].(string)
+	clearRule, err := fx.service.Rule(fx.ctx, fx.ws, clearedUUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.service.TriggerWebhook(fx.ctx, clearRule.WebhookToken, "", json.RawMessage(`{"issues":["`+issue.Key+`"]}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.DrainOnce(fx.ctx, fx.ws); err != nil {
+		t.Fatal(err)
+	}
+	if updated, err = fx.store.IssueByIDOrKey(fx.ctx, fx.ws, issue.ID); err != nil {
+		t.Fatal(err)
+	}
+	if updated.Resolution != nil || updated.RemainingEstimateSeconds != nil {
+		t.Fatalf("cleared fields = %+v / %v", updated.Resolution, updated.RemainingEstimateSeconds)
+	}
+
+	// A resolution the site does not have is a mistake in the rule, not a
+	// silent no-op.
+	unknown := []map[string]any{{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "resolution", "value": "Teleported"}}}
+	made := fx.call(fx.admin, http.MethodPost, base, webhookRuleBody("Unknown resolution", fx.admin, "ENABLED", true, unknown), http.StatusCreated)
+	unknownUUID, _ := made["ruleUuid"].(string)
+	unknownRule, err := fx.service.Rule(fx.ctx, fx.ws, unknownUUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.service.TriggerWebhook(fx.ctx, unknownRule.WebhookToken, "", json.RawMessage(`{"issues":["`+issue.Key+`"]}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.DrainOnce(fx.ctx, fx.ws); err == nil {
+		t.Fatal("a rule naming a resolution the site does not have was treated as a success")
+	}
+}
