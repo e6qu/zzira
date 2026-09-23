@@ -189,8 +189,20 @@ var ErrServiceRequestTypeNotFound = errors.New("request type does not exist")
 
 // EnrollServiceCustomer marks an existing account as a portal customer for a
 // workspace. Product access remains governed independently by role bindings.
+// EnrollServiceCustomer admits an account to the portals of a site, which is
+// what raising a request does for whoever raised it. Somebody enrolled this
+// way is a customer in the same sense as one an administrator created: they
+// are in the site's directory, and an account with no other site role holds
+// the site's customer role. Without both, the account is a customer the
+// portal shows things to and then refuses, because every check beyond the
+// request itself reads the site's roles.
 func (s *Store) EnrollServiceCustomer(ctx context.Context, workspaceID, userID string) error {
-	result, err := s.Pool.Exec(ctx, `
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	result, err := tx.Exec(ctx, `
 		INSERT INTO service_customers(workspace_id,user_id)
 		SELECT $1,$2 WHERE EXISTS(SELECT 1 FROM users WHERE id=$2 AND active)
 		ON CONFLICT(workspace_id,user_id) DO UPDATE SET active=TRUE
@@ -201,7 +213,25 @@ func (s *Store) EnrollServiceCustomer(ctx context.Context, workspaceID, userID s
 	if result.RowsAffected() == 0 {
 		return fmt.Errorf("customer account does not exist or its portal access was revoked")
 	}
-	return nil
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO directory_users(directory_id,user_id)
+		SELECT d.id,$2 FROM directories d JOIN sites si ON si.organization_id=d.organization_id
+		WHERE si.workspace_id=$1 AND d.active ORDER BY (d.directory_type='internal') DESC,d.created_at LIMIT 1
+		ON CONFLICT DO NOTHING`, workspaceID, userID); err != nil {
+		return err
+	}
+	// A licensed member who raises a request keeps the roles they have; the
+	// customer role belongs to an account that holds no other.
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO role_bindings(scope_type,scope_id,role_key,principal_type,principal_id,source)
+		SELECT 'site',si.id::text,'atlassian/customer','user',$2,'system' FROM sites si
+		WHERE si.workspace_id=$1 AND NOT EXISTS(
+			SELECT 1 FROM role_bindings rb WHERE rb.scope_type='site' AND rb.scope_id=si.id::text
+			AND rb.principal_type='user' AND rb.principal_id=$2 AND rb.role_key<>'atlassian/customer')
+		ON CONFLICT DO NOTHING`, workspaceID, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // CreateServiceCustomer provisions a portal-only account and grants the site
@@ -298,11 +328,15 @@ func (s *Store) CreateServiceRequest(ctx context.Context, workspaceID, issueID, 
 	if result.RowsAffected() == 0 {
 		return fmt.Errorf("request type, issue, and customer must belong to the service desk")
 	}
+	// The clock starts when the request was raised, which is the moment the
+	// write carries: a site built with history behind it raises a request as
+	// of the day it was asked, not the day the site was built.
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO service_sla_cycles(request_issue_id,metric_id,started_at,goal_id,goal_name,goal_millis)
-		SELECT $1,m.id,now(),g.id,g.name,g.goal_millis FROM service_sla_metrics m
+		SELECT $1,m.id,$3,g.id,g.name,g.goal_millis FROM service_sla_metrics m
 		JOIN service_sla_goals g ON g.metric_id=m.id AND g.jql=''
-		WHERE m.service_desk_id=$2 AND 'issue_created'=ANY(m.start_conditions)`, issueID, serviceDeskID); err != nil {
+		WHERE m.service_desk_id=$2 AND 'issue_created'=ANY(m.start_conditions)`,
+		issueID, serviceDeskID, ActionTimeOr(ctx, time.Now().UTC())); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO service_request_subscriptions(request_issue_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, issueID, customerID); err != nil {
@@ -524,9 +558,9 @@ func (s *Store) createServiceApproval(ctx context.Context, workspaceID, requestI
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var id string
-	err = tx.QueryRow(ctx, `INSERT INTO service_request_approvals(request_issue_id,name,created_by,automation_key,status_id,condition_type,condition_value,transition_approved,transition_rejected)
-		SELECT sr.issue_id,$3,$4,NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),NULLIF($8::int,0),NULLIF($9,''),NULLIF($10,'') FROM service_requests sr WHERE sr.workspace_id=$1 AND sr.issue_id=$2
-		ON CONFLICT (request_issue_id,automation_key) WHERE automation_key IS NOT NULL DO NOTHING RETURNING id`, workspaceID, requestIssueID, name, actorID, automationKey, rule.StatusID, rule.ConditionType, rule.ConditionValue, rule.TransitionApproved, rule.TransitionRejected).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO service_request_approvals(request_issue_id,name,created_by,automation_key,status_id,condition_type,condition_value,transition_approved,transition_rejected,created_at)
+		SELECT sr.issue_id,$3,$4,NULLIF($5,''),NULLIF($6,''),NULLIF($7,''),NULLIF($8::int,0),NULLIF($9,''),NULLIF($10,''),$11 FROM service_requests sr WHERE sr.workspace_id=$1 AND sr.issue_id=$2
+		ON CONFLICT (request_issue_id,automation_key) WHERE automation_key IS NOT NULL DO NOTHING RETURNING id`, workspaceID, requestIssueID, name, actorID, automationKey, rule.StatusID, rule.ConditionType, rule.ConditionValue, rule.TransitionApproved, rule.TransitionRejected, ActionTimeOr(ctx, time.Now().UTC())).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) && automationKey != "" {
 		if err := tx.QueryRow(ctx, `SELECT id FROM service_request_approvals WHERE request_issue_id=$1 AND automation_key=$2`, requestIssueID, automationKey).Scan(&id); err != nil {
 			return nil, false, err
@@ -644,7 +678,10 @@ func (s *Store) AnswerServiceApproval(ctx context.Context, requestIssueID, appro
 	if final != "pending" {
 		return nil, fmt.Errorf("approval has already been completed")
 	}
-	result, err := tx.Exec(ctx, `UPDATE service_request_approvers SET decision=$4,decided_at=now() WHERE approval_id=$1 AND user_id=$2 AND decision='pending' AND EXISTS(SELECT 1 FROM service_request_approvals WHERE id=$1 AND request_issue_id=$3)`, approvalID, actorID, requestIssueID, decision)
+	// An approval is answered when the write says it was, so a site built
+	// with history behind it has approvals decided on the day they were.
+	decidedAt := ActionTimeOr(ctx, time.Now().UTC())
+	result, err := tx.Exec(ctx, `UPDATE service_request_approvers SET decision=$4,decided_at=$5 WHERE approval_id=$1 AND user_id=$2 AND decision='pending' AND EXISTS(SELECT 1 FROM service_request_approvals WHERE id=$1 AND request_issue_id=$3)`, approvalID, actorID, requestIssueID, decision, decidedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -679,7 +716,7 @@ func (s *Store) AnswerServiceApproval(ctx context.Context, requestIssueID, appro
 		}
 	}
 	if final != "pending" {
-		if _, err := tx.Exec(ctx, `UPDATE service_request_approvals SET final_decision=$2,completed_at=now() WHERE id=$1`, approvalID, final); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE service_request_approvals SET final_decision=$2,completed_at=$3 WHERE id=$1`, approvalID, final, decidedAt); err != nil {
 			return nil, err
 		}
 	}

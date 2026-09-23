@@ -202,6 +202,7 @@ var (
 	automationActionTypes = []automationOption{
 		{automation.VariableActionType, "Create variable"},
 		{automation.WikiCommentActionType, "Comment on a page"}, {automation.WikiLabelActionType, "Label a page"},
+		{automation.WikiAppendActionType, "Write at the end of a page"}, {automation.WikiArchiveActionType, "Archive a page"},
 		{automation.LookupActionType, "Look up work items"},
 		{"jira.issue.add-label", "Add label"}, {"jira.issue.remove-label", "Remove label"}, {"jira.issue.assign", "Assign work item"},
 		{"jira.issue.assign:round-robin", "Assign work item (round-robin)"}, {"jira.issue.assign:balanced", "Assign work item (balanced workload)"},
@@ -862,14 +863,19 @@ func automationFormActions(rows automationActionRows) ([]map[string]any, error) 
 		}
 		// What a rule writes in the wiki: the page it writes on is the one
 		// the rule ran for unless the action names another.
-		if actionType == automation.WikiCommentActionType || actionType == automation.WikiLabelActionType {
-			if value == "" {
+		if actionType == automation.WikiCommentActionType || actionType == automation.WikiLabelActionType ||
+			actionType == automation.WikiAppendActionType || actionType == automation.WikiArchiveActionType {
+			// Archiving takes no value: the page is the whole instruction.
+			if value == "" && actionType != automation.WikiArchiveActionType {
 				return nil, fmt.Errorf("every action needs a value")
 			}
 			wiki := map[string]string{"pageId": at(pages, index)}
-			if actionType == automation.WikiCommentActionType {
+			switch actionType {
+			case automation.WikiCommentActionType:
 				wiki["comment"] = value
-			} else {
+			case automation.WikiAppendActionType:
+				wiki["body"] = value
+			case automation.WikiLabelActionType:
 				wiki["label"] = value
 			}
 			components = append(components, map[string]any{
@@ -1177,6 +1183,10 @@ func automationActionViews(components []automationComponentJSON) []automationAct
 			view.Value, view.Page = fields["comment"], fields["pageId"]
 		case automation.WikiLabelActionType:
 			view.Value, view.Page = fields["label"], fields["pageId"]
+		case automation.WikiAppendActionType:
+			view.Value, view.Page = fields["body"], fields["pageId"]
+		case automation.WikiArchiveActionType:
+			view.Page = fields["pageId"]
 		case automation.LookupActionType:
 			view.Value = fields["jql"]
 			view.Limit = automationLookupLimit(component.Value)

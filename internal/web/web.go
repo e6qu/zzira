@@ -108,6 +108,9 @@ type projectIssuesData struct {
 	Projects        []*models.Project
 	IssueTypes      []models.IssueType
 	BulkTransitions []models.WorkflowTransition
+	// BulkRules are the manual automation rules that cover this project, which
+	// a selection can be run through.
+	BulkRules []manualRuleView
 	// BulkPriorities are the priorities a bulk edit can set, which are the
 	// project's own. BulkComponents and BulkVersions are the same for the
 	// two list fields a project owns.
@@ -142,6 +145,9 @@ type projectIssuesData struct {
 	SortURLs       map[string]string
 	JQLError       string
 	CanBulk        bool
+	// Notice is what a bulk action that ran here has just done, said where it
+	// was started, the way the settings pages say what they saved.
+	Notice string
 }
 
 type bulkIssueTaskData struct {
@@ -720,7 +726,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
-	return &models.IssueView{
+	view := &models.IssueView{
 		Issue:               *issue,
 		ProjectKey:          project.Key,
 		ProjectName:         project.Name,
@@ -765,7 +771,11 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		AppActivityTabs:     appActivityTabs,
 		AppContexts:         appContexts,
 		AppIssueContent:     appIssueContent,
-	}, nil
+	}
+	// The page reads in the language the person chose, wherever the site
+	// shows a name it chose itself.
+	translateIssueView(h.readerMetadataNames(r.Context(), wsID, user.ID), view)
+	return view, nil
 }
 
 func selectIssueContextModules(modules []models.AppModule) []models.AppModule {
@@ -1569,6 +1579,7 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 	}
 	params := parseNavigatorParams(values)
 	data := projectIssuesData{
+		Notice:  r.URL.Query().Get("notice"),
 		Project: project, Statuses: statuses, Members: members, Filters: filters, ActiveFilter: activeFilter,
 		Mode: params.Mode, JQL: params.JQL, Text: params.Text, Status: params.Status, Assignee: params.Assignee,
 		Sort: params.Sort, Direction: params.Direction, Page: params.Page, SortURLs: map[string]string{},
@@ -1680,6 +1691,12 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 			return
 		}
 		if data.BulkVersions, err = h.Store.ProjectVersions(r.Context(), project.ID); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		// The rules somebody can run by hand here, so a selection can be run
+		// through one as the API's own bulk invocation does.
+		if data.BulkRules, err = h.manualRulesFor(r, wsID, project.ID); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}

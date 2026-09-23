@@ -108,6 +108,14 @@ func init() {
 				return "lozenge-default"
 			}
 		},
+		// title reads a one-word key back as a word a page shows: "team" is
+		// "Team". It is not a general title caser.
+		"title": func(value string) string {
+			if value == "" {
+				return ""
+			}
+			return strings.ToUpper(value[:1]) + value[1:]
+		},
 		"initials": func(name string) string {
 			parts := strings.Fields(name)
 			if len(parts) == 0 {

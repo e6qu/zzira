@@ -114,6 +114,20 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
   see, and says when the members do not share a release date or when one has
   been deleted. Names are unique within a plan.
 - `/plans/{id}` shows the plan's work as a table (Work, Start, End, Team, Sprint, Estimate, Dependencies) beside a month timeline. Epics are nested with their child work items.
+- **Views** sit above the work. **Group by** gathers it under the team, sprint,
+  project, status or assignee each item belongs to, with how many are in each
+  group and the items that have nothing in that field last. **Filter** narrows
+  it to work whose key or summary contains what was typed; a filter that
+  matches nothing says so rather than showing an empty table. Anyone who may
+  edit the plan can keep the pair under a name, and the saved views are links
+  that open the plan that way (`?group=`, `?q=`, `?rollup=`, `?view=`). Saving
+  over a name changes that view rather than adding another.
+- **Rolling up** reads a parent by the work under it: its bar spans the
+  earliest start and latest end anywhere beneath it, and its estimate is what
+  that work adds up to. The item's own dates and estimate are untouched --
+  they are what its form edits and what **Review changes** writes to Jira --
+  so a rolled-up plan says when the work runs without anybody typing a date on
+  an epic.
 - Who can open a plan: site administrators, the plan lead, and people or groups the plan grants access to.
 
 **Scenarios**
@@ -125,7 +139,7 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
 - **Atlassian teams** are managed at `/teams` and `/teams/{id}`. **Plan-only teams** exist only inside one plan.
 - Every site has Jira's **Team** field.
 - Each team plans as Scrum or Kanban:
-  - **Scrum:** capacity is compared with estimates per sprint of the team's board. The default capacity is 30 points per sprint.
+  - **Scrum:** capacity is compared with estimates per sprint of the team's board. A team nobody has typed a number for takes what it has been taking: the mean of the work completed in its board's last closed sprints, and the plan says the capacity came from velocity. A board with no closed sprint falls back to 30 points per sprint.
   - **Kanban:** capacity is compared per week across 12 weeks, using time estimates.
 - Capacity can be overridden per iteration and per scenario (`POST /plans/{id}/capacity`).
 
@@ -198,7 +212,7 @@ Errors use the module format, `[{"message": …}]`. Provider rate limits are des
   - No restoring an archived or trashed plan.
   - `inferredDates` and plan `customFields` are stored but not used.
   - No capacity derived from velocity.
-  - No saved views, grouping, filters or rollups.
+  - No saved view of the timeline's zoom or columns, and no rollup of anything but dates and estimates.
 - Scenarios cannot change parent, rank, release or status, and cannot create work items.
 - Cross-project releases: the plan's `crossProjectReleases` list is validated and stored, but nothing shows it or plans against it. There is no multi-project release in the plan or the release hub.
 - No REST teams API (Atlassian's public teams API).

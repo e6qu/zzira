@@ -145,8 +145,17 @@ type servicePageData struct {
 	IncidentRoles        []models.ServiceIncidentRole
 	IncidentStakeholders []models.ServiceIncidentStakeholder
 	AssetInventory       *models.ServiceAssetInventory
-	RequestAssets        []models.ServiceRequestAsset
-	FieldValues          map[string]string
+	// AssetImport is what the last import of objects wrote, and
+	// AssetImportError why one was refused.
+	AssetImport      *models.ServiceAssetImport
+	AssetImportError string
+	// AssetHistory is what has happened to each object of the inventory, by
+	// object id, oldest first.
+	AssetHistory map[string][]models.ServiceAssetObjectChange
+	// AssetComments is what people have said about each object, by object id.
+	AssetComments map[string][]models.ServiceAssetObjectComment
+	RequestAssets []models.ServiceRequestAsset
+	FieldValues   map[string]string
 	// FieldOptions are the options each select field on a portal form offers,
 	// and FieldChoices the answers a refused form keeps.
 	FieldOptions map[string][]store.ServiceRequestFieldOption
@@ -970,6 +979,7 @@ func (h *Handler) ServiceRequestTypeFieldSettings(w http.ResponseWriter, r *http
 			}
 		}
 		field.AssetSchemaID = strings.TrimSpace(r.PostFormValue("asset_schema_" + fieldID))
+		field.AssetFilter = strings.TrimSpace(r.PostFormValue("asset_filter_" + fieldID))
 		// A hidden field's preset is typed as the value a customer would give:
 		// JSON when it parses, otherwise text.
 		if preset := strings.TrimSpace(r.PostFormValue("preset_" + fieldID)); preset != "" {
@@ -1383,7 +1393,7 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 			data.FieldOptions[field.ID] = options
 		default:
 			if store.IsServicePortalPicker(field.Type) {
-				choices, err := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, desk.ID, user.ID, field.Type, field.AssetSchemaID)
+				choices, err := h.Store.ServicePortalPickerChoicesFiltered(r.Context(), workspaceID, desk.ID, user.ID, field.Type, field.AssetSchemaID, field.AssetFilter)
 				if err != nil {
 					http.Error(w, "Could not load request field options.", http.StatusInternalServerError)
 					return
@@ -1907,7 +1917,7 @@ func (h *Handler) ServiceRequestPage(w http.ResponseWriter, r *http.Request) {
 		case models.CustomFieldGroup, models.CustomFieldMultiGroup:
 			groupIDs = append(groupIDs, serviceFieldIDs(value)...)
 		case models.CustomFieldProject, models.CustomFieldVersion, models.CustomFieldMultiVersion, models.CustomFieldTeam, models.CustomFieldAsset:
-			choices, choicesErr := h.Store.ServicePortalPickerChoices(r.Context(), workspaceID, request.ServiceDesk.ID, user.ID, field.Type, field.AssetSchemaID)
+			choices, choicesErr := h.Store.ServicePortalPickerChoicesFiltered(r.Context(), workspaceID, request.ServiceDesk.ID, user.ID, field.Type, field.AssetSchemaID, field.AssetFilter)
 			if choicesErr != nil {
 				http.Error(w, "Could not render request fields.", http.StatusInternalServerError)
 				return

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -198,6 +199,60 @@ func TestApplyDemoCompany(t *testing.T) {
 		t.Fatalf("%s has no changelog", resolved)
 	}
 
+	// Time tracking: an estimate the scenario declared is on the work, logging
+	// work moved the remaining estimate down from it, and some work is due on
+	// a day. Without these the time tracking, user workload, version workload
+	// and calendar surfaces are empty whatever else the company holds.
+	tracked := get(jira, "/rest/api/3/search/jql?jql="+
+		"project%20%3D%20PAY&maxResults=100&fields=timeoriginalestimate,timeestimate,timespent,duedate")
+	trackedIssues, _ := tracked["issues"].([]any)
+	estimated, logged, due, overran := 0, 0, 0, 0
+	for _, raw := range trackedIssues {
+		item, _ := raw.(map[string]any)
+		itemFields, _ := item["fields"].(map[string]any)
+		original, hasOriginal := itemFields["timeoriginalestimate"].(float64)
+		if hasOriginal && original > 0 {
+			estimated++
+		}
+		if itemFields["duedate"] != nil {
+			due++
+		}
+		spent, hasSpent := itemFields["timespent"].(float64)
+		if !hasSpent || spent <= 0 {
+			continue
+		}
+		logged++
+		remaining, hasRemaining := itemFields["timeestimate"].(float64)
+		if !hasOriginal || !hasRemaining {
+			t.Fatalf("%v logged %v seconds with no estimate to move", item["key"], spent)
+		}
+		// Work that logs more than it estimated has nothing left rather than
+		// a negative estimate, which is what over-run reads as.
+		left := original - spent
+		if left < 0 {
+			left = 0
+		}
+		if remaining > left+1 {
+			t.Fatalf("%v logged %v seconds against an estimate of %v and has %v left, so logging work did not move the estimate",
+				item["key"], spent, original, remaining)
+		}
+		if left == 0 {
+			overran++
+		}
+	}
+	if estimated != len(trackedIssues) {
+		t.Fatalf("%d of %d work items in PAY carry an original estimate", estimated, len(trackedIssues))
+	}
+	if logged == 0 {
+		t.Fatal("nobody logged work in PAY, so the time tracking report has nothing to show")
+	}
+	if due == 0 {
+		t.Fatal("no work in PAY is due on a day, so the calendar gadget has nothing to show")
+	}
+	if overran == 0 {
+		t.Fatal("no work in PAY cost more than it was estimated at, so the time tracking report's accuracy column is all one colour")
+	}
+
 	// Jira Software: the board and its sprints, including closed ones.
 	boards := get(software, "/rest/agile/1.0/board")
 	boardValues, _ := boards["values"].([]any)
@@ -270,6 +325,213 @@ func TestApplyDemoCompany(t *testing.T) {
 		t.Fatalf("the desk has %d requests on the first page, want %d of %d", len(requestValues), wanted, len(scenario.Service.Requests))
 	}
 
+	// Nothing a history writes happens after the day the site was built. The
+	// action log is where a report reads a history from, and a scenario whose
+	// writes ran past today filled it with work that has not happened yet.
+	// Setting the site up -- its projects, fields and request types -- is done
+	// at the wall clock, as an administrator would; what the history writes is
+	// dated by the history.
+	var ahead int
+	var latest *time.Time
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE created_at > $2), max(created_at) FILTER (WHERE created_at > $2)
+		FROM actions WHERE workspace_id=$1 AND entity_type IN
+		  ('issue','comment','worklog','watcher','issue_link','wiki_page','wiki_blogpost','sprint_issue','notification')`,
+		result.WorkspaceID, today).Scan(&ahead, &latest); err != nil {
+		t.Fatalf("read the action log: %v", err)
+	}
+	if ahead > 0 {
+		t.Fatalf("%d of the actions the history wrote are after %s, the latest at %s",
+			ahead, today.Format(time.DateOnly), latest.Format(time.RFC3339))
+	}
+
+	// The desk's inventory, and the incidents connected to it: an asset
+	// nothing is ever about is a topology nobody reads.
+	adminID, _, _, err := st.UserByEmail(ctx, admin)
+	if err != nil {
+		t.Fatalf("read the administrator: %v", err)
+	}
+	desks, err := st.ServiceDesks(ctx, result.WorkspaceID)
+	if err != nil || len(desks) == 0 {
+		t.Fatalf("read the service desks: %v (%d desks)", err, len(desks))
+	}
+	inventory, err := st.ServiceAssetInventory(ctx, result.WorkspaceID, adminID, desks[0].ID)
+	if err != nil {
+		t.Fatalf("read the asset inventory: %v", err)
+	}
+	declaredObjects := 0
+	for _, schema := range scenario.Service.Assets.Schemas {
+		declaredObjects += len(schema.Objects)
+	}
+	if len(inventory.Objects) != declaredObjects {
+		t.Fatalf("the inventory holds %d objects, the scenario declared %d", len(inventory.Objects), declaredObjects)
+	}
+	if len(inventory.Relationships) != len(scenario.Service.Assets.Relationships) {
+		t.Fatalf("the inventory holds %d relationships, the scenario declared %d",
+			len(inventory.Relationships), len(scenario.Service.Assets.Relationships))
+	}
+	// What the topology says depends on what, so the impact the site reports
+	// can be checked against it rather than taken on trust.
+	dependents := map[string][]string{}
+	for _, relation := range scenario.Service.Assets.Relationships {
+		dependents[relation.To] = append(dependents[relation.To], relation.From)
+	}
+	labels := map[string]string{}
+	for _, schema := range scenario.Service.Assets.Schemas {
+		for _, object := range schema.Objects {
+			labels[object.ID] = object.Label
+		}
+	}
+	reach := func(from string) map[string]bool {
+		seen, queue := map[string]bool{}, []string{from}
+		for len(queue) > 0 {
+			current := queue[0]
+			queue = queue[1:]
+			for _, next := range dependents[current] {
+				if next == from || seen[next] {
+					continue
+				}
+				seen[next] = true
+				queue = append(queue, next)
+			}
+		}
+		return seen
+	}
+	// Whatever the site says a request is about, everything the topology says
+	// depends on that asset is reached from it -- checked against the site's
+	// own requests rather than by matching summaries, which repeat.
+	byLabel := map[string]string{}
+	for id, label := range labels {
+		byLabel[label] = id
+	}
+	// Scoped to the site this test built: a test database keeps what earlier
+	// runs left behind, and a request from one of those has no desk here.
+	rows, err := st.Pool.Query(ctx, `SELECT DISTINCT a.request_issue_id FROM service_request_assets a
+		JOIN issues i ON i.id=a.request_issue_id WHERE i.workspace_id=$1`, result.WorkspaceID)
+	if err != nil {
+		t.Fatalf("read the connected requests: %v", err)
+	}
+	connected := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		connected = append(connected, id)
+	}
+	rows.Close()
+	if len(connected) == 0 {
+		t.Fatal("no request is about an asset, so the topology is connected to nothing")
+	}
+	reached := 0
+	for _, issueID := range connected {
+		impact, err := st.ServiceRequestAssetImpact(ctx, result.WorkspaceID, adminID, issueID)
+		if err != nil {
+			t.Fatalf("read the impact of %s: %v", issueID, err)
+		}
+		want, got := map[string]bool{}, map[string]bool{}
+		for _, entry := range impact {
+			if entry.Direct {
+				for dependent := range reach(byLabel[entry.Object.Label]) {
+					want[labels[dependent]] = true
+				}
+				continue
+			}
+			got[entry.Object.Label] = true
+			reached++
+		}
+		for label := range want {
+			if !got[label] {
+				t.Fatalf("a request reaches %v through the topology, and %q is missing", got, label)
+			}
+		}
+	}
+	if reached == 0 {
+		t.Fatal("no request reaches an asset through the topology, so the relationships carry nothing")
+	}
+
+	// A desk's forms ask what the scenario says they ask, and an Assets
+	// object field offers only what its filter selects.
+	for _, project := range scenario.Projects {
+		if project.ServiceDesk == nil {
+			continue
+		}
+		deskID := ""
+		for _, desk := range desks {
+			if desk.ProjectID == "" {
+				continue
+			}
+			found, err := st.ProjectByIDOrKey(ctx, result.WorkspaceID, desk.ProjectID)
+			if err == nil && found != nil && found.Key == project.Key {
+				deskID = desk.ID
+			}
+		}
+		if deskID == "" {
+			t.Fatalf("the %s desk is not on the site", project.Key)
+		}
+		types, err := st.ServiceRequestTypes(ctx, result.WorkspaceID, deskID, "")
+		if err != nil {
+			t.Fatalf("read the request types of %s: %v", project.Key, err)
+		}
+		byName := map[string]string{}
+		for _, requestType := range types {
+			byName[requestType.Name] = requestType.ID
+		}
+		for _, declared := range project.ServiceDesk.RequestTypes {
+			if len(declared.Fields) == 0 {
+				continue
+			}
+			fields, err := st.ServiceRequestTypeFields(ctx, result.WorkspaceID, deskID, byName[declared.Name])
+			if err != nil {
+				t.Fatalf("read the %s form: %v", declared.Name, err)
+			}
+			// Summary and description, then whatever the scenario named.
+			if len(fields) != len(declared.Fields)+2 {
+				t.Fatalf("the %s form asks %d things, the scenario named %d", declared.Name, len(fields), len(declared.Fields)+2)
+			}
+			for _, asked := range fields {
+				if asked.AssetFilter == "" {
+					continue
+				}
+				offered, err := st.ServicePortalFilteredAssetObjects(ctx, result.WorkspaceID, deskID, asked.AssetSchemaID, asked.AssetFilter)
+				if err != nil {
+					t.Fatalf("read what %q offers: %v", asked.Name, err)
+				}
+				if len(offered) == 0 {
+					t.Fatalf("%q is filtered by %q and offers nothing", asked.Name, asked.AssetFilter)
+				}
+				all, err := st.ServicePortalAssetObjects(ctx, result.WorkspaceID, deskID, asked.AssetSchemaID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(offered) >= len(all) {
+					t.Fatalf("%q offers %d of %d objects, so its filter selects everything", asked.Name, len(offered), len(all))
+				}
+			}
+		}
+	}
+
+	// The words on a work item in the other languages the company reads.
+	spanish, err := st.IssueMetadataNamesInLocale(ctx, result.WorkspaceID, "es")
+	if err != nil {
+		t.Fatalf("read the Spanish names: %v", err)
+	}
+	for _, translation := range scenario.Translations {
+		if translation.Locale != "es" {
+			continue
+		}
+		found := false
+		for key, named := range spanish {
+			if strings.HasPrefix(key, translation.Kind+":") && named.Name == translation.Translated {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("a reader of Spanish does not call any %s %q", translation.Kind, translation.Translated)
+		}
+	}
+
 	// Confluence: the pages, with their tree.
 	pages := get(wiki, "/wiki/api/v2/pages?limit=100")
 	pageValues, _ := pages["results"].([]any)
@@ -319,6 +581,12 @@ func cleanWorkspace(t *testing.T, ctx context.Context, st *store.Store, workspac
 		`DELETE FROM wiki_blog_post_versions WHERE blog_post_id IN (SELECT id FROM wiki_blog_posts WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1))`,
 		`DELETE FROM wiki_blog_posts WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`,
 		`DELETE FROM wiki_spaces WHERE workspace_id=$1`,
+		// The labels the writing was filed under hold the site alive, and
+		// nothing cascades them: a site left behind is a site the next test
+		// finds, and enough of them break the tests that read the whole
+		// catalogue of work types.
+		`DELETE FROM wiki_labels WHERE workspace_id=$1`,
+		`DELETE FROM webhooks WHERE workspace_id=$1`,
 		`DELETE FROM issues WHERE workspace_id=$1`,
 		`DELETE FROM projects WHERE workspace_id=$1`,
 		`DELETE FROM memberships WHERE workspace_id=$1`,

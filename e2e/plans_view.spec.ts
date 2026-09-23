@@ -203,3 +203,73 @@ test('a planner plans a team sprint in a scenario and saves the changes to Jira'
   await expect(page.getByText('No unsaved changes')).toBeVisible();
   expect((await request.put(`/rest/api/3/plans/plan/${planID}/trash`, { headers })).status()).toBe(204);
 });
+
+test('a planner groups and filters a plan, and keeps the view', async ({ page, request }) => {
+  const headers = { Authorization: apiAuthHeader() };
+  const stamp = Date.now();
+  const createIssue = async (issueFields: Record<string, unknown>) => {
+    const response = await request.post('/rest/api/3/issue', { headers, data: { fields: issueFields } });
+    expect(response.status(), await response.text()).toBe(201);
+    return (await response.json()).key as string;
+  };
+  const first = await createIssue({ project: { key: 'ZZ' }, summary: `Grouped epic ${stamp}`, issuetype: { name: 'Epic' } });
+  const second = await createIssue({ project: { key: 'ZZ' }, summary: `Other epic ${stamp}`, issuetype: { name: 'Epic' } });
+  const project = await (await request.get('/rest/api/3/project/ZZ', { headers })).json();
+  const created = await request.post('/rest/api/3/plans/plan', {
+    headers,
+    data: { name: `Grouping plan ${stamp}`, scheduling: { estimation: 'StoryPoints' }, issueSources: [{ type: 'Project', value: Number(project.id) }], exclusionRules: { numberOfDaysToShowCompletedIssues: 30 } },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const planID = await created.json();
+
+  await page.goto('/login');
+  await page.fill('#login-email', DEMO.email);
+  await page.fill('#login-password', DEMO.password);
+  await page.click('button[type=submit]');
+  await page.goto(`/plans/${planID}`);
+  await expect(page.getByRole('heading', { name: `Grouping plan ${stamp}`, level: 1 })).toBeVisible();
+  const views = page.locator('.plan-views');
+  await expect(page.locator('.plan-group-row')).toHaveCount(0);
+
+  // Grouped, the work sits under a heading per value, with how many are
+  // under it.
+  await views.getByLabel('Group by').selectOption('status');
+  await views.getByRole('button', { name: 'Show' }).click();
+  await expect(page.locator('.plan-group-heading').first()).toBeVisible();
+  await expect(page.locator('.timeline-table')).toContainText(first);
+  await expect(page.locator('.timeline-table')).toContainText(second);
+
+  // Filtered, only the work that matches is left.
+  await views.getByLabel('Filter').fill(first);
+  await views.getByRole('button', { name: 'Show' }).click();
+  await expect(page.locator('.timeline-table')).toContainText(first);
+  await expect(page.locator('.timeline-table')).not.toContainText(second);
+  await accessible(page);
+
+  // Rolled up, a parent reads as the work under it: the epic carries the
+  // story's dates and estimate, while the form still edits its own.
+  await views.getByLabel('Filter').fill('');
+  await views.getByLabel(/Add the work under a parent/).check();
+  await views.getByRole('button', { name: 'Show' }).click();
+  await expect(page.locator('.plan-table')).toContainText(first);
+
+  // Kept under a name, the same reading comes back from its link.
+  await views.getByLabel('Keep this view as').fill(`Mine ${stamp}`);
+  await views.getByRole('button', { name: 'Save view' }).click();
+  await expect(page.getByRole('status')).toContainText(`Saved the view Mine ${stamp}`);
+  await expect(page.locator('.plan-view-list')).toContainText(`grouped by status`);
+  await expect(page.locator('.plan-view-list')).toContainText('rolled up');
+  await page.goto(`/plans/${planID}`);
+  await expect(page.locator('.timeline-table')).toContainText(second);
+  await page.locator('.plan-view-list').getByRole('link', { name: `Mine ${stamp}` }).click();
+  await expect(page.locator('.timeline-table')).toContainText(first);
+  await expect(page.getByLabel(/Add the work under a parent/)).toBeChecked();
+
+  // A filter that matches nothing says so rather than showing an empty table.
+  await page.goto(`/plans/${planID}?q=nothing-matches-${stamp}`);
+  await expect(page.locator('.plan-no-matches')).toBeVisible();
+
+  await page.locator('.plan-view-list li').filter({ hasText: `Mine ${stamp}` }).getByRole('button', { name: 'Delete' }).click();
+  await expect(page.getByRole('status')).toContainText('The view was deleted.');
+  await expect(page.locator('.plan-view-list')).toHaveCount(0);
+});

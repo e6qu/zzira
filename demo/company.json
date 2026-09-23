@@ -25,6 +25,18 @@
     {
       "id": "data",
       "name": "Data"
+    },
+    {
+      "id": "operations",
+      "name": "Operations"
+    },
+    {
+      "id": "product",
+      "name": "Product"
+    },
+    {
+      "id": "people",
+      "name": "People team"
     }
   ],
   "people": [
@@ -55,7 +67,8 @@
       "role": "member",
       "groups": [
         "engineering"
-      ]
+      ],
+      "locale": "es"
     },
     {
       "id": "tom",
@@ -91,6 +104,7 @@
       "displayName": "Nora Petrova",
       "role": "member",
       "groups": [
+        "product",
         "leads"
       ]
     },
@@ -149,7 +163,8 @@
       "role": "member",
       "groups": [
         "engineering"
-      ]
+      ],
+      "locale": "pt-br"
     },
     {
       "id": "hana",
@@ -175,6 +190,7 @@
       "displayName": "Zoë Martin",
       "role": "member",
       "groups": [
+        "design",
         "engineering",
         "leads"
       ]
@@ -194,6 +210,7 @@
       "displayName": "Elin Dahl",
       "role": "member",
       "groups": [
+        "design",
         "engineering"
       ]
     },
@@ -250,6 +267,7 @@
       "displayName": "Nina Petrov",
       "role": "member",
       "groups": [
+        "operations",
         "engineering"
       ]
     },
@@ -257,19 +275,28 @@
       "id": "caleb",
       "email": "caleb@northwind.test",
       "displayName": "Caleb Wright",
-      "role": "member"
+      "role": "member",
+      "groups": [
+        "operations"
+      ]
     },
     {
       "id": "rosa",
       "email": "rosa@northwind.test",
       "displayName": "Rosa Jiménez",
-      "role": "member"
+      "role": "member",
+      "groups": [
+        "operations"
+      ]
     },
     {
       "id": "tariq",
       "email": "tariq@northwind.test",
       "displayName": "Tariq Rahman",
-      "role": "member"
+      "role": "member",
+      "groups": [
+        "operations"
+      ]
     },
     {
       "id": "gita",
@@ -286,6 +313,7 @@
       "displayName": "Lucas Meyer",
       "role": "member",
       "groups": [
+        "data",
         "support"
       ]
     },
@@ -295,6 +323,7 @@
       "displayName": "Fatima Al-Amin",
       "role": "member",
       "groups": [
+        "people",
         "support",
         "leads"
       ]
@@ -305,6 +334,7 @@
       "displayName": "Henrik Sørensen",
       "role": "member",
       "groups": [
+        "data",
         "engineering"
       ]
     },
@@ -314,6 +344,7 @@
       "displayName": "Priya Nair",
       "role": "admin",
       "groups": [
+        "product",
         "leads"
       ]
     },
@@ -323,6 +354,7 @@
       "displayName": "Jonas Berg",
       "role": "member",
       "groups": [
+        "product",
         "leads"
       ]
     },
@@ -360,6 +392,11 @@
         "Several customers",
         "Everyone"
       ]
+    },
+    {
+      "id": "affected",
+      "name": "Affected service",
+      "type": "cmdb"
     }
   ],
   "projects": [
@@ -391,7 +428,19 @@
           "description": "Card payments",
           "startDay": -84,
           "releaseDay": -56,
-          "released": true
+          "released": true,
+          "relatedWork": [
+            {
+              "category": "Release notes",
+              "title": "Payments 1.0 notes",
+              "url": "https://wiki.example.test/pay/1.0"
+            },
+            {
+              "category": "Pull request",
+              "title": "Ship 1.0",
+              "url": "https://code.example.test/pay/pull/100"
+            }
+          ]
         },
         {
           "id": "pay-1-1",
@@ -399,7 +448,19 @@
           "description": "Refunds",
           "startDay": -56,
           "releaseDay": -28,
-          "released": true
+          "released": true,
+          "relatedWork": [
+            {
+              "category": "Release notes",
+              "title": "Payments 1.1 notes",
+              "url": "https://wiki.example.test/pay/1.1"
+            },
+            {
+              "category": "Pull request",
+              "title": "Ship 1.1",
+              "url": "https://code.example.test/pay/pull/101"
+            }
+          ]
         },
         {
           "id": "pay-1-2",
@@ -448,7 +509,8 @@
           }
         ]
       },
-      "template": "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic"
+      "template": "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic",
+      "incidentJql": "labels = incident ORDER BY created DESC"
     },
     {
       "id": "ops",
@@ -469,19 +531,59 @@
         "portalName": "Northwind support",
         "agents": [
           "sara",
-          "dan"
+          "dan",
+          "gita",
+          "lucas",
+          "fatima"
+        ],
+        "queues": [
+          {
+            "name": "Breached first response",
+            "jql": "\"Time to first response\" = everBreached() AND resolution = Unresolved ORDER BY created ASC"
+          },
+          {
+            "name": "Incidents",
+            "jql": "\"Request Type\" = \"Report an incident\" AND resolution = Unresolved ORDER BY created ASC"
+          },
+          {
+            "name": "Answered this week",
+            "jql": "resolved >= -7d ORDER BY resolved DESC"
+          },
+          {
+            "name": "Riverbank Foods",
+            "jql": "Organizations = \"Riverbank Foods\" AND resolution = Unresolved ORDER BY created ASC"
+          }
         ],
         "requestTypes": [
           {
             "id": "help",
             "name": "Get help",
-            "description": "Ask the support team anything."
+            "description": "Ask the support team anything.",
+            "fields": [
+              {
+                "field": "impact",
+                "helpText": "How many customers does this affect?"
+              }
+            ]
           },
           {
             "id": "incident",
             "name": "Report an incident",
             "description": "Something is broken right now.",
-            "group": "incidents"
+            "group": "incidents",
+            "fields": [
+              {
+                "field": "affected",
+                "required": true,
+                "helpText": "Which service is down?",
+                "assetSchema": "SVC",
+                "assetFilter": "Tier IN (\"1\", \"2\")"
+              },
+              {
+                "field": "impact",
+                "helpText": "How many customers can see it?"
+              }
+            ]
           },
           {
             "id": "access",
@@ -518,7 +620,17 @@
         "id": "plat-board",
         "name": "Platform board",
         "type": "scrum"
-      }
+      },
+      "versions": [
+        {
+          "id": "plat-autumn",
+          "name": "Autumn platform",
+          "description": "What the platform ships for the autumn programme.",
+          "startDay": -7,
+          "releaseDay": 7
+        }
+      ],
+      "incidentJql": "labels = incident ORDER BY created DESC"
     },
     {
       "id": "mob",
@@ -546,7 +658,17 @@
         "id": "mob-board",
         "name": "Mobile board",
         "type": "scrum"
-      }
+      },
+      "versions": [
+        {
+          "id": "mob-autumn",
+          "name": "Autumn mobile",
+          "description": "The mobile half of the autumn programme.",
+          "startDay": -7,
+          "releaseDay": 10
+        }
+      ],
+      "incidentJql": "labels = incident ORDER BY created DESC"
     },
     {
       "id": "data",
@@ -574,7 +696,8 @@
         "id": "data-board",
         "name": "Data board",
         "type": "scrum"
-      }
+      },
+      "incidentJql": "labels = incident ORDER BY created DESC"
     },
     {
       "id": "web",
@@ -598,7 +721,17 @@
         "id": "web-board",
         "name": "Storefront board",
         "type": "kanban"
-      }
+      },
+      "versions": [
+        {
+          "id": "web-autumn",
+          "name": "Autumn storefront",
+          "description": "The storefront half of the autumn programme.",
+          "startDay": -7,
+          "releaseDay": 7
+        }
+      ],
+      "incidentJql": "labels = incident ORDER BY created DESC"
     },
     {
       "id": "mkt",
@@ -625,6 +758,88 @@
       "description": "Hiring, onboarding and everything after.",
       "type": "business",
       "lead": "priya"
+    },
+    {
+      "id": "sec",
+      "key": "SEC",
+      "name": "Security engineering",
+      "description": "Keeping the company's data where it belongs.",
+      "type": "software",
+      "lead": "viktor",
+      "template": "com.pyxis.greenhopper.jira:gh-simplified-scrum-classic",
+      "components": [
+        {
+          "name": "Application security",
+          "lead": "viktor"
+        },
+        {
+          "name": "Infrastructure security",
+          "lead": "omar"
+        }
+      ],
+      "board": {
+        "id": "sec-board",
+        "name": "Security board",
+        "type": "scrum"
+      },
+      "incidentJql": "labels = incident ORDER BY created DESC"
+    },
+    {
+      "id": "des",
+      "key": "DES",
+      "name": "Design",
+      "description": "How the product looks, reads and behaves.",
+      "type": "business",
+      "lead": "zoe"
+    },
+    {
+      "id": "it",
+      "key": "ITS",
+      "name": "IT service desk",
+      "description": "The desk everybody here writes to.",
+      "type": "service_desk",
+      "lead": "henrik",
+      "serviceDesk": {
+        "portalName": "Northwind IT",
+        "agents": [
+          "henrik",
+          "priya",
+          "jonas"
+        ],
+        "queues": [
+          {
+            "name": "Breached first response",
+            "jql": "\"Time to first response\" = everBreached() AND resolution = Unresolved ORDER BY created ASC"
+          },
+          {
+            "name": "Waiting on approval",
+            "jql": "approvals = myPendingApproval() ORDER BY created ASC"
+          },
+          {
+            "name": "Hardware",
+            "jql": "\"Request Type\" = \"Ask for hardware\" ORDER BY created DESC"
+          }
+        ],
+        "requestTypes": [
+          {
+            "id": "it-help",
+            "name": "Get IT help",
+            "description": "Something at work is not working."
+          },
+          {
+            "id": "it-incident",
+            "name": "Report an outage",
+            "description": "An internal system is down.",
+            "group": "incidents"
+          },
+          {
+            "id": "it-hardware",
+            "name": "Ask for hardware",
+            "description": "A laptop, a screen, a phone."
+          }
+        ]
+      },
+      "template": "com.atlassian.servicedesk:simplified-external-service-desk"
     }
   ],
   "workItems": [
@@ -653,7 +868,8 @@
           "actor": "nora",
           "body": "Two releases out, payouts remain."
         }
-      ]
+      ],
+      "estimate": "4w"
     },
     {
       "id": "pay-e1",
@@ -675,7 +891,8 @@
           "actor": "maya"
         }
       ],
-      "parent": "pay-i1"
+      "parent": "pay-i1",
+      "estimate": "1w"
     },
     {
       "id": "pay-e2",
@@ -697,7 +914,8 @@
           "actor": "maya"
         }
       ],
-      "parent": "pay-i1"
+      "parent": "pay-i1",
+      "estimate": "1w"
     },
     {
       "id": "pay-e3",
@@ -719,7 +937,9 @@
           "actor": "maya"
         }
       ],
-      "parent": "pay-i1"
+      "parent": "pay-i1",
+      "estimate": "1w",
+      "due": 7
     },
     {
       "id": "pay-1",
@@ -779,7 +999,8 @@
       ],
       "fixVersions": [
         "pay-1-0"
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-2",
@@ -839,7 +1060,8 @@
       ],
       "fixVersions": [
         "pay-1-0"
-      ]
+      ],
+      "estimate": "2h"
     },
     {
       "id": "pay-3",
@@ -899,7 +1121,8 @@
       ],
       "fixVersions": [
         "pay-1-0"
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-4",
@@ -959,7 +1182,8 @@
       ],
       "fixVersions": [
         "pay-1-1"
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-5",
@@ -1019,7 +1243,8 @@
       ],
       "fixVersions": [
         "pay-1-1"
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-6",
@@ -1079,7 +1304,8 @@
       ],
       "fixVersions": [
         "pay-1-1"
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-7",
@@ -1139,7 +1365,8 @@
       ],
       "fixVersions": [
         "pay-1-2"
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-8",
@@ -1199,7 +1426,8 @@
       ],
       "fixVersions": [
         "pay-1-2"
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-9",
@@ -1256,7 +1484,8 @@
           "actor": "tom",
           "resolution": "Done"
         }
-      ]
+      ],
+      "estimate": "2d"
     },
     {
       "id": "pay-10",
@@ -1303,7 +1532,9 @@
       ],
       "fixVersions": [
         "pay-1-2"
-      ]
+      ],
+      "estimate": "2d",
+      "due": 2
     },
     {
       "id": "pay-11",
@@ -1350,7 +1581,9 @@
       ],
       "fixVersions": [
         "pay-1-2"
-      ]
+      ],
+      "estimate": "2d",
+      "due": 9
     },
     {
       "id": "pay-12",
@@ -1394,7 +1627,9 @@
           "actor": "tom",
           "seconds": 7200
         }
-      ]
+      ],
+      "estimate": "2d",
+      "due": -1
     },
     {
       "id": "pay-20",
@@ -1433,7 +1668,8 @@
           "actor": "ravi",
           "resolution": "Done"
         }
-      ]
+      ],
+      "estimate": "4h"
     },
     {
       "id": "pay-21",
@@ -1468,7 +1704,9 @@
           "actor": "ines",
           "body": "Blocked on the reconciliation change landing first."
         }
-      ]
+      ],
+      "estimate": "4h",
+      "due": -2
     },
     {
       "id": "pay-22",
@@ -1494,7 +1732,9 @@
           "kind": "vote",
           "actor": "tom"
         }
-      ]
+      ],
+      "estimate": "1d",
+      "due": 4
     },
     {
       "id": "ops-1",
@@ -1519,7 +1759,8 @@
           "actor": "maya",
           "resolution": "Done"
         }
-      ]
+      ],
+      "estimate": "1d"
     },
     {
       "id": "ops-2",
@@ -1544,7 +1785,8 @@
           "actor": "nora",
           "resolution": "Done"
         }
-      ]
+      ],
+      "estimate": "1d"
     },
     {
       "id": "ops-3",
@@ -1562,7 +1804,9 @@
           "status": "In Progress",
           "actor": "maya"
         }
-      ]
+      ],
+      "estimate": "1d",
+      "due": 1
     },
     {
       "id": "ops-4",
@@ -1579,6 +1823,69 @@
           "kind": "transition",
           "status": "In Progress",
           "actor": "nora"
+        }
+      ],
+      "estimate": "1d",
+      "due": 12
+    },
+    {
+      "id": "pay-30",
+      "project": "pay",
+      "type": "Bug",
+      "summary": "Checkout was down for forty minutes",
+      "description": "Card payments failed for every customer between 09:10 and 09:50. The processor's certificate had expired.",
+      "assignee": "ravi",
+      "reporter": "sara",
+      "createdDay": -6,
+      "labels": [
+        "payments",
+        "incident"
+      ],
+      "priority": "Highest",
+      "estimate": "4h",
+      "events": [
+        {
+          "day": -6,
+          "minutes": 12,
+          "kind": "transition",
+          "status": "In Progress",
+          "actor": "ravi"
+        },
+        {
+          "day": -6,
+          "minutes": 18,
+          "kind": "attach",
+          "actor": "ravi",
+          "file": "checkout-errors.png"
+        },
+        {
+          "day": -6,
+          "minutes": 22,
+          "kind": "attach",
+          "actor": "ravi",
+          "file": "gateway.log"
+        },
+        {
+          "day": -6,
+          "minutes": 35,
+          "kind": "comment",
+          "actor": "ravi",
+          "body": "Rotated the certificate and payments recovered."
+        },
+        {
+          "day": -6,
+          "minutes": 40,
+          "kind": "worklog",
+          "actor": "ravi",
+          "seconds": 2400
+        },
+        {
+          "day": -6,
+          "minutes": 48,
+          "kind": "transition",
+          "status": "Done",
+          "resolution": "Done",
+          "actor": "ravi"
         }
       ]
     }
@@ -1972,14 +2279,23 @@
         "id": "riverbank",
         "name": "Riverbank Foods",
         "members": [
-          "cust-amara"
+          "cust-amara",
+          "cust-liwei"
+        ],
+        "desks": [
+          "help"
         ]
       },
       {
         "id": "harbour",
         "name": "Harbour Co",
         "members": [
-          "cust-felix"
+          "cust-felix",
+          "cust-sofia",
+          "cust-nadia"
+        ],
+        "desks": [
+          "help"
         ]
       }
     ],
@@ -1993,6 +2309,13 @@
         "description": "Reported through the customer portal.",
         "createdDay": -34,
         "events": [
+          {
+            "day": -34,
+            "kind": "attach",
+            "actor": "cust-amara",
+            "file": "declined-payment.png",
+            "body": "The error our customer sees at the till."
+          },
           {
             "day": -34,
             "kind": "comment",
@@ -2020,7 +2343,10 @@
           }
         ],
         "satisfaction": 5,
-        "feedback": "Fixed within the hour, thank you."
+        "feedback": "Fixed within the hour, thank you.",
+        "participants": [
+          "cust-nadia"
+        ]
       },
       {
         "id": "sr-2",
@@ -2095,7 +2421,10 @@
             "resolution": "Done"
           }
         ],
-        "satisfaction": 5
+        "satisfaction": 5,
+        "participants": [
+          "cust-nadia"
+        ]
       },
       {
         "id": "sr-4",
@@ -2156,6 +2485,9 @@
             "status": "In Progress",
             "actor": "sara"
           }
+        ],
+        "participants": [
+          "cust-nadia"
         ]
       },
       {
@@ -2181,7 +2513,641 @@
           }
         ]
       }
-    ]
+    ],
+    "assets": {
+      "project": "help",
+      "schemas": [
+        {
+          "id": "svc",
+          "key": "SVC",
+          "name": "Business services",
+          "description": "What customers use, and what the company answers for.",
+          "attributes": [
+            "Owner",
+            {
+              "name": "Tier",
+              "type": "select",
+              "required": true,
+              "options": [
+                "1",
+                "2",
+                "3"
+              ]
+            },
+            "Runbook",
+            {
+              "name": "Go live",
+              "type": "date"
+            },
+            {
+              "name": "Customer facing",
+              "type": "boolean"
+            }
+          ],
+          "objects": [
+            {
+              "id": "svc-checkout",
+              "key": "SVC-1",
+              "label": "Checkout",
+              "values": {
+                "Owner": "Payments",
+                "Tier": "1",
+                "Runbook": "ENG/Checkout runbook",
+                "Go live": "2024-03-04",
+                "Customer facing": "true"
+              }
+            },
+            {
+              "id": "svc-payouts",
+              "key": "SVC-2",
+              "label": "Payouts",
+              "values": {
+                "Owner": "Payments",
+                "Tier": "1",
+                "Runbook": "ENG/Payout runbook",
+                "Go live": "2024-06-10",
+                "Customer facing": "false"
+              }
+            },
+            {
+              "id": "svc-portal",
+              "key": "SVC-3",
+              "label": "Customer portal",
+              "values": {
+                "Owner": "Storefront",
+                "Tier": "2",
+                "Runbook": "ENG/Portal runbook",
+                "Go live": "2023-11-20",
+                "Customer facing": "true"
+              }
+            },
+            {
+              "id": "svc-reporting",
+              "key": "SVC-4",
+              "label": "Monthly reporting",
+              "values": {
+                "Owner": "Data",
+                "Tier": "3",
+                "Runbook": "ENG/Reporting runbook",
+                "Go live": "2025-01-15",
+                "Customer facing": "false"
+              }
+            },
+            {
+              "id": "svc-mobile",
+              "key": "SVC-5",
+              "label": "Mobile app",
+              "values": {
+                "Owner": "Mobile",
+                "Tier": "2",
+                "Runbook": "ENG/Mobile runbook",
+                "Go live": "2024-09-02",
+                "Customer facing": "true"
+              }
+            },
+            {
+              "id": "svc-search",
+              "key": "SVC-6",
+              "label": "Product search",
+              "values": {
+                "Owner": "Storefront",
+                "Tier": "2",
+                "Runbook": "ENG/Search runbook",
+                "Go live": "2024-05-21",
+                "Customer facing": "true"
+              }
+            },
+            {
+              "id": "svc-notify",
+              "key": "SVC-7",
+              "label": "Notifications",
+              "values": {
+                "Owner": "Platform",
+                "Tier": "2",
+                "Runbook": "ENG/Notification runbook",
+                "Go live": "2023-08-09",
+                "Customer facing": "true"
+              }
+            },
+            {
+              "id": "svc-invoicing",
+              "key": "SVC-8",
+              "label": "Invoicing",
+              "values": {
+                "Owner": "Finance systems",
+                "Tier": "2",
+                "Runbook": "ENG/Invoicing runbook",
+                "Go live": "2025-02-03",
+                "Customer facing": "false"
+              }
+            },
+            {
+              "id": "svc-warehouse",
+              "key": "SVC-9",
+              "label": "Warehouse dispatch",
+              "values": {
+                "Owner": "Operations",
+                "Tier": "1",
+                "Runbook": "OPS/Dispatch runbook",
+                "Go live": "2022-10-17",
+                "Customer facing": "false"
+              }
+            }
+          ]
+        },
+        {
+          "id": "inf",
+          "key": "INF",
+          "name": "Infrastructure",
+          "description": "The databases, queues and clusters the services run on.",
+          "attributes": [
+            {
+              "name": "Environment",
+              "type": "select",
+              "required": true,
+              "options": [
+                "production",
+                "staging",
+                "development"
+              ]
+            },
+            "Region",
+            "Owner",
+            {
+              "name": "Cores",
+              "type": "number"
+            }
+          ],
+          "objects": [
+            {
+              "id": "inf-payments-db",
+              "key": "INF-1",
+              "label": "payments-db (primary)",
+              "values": {
+                "Environment": "production",
+                "Region": "eu-west-1",
+                "Owner": "Platform",
+                "Cores": "16"
+              }
+            },
+            {
+              "id": "inf-queue",
+              "key": "INF-2",
+              "label": "events-queue",
+              "values": {
+                "Environment": "production",
+                "Region": "eu-west-1",
+                "Owner": "Platform",
+                "Cores": "8"
+              }
+            },
+            {
+              "id": "inf-web",
+              "key": "INF-3",
+              "label": "web-cluster",
+              "values": {
+                "Environment": "production",
+                "Region": "eu-west-1",
+                "Owner": "Platform",
+                "Cores": "24"
+              }
+            },
+            {
+              "id": "inf-warehouse",
+              "key": "INF-4",
+              "label": "analytics-warehouse",
+              "values": {
+                "Environment": "production",
+                "Region": "eu-central-1",
+                "Owner": "Data",
+                "Cores": "32"
+              }
+            },
+            {
+              "id": "inf-search-cluster",
+              "key": "INF-5",
+              "label": "search-cluster",
+              "values": {
+                "Environment": "production",
+                "Region": "eu-west-1",
+                "Owner": "Platform",
+                "Cores": "24"
+              }
+            },
+            {
+              "id": "inf-cache",
+              "key": "INF-6",
+              "label": "session-cache",
+              "values": {
+                "Environment": "production",
+                "Region": "eu-west-1",
+                "Owner": "Platform",
+                "Cores": "8"
+              }
+            },
+            {
+              "id": "inf-staging-db",
+              "key": "INF-7",
+              "label": "payments-db (staging)",
+              "values": {
+                "Environment": "staging",
+                "Region": "eu-west-1",
+                "Owner": "Platform",
+                "Cores": "8"
+              }
+            },
+            {
+              "id": "inf-ci",
+              "key": "INF-8",
+              "label": "build-runners",
+              "values": {
+                "Environment": "development",
+                "Region": "eu-central-1",
+                "Owner": "Developer experience",
+                "Cores": "48"
+              }
+            },
+            {
+              "id": "inf-edge",
+              "key": "INF-9",
+              "label": "edge-cdn",
+              "values": {
+                "Environment": "production",
+                "Region": "global",
+                "Owner": "Platform",
+                "Cores": "0"
+              }
+            }
+          ]
+        },
+        {
+          "id": "vnd",
+          "key": "VND",
+          "name": "Vendors",
+          "description": "The companies the services depend on.",
+          "attributes": [
+            "Contact",
+            "Contract",
+            {
+              "name": "Renewal",
+              "type": "date"
+            },
+            {
+              "name": "Seats",
+              "type": "number"
+            },
+            {
+              "name": "Support 24/7",
+              "type": "boolean"
+            }
+          ],
+          "objects": [
+            {
+              "id": "vnd-processor",
+              "key": "VND-1",
+              "label": "Card processor",
+              "values": {
+                "Contact": "support@processor.test",
+                "Contract": "Renews each January",
+                "Renewal": "2027-02-28",
+                "Seats": "0",
+                "Support 24/7": "true"
+              }
+            },
+            {
+              "id": "vnd-bank",
+              "key": "VND-2",
+              "label": "Payout bank",
+              "values": {
+                "Contact": "ops@bank.test",
+                "Contract": "Renews each April",
+                "Renewal": "2027-01-01",
+                "Seats": "0",
+                "Support 24/7": "false"
+              }
+            },
+            {
+              "id": "vnd-identity",
+              "key": "VND-3",
+              "label": "Identity provider",
+              "values": {
+                "Contact": "support@identity.example",
+                "Renewal": "2027-05-31",
+                "Seats": "400",
+                "Support 24/7": "true",
+                "Contract": "Renews each January"
+              }
+            },
+            {
+              "id": "vnd-observability",
+              "key": "VND-4",
+              "label": "Observability platform",
+              "values": {
+                "Contact": "help@observe.example",
+                "Renewal": "2026-11-30",
+                "Seats": "120",
+                "Support 24/7": "true",
+                "Contract": "Renews each January"
+              }
+            },
+            {
+              "id": "vnd-mail",
+              "key": "VND-5",
+              "label": "Email delivery",
+              "values": {
+                "Contact": "support@mailer.example",
+                "Contract": "Renews each July",
+                "Renewal": "2027-07-31",
+                "Seats": "0",
+                "Support 24/7": "false"
+              }
+            }
+          ]
+        },
+        {
+          "id": "lap",
+          "key": "LAP",
+          "name": "Laptops",
+          "description": "The machines the company hands out, and who holds them.",
+          "attributes": [
+            "Holder",
+            {
+              "name": "Model",
+              "type": "select",
+              "required": true,
+              "options": [
+                "MacBook Pro 14",
+                "MacBook Air 13",
+                "ThinkPad X1"
+              ]
+            },
+            {
+              "name": "Warranty ends",
+              "type": "date"
+            },
+            {
+              "name": "Encrypted",
+              "type": "boolean"
+            }
+          ],
+          "objects": [
+            {
+              "id": "lap-nora",
+              "key": "LAP-1",
+              "label": "Nora's laptop",
+              "values": {
+                "Holder": "Nora Whitfield",
+                "Model": "MacBook Pro 14",
+                "Warranty ends": "2027-04-18",
+                "Encrypted": "true"
+              }
+            },
+            {
+              "id": "lap-ravi",
+              "key": "LAP-2",
+              "label": "Ravi's laptop",
+              "values": {
+                "Holder": "Ravi Chandra",
+                "Model": "MacBook Pro 14",
+                "Warranty ends": "2026-12-02",
+                "Encrypted": "true"
+              }
+            },
+            {
+              "id": "lap-ines",
+              "key": "LAP-3",
+              "label": "Ines's laptop",
+              "values": {
+                "Holder": "Ines Moreau",
+                "Model": "MacBook Air 13",
+                "Warranty ends": "2027-07-30",
+                "Encrypted": "true"
+              }
+            },
+            {
+              "id": "lap-sean",
+              "key": "LAP-4",
+              "label": "Sean's laptop",
+              "values": {
+                "Holder": "Sean Okafor",
+                "Model": "ThinkPad X1",
+                "Warranty ends": "2026-10-11",
+                "Encrypted": "false"
+              }
+            }
+          ]
+        },
+        {
+          "id": "app",
+          "key": "APP",
+          "name": "Software subscriptions",
+          "description": "What the company pays for, per seat, and when it renews.",
+          "attributes": [
+            "Owner",
+            {
+              "name": "Seats",
+              "type": "number",
+              "required": true
+            },
+            {
+              "name": "Renewal",
+              "type": "date"
+            },
+            {
+              "name": "Single sign-on",
+              "type": "boolean"
+            }
+          ],
+          "objects": [
+            {
+              "id": "app-design",
+              "key": "APP-1",
+              "label": "Design suite",
+              "values": {
+                "Owner": "Design",
+                "Seats": "25",
+                "Renewal": "2027-03-15",
+                "Single sign-on": "true"
+              }
+            },
+            {
+              "id": "app-crm",
+              "key": "APP-2",
+              "label": "Customer CRM",
+              "values": {
+                "Owner": "Revenue",
+                "Seats": "80",
+                "Renewal": "2026-11-01",
+                "Single sign-on": "true"
+              }
+            },
+            {
+              "id": "app-analytics",
+              "key": "APP-3",
+              "label": "Analytics workspace",
+              "values": {
+                "Owner": "Data",
+                "Seats": "40",
+                "Renewal": "2027-01-20",
+                "Single sign-on": "false"
+              }
+            }
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "from": "svc-checkout",
+          "to": "inf-payments-db",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-checkout",
+          "to": "vnd-processor",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-payouts",
+          "to": "inf-payments-db",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-payouts",
+          "to": "vnd-bank",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-portal",
+          "to": "inf-web",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-portal",
+          "to": "svc-checkout",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-mobile",
+          "to": "svc-checkout",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-reporting",
+          "to": "inf-warehouse",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-reporting",
+          "to": "inf-queue",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-reporting",
+          "to": "svc-payouts",
+          "type": "reports on"
+        },
+        {
+          "from": "svc-reporting",
+          "to": "svc-checkout",
+          "type": "reports on"
+        },
+        {
+          "from": "svc-portal",
+          "to": "svc-payouts",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-reporting",
+          "to": "svc-portal",
+          "type": "reports on"
+        },
+        {
+          "from": "svc-reporting",
+          "to": "svc-mobile",
+          "type": "reports on"
+        },
+        {
+          "from": "svc-search",
+          "to": "inf-search-cluster",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-search",
+          "to": "inf-edge",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-notify",
+          "to": "inf-queue",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-notify",
+          "to": "vnd-mail",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-invoicing",
+          "to": "inf-payments-db",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-invoicing",
+          "to": "vnd-processor",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-warehouse",
+          "to": "inf-queue",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-portal",
+          "to": "inf-cache",
+          "type": "runs on"
+        },
+        {
+          "from": "svc-portal",
+          "to": "inf-edge",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-portal",
+          "to": "vnd-identity",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-mobile",
+          "to": "vnd-identity",
+          "type": "depends on"
+        },
+        {
+          "from": "svc-checkout",
+          "to": "inf-edge",
+          "type": "depends on"
+        },
+        {
+          "from": "app-analytics",
+          "to": "inf-warehouse",
+          "type": "runs on"
+        },
+        {
+          "from": "app-crm",
+          "to": "vnd-identity",
+          "type": "depends on"
+        },
+        {
+          "from": "lap-nora",
+          "to": "app-design",
+          "type": "depends on"
+        },
+        {
+          "from": "lap-ines",
+          "to": "app-analytics",
+          "type": "depends on"
+        }
+      ]
+    }
   },
   "wiki": {
     "spaces": [
@@ -2209,14 +3175,28 @@
                 "title": "On-call rotation",
                 "body": "<p>One engineer is on call each week, Monday to Monday.</p>",
                 "author": "ravi",
-                "createdDay": -70
+                "createdDay": -70,
+                "labels": [
+                  "engineering"
+                ],
+                "likes": [
+                  "nora"
+                ]
               },
               {
                 "id": "eng-review",
                 "title": "Code review",
                 "body": "<p>Two approvals for payment paths, one elsewhere.</p>",
                 "author": "ines",
-                "createdDay": -64
+                "createdDay": -64,
+                "labels": [
+                  "engineering"
+                ],
+                "likes": [
+                  "tariq",
+                  "rosa",
+                  "priya"
+                ]
               },
               {
                 "id": "eng-incident",
@@ -2230,8 +3210,27 @@
                     "body": "Linked this from the support handbook.",
                     "day": -30
                   }
+                ],
+                "labels": [
+                  "engineering"
+                ],
+                "likes": [
+                  "hana"
                 ]
               }
+            ],
+            "labels": [
+              "engineering",
+              "runbook"
+            ],
+            "files": [
+              "architecture.png",
+              "gateway.log"
+            ],
+            "likes": [
+              "nina",
+              "elin",
+              "arjun"
             ]
           },
           {
@@ -2246,8 +3245,28 @@
                 "title": "Ledger invariants",
                 "body": "<p>Every movement balances. No row is ever updated in place.</p>",
                 "author": "ines",
-                "createdDay": -74
+                "createdDay": -74,
+                "labels": [
+                  "engineering"
+                ],
+                "likes": [
+                  "lucas"
+                ]
               }
+            ],
+            "labels": [
+              "engineering",
+              "runbook"
+            ],
+            "files": [
+              "architecture.png",
+              "gateway.log"
+            ],
+            "likes": [
+              "kofi",
+              "mei",
+              "tom",
+              "aisha"
             ]
           }
         ],
@@ -2256,13 +3275,225 @@
             "title": "1.0 is live",
             "body": "<p>Card payments shipped this morning.</p>",
             "author": "maya",
-            "createdDay": -56
+            "createdDay": -56,
+            "labels": [
+              "announcement",
+              "engineering"
+            ],
+            "likes": [
+              "viktor",
+              "arjun",
+              "fatima"
+            ]
           },
           {
             "title": "What we learned from the duplicate charge",
             "body": "<p>Idempotency keys must cover retries.</p>",
             "author": "ravi",
-            "createdDay": -35
+            "createdDay": -35,
+            "labels": [
+              "announcement",
+              "engineering"
+            ],
+            "likes": [
+              "elin",
+              "zoe"
+            ]
+          }
+        ],
+        "content": [
+          {
+            "type": "whiteboard",
+            "title": "Payments architecture",
+            "author": "ravi",
+            "createdDay": -64,
+            "objects": [
+              {
+                "type": "sticky",
+                "title": "Checkout",
+                "body": "Takes the card and captures the payment.",
+                "color": "blue",
+                "x": 80,
+                "y": 80,
+                "width": 200,
+                "height": 120
+              },
+              {
+                "type": "sticky",
+                "title": "Payments API",
+                "body": "One way in for every client.",
+                "color": "green",
+                "x": 360,
+                "y": 80,
+                "width": 200,
+                "height": 120
+              },
+              {
+                "type": "sticky",
+                "title": "payments-db",
+                "body": "The ledger everything else reads.",
+                "color": "yellow",
+                "x": 640,
+                "y": 80,
+                "width": 200,
+                "height": 120
+              },
+              {
+                "type": "sticky",
+                "title": "Card processor",
+                "body": "Third party. Rate limited.",
+                "color": "pink",
+                "x": 360,
+                "y": 280,
+                "width": 200,
+                "height": 120
+              },
+              {
+                "type": "text",
+                "title": "Anything that touches money goes through the API.",
+                "x": 80,
+                "y": 280,
+                "width": 220,
+                "height": 80
+              }
+            ],
+            "connectors": [
+              {
+                "from": "Checkout",
+                "to": "Payments API",
+                "label": "calls"
+              },
+              {
+                "from": "Payments API",
+                "to": "payments-db",
+                "label": "writes"
+              },
+              {
+                "from": "Payments API",
+                "to": "Card processor",
+                "label": "charges",
+                "style": "dashed"
+              }
+            ]
+          },
+          {
+            "type": "database",
+            "title": "Vendor review",
+            "author": "nora",
+            "createdDay": -48,
+            "columns": [
+              {
+                "name": "Vendor",
+                "type": "text"
+              },
+              {
+                "name": "Owner",
+                "type": "text"
+              },
+              {
+                "name": "Reviewed",
+                "type": "date"
+              },
+              {
+                "name": "Risk",
+                "type": "select",
+                "options": [
+                  "Low",
+                  "Medium",
+                  "High"
+                ]
+              },
+              {
+                "name": "Signed off",
+                "type": "checkbox"
+              }
+            ],
+            "rows": [
+              {
+                "Vendor": "Card processor",
+                "Owner": "Nora Petrova",
+                "Reviewed": "2026-06-02",
+                "Risk": "High",
+                "Signed off": "true"
+              },
+              {
+                "Vendor": "Payout bank",
+                "Owner": "Maya Oduya",
+                "Reviewed": "2026-05-18",
+                "Risk": "Medium",
+                "Signed off": "true"
+              },
+              {
+                "Vendor": "Email delivery",
+                "Owner": "Tom Achebe",
+                "Reviewed": "2026-04-27",
+                "Risk": "Low",
+                "Signed off": "true"
+              },
+              {
+                "Vendor": "Analytics warehouse",
+                "Owner": "Mei Chen",
+                "Reviewed": "2026-07-14",
+                "Risk": "Medium",
+                "Signed off": "false"
+              },
+              {
+                "Vendor": "Status page",
+                "Owner": "Henrik Sørensen",
+                "Reviewed": "2026-03-09",
+                "Risk": "Low",
+                "Signed off": "true"
+              }
+            ],
+            "views": [
+              {
+                "name": "By risk",
+                "sortKey": "Risk",
+                "sortDirection": "desc"
+              },
+              {
+                "name": "Still open",
+                "filterKey": "Signed off",
+                "filterValue": "false"
+              }
+            ]
+          },
+          {
+            "type": "folder",
+            "title": "Runbooks",
+            "author": "omar",
+            "createdDay": -70
+          },
+          {
+            "type": "embed",
+            "title": "Processor status page",
+            "author": "sara",
+            "createdDay": -30,
+            "embedUrl": "https://status.processor.test/"
+          }
+        ],
+        "roles": [
+          {
+            "role": "admin",
+            "groups": [
+              "leads"
+            ]
+          },
+          {
+            "role": "member",
+            "groups": [
+              "engineering"
+            ]
+          },
+          {
+            "role": "viewer",
+            "groups": [
+              "support",
+              "design",
+              "data",
+              "operations",
+              "product"
+            ]
           }
         ]
       },
@@ -2283,15 +3514,909 @@
                 "title": "Refunds: what we can do",
                 "body": "<p>Full refunds within 90 days; partial any time.</p>",
                 "author": "dan",
-                "createdDay": -50
+                "createdDay": -50,
+                "labels": [
+                  "support"
+                ],
+                "likes": [
+                  "caleb"
+                ]
               },
               {
                 "id": "sup-escalate",
                 "title": "When to escalate",
                 "body": "<p>Money moved twice, or a customer is blocked from paying.</p>",
                 "author": "sara",
-                "createdDay": -45
+                "createdDay": -45,
+                "labels": [
+                  "support"
+                ],
+                "likes": [
+                  "lena",
+                  "bruno",
+                  "ravi"
+                ]
               }
+            ],
+            "labels": [
+              "support",
+              "how-to"
+            ],
+            "likes": [
+              "sean",
+              "arjun",
+              "tariq",
+              "priya"
+            ]
+          }
+        ],
+        "roles": [
+          {
+            "role": "admin",
+            "people": [
+              "sara"
+            ]
+          },
+          {
+            "role": "member",
+            "groups": [
+              "support"
+            ]
+          },
+          {
+            "role": "viewer",
+            "groups": [
+              "engineering",
+              "operations",
+              "product"
+            ]
+          }
+        ]
+      },
+      {
+        "key": "PRD",
+        "name": "Product",
+        "description": "What we are building, why, and what we decided.",
+        "pages": [
+          {
+            "id": "prd-home",
+            "title": "Product handbook",
+            "body": "<p>How Northwind decides what to build, and how a decision is written down.</p>",
+            "author": "nora",
+            "createdDay": -120,
+            "children": [
+              {
+                "id": "prd-discovery",
+                "title": "Discovery",
+                "body": "<p>Every quarter starts with five customer conversations and ends with a written problem statement.</p>",
+                "author": "nora",
+                "createdDay": -118,
+                "comments": [
+                  {
+                    "author": "maya",
+                    "body": "Added the interview template as a child page.",
+                    "day": -110
+                  }
+                ],
+                "labels": [
+                  "product"
+                ],
+                "likes": [
+                  "omar",
+                  "gita",
+                  "sara"
+                ]
+              },
+              {
+                "id": "prd-interview",
+                "title": "Interview template",
+                "body": "<p>Ten questions, none of them about the feature you had in mind.</p>",
+                "author": "maya",
+                "createdDay": -110,
+                "labels": [
+                  "product"
+                ],
+                "likes": [
+                  "kofi",
+                  "nora"
+                ]
+              },
+              {
+                "id": "prd-pricing",
+                "title": "Pricing principles",
+                "body": "<p>Price the outcome, not the seat. Never price the thing that stops someone leaving.</p>",
+                "author": "nora",
+                "createdDay": -96,
+                "labels": [
+                  "product"
+                ],
+                "likes": [
+                  "sean"
+                ]
+              },
+              {
+                "id": "prd-launch",
+                "title": "Launch checklist",
+                "body": "<p>Docs, support briefing, pricing page, release notes, and a rollback we have actually tried.</p>",
+                "author": "gita",
+                "createdDay": -84,
+                "comments": [
+                  {
+                    "author": "sean",
+                    "body": "The rollback step needs the runbook link.",
+                    "day": -80
+                  }
+                ],
+                "labels": [
+                  "product"
+                ],
+                "likes": [
+                  "yuki",
+                  "kofi",
+                  "nora",
+                  "ines"
+                ]
+              }
+            ],
+            "labels": [
+              "product",
+              "decision"
+            ],
+            "files": [
+              "before-and-after.png"
+            ],
+            "likes": [
+              "priya",
+              "fatima"
+            ]
+          },
+          {
+            "id": "prd-decisions",
+            "title": "Decision log",
+            "body": "<p>One page per decision: what we chose, what we gave up, and who we told.</p>",
+            "author": "nora",
+            "createdDay": -115,
+            "children": [
+              {
+                "id": "prd-decision-payments",
+                "title": "Card payments before wallets",
+                "body": "<p>Wallets reach fewer of our customers than the card processors we already use.</p>",
+                "author": "nora",
+                "createdDay": -112,
+                "labels": [
+                  "product"
+                ],
+                "likes": [
+                  "jonas",
+                  "nora"
+                ]
+              },
+              {
+                "id": "prd-decision-mobile",
+                "title": "One mobile app, not two",
+                "body": "<p>A shared app costs less than two, and our customers do not care which store it came from.</p>",
+                "author": "gita",
+                "createdDay": -90,
+                "labels": [
+                  "product"
+                ],
+                "likes": [
+                  "bruno",
+                  "viktor",
+                  "maya",
+                  "fatima"
+                ]
+              },
+              {
+                "id": "prd-decision-search",
+                "title": "Search stays in-house",
+                "body": "<p>The hosted search we priced costs more than the cluster and answers slower for our shapes.</p>",
+                "author": "viktor",
+                "createdDay": -52,
+                "labels": [
+                  "product"
+                ],
+                "likes": [
+                  "ravi",
+                  "maya",
+                  "nora"
+                ]
+              }
+            ],
+            "labels": [
+              "product",
+              "decision"
+            ],
+            "files": [
+              "before-and-after.png"
+            ],
+            "likes": [
+              "priya"
+            ]
+          },
+          {
+            "id": "prd-roadmap",
+            "title": "What is next",
+            "body": "<p>Payouts, then invoicing, then the warehouse work that has been waiting since spring.</p>",
+            "author": "nora",
+            "createdDay": -40,
+            "comments": [
+              {
+                "author": "tom",
+                "body": "Invoicing needs the tax work first.",
+                "day": -35
+              }
+            ],
+            "labels": [
+              "product",
+              "decision"
+            ],
+            "files": [
+              "before-and-after.png"
+            ],
+            "likes": [
+              "tom"
+            ]
+          }
+        ],
+        "blogPosts": [
+          {
+            "title": "Why we said no to wallets, for now",
+            "body": "<p>The short version: our customers pay by card, and the wallets we looked at reach fewer of them than the processors we already have.</p>",
+            "author": "nora",
+            "createdDay": -112,
+            "labels": [
+              "announcement",
+              "product"
+            ],
+            "likes": [
+              "marta",
+              "priya",
+              "paulo",
+              "fatima"
+            ]
+          },
+          {
+            "title": "What five customers told us about invoicing",
+            "body": "<p>All five send invoices from a spreadsheet. None of them want a new spreadsheet.</p>",
+            "author": "maya",
+            "createdDay": -64,
+            "labels": [
+              "announcement",
+              "product"
+            ],
+            "likes": [
+              "fatima",
+              "tom",
+              "zoe",
+              "nina",
+              "jonas",
+              "priya"
+            ]
+          }
+        ],
+        "roles": [
+          {
+            "role": "admin",
+            "people": [
+              "nora"
+            ]
+          },
+          {
+            "role": "member",
+            "groups": [
+              "product",
+              "leads"
+            ]
+          },
+          {
+            "role": "viewer",
+            "groups": [
+              "engineering",
+              "design",
+              "support",
+              "data"
+            ]
+          }
+        ]
+      },
+      {
+        "key": "DSN",
+        "name": "Design",
+        "description": "How the product looks, reads and behaves.",
+        "pages": [
+          {
+            "id": "dsn-home",
+            "title": "Design system",
+            "body": "<p>Tokens, components and the rules that keep them consistent.</p>",
+            "author": "zoe",
+            "createdDay": -110,
+            "children": [
+              {
+                "id": "dsn-colour",
+                "title": "Colour and contrast",
+                "body": "<p>Every pairing meets WCAG AA. The dark theme is a set of tokens, not a filter.</p>",
+                "author": "zoe",
+                "createdDay": -108,
+                "labels": [
+                  "design"
+                ],
+                "likes": [
+                  "henrik",
+                  "priya",
+                  "elin"
+                ]
+              },
+              {
+                "id": "dsn-type",
+                "title": "Typography",
+                "body": "<p>One family, five sizes. A page that needs a sixth needs rewriting.</p>",
+                "author": "elin",
+                "createdDay": -104,
+                "labels": [
+                  "design"
+                ],
+                "likes": [
+                  "bruno"
+                ]
+              },
+              {
+                "id": "dsn-forms",
+                "title": "Forms",
+                "body": "<p>Label every field. Say what went wrong beside the field it went wrong in.</p>",
+                "author": "zoe",
+                "createdDay": -92,
+                "comments": [
+                  {
+                    "author": "ines",
+                    "body": "We fixed the checkout form to match this.",
+                    "day": -88
+                  }
+                ],
+                "labels": [
+                  "design"
+                ],
+                "likes": [
+                  "elin",
+                  "mei",
+                  "arjun"
+                ]
+              },
+              {
+                "id": "dsn-motion",
+                "title": "Motion",
+                "body": "<p>Nothing moves for longer than 200ms, and nothing moves that a reader did not ask to move.</p>",
+                "author": "elin",
+                "createdDay": -70,
+                "labels": [
+                  "design"
+                ],
+                "likes": [
+                  "priya",
+                  "jonas",
+                  "lena",
+                  "elin"
+                ]
+              }
+            ],
+            "labels": [
+              "design",
+              "reference"
+            ],
+            "files": [
+              "diagram.png"
+            ],
+            "likes": [
+              "omar"
+            ]
+          },
+          {
+            "id": "dsn-writing",
+            "title": "Writing",
+            "body": "<p>Short sentences. The reader's words, not ours. No exclamation marks in errors.</p>",
+            "author": "elin",
+            "createdDay": -86,
+            "children": [
+              {
+                "id": "dsn-errors",
+                "title": "Error messages",
+                "body": "<p>Say what happened, then what to do. Never blame the person reading.</p>",
+                "author": "elin",
+                "createdDay": -84,
+                "labels": [
+                  "design"
+                ],
+                "likes": [
+                  "nina",
+                  "paulo",
+                  "henrik"
+                ]
+              }
+            ],
+            "labels": [
+              "design",
+              "reference"
+            ],
+            "files": [
+              "diagram.png"
+            ],
+            "likes": [
+              "marta",
+              "kofi",
+              "paulo",
+              "zoe"
+            ]
+          },
+          {
+            "id": "dsn-research",
+            "title": "Research library",
+            "body": "<p>Sessions, notes and the clips worth watching again.</p>",
+            "author": "zoe",
+            "createdDay": -58,
+            "labels": [
+              "design",
+              "reference"
+            ],
+            "files": [
+              "diagram.png"
+            ],
+            "likes": [
+              "jonas"
+            ]
+          }
+        ],
+        "blogPosts": [
+          {
+            "title": "The checkout form, before and after",
+            "body": "<p>Four fields fewer, one clear error, and a third fewer abandoned carts in the first week.</p>",
+            "author": "zoe",
+            "createdDay": -76,
+            "labels": [
+              "announcement",
+              "design"
+            ],
+            "likes": [
+              "fatima",
+              "elin",
+              "ravi"
+            ]
+          }
+        ],
+        "roles": [
+          {
+            "role": "admin",
+            "people": [
+              "zoe"
+            ]
+          },
+          {
+            "role": "member",
+            "groups": [
+              "design"
+            ]
+          },
+          {
+            "role": "viewer",
+            "groups": [
+              "engineering",
+              "product",
+              "leads"
+            ]
+          }
+        ]
+      },
+      {
+        "key": "OPS",
+        "name": "Operations",
+        "description": "Running the company's day: warehouses, suppliers and the people who keep them moving.",
+        "pages": [
+          {
+            "id": "ops-home",
+            "title": "Operations handbook",
+            "body": "<p>How orders reach a doorstep, and what to do when one does not.</p>",
+            "author": "tariq",
+            "createdDay": -130,
+            "children": [
+              {
+                "id": "ops-dispatch",
+                "title": "Dispatch",
+                "body": "<p>Every order is picked, packed and scanned before it leaves the floor.</p>",
+                "author": "tariq",
+                "createdDay": -128,
+                "labels": [
+                  "operations"
+                ],
+                "likes": [
+                  "marta"
+                ]
+              },
+              {
+                "id": "ops-returns",
+                "title": "Returns",
+                "body": "<p>A return is accepted within 30 days, and refunded the day it arrives.</p>",
+                "author": "rosa",
+                "createdDay": -120,
+                "comments": [
+                  {
+                    "author": "nina",
+                    "body": "Refund timing changed in March; updated.",
+                    "day": -60
+                  }
+                ],
+                "labels": [
+                  "operations"
+                ],
+                "likes": [
+                  "paulo",
+                  "henrik",
+                  "fatima",
+                  "rosa"
+                ]
+              },
+              {
+                "id": "ops-suppliers",
+                "title": "Suppliers",
+                "body": "<p>Who we buy from, what we buy, and who to call when a pallet is late.</p>",
+                "author": "tariq",
+                "createdDay": -100,
+                "labels": [
+                  "operations"
+                ],
+                "likes": [
+                  "ines",
+                  "tom",
+                  "bruno",
+                  "caleb"
+                ]
+              },
+              {
+                "id": "ops-peak",
+                "title": "Peak season",
+                "body": "<p>Double the pickers, freeze the releases, and put the on-call engineer on the warehouse floor for a day.</p>",
+                "author": "rosa",
+                "createdDay": -48,
+                "labels": [
+                  "operations"
+                ],
+                "likes": [
+                  "sean",
+                  "sara"
+                ]
+              }
+            ],
+            "labels": [
+              "operations",
+              "runbook"
+            ],
+            "files": [
+              "measurements.csv"
+            ],
+            "likes": [
+              "gita",
+              "zoe"
+            ]
+          },
+          {
+            "id": "ops-safety",
+            "title": "Safety",
+            "body": "<p>What to do about a spill, a fall, or a forklift that will not start.</p>",
+            "author": "nina",
+            "createdDay": -96,
+            "labels": [
+              "operations",
+              "runbook"
+            ],
+            "files": [
+              "measurements.csv"
+            ],
+            "likes": [
+              "arjun",
+              "ines",
+              "lucas",
+              "aisha"
+            ]
+          }
+        ],
+        "blogPosts": [
+          {
+            "title": "Peak is over",
+            "body": "<p>We shipped 42,000 orders in six weeks, and lost fewer than 200 to damage.</p>",
+            "author": "tariq",
+            "createdDay": -20,
+            "labels": [
+              "announcement",
+              "operations"
+            ],
+            "likes": [
+              "lucas",
+              "caleb"
+            ]
+          }
+        ],
+        "roles": [
+          {
+            "role": "admin",
+            "people": [
+              "tariq"
+            ]
+          },
+          {
+            "role": "member",
+            "groups": [
+              "operations"
+            ]
+          },
+          {
+            "role": "viewer",
+            "groups": [
+              "engineering",
+              "support",
+              "leads"
+            ]
+          }
+        ]
+      },
+      {
+        "key": "PPL",
+        "name": "People",
+        "description": "Working here: how we hire, pay, and take time off.",
+        "pages": [
+          {
+            "id": "ppl-home",
+            "title": "Working at Northwind",
+            "body": "<p>The handbook everybody gets on their first day.</p>",
+            "author": "fatima",
+            "createdDay": -140,
+            "children": [
+              {
+                "id": "ppl-leave",
+                "title": "Time off",
+                "body": "<p>Twenty-eight days, plus public holidays where you live. Tell your team, not a form.</p>",
+                "author": "fatima",
+                "createdDay": -138,
+                "labels": [
+                  "people"
+                ],
+                "likes": [
+                  "elin"
+                ]
+              },
+              {
+                "id": "ppl-hiring",
+                "title": "Hiring",
+                "body": "<p>Four conversations, one of them about work you have actually done.</p>",
+                "author": "fatima",
+                "createdDay": -124,
+                "comments": [
+                  {
+                    "author": "nora",
+                    "body": "Added the product interview outline.",
+                    "day": -118
+                  }
+                ],
+                "labels": [
+                  "people"
+                ],
+                "likes": [
+                  "priya",
+                  "arjun"
+                ]
+              },
+              {
+                "id": "ppl-onboarding",
+                "title": "First week",
+                "body": "<p>A laptop, an account, a buddy, and one small change shipped by Friday.</p>",
+                "author": "priya",
+                "createdDay": -112,
+                "labels": [
+                  "people"
+                ],
+                "likes": [
+                  "rosa",
+                  "zoe",
+                  "kofi"
+                ]
+              },
+              {
+                "id": "ppl-expenses",
+                "title": "Expenses",
+                "body": "<p>Spend it as if it were yours. Keep the receipt.</p>",
+                "author": "fatima",
+                "createdDay": -90,
+                "labels": [
+                  "people"
+                ],
+                "likes": [
+                  "bruno"
+                ]
+              }
+            ],
+            "labels": [
+              "people",
+              "onboarding"
+            ],
+            "likes": [
+              "tom"
+            ]
+          },
+          {
+            "id": "ppl-remote",
+            "title": "Working from anywhere",
+            "body": "<p>Two hours of overlap with your team, and a desk that does not hurt your back.</p>",
+            "author": "priya",
+            "createdDay": -72,
+            "labels": [
+              "people",
+              "onboarding"
+            ],
+            "likes": [
+              "dan",
+              "maya",
+              "viktor",
+              "kofi"
+            ]
+          }
+        ],
+        "blogPosts": [
+          {
+            "title": "Welcome to the fourteen people who joined this quarter",
+            "body": "<p>Support, warehouse, data and two engineers. Say hello.</p>",
+            "author": "fatima",
+            "createdDay": -14,
+            "labels": [
+              "announcement",
+              "people"
+            ],
+            "likes": [
+              "viktor",
+              "nina",
+              "lena"
+            ]
+          }
+        ],
+        "roles": [
+          {
+            "role": "admin",
+            "people": [
+              "fatima"
+            ]
+          },
+          {
+            "role": "member",
+            "groups": [
+              "people"
+            ]
+          },
+          {
+            "role": "viewer",
+            "groups": [
+              "engineering",
+              "support",
+              "design",
+              "data",
+              "operations",
+              "product",
+              "leads"
+            ]
+          }
+        ]
+      },
+      {
+        "key": "DAT",
+        "name": "Data",
+        "description": "The numbers the company runs on, and where they come from.",
+        "pages": [
+          {
+            "id": "dat-home",
+            "title": "Data handbook",
+            "body": "<p>What we measure, how it is defined, and who owns each number.</p>",
+            "author": "henrik",
+            "createdDay": -100,
+            "children": [
+              {
+                "id": "dat-definitions",
+                "title": "Metric definitions",
+                "body": "<p>An order is counted when it is paid, not when it is placed.</p>",
+                "author": "henrik",
+                "createdDay": -98,
+                "comments": [
+                  {
+                    "author": "lucas",
+                    "body": "Refunds now subtract in the same month.",
+                    "day": -70
+                  }
+                ],
+                "labels": [
+                  "data"
+                ],
+                "likes": [
+                  "ravi",
+                  "hana"
+                ]
+              },
+              {
+                "id": "dat-warehouse",
+                "title": "The warehouse",
+                "body": "<p>Everything lands in the warehouse by 04:00, and the dashboards read from it.</p>",
+                "author": "lucas",
+                "createdDay": -88,
+                "labels": [
+                  "data"
+                ],
+                "likes": [
+                  "tom"
+                ]
+              },
+              {
+                "id": "dat-quality",
+                "title": "Data quality",
+                "body": "<p>Every table has an owner, a freshness check and a row count that has to move.</p>",
+                "author": "henrik",
+                "createdDay": -66,
+                "labels": [
+                  "data"
+                ],
+                "likes": [
+                  "omar",
+                  "ines",
+                  "jonas"
+                ]
+              }
+            ],
+            "labels": [
+              "data",
+              "reference"
+            ],
+            "files": [
+              "checks.json"
+            ],
+            "likes": [
+              "bruno",
+              "elin",
+              "omar",
+              "nora"
+            ]
+          },
+          {
+            "id": "dat-requests",
+            "title": "Asking for a number",
+            "body": "<p>Say the decision you are making. We will tell you which number answers it.</p>",
+            "author": "lucas",
+            "createdDay": -44,
+            "labels": [
+              "data",
+              "reference"
+            ],
+            "files": [
+              "checks.json"
+            ],
+            "likes": [
+              "elin",
+              "maya",
+              "hana"
+            ]
+          }
+        ],
+        "blogPosts": [],
+        "roles": [
+          {
+            "role": "admin",
+            "people": [
+              "henrik"
+            ]
+          },
+          {
+            "role": "member",
+            "groups": [
+              "data"
+            ]
+          },
+          {
+            "role": "viewer",
+            "groups": [
+              "engineering",
+              "product",
+              "leads"
             ]
           }
         ]
@@ -2303,18 +4428,42 @@
       "name": "My open work",
       "jql": "assignee = currentUser() AND resolution = Unresolved ORDER BY updated DESC",
       "owner": "maya",
-      "shared": true
+      "shared": true,
+      "favourites": [
+        "zoe",
+        "hana",
+        "jonas",
+        "nina",
+        "ravi"
+      ]
     },
     {
       "name": "Payments bugs",
       "jql": "project = PAY AND issuetype = Bug AND resolution = Unresolved ORDER BY priority DESC",
       "owner": "ravi",
-      "shared": true
+      "shared": true,
+      "favourites": [
+        "bruno",
+        "priya"
+      ]
     },
     {
       "name": "Resolved this month",
       "jql": "resolution != Unresolved AND resolutiondate >= -30d ORDER BY resolutiondate DESC",
-      "owner": "nora"
+      "owner": "nora",
+      "favourites": [
+        "nora"
+      ]
+    },
+    {
+      "name": "Everything open",
+      "jql": "resolution = Unresolved ORDER BY created ASC",
+      "owner": "nora",
+      "shared": true,
+      "favourites": [
+        "zoe",
+        "nora"
+      ]
     }
   ],
   "dashboards": [
@@ -2468,6 +4617,49 @@
           "jql": "resolution = Unresolved ORDER BY duedate ASC"
         }
       ]
+    },
+    {
+      "name": "Backlog health",
+      "owner": "maya",
+      "shared": true,
+      "gadgets": [
+        {
+          "type": "time-since",
+          "title": "Raised, changed and finished",
+          "project": "plat",
+          "days": 90,
+          "dateField": "created"
+        },
+        {
+          "type": "bubble-chart",
+          "title": "What people are pulling on",
+          "filter": "Everything open",
+          "bubbleAxis": "participants"
+        },
+        {
+          "type": "voted-issues",
+          "title": "What people voted for",
+          "jql": "ORDER BY votes DESC"
+        },
+        {
+          "type": "average-age",
+          "title": "How old the backlog is",
+          "project": "plat",
+          "days": 90
+        },
+        {
+          "type": "issue-statistics",
+          "title": "Security work by status",
+          "filter": "Everything open",
+          "groupBy": "status"
+        },
+        {
+          "type": "heat-map",
+          "title": "Where the work sits",
+          "filter": "Everything open",
+          "groupBy": "assignee"
+        }
+      ]
     }
   ],
   "hierarchy": [
@@ -2578,6 +4770,39 @@
         "projects": [
           "hr"
         ]
+      },
+      {
+        "name": "Security",
+        "members": [
+          "viktor",
+          "omar",
+          "aisha"
+        ],
+        "projects": [
+          "sec"
+        ]
+      },
+      {
+        "name": "Design",
+        "members": [
+          "zoe",
+          "marta",
+          "rosa"
+        ],
+        "projects": [
+          "des"
+        ]
+      },
+      {
+        "name": "IT",
+        "members": [
+          "henrik",
+          "priya",
+          "jonas"
+        ],
+        "projects": [
+          "it"
+        ]
       }
     ],
     "projects": [
@@ -2596,7 +4821,11 @@
           "fraud checks",
           "settlement",
           "disputes"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       },
       {
         "project": "plat",
@@ -2613,7 +4842,11 @@
           "rate limits",
           "service discovery",
           "observability"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       },
       {
         "project": "mob",
@@ -2629,7 +4862,11 @@
           "offline mode",
           "push notifications",
           "the wallet"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       },
       {
         "project": "data",
@@ -2644,7 +4881,11 @@
           "the warehouse",
           "revenue reporting",
           "event tracking"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       },
       {
         "project": "web",
@@ -2660,7 +4901,11 @@
           "search",
           "the basket",
           "accessibility"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       },
       {
         "project": "ops",
@@ -2672,7 +4917,11 @@
           "the office move",
           "security training",
           "budget reporting"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       },
       {
         "project": "mkt",
@@ -2684,7 +4933,11 @@
           "the newsletter",
           "conference season",
           "case studies"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
       },
       {
         "project": "hr",
@@ -2696,7 +4949,45 @@
           "the review cycle",
           "the handbook",
           "benefits"
-        ]
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.18,
+        "watchShare": 0.25
+      },
+      {
+        "project": "sec",
+        "board": "sec-board",
+        "workPerSprint": 6,
+        "releaseEvery": 4,
+        "deploymentsPerWeek": 1,
+        "failureRate": 0.04,
+        "bugShare": 0.22,
+        "themes": [
+          "access reviews",
+          "dependency patching",
+          "secrets rotation",
+          "threat modelling",
+          "audit evidence"
+        ],
+        "points": "points",
+        "impact": "impact",
+        "linkShare": 0.2,
+        "watchShare": 0.3
+      },
+      {
+        "project": "des",
+        "workPerSprint": 5,
+        "bugShare": 0.1,
+        "themes": [
+          "the checkout flow",
+          "the design system",
+          "onboarding",
+          "the mobile navigation",
+          "illustration"
+        ],
+        "linkShare": 0.12,
+        "watchShare": 0.2
       }
     ],
     "service": {
@@ -2722,6 +5013,12 @@
         "access"
       ],
       "incidentType": "incident",
+      "approvalType": "access",
+      "approvers": [
+        "nora",
+        "maya",
+        "omar"
+      ],
       "subjects": [
         "a refund",
         "the checkout page",
@@ -2731,6 +5028,13 @@
         "logging in",
         "a failed card",
         "the monthly report"
+      ],
+      "assets": [
+        "svc-checkout",
+        "svc-payouts",
+        "svc-portal",
+        "svc-reporting",
+        "svc-mobile"
       ]
     },
     "knowledge": {
@@ -2757,7 +5061,56 @@
         "releases",
         "security"
       ]
-    }
+    },
+    "services": [
+      {
+        "project": "it",
+        "requestsPerWeek": 4,
+        "incidentShare": 0.12,
+        "customers": [
+          "ravi",
+          "ines",
+          "kofi",
+          "lena",
+          "arjun",
+          "mei",
+          "paulo",
+          "hana",
+          "marta",
+          "sean",
+          "nina",
+          "caleb",
+          "tariq",
+          "rosa"
+        ],
+        "agents": [
+          "henrik",
+          "priya",
+          "jonas"
+        ],
+        "requestTypes": [
+          "it-help",
+          "it-hardware"
+        ],
+        "incidentType": "it-incident",
+        "approvalType": "it-hardware",
+        "approvers": [
+          "nora",
+          "maya",
+          "tom"
+        ],
+        "subjects": [
+          "the VPN",
+          "a laptop",
+          "the wifi",
+          "a second screen",
+          "the printer",
+          "single sign-on",
+          "a phone",
+          "the meeting room screen"
+        ]
+      }
+    ]
   },
   "plans": [
     {
@@ -2771,6 +5124,15 @@
       "teams": [
         "Payments",
         "Platform"
+      ],
+      "releases": [
+        {
+          "name": "Autumn programme",
+          "versions": [
+            "pay-1-2",
+            "plat-autumn"
+          ]
+        }
       ]
     },
     {
@@ -2784,7 +5146,225 @@
       "teams": [
         "Mobile",
         "Storefront"
+      ],
+      "releases": [
+        {
+          "name": "Autumn on every screen",
+          "versions": [
+            "mob-autumn",
+            "web-autumn"
+          ]
+        }
       ]
+    }
+  ],
+  "automation": [
+    {
+      "name": "Triage new bugs",
+      "actor": "maya",
+      "state": "ENABLED",
+      "trigger": "jira.issue.event.trigger:created",
+      "jql": "issuetype = Bug",
+      "projects": [
+        "pay",
+        "plat"
+      ],
+      "actions": [
+        {
+          "type": "jira.issue.add-label",
+          "value": "triage"
+        },
+        {
+          "type": "jira.issue.comment",
+          "value": "Raised as a defect; the team reads this queue every morning."
+        }
+      ]
+    },
+    {
+      "name": "Spread the load",
+      "actor": "zoe",
+      "state": "ENABLED",
+      "trigger": "jira.issue.event.trigger:created",
+      "jql": "assignee IS EMPTY",
+      "projects": [
+        "plat"
+      ],
+      "actions": [
+        {
+          "type": "jira.issue.assign",
+          "value": "balanced"
+        }
+      ]
+    },
+    {
+      "name": "Chase stale work every Monday",
+      "actor": "nora",
+      "state": "ENABLED",
+      "trigger": "jira.jql.scheduled",
+      "intervalMinutes": 10080,
+      "jql": "resolution = Unresolved AND updated <= -14d",
+      "projects": [
+        "pay",
+        "plat",
+        "mob",
+        "data"
+      ],
+      "actions": [
+        {
+          "type": "jira.issue.add-label",
+          "value": "stale"
+        },
+        {
+          "type": "jira.issue.comment",
+          "value": "No change in a fortnight. Still needed, or should this go?"
+        }
+      ]
+    },
+    {
+      "name": "Write the release notes",
+      "actor": "nora",
+      "state": "ENABLED",
+      "trigger": "jira.version.event.trigger:released",
+      "actions": [
+        {
+          "type": "jira.issue.lookup",
+          "value": "resolution = Done AND resolved >= -14d ORDER BY resolved DESC"
+        },
+        {
+          "type": "jira.create.variable",
+          "variable": "shipped",
+          "value": "{{lookupIssues.size}}"
+        }
+      ]
+    },
+    {
+      "name": "Escalate this work",
+      "actor": "maya",
+      "state": "ENABLED",
+      "trigger": "jira.manual.trigger.issue.action",
+      "actions": [
+        {
+          "type": "jira.issue.add-label",
+          "value": "escalated"
+        },
+        {
+          "type": "jira.issue.comment",
+          "value": "Escalated by {{initiator.displayName}} on {{now.jiraDate}}."
+        }
+      ]
+    },
+    {
+      "name": "Answer a page that asks for work",
+      "actor": "zoe",
+      "state": "ENABLED",
+      "trigger": "confluence.page.created",
+      "actions": [
+        {
+          "type": "confluence.page.label",
+          "value": "read-by-a-rule"
+        },
+        {
+          "type": "confluence.page.comment",
+          "value": "Noted; the platform team reads new pages here each week."
+        }
+      ]
+    },
+    {
+      "name": "Label an incident the moment it lands",
+      "actor": "sara",
+      "state": "ENABLED",
+      "trigger": "jira.issue.event.trigger:created",
+      "jql": "project = HELP",
+      "projects": [
+        "help"
+      ],
+      "actions": [
+        {
+          "type": "jira.issue.add-label",
+          "value": "support"
+        }
+      ]
+    }
+  ],
+  "translations": [
+    {
+      "kind": "issuetype",
+      "name": "Bug",
+      "locale": "es",
+      "translated": "Error",
+      "description": "Algo que no funciona."
+    },
+    {
+      "kind": "issuetype",
+      "name": "Story",
+      "locale": "es",
+      "translated": "Historia"
+    },
+    {
+      "kind": "issuetype",
+      "name": "Task",
+      "locale": "es",
+      "translated": "Tarea"
+    },
+    {
+      "kind": "issuetype",
+      "name": "Epic",
+      "locale": "es",
+      "translated": "Epopeya"
+    },
+    {
+      "kind": "issuetype",
+      "name": "Bug",
+      "locale": "pt-br",
+      "translated": "Erro"
+    },
+    {
+      "kind": "issuetype",
+      "name": "Story",
+      "locale": "pt-br",
+      "translated": "História"
+    },
+    {
+      "kind": "priority",
+      "name": "High",
+      "locale": "es",
+      "translated": "Alta"
+    },
+    {
+      "kind": "priority",
+      "name": "Medium",
+      "locale": "es",
+      "translated": "Media"
+    },
+    {
+      "kind": "priority",
+      "name": "Low",
+      "locale": "es",
+      "translated": "Baja"
+    },
+    {
+      "kind": "resolution",
+      "name": "Done",
+      "locale": "es",
+      "translated": "Hecho"
+    },
+    {
+      "kind": "resolution",
+      "name": "Won't Do",
+      "locale": "es",
+      "translated": "No se hará"
+    },
+    {
+      "kind": "status",
+      "name": "In Progress",
+      "locale": "es",
+      "translated": "En curso"
+    },
+    {
+      "kind": "status",
+      "name": "Done",
+      "locale": "es",
+      "translated": "Hecho"
     }
   ]
 }

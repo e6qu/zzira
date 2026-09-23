@@ -45,6 +45,10 @@ type PlanTeamCapacity struct {
 	Iterations []PlanIteration
 	// Note explains why a team has no iterations to plan.
 	Note string
+	// FromVelocity says the capacity shown is what the team has been
+	// completing rather than a number somebody typed, so the plan can say
+	// where it came from.
+	FromVelocity bool
 }
 
 // PlanDependency is a blocks link between two work items of the plan.
@@ -291,7 +295,18 @@ func (s *Store) PlanPlanning(ctx context.Context, workspaceID, userID string, pl
 		sprintOrder[sprint.ID] = index
 	}
 	for _, team := range work.Teams {
-		planning.Capacity = append(planning.Capacity, planTeamCapacity(team, teamNames[team.ID], planning, teamBoards[team.ID], override, hoursPerDay, now))
+		// A Scrum team that has not said what it can take in a sprint takes
+		// what it has been taking: the average of its board's last completed
+		// sprints. A team with no board and no number keeps the default.
+		measured := (*float64)(nil)
+		if team.Capacity == nil && team.PlanningStyle != "Kanban" && teamBoards[team.ID] != "" && planning.Unit == "story points" {
+			velocity, err := s.planTeamVelocity(ctx, workspaceID, userID, teamBoards[team.ID])
+			if err != nil {
+				return planning, err
+			}
+			measured = velocity
+		}
+		planning.Capacity = append(planning.Capacity, planTeamCapacity(team, teamNames[team.ID], planning, teamBoards[team.ID], override, hoursPerDay, now, measured))
 	}
 	if planning.Dependencies, err = s.planDependencies(ctx, workspaceID, plan, planning, sprintOrder); err != nil {
 		return planning, err
@@ -381,6 +396,34 @@ func (s *Store) planTeamBoard(ctx context.Context, workspaceID string, plan Plan
 	return "", nil
 }
 
+// planTeamVelocity is what a board's team has been completing: the mean of the
+// completed work of its last closed sprints, which is the number a plan uses
+// when nobody has said what the team can take. A board with no closed sprint
+// has no velocity to read, and the plan keeps its default.
+func (s *Store) planTeamVelocity(ctx context.Context, workspaceID, userID, boardID string) (*float64, error) {
+	board, err := s.BoardByIDInWorkspace(ctx, workspaceID, boardID)
+	if err != nil || board == nil {
+		return nil, nil
+	}
+	report, err := s.VelocityReport(ctx, workspaceID, userID, board)
+	if err != nil {
+		return nil, err
+	}
+	total, counted := 0.0, 0
+	for _, sprint := range report.Sprints {
+		total += sprint.Completed
+		counted++
+	}
+	if counted == 0 {
+		return nil, nil
+	}
+	average := math.Round(total/float64(counted)*100) / 100
+	if average <= 0 {
+		return nil, nil
+	}
+	return &average, nil
+}
+
 // planTeamCapacity lays a team's work into its iterations. A Scrum team plans
 // the active and future sprints of its board, each with the team's capacity
 // per sprint in story points, or its weekly capacity times the sprint's weeks
@@ -388,7 +431,7 @@ func (s *Store) planTeamBoard(ctx context.Context, workspaceID string, plan Plan
 // estimates. Work consumes the capacity of the iteration it is planned into:
 // a sprint by the work's sprint, a week by the share of the work's dates that
 // fall in it.
-func planTeamCapacity(team PlanTeam, name string, planning PlanPlanning, boardID string, override map[string]float64, hoursPerDay float64, now time.Time) PlanTeamCapacity {
+func planTeamCapacity(team PlanTeam, name string, planning PlanPlanning, boardID string, override map[string]float64, hoursPerDay float64, now time.Time, measured *float64) PlanTeamCapacity {
 	out := PlanTeamCapacity{Team: team, Name: name, Iterations: []PlanIteration{}}
 	unit := planning.Unit
 	weekly := 200.0
@@ -399,6 +442,10 @@ func planTeamCapacity(team PlanTeam, name string, planning PlanPlanning, boardID
 		weekly = *team.Capacity
 	}
 	perSprintPoints := 30.0
+	if measured != nil {
+		perSprintPoints = *measured
+		out.FromVelocity = true
+	}
 	if team.Capacity != nil {
 		perSprintPoints = *team.Capacity
 	}

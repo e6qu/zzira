@@ -41,8 +41,119 @@ type planPageData struct {
 	// Releases are the plan's cross-project releases with the work behind
 	// each member version.
 	Releases []store.PlanReleaseView
-	Notice   string
-	Error    string
+	// Groups are the plan's work as the page shows it: one group per value of
+	// whatever it is grouped by, or one unnamed group holding the plan's own
+	// order. Views are the saved ways of reading this plan, and View the one
+	// the page is showing, if any.
+	Groups    []planGroup
+	GroupBy   string
+	Query     string
+	Groupings []string
+	Views     []store.PlanView
+	View      *store.PlanView
+	// RollUp says the page is adding the work under each parent onto it.
+	// RolledEstimate is what each item's work adds up to, and OwnDates the
+	// dates the item itself carries, which is what its form edits.
+	RollUp         bool
+	RolledEstimate map[string]float64
+	OwnDates       map[string][2]string
+	Notice         string
+	Error          string
+}
+
+// planGroup is a heading in the plan's work, and the rows under it.
+type planGroup struct {
+	Name string
+	Rows []timelineRow
+}
+
+// planGroupName is which group a row belongs to. Work with nothing in the
+// field it is grouped by has its own group at the end, as Jira's plans do.
+func planGroupName(grouping string, row timelineRow, item *store.PlanItem) string {
+	switch grouping {
+	case "team":
+		if item != nil && item.TeamName != "" {
+			return item.TeamName
+		}
+		return "No team"
+	case "sprint":
+		if item != nil && item.SprintName != "" {
+			return item.SprintName
+		}
+		return "No sprint"
+	case "project":
+		if key, _, found := strings.Cut(row.Item.Issue.Key, "-"); found && key != "" {
+			return key
+		}
+		return "No project"
+	case "status":
+		if row.Item.Issue.Status.Name != "" {
+			return row.Item.Issue.Status.Name
+		}
+		return "No status"
+	case "assignee":
+		if row.Item.Issue.Assignee != nil && row.Item.Issue.Assignee.DisplayName != "" {
+			return row.Item.Issue.Assignee.DisplayName
+		}
+		return "Unassigned"
+	}
+	return ""
+}
+
+// planRowMatches is whether a filter leaves a row in. It reads the key and
+// the summary, which is what somebody types when they are looking for work.
+func planRowMatches(query string, row timelineRow) bool {
+	if query == "" {
+		return true
+	}
+	query = strings.ToLower(query)
+	return strings.Contains(strings.ToLower(row.Item.Issue.Key), query) ||
+		strings.Contains(strings.ToLower(row.Item.Issue.Summary), query)
+}
+
+// planGroups narrows the plan's rows to the filter and gathers them under
+// their group headings. The groups keep the order the rows are already in,
+// which is the plan's own, and a group with nothing in it is not a group.
+func planGroups(rows []timelineRow, items map[string]*store.PlanItem, grouping, query string) []planGroup {
+	groups := []planGroup{}
+	at := map[string]int{}
+	unfilled := ""
+	switch grouping {
+	case "team":
+		unfilled = "No team"
+	case "sprint":
+		unfilled = "No sprint"
+	case "project":
+		unfilled = "No project"
+	case "status":
+		unfilled = "No status"
+	case "assignee":
+		unfilled = "Unassigned"
+	}
+	for _, row := range rows {
+		if !planRowMatches(query, row) {
+			continue
+		}
+		name := planGroupName(grouping, row, items[row.Item.Issue.ID])
+		index, seen := at[name]
+		if !seen {
+			index = len(groups)
+			at[name] = index
+			groups = append(groups, planGroup{Name: name})
+		}
+		groups[index].Rows = append(groups[index].Rows, row)
+	}
+	// Work with nothing in the field reads last, after the groups that have
+	// something in them.
+	if grouping != "" {
+		for i, group := range groups {
+			if group.Name == unfilled && i != len(groups)-1 {
+				groups = append(append(groups[:i:i], groups[i+1:]...), group)
+				break
+			}
+		}
+	}
+	return groups
 }
 
 // planContext loads a plan the user may view, with whether they may edit it
@@ -154,7 +265,88 @@ func (h *Handler) PlanPage(w http.ResponseWriter, r *http.Request) {
 		data.Blocking[dependency.Blocker.Issue.ID] = append(data.Blocking[dependency.Blocker.Issue.ID], dependency)
 		data.BlockedBy[dependency.Blocked.Issue.ID] = append(data.BlockedBy[dependency.Blocked.Issue.ID], dependency)
 	}
+	if data.Views, err = h.Store.PlanViews(r.Context(), workspaceID, plan.ID); err != nil {
+		http.Error(w, "Could not load the plan's saved views.", http.StatusInternalServerError)
+		return
+	}
+	data.Groupings = store.PlanGroupings
+	data.GroupBy, data.Query = r.URL.Query().Get("group"), strings.TrimSpace(r.URL.Query().Get("q"))
+	data.RollUp = r.URL.Query().Get("rollup") == "true"
+	// A named view sets the grouping and the filter, so a link to one opens
+	// the plan the way it was saved.
+	if value := r.URL.Query().Get("view"); value != "" {
+		viewID, parseErr := strconv.ParseInt(value, 10, 64)
+		if parseErr != nil {
+			http.Error(w, "That view is not in this plan.", http.StatusBadRequest)
+			return
+		}
+		view, viewErr := h.Store.PlanViewByID(r.Context(), workspaceID, plan.ID, viewID)
+		if viewErr != nil {
+			http.Error(w, "That view is not in this plan.", http.StatusNotFound)
+			return
+		}
+		data.View, data.GroupBy, data.Query, data.RollUp = view, view.GroupBy, view.Query, view.RollUp
+	}
+	if !store.ValidPlanGrouping(data.GroupBy) {
+		http.Error(w, "A plan is grouped by a team, a sprint, a project, a status or an assignee.", http.StatusBadRequest)
+		return
+	}
+	if len([]rune(data.Query)) > 200 {
+		data.Query = string([]rune(data.Query)[:200])
+	}
+	if data.RollUp {
+		// The timeline is drawn from what the work adds up to, while every
+		// form on the page still edits the item's own dates.
+		spans, totals := planRollUp(planning.Work.Items, planning.Items)
+		data.OwnDates = map[string][2]string{}
+		var own func(items []models.TimelineItem)
+		own = func(items []models.TimelineItem) {
+			for _, item := range items {
+				data.OwnDates[item.Issue.ID] = [2]string{item.StartDate, item.DueDate}
+				own(item.Children)
+			}
+		}
+		own(planning.Work.Items)
+		data.RolledEstimate = totals
+		data.Timeline = newTimelineData(nil, models.ProjectTimeline{Epics: rolledTimeline(planning.Work.Items, spans)}, now, h.siteLook(r, workspaceID).DateDay)
+	}
+	data.Groups = planGroups(data.Timeline.Rows, planning.Items, data.GroupBy, data.Query)
 	h.writeWorkspacePage(w, r, "page_plan", user, workspaceID, data, "plans", "")
+}
+
+// PlanViewSave keeps the grouping and filter a planner is looking at under a
+// name, so the next person opens the plan the same way.
+func (h *Handler) PlanViewSave(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, plan, edit, _, scenario, ok := h.planContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	if !edit {
+		http.Error(w, "Editing this plan is required to keep a view of it.", http.StatusForbidden)
+		return
+	}
+	back := "/plans/" + strconv.FormatInt(plan.ID, 10) + "?scenario=" + strconv.FormatInt(scenario.ID, 10)
+	if r.PostFormValue("action") == "delete" {
+		viewID, err := strconv.ParseInt(r.PostFormValue("view"), 10, 64)
+		if err == nil {
+			err = h.Store.DeletePlanView(r.Context(), workspaceID, plan.ID, viewID)
+		}
+		if err != nil {
+			redirectLocal(w, r, back+"&error="+url.QueryEscape("That view is not in this plan."))
+			return
+		}
+		redirectLocal(w, r, back+"&notice="+url.QueryEscape("The view was deleted."))
+		return
+	}
+	view, err := h.Store.SavePlanView(r.Context(), workspaceID, user.ID, plan.ID, store.PlanView{
+		Name: r.PostFormValue("name"), GroupBy: r.PostFormValue("group"), Query: r.PostFormValue("q"),
+		RollUp: r.PostFormValue("rollup") == "true",
+	})
+	if err != nil {
+		redirectLocal(w, r, back+"&error="+url.QueryEscape(err.Error()))
+		return
+	}
+	redirectLocal(w, r, back+"&view="+strconv.FormatInt(view.ID, 10)+"&notice="+url.QueryEscape("Saved the view "+view.Name+"."))
 }
 
 // planCurrentValue is the value a work item has in Jira for a field a plan
@@ -744,4 +936,62 @@ func (h *Handler) PlanTeamSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	planBack(w, r, plan, scenario.ID, "", "notice", "Team settings saved.")
+}
+
+// planRollUp is what the work under each item adds up to: the span of its own
+// dates and every descendant's, and the sum of their estimates. A plan that
+// rolls up reads a parent by what is under it, which is where the dates and
+// the estimates actually are; the parent's own values are untouched, and they
+// are still what its form edits and what a save writes to Jira.
+func planRollUp(items []models.TimelineItem, planned map[string]*store.PlanItem) (map[string][2]string, map[string]float64) {
+	dates, totals := map[string][2]string{}, map[string]float64{}
+	var walk func(item models.TimelineItem) ([2]string, float64)
+	walk = func(item models.TimelineItem) ([2]string, float64) {
+		span := [2]string{item.StartDate, item.DueDate}
+		total := 0.0
+		if planned != nil {
+			if entry, ok := planned[item.Issue.ID]; ok && entry.Estimate != nil {
+				total = *entry.Estimate
+			}
+		}
+		for _, child := range item.Children {
+			childSpan, childTotal := walk(child)
+			span = widerSpan(span, childSpan)
+			total += childTotal
+		}
+		dates[item.Issue.ID] = span
+		totals[item.Issue.ID] = total
+		return span, total
+	}
+	for _, item := range items {
+		walk(item)
+	}
+	return dates, totals
+}
+
+// widerSpan is the earliest start and the latest end of two spans, where an
+// empty date is one that says nothing rather than one that is early or late.
+func widerSpan(left, right [2]string) [2]string {
+	span := left
+	if span[0] == "" || (right[0] != "" && right[0] < span[0]) {
+		span[0] = right[0]
+	}
+	if span[1] == "" || (right[1] != "" && right[1] > span[1]) {
+		span[1] = right[1]
+	}
+	return span
+}
+
+// rolledTimeline is the plan's work with each item's span in place of its own
+// dates, which is what the timeline draws when a plan rolls up.
+func rolledTimeline(items []models.TimelineItem, dates map[string][2]string) []models.TimelineItem {
+	rolled := make([]models.TimelineItem, 0, len(items))
+	for _, item := range items {
+		if span, ok := dates[item.Issue.ID]; ok {
+			item.StartDate, item.DueDate = span[0], span[1]
+		}
+		item.Children = rolledTimeline(item.Children, dates)
+		rolled = append(rolled, item)
+	}
+	return rolled
 }

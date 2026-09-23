@@ -218,17 +218,24 @@ func (s *Store) doraLeadTimes(ctx context.Context, workspaceID, projectID, userI
 		    AND (COALESCE(cardinality($7::text[]),0)=0 OR pipeline_id=ANY($7))
 		  ORDER BY pipeline_id,environment_id,entity_sequence_number,update_sequence_number DESC
 		)
+		-- Lead time is how long a change took to reach production, so a commit
+		-- is measured against the first production deployment that carried it,
+		-- whenever that was; the window then decides whether that delivery is
+		-- one this report is about. Pairing a commit with whatever in-window
+		-- deployment happens to share its work item measures the next time
+		-- somebody redeployed that work, which is not a lead time at all.
 		SELECT EXTRACT(EPOCH FROM (MIN(d.last_updated)-e.occurred_at))::bigint
 		FROM development_entities e
 		JOIN deployments d ON d.workspace_id=e.workspace_id
 		 AND d.environment_type=ANY($6) AND d.state='successful'
-		 AND d.last_updated >= e.occurred_at AND d.last_updated >= $4 AND d.last_updated < $5
+		 AND d.last_updated >= e.occurred_at
 		 AND NOT EXISTS (SELECT 1 FROM project_dora_excluded_periods x
 		   WHERE x.project_id=$2 AND d.last_updated >= x.starts_on AND d.last_updated < x.ends_on + 1)
 		 AND d.issue_keys && e.issue_keys
 		WHERE e.workspace_id=$1 AND e.entity_type='commit' AND e.occurred_at IS NOT NULL
 		  AND EXISTS (SELECT 1 FROM visible_keys v WHERE v.key=ANY(e.issue_keys) AND v.key=ANY(d.issue_keys))
-		GROUP BY e.repository_id,e.entity_id,e.occurred_at`,
+		GROUP BY e.repository_id,e.entity_id,e.occurred_at
+		HAVING MIN(d.last_updated) >= $4 AND MIN(d.last_updated) < $5`,
 		workspaceID, projectID, userID, since, until, settings.EnvironmentTypes, settings.PipelineIDs)
 	if err != nil {
 		return nil, err

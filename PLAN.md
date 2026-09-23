@@ -64,13 +64,14 @@ Each numbered item is one or more substantial PRs.
 ## 1. Work item model
 
 **Hierarchy rollups.** Levels above epic exist ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#work-type-hierarchy)), and plans, roadmaps and `hierarchyLevel` in JQL read through all of them. What remains:
-- Reports still summarise an epic and its children, not a level above it.
+- The epic report and epic burndown follow a level above the epic as well, summarising the work under everything beneath it ([REPORTS.md](docs/REPORTS.md)).
 - Boards and backlogs treat the epic level as the top, as Jira's do; a board
   above the epic level would be ours, not Jira's.
 
 **Metadata and configuration UI.**
-- Per-language translations for work types, priorities, resolutions and
-  statuses (fields are translated).
+- Per-language translations reach the metadata resources and the settings
+  pages ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#translating-the-words-on-a-work-item)); the work item view, the board
+  and search results still read the site's own names, as JQL does.
 - The screen catalog includes Reporter, Environment, Attachment and Linked
   work items; `projectKey` honored on tab-field reads.
 - Issue security scheme form sends the level mapping for projects with secured
@@ -116,18 +117,23 @@ and dependency checks.
   and cross-project releases are there).
 - Restore archived and trashed plans; duplicate copies scenarios.
 - Scenario edits: parent, rank, release, status, create work items.
-- Views: saved views, grouping, filters, rollups across the hierarchy.
-- Capacity from velocity; `inferredDates` and plan `customFields` take effect.
+- Views: a saved zoom or column set. Work is grouped by team, sprint, project,
+  status or assignee, filtered by key or summary, rolled up onto its parents,
+  and kept under a name ([JIRA_SOFTWARE](docs/JIRA_SOFTWARE.md)).
+- `inferredDates` and plan `customFields` take effect. (Capacity is read from velocity when nobody has typed one: [JIRA_SOFTWARE.md](docs/JIRA_SOFTWARE.md).)
 - Atlassian Teams REST API.
 
 ## 3. Cross-project releases
 
 Jira Plans create a cross-project release that groups same-named versions across
 projects. ZZIRA stores `crossProjectReleases` on a plan and returns it over REST,
-but nothing shows or uses it.
+and the release hub reads it back; nothing plans with it yet.
 
 - Create the member versions from the plan (today they are linked, not created).
-- Cross-project releases as auto-scheduler input, and on the release hub.
+- Cross-project releases as auto-scheduler input. The release hub reads them
+  back: a version says what ships with it, and the version page lists the other
+  projects' versions with their dates, progress and release state
+  ([RELEASES.md](docs/RELEASES.md)).
 - Release hub: deployments grouped across projects, release gates, environment
   promotion, drag reordering, dates in the viewer's locale and site time zone.
 
@@ -161,7 +167,7 @@ restore and remove.
   expiry and the rest of Atlassian's strength rules are still missing, and a
   policy covers named people rather than a group.
 - Two-step verification is an authenticator app alone: no WebAuthn, no
-  passkeys, and the key is shown as text rather than a QR image.
+  passkeys. The setup link is drawn as a QR code and shown as a key.
 - Managed accounts claimed through verified domains; domain ownership exclusive
   across organizations; `claimStatus` derived, not constant.
 - User management API (`/users/{id}/manage/...`).
@@ -200,14 +206,19 @@ condition catalog, and 14 action types including web requests and page creation.
 Jira Service Management Assets: schemas, object types with a hierarchy, typed
 attributes, objects, references, AQL, imports and a REST API. ZZIRA has per-desk
 schemas with inline attributes, objects, directed relationships, request impact
-links, the Assets portal field, and the workspace discovery endpoints.
+links, the Assets portal field, the workspace discovery endpoints, an import of
+objects from a file, and an Assets REST API under the Assets workspace
+([SERVICE_MANAGEMENT](docs/SERVICE_MANAGEMENT.md#assets-api)).
 
 - Object schemas, object types with inheritance, typed attributes (including
   reference, user, group, status, date, URL), object keys and labels.
-- Assets REST API: schemas, object types, attributes, objects, AQL search,
-  history, attachments, comments, icons.
+- Assets REST API: attachments and icons on an object. Schemas, object types,
+  attributes, objects, AQL search, imports, an object's history and its
+  comments are served, and a schema is created and deleted through it.
 - AQL parser and evaluator; `aqlFunction()` in JQL; AQL-filtered Assets fields.
-- Imports (CSV, JSON, object schema) with mapping, reconciliation and schedules.
+- Imports: JSON and object schema files, column mapping and schedules. A comma
+  separated file of objects for one schema is imported from the page and over
+  REST, and reconciled against the schema when it is the whole inventory.
 - Agent browser UI for schemas and objects; per-schema roles.
 
 ## 9. Service Management
@@ -235,7 +246,8 @@ links, the Assets portal field, and the workspace discovery endpoints.
 **Spaces and search.**
 - Import (Confluence XML, HTML, Markdown, Word) and export (XML full/custom, site,
   PDF, Word, CSV, per page) including hierarchy, comments, whiteboards, databases
-  and custom content.
+  and custom content. A space this site exported reads back in with its page
+  tree and blog posts ([CONFLUENCE_SPACES](docs/CONFLUENCE_SPACES.md#gaps)).
 - Space icons, browser rename and description edit; emptying the space trash 60
   days after a space lands there; `routeOverrideEnabled`, `contentMode` and
   themes take effect.

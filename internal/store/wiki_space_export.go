@@ -123,7 +123,11 @@ func (s *Store) executeWikiSpaceExport(ctx context.Context, task APITask, blobs 
 			return err
 		}
 	}
-	content, err := buildWikiSpaceExport(space, pages, posts, attachments)
+	extras, err := s.wikiSpaceExportExtras(ctx, task.WorkspaceID, task.SubmittedBy, pages, posts)
+	if err != nil {
+		return err
+	}
+	content, err := buildWikiSpaceExport(space, pages, posts, attachments, extras)
 	if err != nil {
 		return err
 	}
@@ -149,6 +153,39 @@ func (s *Store) executeWikiSpaceExport(ctx context.Context, task APITask, blobs 
 	return s.CompleteAPITask(ctx, task, fmt.Sprintf("Exported %d pages, %d blog posts and %d attachments.", len(pages), len(posts), included), map[string]any{"fileUrl": path, "pageCount": len(pages), "blogPostCount": len(posts), "attachmentCount": included})
 }
 
+// wikiSpaceExportExtras reads what the exported pages and blog posts carry
+// beside their bodies: the labels on them and the comments under them, as the
+// person exporting can see them.
+func (s *Store) wikiSpaceExportExtras(ctx context.Context, ws, user string, pages []*models.WikiPage, posts []*models.WikiBlogPost) (wikiSpaceExtras, error) {
+	extras := wikiSpaceExtras{Labels: map[string][]string{}, Comments: map[string][]wikiSpaceManifestComment{}}
+	for _, page := range pages {
+		labels, err := s.WikiPageLabels(ctx, ws, user, page.ID)
+		if err != nil {
+			return extras, err
+		}
+		for _, label := range labels {
+			extras.Labels[page.ID] = append(extras.Labels[page.ID], label.Name)
+		}
+		comments, err := s.WikiFooterComments(ctx, ws, user, page.ID)
+		if err != nil {
+			return extras, err
+		}
+		for _, comment := range comments {
+			extras.Comments[page.ID] = append(extras.Comments[page.ID], wikiSpaceManifestComment{Body: comment.Body.Value, Author: comment.AuthorName})
+		}
+	}
+	for _, post := range posts {
+		comments, err := s.WikiBlogFooterComments(ctx, ws, user, post.ID)
+		if err != nil {
+			return extras, err
+		}
+		for _, comment := range comments {
+			extras.Comments[post.ID] = append(extras.Comments[post.ID], wikiSpaceManifestComment{Body: comment.Body.Value, Author: comment.AuthorName})
+		}
+	}
+	return extras, nil
+}
+
 // wikiSpaceExportAttachmentLimit caps the attachment bytes one export carries;
 // attachments past it are listed without their files.
 const wikiSpaceExportAttachmentLimit = 100 << 20
@@ -157,6 +194,7 @@ const wikiSpaceExportAttachmentLimit = 100 << 20
 // post, with its file when the export carries it.
 type wikiExportAttachment struct {
 	ID, PageID, BlogPostID, Filename string
+	MediaType                        string
 	Content                          []byte
 	Included                         bool
 }
@@ -173,7 +211,7 @@ func (s *Store) wikiSpaceExportAttachments(ctx context.Context, ws, user string,
 	for _, post := range posts {
 		postIDs = append(postIDs, post.ID)
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT a.id::text,COALESCE(a.page_id::text,''),COALESCE(a.blog_post_id::text,''),a.filename,v.blob_ref,a.size
+	rows, err := s.Pool.Query(ctx, `SELECT a.id::text,COALESCE(a.page_id::text,''),COALESCE(a.blog_post_id::text,''),a.filename,COALESCE(a.media_type,''),v.blob_ref,a.size
 		FROM wiki_attachments a LEFT JOIN wiki_pages p ON p.id=a.page_id LEFT JOIN wiki_blog_posts b ON b.id=a.blog_post_id
 		JOIN wiki_spaces s ON s.id=COALESCE(p.space_id,b.space_id)
 		JOIN wiki_attachment_versions v ON v.attachment_id=a.id AND v.version=a.version
@@ -189,7 +227,7 @@ func (s *Store) wikiSpaceExportAttachments(ctx context.Context, ws, user string,
 	}
 	found, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (stored, error) {
 		var value stored
-		err := row.Scan(&value.attachment.ID, &value.attachment.PageID, &value.attachment.BlogPostID, &value.attachment.Filename, &value.ref, &value.size)
+		err := row.Scan(&value.attachment.ID, &value.attachment.PageID, &value.attachment.BlogPostID, &value.attachment.Filename, &value.attachment.MediaType, &value.ref, &value.size)
 		return value, err
 	})
 	if err != nil {
@@ -217,7 +255,103 @@ func (s *Store) wikiSpaceExportAttachments(ctx context.Context, ws, user string,
 // linking every page and blog post, a file for each with its body rendered as
 // the space shows it and a list of its attachments, and the attachment files
 // the export carries.
-func buildWikiSpaceExport(space *models.WikiSpace, pages []*models.WikiPage, posts []*models.WikiBlogPost, attachments []wikiExportAttachment) ([]byte, error) {
+// wikiSpaceManifest is the machine-readable half of an export: what a space
+// holds, in the storage the site keeps, so another site can read it back.
+type wikiSpaceManifest struct {
+	Version     int                     `json:"version"`
+	Key         string                  `json:"key"`
+	Name        string                  `json:"name"`
+	Description string                  `json:"description,omitempty"`
+	Pages       []wikiSpaceManifestPage `json:"pages,omitempty"`
+	BlogPosts   []wikiSpaceManifestPage `json:"blogPosts,omitempty"`
+}
+
+// wikiSpaceManifestPage is one page or blog post as an export carries it:
+// what it says, what it was labelled, what people said under it, and the
+// files attached to it.
+type wikiSpaceManifestPage struct {
+	ID       string `json:"id"`
+	ParentID string `json:"parentId,omitempty"`
+	Title    string `json:"title"`
+	Body     string `json:"body"`
+	// Representation is what the body is written in, which is "storage" for
+	// everything this site keeps.
+	Representation string                        `json:"representation"`
+	Labels         []string                      `json:"labels,omitempty"`
+	Comments       []wikiSpaceManifestComment    `json:"comments,omitempty"`
+	Attachments    []wikiSpaceManifestAttachment `json:"attachments,omitempty"`
+}
+
+// wikiSpaceManifestComment is one comment under a page or blog post. Who
+// wrote it is carried as a name: an import into another site has nobody to
+// attribute it to, so the person importing owns what they bring.
+type wikiSpaceManifestComment struct {
+	Body   string `json:"body"`
+	Author string `json:"author,omitempty"`
+	Parent int    `json:"parent,omitempty"`
+}
+
+// wikiSpaceManifestAttachment names a file the archive carries, by the path
+// it is written at.
+type wikiSpaceManifestAttachment struct {
+	Path      string `json:"path"`
+	Filename  string `json:"filename"`
+	MediaType string `json:"mediaType,omitempty"`
+}
+
+// wikiSpaceManifestVersion is the shape of space.json this site writes. An
+// import reads this version and the ones before it.
+const wikiSpaceManifestVersion = 2
+
+// withExtras puts each page's labels, comments and files beside its body.
+func withExtras(pages []wikiSpaceManifestPage, extras wikiSpaceExtras, files map[string][]wikiSpaceManifestAttachment) []wikiSpaceManifestPage {
+	for i := range pages {
+		pages[i].Labels = extras.Labels[pages[i].ID]
+		pages[i].Comments = extras.Comments[pages[i].ID]
+		pages[i].Attachments = files[pages[i].ID]
+	}
+	return pages
+}
+
+// manifestPages is a space's pages as an export carries them, parents first
+// so an import can raise a page after the page it belongs under.
+func manifestPages(pages []*models.WikiPage) []wikiSpaceManifestPage {
+	out := make([]wikiSpaceManifestPage, 0, len(pages))
+	for _, page := range pages {
+		representation := page.Body.Representation
+		if representation == "" {
+			representation = "storage"
+		}
+		out = append(out, wikiSpaceManifestPage{
+			ID: page.ID, ParentID: page.ParentID, Title: page.Title, Body: page.Body.Value, Representation: representation,
+		})
+	}
+	return out
+}
+
+// manifestPosts is the same for blog posts, which have no parent.
+func manifestPosts(posts []*models.WikiBlogPost) []wikiSpaceManifestPage {
+	out := make([]wikiSpaceManifestPage, 0, len(posts))
+	for _, post := range posts {
+		representation := post.Body.Representation
+		if representation == "" {
+			representation = "storage"
+		}
+		out = append(out, wikiSpaceManifestPage{
+			ID: post.ID, Title: post.Title, Body: post.Body.Value, Representation: representation,
+		})
+	}
+	return out
+}
+
+// wikiSpaceExtras is what a page or blog post carries beside its body, keyed
+// by its id: the labels on it and the comments under it.
+type wikiSpaceExtras struct {
+	Labels   map[string][]string
+	Comments map[string][]wikiSpaceManifestComment
+}
+
+func buildWikiSpaceExport(space *models.WikiSpace, pages []*models.WikiPage, posts []*models.WikiBlogPost, attachments []wikiExportAttachment, extras wikiSpaceExtras) ([]byte, error) {
 	var buffer bytes.Buffer
 	archive := zip.NewWriter(&buffer)
 	modified := time.Now().UTC()
@@ -239,6 +373,9 @@ func buildWikiSpaceExport(space *models.WikiSpace, pages []*models.WikiPage, pos
 		}
 		return body
 	}
+	// carried is where each attachment's file ended up, so the manifest can
+	// name a file an import can read back.
+	carried := map[string]wikiSpaceManifestAttachment{}
 	// attached lists a page's or blog post's attachments and writes the files
 	// the export carries, named so they stay inside their folder.
 	attached := func(pageID, postID string) (string, error) {
@@ -256,9 +393,11 @@ func buildWikiSpaceExport(space *models.WikiSpace, pages []*models.WikiPage, pos
 			if name == "" || name == "." || name == ".." {
 				name = "attachment"
 			}
-			if err := write("attachments/"+attachment.ID+"/"+name, string(attachment.Content)); err != nil {
+			path := "attachments/" + attachment.ID + "/" + name
+			if err := write(path, string(attachment.Content)); err != nil {
 				return "", err
 			}
+			carried[attachment.ID] = wikiSpaceManifestAttachment{Path: path, Filename: attachment.Filename, MediaType: attachment.MediaType}
 			list.WriteString(`<li><a href="../attachments/` + attachment.ID + "/" + url.PathEscape(name) + `">` + label + "</a></li>")
 		}
 		if list.Len() == 0 {
@@ -293,6 +432,33 @@ func buildWikiSpaceExport(space *models.WikiSpace, pages []*models.WikiPage, pos
 	}
 	index.WriteString("</ul>")
 	if err := write("index.html", document(space.Name, "<p>"+html.EscapeString(space.Description)+"</p>"+index.String())); err != nil {
+		return nil, err
+	}
+	// The HTML is for reading; space.json is for moving. An import reads the
+	// manifest, because rendered HTML cannot be turned back into the storage
+	// the site keeps without losing what it was.
+	// Files of a page, by page id, from what was actually written above.
+	files := map[string][]wikiSpaceManifestAttachment{}
+	for _, attachment := range attachments {
+		file, ok := carried[attachment.ID]
+		if !ok {
+			continue
+		}
+		owner := attachment.PageID
+		if owner == "" {
+			owner = attachment.BlogPostID
+		}
+		files[owner] = append(files[owner], file)
+	}
+	manifest, err := json.Marshal(wikiSpaceManifest{
+		Version: wikiSpaceManifestVersion, Key: space.Key, Name: space.Name, Description: space.Description,
+		Pages:     withExtras(manifestPages(pages), extras, files),
+		BlogPosts: withExtras(manifestPosts(posts), extras, files),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := write("space.json", string(manifest)); err != nil {
 		return nil, err
 	}
 	if err := archive.Close(); err != nil {

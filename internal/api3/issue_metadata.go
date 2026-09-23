@@ -194,7 +194,7 @@ func methodNotAllowed(w http.ResponseWriter) {
 func (h *Handler) issueTypeCollection(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		workspaceID, _, authErr := h.authWorkspace(r)
+		workspaceID, userID, authErr := h.authWorkspace(r)
 		if authErr != nil {
 			writeJerr(w, authErr)
 			return
@@ -204,9 +204,10 @@ func (h *Handler) issueTypeCollection(w http.ResponseWriter, r *http.Request) {
 			issueMetadataError(w, err)
 			return
 		}
+		names := h.callerMetadataNames(r, workspaceID, userID)
 		out := make([]map[string]any, 0, len(types))
 		for _, t := range types {
-			out = append(out, h.issueTypeBean(t))
+			out = append(out, translatedBean(h.issueTypeBean(t), names, "issuetype", t.ID))
 		}
 		writeJSON(w, http.StatusOK, out)
 	case http.MethodPost:
@@ -279,7 +280,7 @@ func (h *Handler) issueTypesForProject(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) issueTypeResource(w http.ResponseWriter, r *http.Request, id string) {
 	switch r.Method {
 	case http.MethodGet:
-		workspaceID, _, authErr := h.authWorkspace(r)
+		workspaceID, userID, authErr := h.authWorkspace(r)
 		if authErr != nil {
 			writeJerr(w, authErr)
 			return
@@ -289,7 +290,7 @@ func (h *Handler) issueTypeResource(w http.ResponseWriter, r *http.Request, id s
 			issueMetadataError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, h.issueTypeBean(t))
+		writeJSON(w, http.StatusOK, translatedBean(h.issueTypeBean(t), h.callerMetadataNames(r, workspaceID, userID), "issuetype", t.ID))
 	case http.MethodPut:
 		workspaceID, _, authErr := h.authWorkspaceAdmin(r)
 		if authErr != nil {
@@ -490,7 +491,7 @@ func (in priorityRequest) input() store.PriorityInput {
 func (h *Handler) priorityCollection(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		workspaceID, _, authErr := h.authWorkspace(r)
+		workspaceID, userID, authErr := h.authWorkspace(r)
 		if authErr != nil {
 			writeJerr(w, authErr)
 			return
@@ -500,9 +501,10 @@ func (h *Handler) priorityCollection(w http.ResponseWriter, r *http.Request) {
 			issueMetadataError(w, err)
 			return
 		}
+		names := h.callerMetadataNames(r, workspaceID, userID)
 		out := make([]map[string]any, 0, len(priorities))
 		for _, p := range priorities {
-			out = append(out, h.priorityBean(p))
+			out = append(out, translatedBean(h.priorityBean(p), names, "priority", p.ID))
 		}
 		writeJSON(w, http.StatusOK, out)
 	case http.MethodPost:
@@ -529,7 +531,7 @@ func (h *Handler) priorityCollection(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) priorityResource(w http.ResponseWriter, r *http.Request, id string) {
 	switch r.Method {
 	case http.MethodGet:
-		workspaceID, _, authErr := h.authWorkspace(r)
+		workspaceID, userID, authErr := h.authWorkspace(r)
 		if authErr != nil {
 			writeJerr(w, authErr)
 			return
@@ -539,7 +541,7 @@ func (h *Handler) priorityResource(w http.ResponseWriter, r *http.Request, id st
 			issueMetadataError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, h.priorityBean(p))
+		writeJSON(w, http.StatusOK, translatedBean(h.priorityBean(p), h.callerMetadataNames(r, workspaceID, userID), "priority", p.ID))
 	case http.MethodPut:
 		workspaceID, _, authErr := h.authWorkspaceAdmin(r)
 		if authErr != nil {
@@ -691,7 +693,7 @@ func (h *Handler) prioritySearch(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) resolutionCollection(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		workspaceID, _, authErr := h.authWorkspace(r)
+		workspaceID, userID, authErr := h.authWorkspace(r)
 		if authErr != nil {
 			writeJerr(w, authErr)
 			return
@@ -701,9 +703,10 @@ func (h *Handler) resolutionCollection(w http.ResponseWriter, r *http.Request) {
 			issueMetadataError(w, err)
 			return
 		}
+		names := h.callerMetadataNames(r, workspaceID, userID)
 		out := make([]map[string]any, 0, len(resolutions))
 		for _, res := range resolutions {
-			out = append(out, h.resolutionBean(res))
+			out = append(out, translatedBean(h.resolutionBean(res), names, "resolution", res.ID))
 		}
 		writeJSON(w, http.StatusOK, out)
 	case http.MethodPost:
@@ -733,7 +736,7 @@ func (h *Handler) resolutionCollection(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) resolutionResource(w http.ResponseWriter, r *http.Request, id string) {
 	switch r.Method {
 	case http.MethodGet:
-		workspaceID, _, authErr := h.authWorkspace(r)
+		workspaceID, userID, authErr := h.authWorkspace(r)
 		if authErr != nil {
 			writeJerr(w, authErr)
 			return
@@ -743,7 +746,7 @@ func (h *Handler) resolutionResource(w http.ResponseWriter, r *http.Request, id 
 			issueMetadataError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, h.resolutionBean(res))
+		writeJSON(w, http.StatusOK, translatedBean(h.resolutionBean(res), h.callerMetadataNames(r, workspaceID, userID), "resolution", res.ID))
 	case http.MethodPut:
 		workspaceID, _, authErr := h.authWorkspaceAdmin(r)
 		if authErr != nil {

@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test';
 import axe from 'axe-core';
+import * as fs from 'fs';
+import * as path from 'path';
+
+function apiAuthHeader(): string {
+  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
+  return 'Basic ' + Buffer.from(`demo@zzira.dev:${tokens['demo@zzira.dev']}`).toString('base64');
+}
 
 async function accessible(page: import('@playwright/test').Page) {
   // Axe counts controls under the sticky header as covered, so pages are
@@ -72,6 +79,34 @@ test('service manager models assets and an agent calculates request impact', asy
   await databaseEdit.getByRole('button', { name: 'Save object' }).click();
   await expect(page.locator('#objects article').filter({ hasText: 'Checkout database' })).toContainText('1400');
 
+  // What the attributes cannot say goes in a comment, and the card keeps it
+  // with what has happened to the object.
+  const card = page.locator('#objects article').filter({ hasText: 'Checkout database' });
+  await card.locator('.service-asset-comments > summary').click();
+  await card.getByLabel('Say something about DATABASE').fill('Tier 1 because the shop stops without it.');
+  await card.getByRole('button', { name: 'Add comment' }).click();
+  const commented = page.locator('#objects article').filter({ hasText: 'Checkout database' });
+  await expect(commented.locator('.service-asset-comments')).toContainText('the shop stops without it');
+  await commented.locator('.service-asset-history > summary').click();
+  await expect(commented.locator('.service-asset-history')).toContainText('Changed capacity');
+
+  // A whole inventory arrives as a file rather than one form at a time, and a
+  // row whose key is already in the schema updates that object.
+  const assetImport = page.locator('#import');
+  await assetImport.getByRole('combobox', { name: 'Schema' }).selectOption({ label: 'Business services' });
+  await assetImport.getByLabel('Or paste the rows').fill('Key,Label,Service tier,Capacity,Active\nDATABASE,Checkout database,Tier 1,1600,true\nQUEUE,Payment queue,Tier 2,800,true\nCACHE,Session cache,Tier 2,400,false');
+  await assetImport.getByRole('button', { name: 'Import objects' }).click();
+  await expect(page.locator('#import')).toContainText('Imported 2 new objects and updated 1.');
+  await expect(page.locator('#objects')).toContainText('Payment queue');
+  await expect(page.locator('#objects')).toContainText('Session cache');
+  await expect(page.locator('#objects article').filter({ hasText: 'Checkout database' })).toContainText('1600');
+
+  // A file that names a column the schema does not have is refused whole.
+  await assetImport.getByLabel('Or paste the rows').fill('Key,Label,Owner\nLEDGER,Ledger service,Ana');
+  await assetImport.getByRole('button', { name: 'Import objects' }).click();
+  await expect(page.locator('#import')).toContainText('not Key, Label, X, Y, or an attribute of Business services');
+  await expect(page.locator('#objects')).not.toContainText('Ledger service');
+
   const relationshipCreate = page.locator('details').filter({ hasText: 'Connect two objects' });
   await relationshipCreate.locator('summary').click();
   await relationshipCreate.getByLabel('Object that depends').selectOption({ label: 'STOREFRONT · Customer storefront' });
@@ -85,6 +120,28 @@ test('service manager models assets and an agent calculates request impact', asy
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await accessible(page);
 
+  // A form can ask for one of these objects, and narrow which ones with AQL:
+  // this field offers the storefront and not the database behind it.
+  const field = await page.request.post('/rest/api/3/field', {
+    headers: { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' },
+    data: { name: `Affected service ${key}`, type: 'cmdb' },
+  });
+  expect(field.status(), await field.text()).toBe(201);
+  const fieldID = (await field.json()).id as string;
+  await page.goto(deskURL);
+  const form = page.locator('.service-request-type-forms form').filter({ hasText: 'Get IT help' }).first();
+  const assetField = form.locator('fieldset').filter({ hasText: `Affected service ${key}` });
+  await assetField.getByLabel('Show on portal').check();
+  await assetField.getByLabel('Assets objects from').selectOption({ label: 'Business services' });
+  await assetField.getByLabel('Narrow them with AQL').fill('Name LIKE storefront AND "Service tier" = "Tier 1"');
+  await form.getByRole('button', { name: /Save/ }).click();
+
+  await page.goto(`/service/portals/${deskID}`);
+  await page.getByRole('link', { name: /Get IT help/ }).click();
+  const picker = page.locator(`#request-field-${fieldID}`);
+  await expect(picker.locator('option')).toHaveCount(2);
+  await expect(picker).toContainText('Customer storefront');
+  await expect(picker).not.toContainText('Checkout database');
   await page.goto(`/service/portals/${deskID}`);
   await page.getByRole('link', { name: /Get IT help/ }).click();
   const summary = `Checkout outage ${Date.now()}`;

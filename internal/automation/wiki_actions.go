@@ -20,6 +20,13 @@ const (
 	WikiCommentActionType = "confluence.page.comment"
 	// WikiLabelActionType attaches a label to a page.
 	WikiLabelActionType = "confluence.page.label"
+	// WikiAppendActionType writes more at the end of a page, which is how a
+	// rule keeps a running list: a release log, a roster, a register of what
+	// it did.
+	WikiAppendActionType = "confluence.page.append"
+	// WikiArchiveActionType archives a page, which is how a rule tidies what
+	// nobody reads any more.
+	WikiArchiveActionType = "confluence.page.archive"
 )
 
 // wikiPageActionValue is what both actions carry: which page, and what to
@@ -30,6 +37,10 @@ type wikiPageActionValue struct {
 	Comment string `json:"comment"`
 	Label   string `json:"label"`
 	Prefix  string `json:"prefix"`
+	// Body is what an append action writes at the end of the page, and
+	// Descendants whether an archive takes the pages under it too.
+	Body        string `json:"body"`
+	Descendants bool   `json:"descendants"`
 }
 
 // wikiActionPage is the page an action acts on: the one it names, else the one
@@ -117,4 +128,47 @@ func wikiPageActionValueOf(raw json.RawMessage) (wikiPageActionValue, error) {
 		return value, errors.New("a wiki page action takes an object")
 	}
 	return value, nil
+}
+
+// appendToWikiPage writes more at the end of a page, as the rule actor, in one
+// new version. The text is escaped into storage rather than trusted as markup,
+// which is what the comment action does with what a rule writes.
+func (r *Runner) appendToWikiPage(ctx context.Context, run *claimedRun, value wikiPageActionValue, render func(string) (string, error)) (bool, error) {
+	page, err := r.wikiActionPage(ctx, run, value.PageID, render)
+	if err != nil {
+		return false, err
+	}
+	text, err := render(value.Body)
+	if err != nil {
+		return false, err
+	}
+	if text = strings.TrimSpace(text); text == "" {
+		return false, errors.New("append to page action rendered nothing to write")
+	}
+	updated := page.Body.Value + "<p>" + html.EscapeString(text) + "</p>"
+	if _, err := r.Service.Commands.SaveWikiPage(ctx, run.WorkspaceID, run.ActorID, models.WikiPage{
+		ID: page.ID, SpaceID: page.SpaceID, Title: page.Title, Status: page.Status, ParentID: page.ParentID,
+		Body:    models.WikiBody{Representation: "storage", Value: updated},
+		Version: models.WikiVersion{Number: page.Version.Number + 1, Message: "Written by a rule"},
+	}); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// archiveWikiPage archives the page, and the pages under it when the rule says
+// so. A page already archived is not a change.
+func (r *Runner) archiveWikiPage(ctx context.Context, run *claimedRun, value wikiPageActionValue, render func(string) (string, error)) (bool, error) {
+	page, err := r.wikiActionPage(ctx, run, value.PageID, render)
+	if err != nil {
+		return false, err
+	}
+	if page.Status == "archived" {
+		return false, nil
+	}
+	archived, err := r.Service.Commands.ArchiveWikiPages(ctx, run.WorkspaceID, run.ActorID, []string{page.ID}, value.Descendants)
+	if err != nil {
+		return false, err
+	}
+	return archived > 0, nil
 }

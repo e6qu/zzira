@@ -108,6 +108,10 @@ type ServiceRequestTypeField struct {
 	// AssetSchemaID narrows an Assets object field to one schema of the
 	// service project. An empty schema offers the desk's whole inventory.
 	AssetSchemaID string
+	// AssetFilter narrows it further, in AQL: `objectType = Laptops AND
+	// "Owner" = Platform` offers that team's laptops and nothing else. An
+	// empty filter offers everything the schema holds.
+	AssetFilter string
 	// AssetsMultiple is the cardinality of the field's applicable custom field
 	// context: an Assets object field holds several objects when it is set.
 	AssetsMultiple bool

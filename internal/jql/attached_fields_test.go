@@ -45,6 +45,11 @@ func TestAttachedFieldsCompile(t *testing.T) {
 		// names them.
 		{query: `"Request participants" = usr_ana`, contains: []string{"FROM service_request_participants participant_row", "participant_row.request_issue_id=i.id"}, args: []any{"usr_ana"}},
 		{query: `"request-channel-type" = portal`, contains: []string{"FROM service_requests service_request"}, args: []any{"portal"}},
+		{query: `"Request Type" = "Report an incident"`, contains: []string{"JOIN service_request_types request_type"}, args: []any{"Report an incident"}},
+		{query: `"request-type" IS NOT EMPTY`, contains: []string{"service_request_types request_type"}},
+		{query: `Organizations = "Riverbank"`, contains: []string{"service_desk_organizations desk_organization", "lower(organization.name)="}, args: []any{"Riverbank"}},
+		{query: `organization IN ("Riverbank", "Kestrel")`, contains: []string{"service_organization_users organization_member"}, args: []any{"Riverbank", "Kestrel"}},
+		{query: `Organizations IS EMPTY`, contains: []string{"(NOT EXISTS (SELECT 1 FROM service_requests organization_request"}},
 		// The aliases Jira's own documentation uses.
 		{query: `issuekey = ZZ-1`, contains: []string{"i.key ="}, args: []any{"ZZ-1"}},
 		{query: `type = Bug`, contains: []string{"ito.name, it.name"}, args: []any{"Bug"}},

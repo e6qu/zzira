@@ -648,3 +648,67 @@ test('admin creates a service project with Jira Service Management request types
   await page.locator('#operations-settings').getByRole('button', { name: 'Remove shift Primary operations' }).click();
   await expect(page.locator('#operations-settings')).not.toContainText('Primary operations');
 });
+
+// A service project is archived like any other, and its portal goes with it:
+// the desk, its queues and the portal customers use all answer as if it were
+// not there, until it is restored.
+test('a service project is archived, restored and trashed with its portal', async ({ page }) => {
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const key = `LC${String(stamp).slice(-6)}`;
+  const created = await page.request.post('/rest/api/3/project', {
+    headers,
+    data: { key, name: `Lifecycle desk ${stamp}`, projectTypeKey: 'service_desk', projectTemplateKey: 'com.atlassian.servicedesk:simplified-it-service-management', leadAccountId: 'usr_demo' },
+  });
+  expect([201, 400], await created.text()).toContain(created.status());
+  if (created.status() === 400) {
+    // The lead is named by whoever the site calls the demo account.
+    const me = await (await page.request.get('/rest/api/3/myself', { headers })).json();
+    const retry = await page.request.post('/rest/api/3/project', {
+      headers,
+      data: { key, name: `Lifecycle desk ${stamp}`, projectTypeKey: 'service_desk', projectTemplateKey: 'com.atlassian.servicedesk:simplified-it-service-management', leadAccountId: me.accountId },
+    });
+    expect(retry.status(), await retry.text()).toBe(201);
+  }
+
+  await page.goto('/login');
+  await page.fill('#login-email', 'demo@zzira.dev');
+  await page.fill('#login-password', 'demo1234');
+  await page.click('button[type=submit]');
+  await page.goto('/service/agent');
+  await page.getByRole('link', { name: `Lifecycle desk ${stamp}` }).click();
+  await expect(page).toHaveURL(/\/service\/agent\/\d+$/);
+  const deskURL = page.url();
+  const deskID = deskURL.split('/').pop()!;
+  expect((await page.goto(`/service/portals/${deskID}`))?.status()).toBe(200);
+
+  // Archived, the desk and its portal are gone for everybody.
+  await page.goto(`/projects/${key}/settings`);
+  await page.getByRole('button', { name: 'Archive project', exact: true }).click();
+  await expect(page).toHaveURL(/\/projects\?status=archived/);
+  await expect(page.getByRole('status')).toContainText('Project archived.');
+  expect((await page.goto(deskURL))?.status()).toBe(404);
+  expect((await page.goto(`/service/portals/${deskID}`))?.status()).toBe(404);
+
+  // Restored, they answer again.
+  await page.goto('/projects?status=archived');
+  const archived = page.locator('.directory-card').filter({ hasText: `Lifecycle desk ${stamp}` });
+  await archived.getByRole('button', { name: 'Restore project' }).click();
+  await expect(page.getByRole('status')).toContainText('Project restored.');
+  expect((await page.goto(deskURL))?.status()).toBe(200);
+  expect((await page.goto(`/service/portals/${deskID}`))?.status()).toBe(200);
+
+  // Trashed, it waits in the trash, and deleting it there is the end of it.
+  await page.goto(`/projects/${key}/settings`);
+  await page.locator('details').filter({ hasText: 'Move project to trash' }).locator('summary').click();
+  await page.getByRole('button', { name: 'Confirm move to trash' }).click();
+  await expect(page).toHaveURL(/\/projects\?status=trash/);
+  expect((await page.goto(`/service/portals/${deskID}`))?.status()).toBe(404);
+  await page.goto('/projects?status=trash');
+  const trashed = page.locator('.directory-card').filter({ hasText: `Lifecycle desk ${stamp}` });
+  await trashed.locator('details').filter({ hasText: 'Delete permanently' }).locator('summary').click();
+  await trashed.getByRole('button', { name: 'Confirm permanent deletion' }).click();
+  await expect(page.getByRole('status')).toContainText('permanently deleted');
+  await expect(page.locator('.directory-card').filter({ hasText: `Lifecycle desk ${stamp}` })).toHaveCount(0);
+});
+

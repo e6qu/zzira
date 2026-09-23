@@ -1,11 +1,11 @@
 package demo
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/sync/errgroup"
 	"os"
 	"slices"
 	"sort"
@@ -16,8 +16,11 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/authn"
+	"github.com/e6qu/zzira/internal/automation"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -50,18 +53,29 @@ type Applier struct {
 	projects    map[string]*models.Project
 	desks       map[string]string
 	requestType map[string]string
-	versions    map[string]*models.Version
-	sprints     map[string]*models.Sprint
-	boards      map[string]*models.Board
-	fields      map[string]string
-	items       map[string]*models.Issue
+	// assets maps a scenario asset id to the object the site holds.
+	assets map[string]string
+	// deskForms are the request type forms waiting for their desk's Assets
+	// inventory, which is built after the desks are.
+	deskForms []deskForm
+	versions  map[string]*models.Version
+	sprints   map[string]*models.Sprint
+	boards    map[string]*models.Board
+	fields    map[string]string
+	// fieldTypes is what each declared custom field is, because a value is
+	// written differently for each kind: an option is named by its value,
+	// and everything else is written as it stands.
+	fieldTypes map[string]string
+	items      map[string]*models.Issue
 	// existing indexes the work already on the site by project and summary,
 	// so a re-run keeps it rather than raising it twice.
 	existing map[string]string
 	spaces   map[string]string
-	// ordinal orders the writes that share a day, so a day's history reads
-	// in the order it happened.
-	ordinal int
+	// ordinals count the writes each day already carries, so a day's history
+	// reads in the order it happened and stays inside that day. A single
+	// counter across the whole scenario spread three years of writes seven
+	// minutes apart, which put the last months of it in the future.
+	ordinals map[int]int
 	// mutex guards what several projects' histories touch at once: the work
 	// they have raised, and the ordinal that orders a day.
 	mutex sync.Mutex
@@ -86,9 +100,12 @@ func Apply(ctx context.Context, st *store.Store, cmds *commands.Service, scenari
 	applier := &Applier{
 		Store: st, Commands: cmds, Clock: clock,
 		people: map[string]string{}, groups: map[string]string{}, projects: map[string]*models.Project{},
-		desks: map[string]string{}, requestType: map[string]string{}, versions: map[string]*models.Version{},
-		sprints: map[string]*models.Sprint{}, boards: map[string]*models.Board{}, fields: map[string]string{},
-		items: map[string]*models.Issue{}, existing: map[string]string{}, spaces: map[string]string{},
+		desks: map[string]string{}, requestType: map[string]string{}, assets: map[string]string{},
+		versions: map[string]*models.Version{},
+		sprints:  map[string]*models.Sprint{}, boards: map[string]*models.Board{}, fields: map[string]string{},
+		fieldTypes: map[string]string{},
+		items:      map[string]*models.Issue{}, existing: map[string]string{}, spaces: map[string]string{},
+		ordinals: map[int]int{},
 	}
 	return applier.run(ctx, scenario, slug)
 }
@@ -173,7 +190,13 @@ func (a *Applier) run(ctx context.Context, scenario *Scenario, slug string) (*Re
 	if err := a.teamsAndPlans(ctx, scenario); err != nil {
 		return nil, err
 	}
+	if err := a.automationRules(ctx, scenario.Automation); err != nil {
+		return nil, err
+	}
 	if err := a.filtersAndDashboards(ctx, scenario); err != nil {
+		return nil, err
+	}
+	if err := a.translations(ctx, scenario.Translations); err != nil {
 		return nil, err
 	}
 	if err := a.retime(ctx); err != nil {
@@ -182,12 +205,27 @@ func (a *Applier) run(ctx context.Context, scenario *Scenario, slug string) (*Re
 	return result, nil
 }
 
+// atMinute runs one piece of the scenario at a time of day: the same spread
+// through the working day as everything else, plus however far into the day
+// the event said it happened. An outage found at nine and over by ten is fifty
+// minutes of recovery, and a day is too coarse to say that.
+func (a *Applier) atMinute(ctx context.Context, day, minutes int, write func(context.Context) error) error {
+	if minutes <= 0 {
+		return a.at(ctx, day, write)
+	}
+	a.mutex.Lock()
+	ordinal := a.ordinals[day]
+	a.ordinals[day] = ordinal + 1
+	a.mutex.Unlock()
+	return write(store.WithActionTime(ctx, a.Clock.At(day, ordinal).Add(time.Duration(minutes)*time.Minute)))
+}
+
 // at runs one piece of the scenario and records when it happened, so the
 // retiming pass can move its action log entries into the past.
 func (a *Applier) at(ctx context.Context, day int, write func(context.Context) error) error {
 	a.mutex.Lock()
-	a.ordinal++
-	ordinal := a.ordinal
+	ordinal := a.ordinals[day]
+	a.ordinals[day] = ordinal + 1
 	a.mutex.Unlock()
 	// The write carries the moment it happened into the action log, so the
 	// history reads correctly as it is written. Bracketing each write with
@@ -264,6 +302,11 @@ func (a *Applier) accounts(ctx context.Context, scenario *Scenario, result *Resu
 			// A customer reaches the portal without a seat on the site.
 			if err := a.Store.EnrollServiceCustomer(ctx, a.workspaceID, userID); err != nil {
 				return fmt.Errorf("enrol %s as a customer: %w", person.Email, err)
+			}
+		}
+		if person.Locale != "" {
+			if err := a.Store.SetUserPreference(ctx, a.workspaceID, userID, store.UserPreferenceLocaleKey, person.Locale); err != nil {
+				return fmt.Errorf("set the language %s reads in: %w", person.Email, err)
 			}
 		}
 	}
@@ -348,6 +391,7 @@ func (a *Applier) customFields(ctx context.Context, fields []CustomField) error 
 		return fmt.Errorf("read the custom fields: %w", err)
 	}
 	for _, field := range fields {
+		a.fieldTypes[field.ID] = field.Type
 		if made := customFieldNamed(existing, field.Name); made != "" {
 			a.fields[field.ID] = made
 			continue
@@ -365,20 +409,56 @@ func (a *Applier) customFields(ctx context.Context, fields []CustomField) error 
 			return fmt.Errorf("create field %s: %w", field.Name, err)
 		}
 		a.fields[field.ID] = id
-		if len(field.Options) > 0 {
-			contexts, err := a.Store.CustomFieldContexts(ctx, a.workspaceID, id, nil)
+		// A field is created without a context, and a field with no context
+		// is in no project: its options have nowhere to live and no form
+		// offers it. Every declared field gets one covering the site.
+		contexts, err := a.Store.CustomFieldContexts(ctx, a.workspaceID, id, nil)
+		if err != nil {
+			return err
+		}
+		if len(contexts) == 0 {
+			made, err := a.Store.CreateCustomFieldContext(ctx, a.workspaceID, a.admin, id,
+				field.Name+" context", "Every project and work type", nil, nil)
 			if err != nil {
-				return err
+				return fmt.Errorf("give %s a context: %w", field.Name, err)
 			}
-			if len(contexts) == 0 {
-				continue
-			}
+			contexts = []*models.CustomFieldContext{made}
+		}
+		if len(field.Options) > 0 {
 			if _, err := a.Store.CreateCustomFieldOptions(ctx, a.workspaceID, a.admin, id, contexts[0].ID, field.Options); err != nil {
 				return fmt.Errorf("add options to %s: %w", field.Name, err)
 			}
 		}
 	}
 	return nil
+}
+
+// encodeFieldValue writes a scenario's field value the way the field reads it.
+// An option field names its option by value -- which is what a scenario says,
+// "Several customers" rather than an id nobody wrote down -- and a bare string
+// would otherwise be read as an option id and rejected.
+func (a *Applier) encodeFieldValue(field, value string) (json.RawMessage, error) {
+	switch a.fieldTypes[field] {
+	case models.CustomFieldSelect:
+		return json.Marshal(map[string]string{"value": value})
+	case models.CustomFieldMultiSelect:
+		chosen := []map[string]string{}
+		for _, part := range strings.Split(value, ",") {
+			if trimmed := strings.TrimSpace(part); trimmed != "" {
+				chosen = append(chosen, map[string]string{"value": trimmed})
+			}
+		}
+		return json.Marshal(chosen)
+	case models.CustomFieldCascadingSelect:
+		parent, child, _ := strings.Cut(value, ":")
+		cascade := map[string]any{"value": strings.TrimSpace(parent)}
+		if child = strings.TrimSpace(child); child != "" {
+			cascade["child"] = map[string]string{"value": child}
+		}
+		return json.Marshal(cascade)
+	default:
+		return json.Marshal(value)
+	}
 }
 
 // customFieldNamed finds a custom field by the name a scenario gives it.
@@ -456,6 +536,19 @@ func (a *Applier) project(ctx context.Context, project Project) error {
 			return fmt.Errorf("version %s: %w", version.Name, err)
 		}
 		a.versions[version.ID] = saved
+		held, err := a.Store.VersionRelatedWork(ctx, a.workspaceID, saved.ID)
+		if err != nil {
+			return fmt.Errorf("read what %s links to: %w", version.Name, err)
+		}
+		if len(held) == 0 {
+			for _, link := range version.RelatedWork {
+				if _, err := a.Store.CreateVersionRelatedWork(ctx, a.workspaceID, a.admin, saved.ID, models.VersionRelatedWork{
+					Category: link.Category, Title: link.Title, URL: link.URL,
+				}); err != nil {
+					return fmt.Errorf("version %s links to %s: %w", version.Name, link.Title, err)
+				}
+			}
+		}
 	}
 	if project.Board != nil {
 		if err := a.board(ctx, created, *project.Board); err != nil {
@@ -465,6 +558,18 @@ func (a *Applier) project(ctx context.Context, project Project) error {
 	if project.ServiceDesk != nil {
 		if err := a.serviceDesk(ctx, project, created); err != nil {
 			return err
+		}
+	}
+	// What this project counts as an incident, which is what its time to
+	// restore is measured over.
+	if query := strings.TrimSpace(project.IncidentJQL); query != "" {
+		settings, err := a.Store.DORASettingsFor(ctx, a.workspaceID, created.ID)
+		if err != nil {
+			return fmt.Errorf("read the delivery settings of %s: %w", project.Key, err)
+		}
+		settings.IncidentJQL = query
+		if err := a.Store.SaveDORASettings(ctx, a.workspaceID, a.admin, created.ID, settings); err != nil {
+			return fmt.Errorf("say what an incident is in %s: %w", project.Key, err)
 		}
 	}
 	return nil
@@ -670,7 +775,7 @@ func (a *Applier) workItem(ctx context.Context, item WorkItem) error {
 	}
 	fields := map[string]json.RawMessage{}
 	for field, value := range item.Fields {
-		encoded, err := json.Marshal(value)
+		encoded, err := a.encodeFieldValue(field, value)
 		if err != nil {
 			return err
 		}
@@ -707,13 +812,29 @@ func (a *Applier) workItem(ctx context.Context, item WorkItem) error {
 	if item.Parent != "" {
 		parent = a.items[item.Parent].ID
 	}
+	// An estimate is what the time tracking, user workload and version
+	// workload reports are made of, and logging work moves the remaining
+	// estimate down from it, so the work has to be raised carrying it.
+	var original, remaining *int64
+	if item.Estimate != "" {
+		seconds, err := models.ParseJiraDuration(item.Estimate, models.TimeTrackingConfiguration{})
+		if err != nil {
+			return fmt.Errorf("estimate: %w", err)
+		}
+		original, remaining = &seconds, &seconds
+	}
+	due := ""
+	if item.Due != nil {
+		due = a.Clock.Day(*item.Due)
+	}
 	var created *models.Issue
 	if err := a.at(ctx, item.CreatedDay, func(ctx context.Context) error {
 		issue, _, err := a.Commands.CreateIssue(ctx, commands.CreateIssueInput{
 			ActorID: actor, ReporterID: reporter, WorkspaceID: a.workspaceID, ProjectIDOrKey: project.ID,
 			Summary: item.Summary, Description: item.Description, IssueTypeID: item.Type,
 			AssigneeID: a.people[item.Assignee], PriorityID: item.Priority, Labels: item.Labels,
-			ParentIDOrKey: parent, Fields: fields,
+			ParentIDOrKey: parent, Fields: fields, DueDate: due,
+			OriginalEstimate: original, RemainingEstimate: remaining,
 		})
 		created = issue
 		return err
@@ -778,13 +899,87 @@ func (a *Applier) generatedWork(ctx context.Context, order []string, byProject m
 	return group.Wait()
 }
 
+// requestEvent replays one thing that happened to a service request. A comment
+// on a request is a reply the customer reads or a note only agents read, and
+// which of the two it is decides the desk's clocks: a public reply is what
+// stops time to first response. Everything else happens to a request as it
+// happens to any work item.
+func (a *Applier) requestEvent(ctx context.Context, deskID string, issue *models.Issue, event Event) error {
+	switch event.Kind {
+	case "comment", "approval", "approve", "decline", "asset", "attach":
+	default:
+		return a.event(ctx, issue, event)
+	}
+	actor := a.people[event.Actor]
+	if actor == "" {
+		actor = a.admin
+	}
+	return a.atMinute(ctx, event.Day, event.Minutes, func(ctx context.Context) error {
+		switch event.Kind {
+		case "comment":
+			_, err := a.Commands.AddServiceRequestComment(ctx, actor, a.workspaceID, issue.ID,
+				adf.ParagraphDoc(event.Body), event.Body, !event.Internal)
+			return err
+		case "attach":
+			// A file reaches a request the way the portal sends one: it is
+			// uploaded to the desk first, and then a comment carries it.
+			content, mime, err := demoFile(event.File)
+			if err != nil {
+				return err
+			}
+			temporary, err := a.Commands.CreateServiceTemporaryAttachment(ctx, actor, a.workspaceID, deskID, event.File, mime, bytes.NewReader(content))
+			if err != nil {
+				return err
+			}
+			body := event.Body
+			if body == "" {
+				body = "Attached " + event.File + "."
+			}
+			_, _, err = a.Commands.CreateServiceAttachmentComment(ctx, actor, a.workspaceID, issue.ID, []string{temporary.ID}, body, !event.Internal)
+			return err
+		case "asset":
+			role := event.Role
+			if role == "" {
+				role = "affected"
+			}
+			return a.Store.SetServiceRequestAsset(ctx, a.workspaceID, actor, issue.ID, a.assets[event.Asset], role, true)
+		case "approval":
+			approvers := make([]string, 0, len(event.Approvers))
+			for _, approver := range event.Approvers {
+				approvers = append(approvers, a.people[approver])
+			}
+			_, err := a.Commands.CreateServiceApproval(ctx, actor, a.workspaceID, issue.ID, event.Body, approvers)
+			return err
+		default:
+			// The approval being answered is the one still waiting; a request
+			// with none waiting is a scenario that answered twice.
+			approvals, err := a.Store.ServiceApprovals(ctx, issue.ID)
+			if err != nil {
+				return err
+			}
+			pending := ""
+			for _, approval := range approvals {
+				if approval.FinalDecision == "pending" {
+					pending = approval.ID
+					break
+				}
+			}
+			if pending == "" {
+				return fmt.Errorf("no approval is waiting to be answered")
+			}
+			_, err = a.Commands.AnswerServiceApproval(ctx, actor, a.workspaceID, issue.ID, pending, event.Kind)
+			return err
+		}
+	})
+}
+
 // event replays one thing that happened to a work item.
 func (a *Applier) event(ctx context.Context, issue *models.Issue, event Event) error {
 	actor := a.people[event.Actor]
 	if actor == "" {
 		actor = a.admin
 	}
-	return a.at(ctx, event.Day, func(ctx context.Context) error {
+	return a.atMinute(ctx, event.Day, event.Minutes, func(ctx context.Context) error {
 		switch event.Kind {
 		case "transition":
 			return a.transition(ctx, actor, issue, event)
@@ -803,7 +998,15 @@ func (a *Applier) event(ctx context.Context, issue *models.Issue, event Event) e
 			})
 			return err
 		case "link":
+			a.mutex.Lock()
 			target := a.items[event.Target]
+			a.mutex.Unlock()
+			if target == nil {
+				// A scenario links to work by id, and the work it links to
+				// has to exist by the time the link is made: saying so beats
+				// a nil pointer three frames down.
+				return fmt.Errorf("links to %q, which has not been raised yet", event.Target)
+			}
 			linkType, err := a.linkTypeID(ctx, event.LinkType)
 			if err != nil {
 				return err
@@ -815,6 +1018,13 @@ func (a *Applier) event(ctx context.Context, issue *models.Issue, event Event) e
 			return err
 		case "vote":
 			_, err := a.Commands.SetVoting(ctx, actor, a.workspaceID, issue.ID, true)
+			return err
+		case "attach":
+			content, mime, err := demoFile(event.File)
+			if err != nil {
+				return err
+			}
+			_, _, err = a.Commands.AddAttachment(ctx, actor, a.workspaceID, issue.ID, event.File, mime, bytes.NewReader(content))
 			return err
 		}
 		return fmt.Errorf("unknown event kind %q", event.Kind)
@@ -890,7 +1100,13 @@ func (a *Applier) deployments(ctx context.Context, declared []Deployment) error 
 		for _, item := range deployment.WorkItems {
 			keys = append(keys, a.items[item].Key)
 		}
-		at := a.Clock.At(deployment.Day, index)
+		// The same as a commit: a deployment is dated by its own day, not by
+		// its place in three years of deliveries.
+		a.mutex.Lock()
+		ordinal := a.ordinals[deployment.Day]
+		a.ordinals[deployment.Day] = ordinal + 1
+		a.mutex.Unlock()
+		at := a.Clock.At(deployment.Day, ordinal)
 		payload, err := json.Marshal(map[string]any{
 			"deploymentSequenceNumber": index + 1, "updateSequenceNumber": index + 1,
 			"displayName": fmt.Sprintf("%s #%d", deployment.Pipeline, index+1), "state": deployment.State,
@@ -912,7 +1128,42 @@ func (a *Applier) deployments(ctx context.Context, declared []Deployment) error 
 			EnvironmentType: deployment.Type, LastUpdated: at,
 		})
 	}
-	return a.Store.UpsertSoftwareDeployments(ctx, a.workspaceID, deployments)
+	if err := a.Store.UpsertSoftwareDeployments(ctx, a.workspaceID, deployments); err != nil {
+		return err
+	}
+	return a.builds(ctx, declared, deployments)
+}
+
+// builds records the build that produced each deployment. Nothing deploys
+// without one, and the work item's development panel reads builds and
+// deployments from the same place: a site with deployments and no builds is
+// one where half that panel is empty.
+func (a *Applier) builds(ctx context.Context, declared []Deployment, deployments []models.SoftwareDeployment) error {
+	builds := make([]models.SoftwareBuild, 0, len(deployments))
+	for index, deployment := range deployments {
+		state := "successful"
+		if declared[index].State == "failed" {
+			state = "failed"
+		}
+		name := fmt.Sprintf("%s build #%d", deployment.PipelineID, index+1)
+		url := fmt.Sprintf("https://ci.example.test/%s/builds/%d", deployment.PipelineID, index+1)
+		payload, err := json.Marshal(map[string]any{
+			"buildNumber": index + 1, "updateSequenceNumber": index + 1,
+			"displayName": name, "url": url, "state": state,
+			"lastUpdated":  deployment.LastUpdated.Format(time.RFC3339),
+			"pipeline":     map[string]any{"id": deployment.PipelineID, "displayName": deployment.PipelineID, "url": "https://ci.example.test/" + deployment.PipelineID},
+			"associations": []any{map[string]any{"associationType": "issueKeys", "values": deployment.IssueKeys}},
+		})
+		if err != nil {
+			return err
+		}
+		builds = append(builds, models.SoftwareBuild{
+			PipelineID: deployment.PipelineID, BuildNumber: int64(index + 1), UpdateSequenceNumber: int64(index + 1),
+			IssueKeys: deployment.IssueKeys, DisplayName: name, URL: url, State: state,
+			LastUpdated: deployment.LastUpdated, Properties: json.RawMessage(`{}`), Payload: payload,
+		})
+	}
+	return a.Store.UpsertSoftwareBuilds(ctx, a.workspaceID, builds)
 }
 
 // filtersAndDashboards saves the searches and dashboards people keep. A
@@ -938,6 +1189,23 @@ func (a *Applier) filtersAndDashboards(ctx context.Context, scenario *Scenario) 
 			return fmt.Errorf("filter %s: %w", filter.Name, err)
 		}
 		saved[filter.Name] = created.ID
+		// A shared filter is one everybody signed in can read, which is what
+		// a company's "open bugs" filter is. Without the share it stays the
+		// owner's own, and nobody else can star it or put it on a dashboard.
+		if filter.Shared {
+			if _, err := a.Store.AddFilterPermission(ctx, a.workspaceID, owner, created.ID, store.FilterPermissionInput{Type: "authenticated", Rights: 1}); err != nil {
+				return fmt.Errorf("share filter %s: %w", filter.Name, err)
+			}
+		}
+		for _, person := range filter.Favourites {
+			starred := a.people[person]
+			if starred == "" {
+				continue
+			}
+			if err := a.Store.SetFilterFavourite(ctx, a.workspaceID, starred, created.ID, true); err != nil {
+				return fmt.Errorf("filter %s starred by %s: %w", filter.Name, person, err)
+			}
+		}
 	}
 	for _, dashboard := range scenario.Dashboards {
 		if err := a.dashboard(ctx, dashboard, saved); err != nil {
@@ -995,6 +1263,7 @@ func (a *Applier) dashboard(ctx context.Context, declared Dashboard, filters map
 		config := models.GadgetConfig{
 			FilterID: filters[gadget.Filter], JQL: gadget.JQL, GroupBy: gadget.GroupBy, YGroupBy: gadget.YGroupBy,
 			Days: gadget.Days, DateField: gadget.DateField, Cumulative: gadget.Cumulative,
+			BubbleAxis: gadget.BubbleAxis,
 		}
 		if gadget.Project != "" {
 			config.ProjectKey = a.projects[gadget.Project].Key
@@ -1037,6 +1306,24 @@ func (a *Applier) serviceDesk(ctx context.Context, declared Project, project *mo
 	for _, agent := range declared.ServiceDesk.Agents {
 		if err := a.Store.SetServiceDeskAgent(ctx, a.workspaceID, a.admin, deskID, a.people[agent], true); err != nil {
 			return fmt.Errorf("agent %s: %w", agent, err)
+		}
+	}
+	// A desk is given three queues when its project is made; these are the
+	// ones this desk works from beyond those.
+	existing, err := a.Store.ServiceQueues(ctx, a.workspaceID, deskID)
+	if err != nil {
+		return fmt.Errorf("read the queues of %s: %w", declared.Key, err)
+	}
+	named := map[string]bool{}
+	for _, queue := range existing {
+		named[strings.ToLower(queue.Name)] = true
+	}
+	for _, queue := range declared.ServiceDesk.Queues {
+		if named[strings.ToLower(queue.Name)] {
+			continue
+		}
+		if _, err := a.Store.CreateServiceQueue(ctx, a.workspaceID, a.admin, deskID, queue.Name, queue.JQL); err != nil {
+			return fmt.Errorf("queue %s: %w", queue.Name, err)
 		}
 	}
 	types, err := a.Store.ServiceRequestTypes(ctx, a.workspaceID, deskID, "")
@@ -1083,7 +1370,61 @@ func (a *Applier) serviceDesk(ctx context.Context, declared Project, project *mo
 		}
 		a.requestType[requestType.ID] = created.ID
 	}
+	// The forms are laid out after the desk's inventory is built, because a
+	// form can narrow an Assets object field to a schema that does not exist
+	// at this point.
+	for _, requestType := range declared.ServiceDesk.RequestTypes {
+		if len(requestType.Fields) > 0 {
+			a.deskForms = append(a.deskForms, deskForm{DeskID: deskID, RequestType: requestType})
+		}
+	}
 	return nil
+}
+
+// deskForm is one request type's form, waiting for its desk's inventory.
+type deskForm struct {
+	DeskID      string
+	RequestType RequestType
+}
+
+// requestTypeForm lays out what a request type asks a customer: the summary
+// and description every desk starts with, then the fields the scenario names,
+// with the schema and AQL an Assets object field is narrowed by.
+func (a *Applier) requestTypeForm(ctx context.Context, deskID string, declared RequestType) error {
+	schemas, err := a.Store.ServiceDeskAssetSchemas(ctx, a.workspaceID, deskID)
+	if err != nil {
+		return fmt.Errorf("read the desk's Assets schemas: %w", err)
+	}
+	schemaID := func(key string) string {
+		for _, schema := range schemas {
+			if strings.EqualFold(schema.Key, key) || strings.EqualFold(schema.Name, key) {
+				return schema.ID
+			}
+		}
+		return ""
+	}
+	requestTypeID := a.requestType[declared.ID]
+	fields := []models.ServiceRequestTypeField{
+		{ID: "summary", RequestTypeID: requestTypeID, Required: true},
+		{ID: "description", RequestTypeID: requestTypeID},
+	}
+	for _, field := range declared.Fields {
+		id := a.fields[field.Field]
+		if id == "" {
+			return fmt.Errorf("asks for %q, which the scenario does not declare", field.Field)
+		}
+		asked := models.ServiceRequestTypeField{
+			ID: id, RequestTypeID: requestTypeID, Required: field.Required, HelpText: field.HelpText,
+			AssetFilter: field.AssetFilter,
+		}
+		if field.AssetSchema != "" {
+			if asked.AssetSchemaID = schemaID(field.AssetSchema); asked.AssetSchemaID == "" {
+				return fmt.Errorf("asks for objects of %q, which this desk has no schema for", field.AssetSchema)
+			}
+		}
+		fields = append(fields, asked)
+	}
+	return a.Store.SetServiceRequestTypeFields(ctx, a.workspaceID, a.admin, deskID, requestTypeID, fields)
 }
 
 // service raises the requests customers made, replays what happened to each,
@@ -1109,6 +1450,45 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 		if len(members) > 0 {
 			if err := a.Store.SetServiceOrganizationUsers(ctx, a.workspaceID, created.ID, members, true); err != nil {
 				return fmt.Errorf("organization %s members: %w", organization.Name, err)
+			}
+		}
+		// A desk that serves an organization shows each of its members what
+		// their colleagues asked for, and is what the Organizations search
+		// reads. An organization that names no desk is a customer of them all.
+		desks := organization.Desks
+		if len(desks) == 0 {
+			for project := range a.desks {
+				desks = append(desks, project)
+			}
+			sort.Strings(desks)
+		}
+		for _, project := range desks {
+			deskID := a.desks[project]
+			if deskID == "" {
+				return fmt.Errorf("organization %s is a customer of %s, which has no service desk", organization.Name, project)
+			}
+			if err := a.Store.SetServiceDeskOrganization(ctx, a.workspaceID, deskID, created.ID, true); err != nil {
+				return fmt.Errorf("organization %s on the %s desk: %w", organization.Name, project, err)
+			}
+		}
+	}
+	if err := a.assetInventory(ctx, declared.Assets); err != nil {
+		return err
+	}
+	for _, form := range a.deskForms {
+		if err := a.requestTypeForm(ctx, form.DeskID, form.RequestType); err != nil {
+			return fmt.Errorf("the %s form: %w", form.RequestType.Name, err)
+		}
+	}
+	// Somebody who raises a request is a customer of the site, whether or not
+	// they also have a seat on it: an internal desk is asked for things by the
+	// people who work here.
+	raisers := map[string]bool{}
+	for _, request := range declared.Requests {
+		if id := a.people[request.Customer]; id != "" && !raisers[id] {
+			raisers[id] = true
+			if err := a.Store.EnrollServiceCustomer(ctx, a.workspaceID, id); err != nil {
+				return fmt.Errorf("enrol %s as a customer: %w", request.Customer, err)
 			}
 		}
 	}
@@ -1149,8 +1529,24 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 		a.mutex.Lock()
 		a.items[request.ID] = issue
 		a.mutex.Unlock()
+		// Somebody shares a request with the colleagues it also affects,
+		// which is what a participant is.
+		if len(request.Participants) > 0 {
+			shared := make([]string, 0, len(request.Participants))
+			for _, person := range request.Participants {
+				if id := a.people[person]; id != "" {
+					shared = append(shared, id)
+				}
+			}
+			if err := a.at(ctx, request.CreatedDay, func(ctx context.Context) error {
+				_, err := a.Commands.UpdateServiceRequestParticipants(ctx, customer, a.workspaceID, issue.ID, shared, false)
+				return err
+			}); err != nil {
+				return fmt.Errorf("request %s participants: %w", request.ID, err)
+			}
+		}
 		for _, event := range request.Events {
-			if err := a.event(ctx, issue, event); err != nil {
+			if err := a.requestEvent(ctx, deskID, issue, event); err != nil {
 				return fmt.Errorf("request %s %s: %w", request.ID, event.Kind, err)
 			}
 		}
@@ -1165,6 +1561,88 @@ func (a *Applier) service(ctx context.Context, declared *Service) error {
 			}); err != nil {
 				return fmt.Errorf("request %s feedback: %w", request.ID, err)
 			}
+		}
+	}
+	return nil
+}
+
+// assetInventory builds the desk's configuration management database: what the
+// company runs, and what each of those needs from the others. It is applied
+// before the requests, because a request is about an asset the site already
+// holds.
+func (a *Applier) assetInventory(ctx context.Context, declared *Assets) error {
+	if declared == nil {
+		return nil
+	}
+	deskID := a.desks[declared.Project]
+	if deskID == "" {
+		return fmt.Errorf("the asset inventory names the project %s, which has no service desk", declared.Project)
+	}
+	held, err := a.Store.ServiceAssetInventory(ctx, a.workspaceID, a.admin, deskID)
+	if err != nil {
+		return fmt.Errorf("read the asset inventory: %w", err)
+	}
+	// A second run keeps the inventory it built: a schema is its key, and an
+	// object is its key within that schema.
+	schemas := map[string]string{}
+	for _, schema := range held.Schemas {
+		schemas[schema.Key] = schema.ID
+	}
+	objects := map[string]string{}
+	for _, object := range held.Objects {
+		objects[object.SchemaKey+"\x00"+object.Key] = object.ID
+	}
+	for _, schema := range declared.Schemas {
+		schemaID, ok := schemas[schema.Key]
+		if !ok {
+			attributes := make([]models.ServiceAssetAttribute, 0, len(schema.Attributes))
+			for _, attribute := range schema.Attributes {
+				attributes = append(attributes, models.ServiceAssetAttribute{
+					Key: attribute.Key(), Name: attribute.Name, Type: attribute.Type,
+					Required: attribute.Required, Options: attribute.Options,
+				})
+			}
+			created, err := a.Store.CreateServiceAssetSchema(ctx, a.workspaceID, a.admin, deskID, models.ServiceAssetSchema{
+				Key: schema.Key, Name: schema.Name, Description: schema.Description, Attributes: attributes,
+			})
+			if err != nil {
+				return fmt.Errorf("asset schema %s: %w", schema.Key, err)
+			}
+			schemaID = created.ID
+		}
+		for _, object := range schema.Objects {
+			if id, ok := objects[schema.Key+"\x00"+object.Key]; ok {
+				a.assets[object.ID] = id
+				continue
+			}
+			values := map[string]string{}
+			for name, value := range object.Values {
+				values[strings.ToLower(strings.ReplaceAll(name, " ", "_"))] = value
+			}
+			created, err := a.Store.SaveServiceAssetObject(ctx, a.workspaceID, a.admin, deskID, models.ServiceAssetObject{
+				SchemaID: schemaID, Key: object.Key, Label: object.Label, Values: values,
+			})
+			if err != nil {
+				return fmt.Errorf("asset %s: %w", object.Key, err)
+			}
+			a.assets[object.ID] = created.ID
+		}
+	}
+	linked := map[string]bool{}
+	for _, relation := range held.Relationships {
+		linked[relation.From.ID+"\x00"+relation.To.ID] = true
+	}
+	for _, relation := range declared.Relationships {
+		from, to := a.assets[relation.From], a.assets[relation.To]
+		if linked[from+"\x00"+to] {
+			continue
+		}
+		if _, err := a.Store.CreateServiceAssetRelationship(ctx, a.workspaceID, a.admin, deskID, models.ServiceAssetRelationship{
+			Relationship: relation.Type,
+			From:         models.ServiceAssetObject{ID: from},
+			To:           models.ServiceAssetObject{ID: to},
+		}); err != nil {
+			return fmt.Errorf("asset relationship %s to %s: %w", relation.From, relation.To, err)
 		}
 	}
 	return nil
@@ -1202,6 +1680,12 @@ func (a *Applier) wiki(ctx context.Context, declared *Wiki) error {
 		if err := a.pages(ctx, created.ID, "", space.Pages); err != nil {
 			return fmt.Errorf("space %s: %w", space.Key, err)
 		}
+		if err := a.spaceContent(ctx, created.ID, space); err != nil {
+			return fmt.Errorf("space %s: %w", space.Key, err)
+		}
+		if err := a.spaceRoles(ctx, created.ID, space); err != nil {
+			return fmt.Errorf("space %s: %w", space.Key, err)
+		}
 		for _, post := range space.BlogPosts {
 			author := a.people[post.Author]
 			if author == "" {
@@ -1214,18 +1698,257 @@ func (a *Applier) wiki(ctx context.Context, declared *Wiki) error {
 			if len(written) > 0 {
 				continue
 			}
+			var raised *models.WikiBlogPost
 			if err := a.at(ctx, post.CreatedDay, func(ctx context.Context) error {
-				_, err := a.Store.SaveWikiBlogPost(ctx, a.workspaceID, author, models.WikiBlogPost{
+				saved, err := a.Store.SaveWikiBlogPost(ctx, a.workspaceID, author, models.WikiBlogPost{
 					SpaceID: created.ID, Title: post.Title, Status: "current",
 					Body: models.WikiBody{Representation: "storage", Value: post.Body},
 				})
+				raised = saved
 				return err
 			}); err != nil {
+				return fmt.Errorf("blog post %s: %w", post.Title, err)
+			}
+			if err := a.postExtras(ctx, author, raised.ID, post); err != nil {
 				return fmt.Errorf("blog post %s: %w", post.Title, err)
 			}
 		}
 	}
 	return nil
+}
+
+// translations names the words on a work item in the other languages the
+// company reads. A scenario names the thing by the name the site itself gives
+// it, which is what somebody writing one knows; the site's ids are found here.
+func (a *Applier) translations(ctx context.Context, declared []Translation) error {
+	if len(declared) == 0 {
+		return nil
+	}
+	named := map[string]map[string]string{}
+	workTypes, err := a.Store.IssueTypesForWorkspace(ctx, a.workspaceID)
+	if err != nil {
+		return fmt.Errorf("read the work types: %w", err)
+	}
+	named["issuetype"] = map[string]string{}
+	for _, workType := range workTypes {
+		named["issuetype"][strings.ToLower(workType.Name)] = workType.ID
+	}
+	priorities, err := a.Store.PrioritiesForWorkspace(ctx, a.workspaceID)
+	if err != nil {
+		return fmt.Errorf("read the priorities: %w", err)
+	}
+	named["priority"] = map[string]string{}
+	for _, priority := range priorities {
+		named["priority"][strings.ToLower(priority.Name)] = priority.ID
+	}
+	resolutions, err := a.Store.ResolutionsForWorkspace(ctx, a.workspaceID)
+	if err != nil {
+		return fmt.Errorf("read the resolutions: %w", err)
+	}
+	named["resolution"] = map[string]string{}
+	for _, resolution := range resolutions {
+		named["resolution"][strings.ToLower(resolution.Name)] = resolution.ID
+	}
+	statuses, err := a.Store.StatusDirectory(ctx, a.workspaceID)
+	if err != nil {
+		return fmt.Errorf("read the statuses: %w", err)
+	}
+	named["status"] = map[string]string{}
+	for _, status := range statuses {
+		named["status"][strings.ToLower(status.Status.Name)] = status.Status.ID
+	}
+	for _, translation := range declared {
+		id := named[translation.Kind][strings.ToLower(translation.Name)]
+		if id == "" {
+			return fmt.Errorf("%s %q is not on the site, so it cannot be named in %s", translation.Kind, translation.Name, translation.Locale)
+		}
+		if err := a.Store.SaveIssueMetadataTranslation(ctx, a.workspaceID, a.admin, store.MetadataTranslation{
+			EntityType: translation.Kind, EntityID: id, Locale: translation.Locale,
+			Name: translation.Translated, Description: translation.Description,
+		}); err != nil {
+			return fmt.Errorf("name %s %q in %s: %w", translation.Kind, translation.Name, translation.Locale, err)
+		}
+	}
+	return nil
+}
+
+// spaceContent builds what a space holds beside its pages: the whiteboards
+// people drew on, the databases they keep records in, the folders that hold
+// them and the pages they embedded from elsewhere. A space that already has a
+// piece of content by that title keeps it, as a page does.
+func (a *Applier) spaceContent(ctx context.Context, spaceID string, space Space) error {
+	if len(space.Content) == 0 {
+		return nil
+	}
+	// Content is read a kind at a time, which is how the store reads it, and
+	// a second run has to recognise what the first one made or it would build
+	// the same board twice.
+	titles := map[string]bool{}
+	for _, kind := range spaceContentTypes {
+		held, err := a.Store.WikiContents(ctx, a.workspaceID, a.admin, spaceID, kind)
+		if err != nil {
+			return fmt.Errorf("read the %ss of %s: %w", kind, space.Key, err)
+		}
+		for _, content := range held {
+			titles[content.Type+"\x00"+content.Title] = true
+		}
+	}
+	for _, declared := range space.Content {
+		if titles[declared.Type+"\x00"+declared.Title] {
+			continue
+		}
+		author := a.people[declared.Author]
+		if author == "" {
+			author = a.admin
+		}
+		var created *models.WikiContent
+		if err := a.at(ctx, declared.CreatedDay, func(ctx context.Context) error {
+			made, err := a.Store.CreateWikiContent(ctx, a.workspaceID, author, models.WikiContent{
+				Type: declared.Type, Title: declared.Title, SpaceID: spaceID, EmbedURL: declared.EmbedURL,
+			})
+			created = made
+			return err
+		}); err != nil {
+			return fmt.Errorf("%s %q: %w", declared.Type, declared.Title, err)
+		}
+		switch declared.Type {
+		case "whiteboard":
+			if err := a.whiteboard(ctx, author, created.ID, declared); err != nil {
+				return fmt.Errorf("whiteboard %q: %w", declared.Title, err)
+			}
+		case "database":
+			if err := a.database(ctx, author, created.ID, declared); err != nil {
+				return fmt.Errorf("database %q: %w", declared.Title, err)
+			}
+		}
+	}
+	return nil
+}
+
+// whiteboard draws a whiteboard's canvas: the objects on it, then the lines
+// between them, which name the objects they join by title.
+func (a *Applier) whiteboard(ctx context.Context, author, whiteboardID string, declared SpaceContent) error {
+	drawn := map[string]string{}
+	for _, object := range declared.Objects {
+		width, height := object.Width, object.Height
+		if width == 0 {
+			width = 200
+		}
+		if height == 0 {
+			height = 120
+		}
+		color := object.Color
+		if color == "" {
+			color = "yellow"
+		}
+		kind := object.Type
+		if kind == "" {
+			kind = "sticky"
+		}
+		if err := a.at(ctx, declared.CreatedDay, func(ctx context.Context) error {
+			made, err := a.Store.SaveWikiWhiteboardObject(ctx, a.workspaceID, author, whiteboardID, models.WikiWhiteboardObject{
+				Type: kind, Title: object.Title, Body: object.Body, Color: color,
+				X: object.X, Y: object.Y, Width: width, Height: height,
+			})
+			if err == nil {
+				drawn[object.Title] = made.ID
+			}
+			return err
+		}); err != nil {
+			return fmt.Errorf("object %q: %w", object.Title, err)
+		}
+	}
+	for _, connector := range declared.Connectors {
+		from, to := drawn[connector.From], drawn[connector.To]
+		if from == "" || to == "" {
+			return fmt.Errorf("a line joins %q to %q, and one of them is not on the board", connector.From, connector.To)
+		}
+		style := connector.Style
+		if style == "" {
+			style = "solid"
+		}
+		if err := a.at(ctx, declared.CreatedDay, func(ctx context.Context) error {
+			_, err := a.Store.SaveWikiWhiteboardConnector(ctx, a.workspaceID, author, whiteboardID, models.WikiWhiteboardConnector{
+				FromObjectID: from, ToObjectID: to, Label: connector.Label, Style: style,
+			})
+			return err
+		}); err != nil {
+			return fmt.Errorf("line from %q to %q: %w", connector.From, connector.To, err)
+		}
+	}
+	return nil
+}
+
+// database fills a database: its columns, the records in it, and the views
+// people read them through.
+func (a *Applier) database(ctx context.Context, author, databaseID string, declared SpaceContent) error {
+	keys := map[string]string{}
+	for _, column := range declared.Columns {
+		key := databaseColumnKey(column.Name)
+		keys[column.Name] = key
+		kind := column.Type
+		if kind == "" {
+			kind = "text"
+		}
+		if err := a.at(ctx, declared.CreatedDay, func(ctx context.Context) error {
+			_, err := a.Store.AddWikiDatabaseColumn(ctx, a.workspaceID, author, databaseID, models.WikiDatabaseColumn{
+				Key: key, Name: column.Name, Type: kind, Options: column.Options,
+			})
+			return err
+		}); err != nil {
+			return fmt.Errorf("column %q: %w", column.Name, err)
+		}
+	}
+	for index, row := range declared.Rows {
+		values := map[string]string{}
+		for name, value := range row {
+			key, ok := keys[name]
+			if !ok {
+				return fmt.Errorf("row %d sets %q, which is not a column", index+1, name)
+			}
+			values[key] = value
+		}
+		if err := a.at(ctx, declared.CreatedDay, func(ctx context.Context) error {
+			_, err := a.Store.SaveWikiDatabaseRow(ctx, a.workspaceID, author, databaseID, "", values)
+			return err
+		}); err != nil {
+			return fmt.Errorf("row %d: %w", index+1, err)
+		}
+	}
+	for _, view := range declared.Views {
+		direction := view.SortDirection
+		if direction == "" {
+			direction = "asc"
+		}
+		if err := a.at(ctx, declared.CreatedDay, func(ctx context.Context) error {
+			_, err := a.Store.SaveWikiDatabaseView(ctx, a.workspaceID, author, databaseID, models.WikiDatabaseView{
+				Name: view.Name, SortKey: keys[view.SortKey], SortDirection: direction,
+				FilterKey: keys[view.FilterKey], FilterValue: view.FilterValue,
+			})
+			return err
+		}); err != nil {
+			return fmt.Errorf("view %q: %w", view.Name, err)
+		}
+	}
+	return nil
+}
+
+// databaseColumnKey is the key a column is stored under: its name, lower case,
+// with anything that is not a letter or a number as an underscore.
+func databaseColumnKey(name string) string {
+	key := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			return r
+		case r >= 'A' && r <= 'Z':
+			return r + ('a' - 'A')
+		}
+		return '_'
+	}, name)
+	if key == "" {
+		return "column"
+	}
+	return key
 }
 
 // pages writes one level of a space's page tree and then its children.
@@ -1259,6 +1982,9 @@ func (a *Applier) pages(ctx context.Context, spaceID, parentID string, pages []P
 			saved = created
 			return err
 		}); err != nil {
+			return fmt.Errorf("page %s: %w", page.Title, err)
+		}
+		if err := a.pageExtras(ctx, author, saved.ID, page); err != nil {
 			return fmt.Errorf("page %s: %w", page.Title, err)
 		}
 		for _, comment := range page.Comments {
@@ -1392,6 +2118,17 @@ func (a *Applier) teamsAndPlans(ctx context.Context, scenario *Scenario) error {
 			}
 			plan.IssueSources = append(plan.IssueSources, store.PlanIssueSource{Type: "Board", Value: id})
 		}
+		for _, release := range declared.Releases {
+			grouped := store.PlanRelease{Name: release.Name}
+			for _, version := range release.Versions {
+				id, err := strconv.ParseInt(a.versions[version].ID, 10, 64)
+				if err != nil {
+					return fmt.Errorf("plan %s: release %s: version %s: %w", declared.Name, release.Name, version, err)
+				}
+				grouped.ReleaseIDs = append(grouped.ReleaseIDs, id)
+			}
+			plan.CrossProjectReleases = append(plan.CrossProjectReleases, grouped)
+		}
 		store.NormalizePlan(&plan)
 		planID, err := a.Store.CreatePlan(ctx, a.workspaceID, a.admin, plan)
 		if err != nil {
@@ -1447,7 +2184,14 @@ func (a *Applier) commits(ctx context.Context, declared []Commit) error {
 		if len(keys) == 0 {
 			continue
 		}
-		at := a.Clock.At(commit.Day, index)
+		// A commit is written on the day it was written, spread through that
+		// day like every other write; numbering them across the whole history
+		// would push the last of them months past the day they belong to.
+		a.mutex.Lock()
+		ordinal := a.ordinals[commit.Day]
+		a.ordinals[commit.Day] = ordinal + 1
+		a.mutex.Unlock()
+		at := a.Clock.At(commit.Day, ordinal)
 		message := commit.Message
 		if message == "" {
 			message = "Change " + commit.ID
@@ -1475,4 +2219,196 @@ func (a *Applier) commits(ctx context.Context, declared []Commit) error {
 		return fmt.Errorf("record commits: %w", err)
 	}
 	return nil
+}
+
+// automationRules writes the rules the company runs. A site where nothing is
+// automated says nothing about what automation does, and these are the rules
+// a company like this one would have written: a triage rule, a release rule,
+// a rule somebody runs by hand.
+func (a *Applier) automationRules(ctx context.Context, declared []AutomationRule) error {
+	if len(declared) == 0 {
+		return nil
+	}
+	service := &automation.Service{Store: a.Store, Commands: a.Commands}
+	cloudID, err := service.WorkspaceCloudID(ctx, a.workspaceID)
+	if err != nil {
+		return err
+	}
+	existing, err := service.Rules(ctx, a.workspaceID, automation.SummaryFilter{Limit: 100})
+	if err != nil {
+		return err
+	}
+	written := map[string]bool{}
+	for _, rule := range existing.Rules {
+		written[rule.Name] = true
+	}
+	for _, rule := range declared {
+		if written[rule.Name] {
+			continue
+		}
+		components := make([]map[string]any, 0, len(rule.Actions))
+		for _, action := range rule.Actions {
+			components = append(components, automationComponent(action))
+		}
+		scope := make([]string, 0, len(rule.Projects))
+		for _, project := range rule.Projects {
+			scope = append(scope, "ari:cloud:jira:"+cloudID+":project/"+a.projects[project].ID)
+		}
+		state := rule.State
+		if state == "" {
+			state = "ENABLED"
+		}
+		trigger := map[string]any{"component": "TRIGGER", "schemaVersion": 1, "type": rule.Trigger, "value": automationTriggerValue(rule)}
+		body, err := json.Marshal(map[string]any{"rule": map[string]any{
+			"actor": map[string]string{"actor": a.people[rule.Actor], "type": "ACCOUNT_ID"},
+			"name":  rule.Name, "description": "", "state": state, "labels": []string{},
+			"ruleScopeARIs": scope, "components": components, "trigger": trigger,
+			"canOtherRuleTrigger": false, "notifyOnError": "FIRSTERROR", "writeAccessType": "OWNER_ONLY",
+		}, "connections": []any{}})
+		if err != nil {
+			return err
+		}
+		if _, err := service.CreateRule(ctx, a.workspaceID, a.admin, body); err != nil {
+			return fmt.Errorf("automation rule %s: %w", rule.Name, err)
+		}
+	}
+	return nil
+}
+
+// automationTriggerValue is what a demo rule's trigger carries: a schedule, a
+// query, or nothing.
+func automationTriggerValue(rule AutomationRule) map[string]any {
+	switch {
+	case rule.IntervalMinutes > 0:
+		return map[string]any{"intervalMinutes": rule.IntervalMinutes, "timezone": "UTC", "jql": rule.JQL}
+	case rule.Trigger == automation.ManualTriggerType:
+		return map[string]any{"inputPrompts": []any{}}
+	default:
+		return map[string]any{"jql": rule.JQL}
+	}
+}
+
+// automationComponent is one action as a rule's payload carries it.
+func automationComponent(action AutomationAction) map[string]any {
+	value := map[string]string{}
+	switch action.Type {
+	case "jira.issue.comment":
+		value["comment"] = action.Value
+	case "jira.issue.add-label", "jira.issue.remove-label":
+		value["label"] = action.Value
+	case "jira.issue.assign":
+		value["method"] = action.Value
+	case "jira.issue.transition":
+		value["statusId"] = action.Value
+	case "jira.issue.edit":
+		value["field"], value["value"] = action.Field, action.Value
+	case "jira.create.variable":
+		value["variableName"], value["variableValue"] = action.Variable, action.Value
+	case "jira.issue.lookup":
+		value["jql"] = action.Value
+	case "confluence.page.comment":
+		value["comment"] = action.Value
+	case "confluence.page.label":
+		value["label"] = action.Value
+	default:
+		value["value"] = action.Value
+	}
+	return map[string]any{"component": "ACTION", "schemaVersion": 1, "type": action.Type, "value": value}
+}
+
+// pageExtras files a page where people look for it, attaches what it refers
+// to, and records who found it useful. It writes as the page's author, who is
+// somebody the space lets write: a site administrator holds no space role
+// unless the space gives them one. A knowledge base with no labels, no
+// files and no likes shows none of what a wiki is read through.
+func (a *Applier) pageExtras(ctx context.Context, author, pageID string, page Page) error {
+	if len(page.Labels) > 0 {
+		labels := make([]models.WikiLabel, 0, len(page.Labels))
+		for _, label := range page.Labels {
+			labels = append(labels, models.WikiLabel{Name: label, Prefix: "global"})
+		}
+		if _, err := a.Store.AddWikiPageLabels(ctx, a.workspaceID, author, pageID, labels); err != nil {
+			return fmt.Errorf("label: %w", err)
+		}
+	}
+	for _, name := range page.Files {
+		content, mime, err := demoFile(name)
+		if err != nil {
+			return err
+		}
+		ref := store.NewID("blob")
+		size, err := a.Commands.Blobs.Put(ctx, ref, bytes.NewReader(content))
+		if err != nil {
+			return fmt.Errorf("store the file %s: %w", name, err)
+		}
+		if _, err := a.Store.SaveWikiAttachment(ctx, a.workspaceID, author, pageID, "", name, mime, "", "Attached with the page", false, size, ref); err != nil {
+			return fmt.Errorf("attach %s: %w", name, err)
+		}
+	}
+	for _, person := range page.Likes {
+		liked := a.people[person]
+		if liked == "" {
+			continue
+		}
+		if err := a.Store.SetWikiPageLike(ctx, a.workspaceID, liked, pageID, true); err != nil {
+			return fmt.Errorf("like by %s: %w", person, err)
+		}
+	}
+	return nil
+}
+
+// postExtras is the same for a blog post, which carries labels and likes.
+func (a *Applier) postExtras(ctx context.Context, author, postID string, post BlogPost) error {
+	if len(post.Labels) > 0 {
+		labels := make([]models.WikiLabel, 0, len(post.Labels))
+		for _, label := range post.Labels {
+			labels = append(labels, models.WikiLabel{Name: label, Prefix: "global"})
+		}
+		if _, err := a.Store.AddWikiBlogPostLabels(ctx, a.workspaceID, author, postID, labels); err != nil {
+			return fmt.Errorf("label: %w", err)
+		}
+	}
+	for _, person := range post.Likes {
+		liked := a.people[person]
+		if liked == "" {
+			continue
+		}
+		if err := a.Store.SetWikiBlogPostLike(ctx, a.workspaceID, liked, postID, true); err != nil {
+			return fmt.Errorf("like by %s: %w", person, err)
+		}
+	}
+	return nil
+}
+
+// spaceRoles says who administers a space, who works in it and who only
+// reads it. A company's handbook is written by a few people and read by
+// everybody, and a space where nobody holds a role shows none of that.
+func (a *Applier) spaceRoles(ctx context.Context, spaceID string, space Space) error {
+	if len(space.Roles) == 0 {
+		return nil
+	}
+	// Reading the assignments answers what a space with none implies, so ask
+	// whether it holds any of its own rather than whether it answers some.
+	assigned, err := a.Store.WikiSpaceRoleAssigned(ctx, spaceID)
+	if err != nil {
+		return fmt.Errorf("read the roles of %s: %w", space.Key, err)
+	}
+	if assigned {
+		return nil
+	}
+	assignments := []models.WikiSpaceRoleAssignment{}
+	for _, role := range space.Roles {
+		id := "system-" + role.Role
+		for _, group := range role.Groups {
+			if groupID := a.groups[group]; groupID != "" {
+				assignments = append(assignments, models.WikiSpaceRoleAssignment{RoleID: id, PrincipalType: "GROUP", PrincipalID: groupID})
+			}
+		}
+		for _, person := range role.People {
+			if userID := a.people[person]; userID != "" {
+				assignments = append(assignments, models.WikiSpaceRoleAssignment{RoleID: id, PrincipalType: "USER", PrincipalID: userID})
+			}
+		}
+	}
+	return a.Store.SetWikiSpaceRoleAssignments(ctx, a.workspaceID, a.admin, spaceID, assignments)
 }

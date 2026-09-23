@@ -315,9 +315,11 @@ test('status administrators can create, classify, edit, inspect, and safely dele
   await expect(row.locator('.status-impact')).toContainText('Work items');
   await row.locator('summary', { hasText: 'Edit status' }).click();
   const updatedName = `${originalName} ready`;
-  await row.getByLabel('Name').fill(updatedName);
-  await row.getByLabel('Category').selectOption('done');
-  await row.getByLabel('Description').fill('Review has completed.');
+  // Exactly the status's own fields: the card also carries the translation
+  // form, whose labels are "Name in that language" and the rest.
+  await row.getByLabel('Name', { exact: true }).fill(updatedName);
+  await row.getByLabel('Category', { exact: true }).selectOption('done');
+  await row.getByLabel('Description', { exact: true }).fill('Review has completed.');
   await row.getByRole('button', { name: 'Save status' }).click();
   await expect(page.getByRole('status')).toContainText(`${updatedName} updated`);
 

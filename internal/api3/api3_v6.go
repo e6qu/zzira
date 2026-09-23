@@ -26,9 +26,10 @@ func (h *Handler) statusesEndpoint(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	names := h.callerMetadataNames(r, workspaceID, userID)
 	out := make([]map[string]any, 0, len(statuses))
 	for _, st := range statuses {
-		out = append(out, h.statusBean(st))
+		out = append(out, translatedBean(h.statusBean(st), names, "status", st.ID))
 	}
 	writeJSON(w, http.StatusOK, out)
 }

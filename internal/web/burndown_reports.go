@@ -38,8 +38,11 @@ type burndownReportData struct {
 	Actions                       reportActions
 	Kind, Title, Parameter, Empty string
 	Choices                       []progressChoice
-	Selected                      string
-	View                          *burndownView
+	// ChoiceLabel names what the chooser picks. A site that plans above the
+	// epic says so, because the list holds those too.
+	ChoiceLabel string
+	Selected    string
+	View        *burndownView
 }
 
 // EpicBurndownReport charts an epic's work burning down sprint by sprint.
@@ -50,7 +53,9 @@ func (h *Handler) EpicBurndownReport(w http.ResponseWriter, r *http.Request) {
 	}
 	data := burndownReportData{agileReportBoards: boards, Kind: "epic-burndown", Title: "Epic burndown", Parameter: "epic",
 		Empty: "Create an epic to watch its work burn down."}
-	epics, err := h.Store.EpicsInProjects(r.Context(), workspaceID, user.ID, []string{boards.Project.ID})
+	// Everything work is planned under, epics and whatever a site put above
+	// them, so a burndown can follow an initiative as well as an epic.
+	epics, err := h.Store.ParentWorkInProjects(r.Context(), workspaceID, user.ID, []string{boards.Project.ID})
 	if err != nil {
 		http.Error(w, "Could not load epics.", http.StatusInternalServerError)
 		return
@@ -58,9 +63,22 @@ func (h *Handler) EpicBurndownReport(w http.ResponseWriter, r *http.Request) {
 	wanted := r.URL.Query().Get("epic")
 	var epic *models.Issue
 	for _, candidate := range epics {
-		data.Choices = append(data.Choices, progressChoice{Value: candidate.Key, Name: candidate.Key + " " + candidate.Summary})
+		name := candidate.Key + " " + candidate.Summary
+		if candidate.IssueType.Name != "" {
+			name = candidate.IssueType.Name + " · " + name
+		}
+		data.Choices = append(data.Choices, progressChoice{Value: candidate.Key, Name: name})
 		if epic == nil && (wanted == "" || strings.EqualFold(candidate.Key, wanted)) {
 			epic = candidate
+		}
+	}
+	// The chooser holds whatever a project plans work under, so it says what
+	// that is: a site with a level above the epic picks from both.
+	data.ChoiceLabel = "Epic"
+	for _, candidate := range epics {
+		if candidate.IssueType.HierarchyLevel > 1 {
+			data.ChoiceLabel = "Epic or the level above it"
+			break
 		}
 	}
 	if wanted != "" && epic == nil {
@@ -69,7 +87,7 @@ func (h *Handler) EpicBurndownReport(w http.ResponseWriter, r *http.Request) {
 	}
 	if boards.Board != nil && epic != nil {
 		data.Selected = epic.Key
-		children, err := h.Store.EpicChildren(r.Context(), workspaceID, user.ID, []string{epic.ID})
+		children, err := h.Store.WorkBeneath(r.Context(), workspaceID, user.ID, []string{epic.ID})
 		if err != nil {
 			http.Error(w, "Could not load the work in the epic.", http.StatusInternalServerError)
 			return

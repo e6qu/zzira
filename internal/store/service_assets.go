@@ -151,6 +151,74 @@ func (s *Store) SaveServiceAssetObject(ctx context.Context, ws, actor, deskID st
 	if err := projectAdmin(ctx, tx, ws, actor); err != nil {
 		return nil, err
 	}
+	written, err := writeServiceAssetObject(ctx, tx, ws, actor, deskID, object)
+	if err != nil {
+		return nil, err
+	}
+	return written, tx.Commit(ctx)
+}
+
+// ImportServiceAssetObjects writes a whole batch in one transaction, so an
+// import that fails on its last row leaves the inventory as it was. Reconcile
+// makes the file the whole schema: an object it leaves out is deleted, with
+// its relationships and the request links that named it.
+func (s *Store) ImportServiceAssetObjects(ctx context.Context, ws, actor, deskID string, objects []models.ServiceAssetObject, reconcile bool) ([]models.ServiceAssetObject, int, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := projectAdmin(ctx, tx, ws, actor); err != nil {
+		return nil, 0, err
+	}
+	written := make([]models.ServiceAssetObject, 0, len(objects))
+	kept := make([]string, 0, len(objects))
+	schemaID := ""
+	for _, object := range objects {
+		saved, err := writeServiceAssetObject(ctx, tx, ws, actor, deskID, object)
+		if err != nil {
+			return nil, 0, fmt.Errorf("object %s: %w", object.Key, err)
+		}
+		written = append(written, *saved)
+		kept = append(kept, saved.ID)
+		schemaID = object.SchemaID
+	}
+	deleted := 0
+	if reconcile && schemaID != "" {
+		rows, err := tx.Query(ctx, `SELECT o.id::text FROM service_asset_objects o
+			JOIN service_asset_schemas s ON s.id=o.schema_id JOIN service_desks sd ON sd.id=s.service_desk_id
+			WHERE sd.workspace_id=$1 AND s.service_desk_id=$2 AND s.id::text=$3 AND NOT (o.id::text = ANY($4))`,
+			ws, deskID, schemaID, kept)
+		if err != nil {
+			return nil, 0, err
+		}
+		leftOut := []string{}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return nil, 0, err
+			}
+			leftOut = append(leftOut, id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, 0, err
+		}
+		for _, id := range leftOut {
+			if _, err := tx.Exec(ctx, `DELETE FROM service_asset_objects WHERE id::text=$1`, id); err != nil {
+				return nil, 0, err
+			}
+			if err := serviceAssetAction(ctx, tx, ws, actor, "service_asset_object", id, models.OpDelete, map[string]string{"id": id}); err != nil {
+				return nil, 0, err
+			}
+			deleted++
+		}
+	}
+	return written, deleted, tx.Commit(ctx)
+}
+
+func writeServiceAssetObject(ctx context.Context, tx pgx.Tx, ws, actor, deskID string, object models.ServiceAssetObject) (*models.ServiceAssetObject, error) {
 	raw, err := json.Marshal(object.Values)
 	if err != nil {
 		return nil, err
@@ -166,7 +234,7 @@ func (s *Store) SaveServiceAssetObject(ctx context.Context, ws, actor, deskID st
 	if err := serviceAssetAction(ctx, tx, ws, actor, "service_asset_object", object.ID, models.OpUpsert, object); err != nil {
 		return nil, err
 	}
-	return &object, tx.Commit(ctx)
+	return &object, nil
 }
 
 func (s *Store) DeleteServiceAssetObject(ctx context.Context, ws, actor, deskID, objectID string) error {

@@ -112,4 +112,20 @@ test('an administrator adds a level above Epic and parents an epic under it', as
   expect(await indentOf(initiativeKey)).toBe('0px');
   expect(await indentOf(epicKey)).toBe('20px');
   expect(await indentOf(taskKey)).toBe('40px');
+
+  // The reports follow the new level too: an initiative's report and burndown
+  // summarise the work under its epics, not only its direct children -- and
+  // an epic still summarises its own.
+  for (const report of ['epic', 'epic-burndown']) {
+    await page.goto(`/projects/ZZ/reports/${report}?epic=${initiativeKey}`);
+    // The chooser says it holds more than epics, and holds them.
+    await expect(page.getByRole('combobox', { name: 'Epic or the level above it' })).toHaveValue(initiativeKey);
+    await expect(page.getByRole('option', { name: new RegExp(`${workTypeName} · ${initiativeKey}`) })).toHaveCount(1);
+  }
+  // The initiative's report summarises the work under its epic, not only its
+  // direct children -- and an epic still summarises its own.
+  await page.goto(`/projects/ZZ/reports/epic?epic=${initiativeKey}`);
+  await expect(page.locator('main')).toContainText(taskKey);
+  await page.goto(`/projects/ZZ/reports/epic?epic=${epicKey}`);
+  await expect(page.locator('main')).toContainText(taskKey);
 });

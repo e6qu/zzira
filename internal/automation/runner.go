@@ -548,12 +548,13 @@ func validateExecutionActor(payload json.RawMessage, actorID string) error {
 var actionsWithoutWork = map[string]bool{
 	"jira.issue.create": true, WebRequestActionType: true, VariableActionType: true,
 	WikiPageActionType: true, WikiCommentActionType: true, WikiLabelActionType: true,
+	WikiAppendActionType: true, WikiArchiveActionType: true,
 	LookupActionType: true,
 }
 
 // Actions and conditions the runner executes.
 var (
-	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true, "jira.issue.delete": true, WikiPageActionType: true, VariableActionType: true, WikiCommentActionType: true, WikiLabelActionType: true, LookupActionType: true}
+	runnableActions    = map[string]bool{"jira.issue.add-label": true, "jira.issue.remove-label": true, "jira.issue.assign": true, "jira.issue.transition": true, "jira.issue.comment": true, "jira.issue.edit": true, "jira.issue.link": true, "jira.issue.create-subtask": true, "jira.issue.email": true, "jira.issue.create": true, WebRequestActionType: true, "jira.issue.log-work": true, "jira.issue.delete": true, WikiPageActionType: true, VariableActionType: true, WikiCommentActionType: true, WikiLabelActionType: true, WikiAppendActionType: true, WikiArchiveActionType: true, LookupActionType: true}
 	runnableConditions = map[string]bool{"jira.issue.condition": true, "jira.jql.condition": true, "jira.issue.related.condition": true}
 )
 
@@ -835,13 +836,18 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 			return false, err
 		}
 		return r.lookupIssues(ctx, run, issue, value, render)
-	case WikiCommentActionType, WikiLabelActionType:
+	case WikiCommentActionType, WikiLabelActionType, WikiAppendActionType, WikiArchiveActionType:
 		value, err := wikiPageActionValueOf(action.Value)
 		if err != nil {
 			return false, err
 		}
-		if action.Type == WikiCommentActionType {
+		switch action.Type {
+		case WikiCommentActionType:
 			return r.commentOnWikiPage(ctx, run, value, render)
+		case WikiAppendActionType:
+			return r.appendToWikiPage(ctx, run, value, render)
+		case WikiArchiveActionType:
+			return r.archiveWikiPage(ctx, run, value, render)
 		}
 		return r.labelWikiPage(ctx, run, value, render)
 	case VariableActionType:

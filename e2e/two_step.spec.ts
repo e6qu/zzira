@@ -71,6 +71,10 @@ test('a person protects their account with a second step and signs in with it', 
   await section.getByRole('button', { name: 'Set up two-step verification' }).click();
   const secret = ((await theirs.locator('#two-step dd code').first().textContent()) ?? '').trim();
   expect(secret.length).toBeGreaterThan(15);
+  // The key is also offered as a code to scan, rather than only to type.
+  const symbol = theirs.locator('#two-step .two-step-qr');
+  await expect(symbol).toHaveAttribute('aria-label', /QR code/);
+  expect(((await symbol.locator('path').getAttribute('d')) ?? '').length).toBeGreaterThan(200);
   await accessible(theirs);
   await theirs.fill('#two-step-confirm-code', '000000');
   await theirs.getByRole('button', { name: 'Confirm' }).click();
@@ -156,6 +160,7 @@ test('a person protects their account with a second step and signs in with it', 
   await submitLogin(required, email, password);
   await expect(required).toHaveURL('/login/enrol');
   await expect(required.getByRole('heading', { name: 'Set up two-step verification' })).toBeVisible();
+  await expect(required.locator('.two-step-qr')).toHaveAttribute('aria-label', /QR code/);
   const enrolKey = ((await required.locator('.two-step-key dd code').first().textContent()) ?? '').trim();
   await accessible(required);
   // The key survives a reload, so an app that already holds it still works.

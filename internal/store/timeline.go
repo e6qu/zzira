@@ -120,3 +120,33 @@ func (s *Store) EpicChildren(ctx context.Context, workspaceID, userID string, ep
 	}
 	return out, rows.Err()
 }
+
+// WorkBeneath lists every piece of standard work under the given parents, at
+// any depth: the children of an epic, and for a level above the epic the work
+// under each of its epics as well. Sub-tasks are left out, as they are in the
+// epic report, because they are counted through the work they belong to.
+func (s *Store) WorkBeneath(ctx context.Context, workspaceID, userID string, parentIDs []string) ([]*models.Issue, error) {
+	rows, err := s.Pool.Query(ctx, `
+		WITH RECURSIVE beneath AS (
+		  SELECT id FROM issues WHERE workspace_id=$1 AND parent_id=ANY($2)
+		  UNION
+		  SELECT child.id FROM issues child JOIN beneath ON child.parent_id=beneath.id
+		  WHERE child.workspace_id=$1
+		)
+		`+searchSelect+" "+searchJoin+`
+		WHERE i.workspace_id=$1 AND i.id IN (SELECT id FROM beneath) AND NOT it.subtask AND `+VisibleIssuePredicate("i", "$3")+`
+		ORDER BY i.rank, i.key`, workspaceID, parentIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*models.Issue{}
+	for rows.Next() {
+		issue, err := scanIssue(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, issue)
+	}
+	return out, rows.Err()
+}

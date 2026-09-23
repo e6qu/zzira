@@ -58,7 +58,7 @@ test('epic and version reports follow work to completion', async ({ page, reques
   await expect(page.getByRole('heading', { name: 'Epic report', level: 1 })).toBeVisible();
   await page.getByLabel('Board', { exact: true }).selectOption({ label: 'ZZ board' });
   await page.getByRole('button', { name: 'Show board' }).click();
-  await page.getByLabel('Epic', { exact: true }).selectOption(epic);
+  await page.getByRole('combobox', { name: /^Epic/ }).selectOption(epic);
   await page.getByRole('button', { name: 'Show epic' }).click();
   await expect(page.getByRole('region', { name: 'Progress summary' })).toContainText('1 of 2 work items done');
   await expect(page.getByRole('table', { name: 'Completed work items' })).toContainText(finished);

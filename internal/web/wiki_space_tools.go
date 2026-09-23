@@ -2,7 +2,9 @@ package web
 
 import (
 	"bytes"
+	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -353,4 +355,52 @@ func (h *Handler) WikiSpaceExportFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="`+space.Key+`-export.zip"`)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	http.ServeContent(w, r, space.Key+"-export.zip", time.Time{}, bytes.NewReader(content))
+}
+
+// wikiSpaceImportLimit is the largest export this site reads back. An export
+// carries the pages' storage, not their attachments' bytes, so a space that
+// needs more than this is a space with more text in it than any site has.
+const wikiSpaceImportLimit = 64 << 20
+
+// WikiSpaceImport makes a space from an export somebody uploads: the pages and
+// blog posts it carries, under the key and name given here rather than the
+// ones it came from.
+func (h *Handler) WikiSpaceImport(w http.ResponseWriter, r *http.Request) {
+	user, ws, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	admin, err := h.Store.IsAdmin(r.Context(), ws, user.ID)
+	if err != nil {
+		http.Error(w, "Could not read site administration.", http.StatusInternalServerError)
+		return
+	}
+	if !admin {
+		http.Error(w, "Only a site administrator imports a space.", http.StatusForbidden)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, wikiSpaceImportLimit+(1<<20))
+	if err := r.ParseMultipartForm(wikiSpaceImportLimit); err != nil { // #nosec G120 -- body capped by MaxBytesReader above
+		http.Error(w, "Choose an export to import.", http.StatusBadRequest)
+		return
+	}
+	file, _, err := r.FormFile("export")
+	if err != nil {
+		http.Error(w, "Choose an export to import.", http.StatusBadRequest)
+		return
+	}
+	defer func() { _ = file.Close() }()
+	archive, err := io.ReadAll(io.LimitReader(file, wikiSpaceImportLimit))
+	if err != nil {
+		http.Error(w, "Could not read that export.", http.StatusBadRequest)
+		return
+	}
+	result, err := h.Store.ImportWikiSpace(r.Context(), ws, user.ID,
+		strings.TrimSpace(r.FormValue("key")), strings.TrimSpace(r.FormValue("name")), archive, h.Commands.Blobs)
+	if err != nil {
+		_, message := wikiWebError(err)
+		redirectLocal(w, r, "/wiki?importError="+url.QueryEscape(message)+"#wiki-import-space")
+		return
+	}
+	redirectLocal(w, r, "/wiki/spaces/"+result.Space.ID)
 }

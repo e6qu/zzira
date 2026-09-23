@@ -62,6 +62,10 @@ type profilePageData struct {
 	NotifyOwnChanges bool
 	Autowatch        bool
 	WikiAutowatch    bool
+	// Locale is the language this person reads the site's own words in, and
+	// Locales the languages the site has been translated into.
+	Locale  string
+	Locales []string
 	// APITokens are the signed-in person's own tokens, and NewAPIToken is the
 	// secret of one just created -- shown once, on the response to the
 	// request that made it, and never again.
@@ -93,6 +97,11 @@ type profilePageData struct {
 	// request that started the enrolment: they are the credential itself.
 	TwoStepSecret string
 	TwoStepURI    string
+	// TwoStepQR is the setup link as a QR symbol an authenticator app
+	// scans: the dark modules as one SVG path, and how wide the symbol is
+	// with its quiet zone.
+	TwoStepQR       string
+	TwoStepQRExtent int
 	// TwoStepRecoveryCodes are shown once, when the enrolment is confirmed.
 	TwoStepRecoveryCodes []string
 	TwoStepError         string
@@ -190,6 +199,10 @@ type statusDirectoryData struct {
 	CanEdit      bool
 	Saved        string
 	Blocked      string
+	// Translations is what each status is called in the site's other
+	// languages, by status id. A status is read as often as a work type is,
+	// and the API has always translated it.
+	Translations map[string]metadataTranslationCard
 }
 
 type workflowSchemeCard struct {
@@ -459,6 +472,10 @@ func (h *Handler) buildProfileData(r *http.Request, user *models.User, wsID, acc
 		return profilePageData{}, err
 	}
 	data.WikiAutowatch = !wikiAutowatchDisabled
+	data.Locale = h.Store.LocaleForUser(r.Context(), wsID, user.ID)
+	if data.Locales, err = h.Store.TranslatedLocales(r.Context(), wsID); err != nil {
+		return profilePageData{}, err
+	}
 	if data.APITokens, err = h.Store.APITokensForUser(r.Context(), user.ID); err != nil {
 		return profilePageData{}, err
 	}
@@ -663,6 +680,42 @@ func (h *Handler) UpdateNotificationPreferences(w http.ResponseWriter, r *http.R
 	http.Redirect(w, r, "/people/"+url.PathEscape(user.ID)+"?saved="+url.QueryEscape("Notification preferences saved"), http.StatusSeeOther)
 }
 
+// UpdateLanguage saves which of the site's languages this person reads it in.
+// The site's own words stay what the site calls them: what changes is the
+// word on the page, as it does in Jira.
+func (h *Handler) UpdateLanguage(w http.ResponseWriter, r *http.Request) {
+	user, wsID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	locale := store.NormalizeLocale(r.PostFormValue("locale"))
+	back := "/people/" + url.PathEscape(user.ID)
+	if locale == "" {
+		if err := h.Store.DeleteUserPreference(r.Context(), wsID, user.ID, store.UserPreferenceLocaleKey); err != nil && !errors.Is(err, store.ErrPeopleNotFound) {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, back+"?saved="+url.QueryEscape("Reading the site in its own language"), http.StatusSeeOther)
+		return
+	}
+	// A language nobody has translated the site into would leave every name
+	// as it is, which reads as a setting that did nothing.
+	locales, err := h.Store.TranslatedLocales(r.Context(), wsID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !slices.Contains(locales, locale) {
+		http.Error(w, "This site has not been translated into that language.", http.StatusBadRequest)
+		return
+	}
+	if err := h.Store.SetUserPreference(r.Context(), wsID, user.ID, store.UserPreferenceLocaleKey, locale); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, back+"?saved="+url.QueryEscape("Reading the site in "+locale), http.StatusSeeOther)
+}
+
 func (h *Handler) UnlinkIdentityProvider(w http.ResponseWriter, r *http.Request) {
 	user := h.currentUser(r)
 	if user == nil {
@@ -751,8 +804,18 @@ func (h *Handler) StatusesPage(w http.ResponseWriter, r *http.Request) {
 		projectNames[project.ID] = project.Name
 	}
 	admin, _ := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+	held, err := h.Store.IssueMetadataTranslations(r.Context(), workspaceID, "status")
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	named := make(map[string]string, len(items))
+	for _, item := range items {
+		named[item.Status.ID] = item.Status.Name
+	}
 	h.writeWorkspacePage(w, r, "page_statuses", user, workspaceID, statusDirectoryData{
 		Items: items, Projects: projects, ProjectNames: projectNames, CanEdit: admin, Saved: r.URL.Query().Get("saved"), Blocked: r.URL.Query().Get("blocked"),
+		Translations: metadataTranslationCards("status", "/settings/statuses", named, held),
 	}, "statuses", "")
 }
 
@@ -1034,6 +1097,16 @@ func statusAdminError(w http.ResponseWriter, err error) {
 func (h *Handler) CreateStatus(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.requireAdminPage(w, r)
 	if !ok || !parseForm(w, r) {
+		return
+	}
+	// The page also names a status in another language, which is the same
+	// form action every other metadata page carries.
+	if handled, notice, err := h.metadataTranslationAction(r, workspaceID, user.ID, "status"); handled {
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Redirect(w, r, "/settings/statuses?saved="+url.QueryEscape(notice), http.StatusSeeOther)
 		return
 	}
 	status, err := h.Store.CreateStatus(r.Context(), workspaceID, user.ID, statusForm(r))

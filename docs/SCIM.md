@@ -76,16 +76,22 @@ did, and the people and groups it manages with the external ids it knows them
 by. What SCIM does not provision -- product access -- is said there too,
 because that is where somebody setting it up will read it.
 
+**Provisioning keys** are issued there as well. A key provisions one directory
+and nothing else, is shown once because only its hash is kept, records when a
+provider last used it, and is revoked on its own. A provider sends it as
+`Authorization: Bearer`, and every change it makes is recorded against the
+person who issued it. An organization administrator's own API token is still
+accepted, which is how provisioning worked before directories had keys.
+
 ## Gaps
 
 - One directory per organization, so `{directoryId}` is that directory.
 - No SCIM bulk operations, sorting or ETags; `ServiceProviderConfig` says so.
-- Provisioning authenticates as an organization administrator rather than with
-  a directory-scoped API key of its own.
 - Product access is not provisioned: a person SCIM creates joins the directory
   and its groups, and the groups carry whatever access the site gave them.
-- The browser page reads what a provider has written; it does not write. A
-  provider is connected by pointing it at the address, not by a form here.
+- The browser page reads what a provider has written and issues the key it
+  writes with; the provider itself is still configured at its own end, by
+  pointing it at the address.
 
 ## Tests
 

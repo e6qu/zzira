@@ -81,6 +81,9 @@ test('admin creates, runs, audits, disables and deletes scheduled automation', a
   await page.locator('[data-theme-toggle]').click();
   await accessible(page);
   await page.locator('[data-theme-toggle]').click();
+  // A narrow screen fits, whatever the site's projects are called: the home
+  // picker holds every project name, and a long one used to widen the card
+  // past the viewport.
   await page.setViewportSize({ width: 320, height: 740 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await accessible(page);
@@ -1017,6 +1020,70 @@ test('admin writes a rule to run by hand and runs it from a work item', async ({
   await expect(page).toHaveURL('/settings/automation');
 });
 
+// Jira runs a manual rule over a selection as well as over one work item.
+// The navigator offers the same rules the work item does, and runs them one at
+// a time so a rule refused on one item does not stop the rest.
+test('admin runs a manual rule over a selection in the navigator', async ({ page }) => {
+  await login(page);
+  const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  const stamp = Date.now();
+  const keys: string[] = [];
+  for (const suffix of ['one', 'two', 'three']) {
+    const created = await page.request.post('/rest/api/3/issue', {
+      headers, data: { fields: { project: { key: 'ZZ' }, summary: `Bulk rule ${suffix} ${stamp}`, issuetype: { name: 'Task' } } },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    keys.push((await created.json()).key as string);
+  }
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E bulk manual ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('jira.manual.trigger.issue.action');
+  await page.getByLabel('Question').first().fill('Which release?');
+  await page.getByLabel('Variable').first().fill('release');
+  await page.getByLabel('Needed').first().selectOption('required');
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('jira.issue.comment');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(`Queued for {{userInputs.release}} (${stamp})`);
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+
+  try {
+    // The navigator offers the rule beside the other bulk actions.
+    await page.goto(`/issues/ZZ?mode=advanced&jql=${encodeURIComponent(`summary ~ "Bulk rule" AND summary ~ "${stamp}" ORDER BY created ASC`)}`);
+    for (const key of keys) {
+      await page.getByRole('checkbox', { name: `Select ${key}` }).check();
+    }
+    const runner = page.locator('.bulk-automation-picker');
+    await runner.locator('summary').click();
+    await accessible(page);
+    // Each rule has its own box, so the question belongs to this rule alone.
+    const box = runner.locator('fieldset').filter({ hasText: name });
+    await box.getByLabel('Which release?').fill('4.2');
+    page.once('dialog', dialog => dialog.accept());
+    await box.getByRole('button', { name: `Run ${name}` }).click();
+    await expect(page.getByRole('status')).toContainText(`${name} ran on 3 of 3 work items.`);
+
+    // What was typed reached every one of them.
+    for (const key of keys) {
+      await expect.poll(async () => {
+        const comments = await (await page.request.get(`/rest/api/3/issue/${key}/comment`, { headers })).json();
+        return JSON.stringify(comments.comments.map((item: any) => item.body));
+      }, { timeout: 15_000 }).toContain(`Queued for 4.2 (${stamp})`);
+    }
+    // Every run is in the rule's own audit log.
+    await page.goto(ruleURL);
+    await expect(page.locator('.automation-audit tbody').locator('tr')).toHaveCount(3);
+  } finally {
+    await page.goto(ruleURL);
+    await page.getByRole('button', { name: 'Disable' }).click();
+    await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+    await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+    await expect(page).toHaveURL('/settings/automation');
+  }
+});
+
 // A rule can name a value of its own and read it back later, and branch over
 // whatever a query matches rather than only over work related to the trigger.
 test('admin writes a rule that names a value and branches over a query', async ({ page }) => {
@@ -1133,28 +1200,34 @@ test('admin builds a rule that runs when a page is written in the wiki', async (
   await page.goto('/settings/automation');
   await expect(page.getByRole('article').filter({ hasText: name })).toContainText('Page created');
 
-  // Writing the page is what starts it.
-  const title = `Release checklist ${stamp}`;
-  await page.goto(spaceURL);
-  await page.getByRole('link', { name: 'Create page', exact: true }).click();
-  await page.getByLabel('Page title').fill(title);
-  await page.getByRole('textbox', { name: 'Page content' }).fill('What to check before a release.');
-  await page.getByRole('button', { name: 'Save page', exact: true }).click();
-  await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
+  // A page trigger answers every space, so this rule has to come down even
+  // when an assertion below fails: a later journey's page would start it.
+  try {
+    // Writing the page is what starts it.
+    const title = `Release checklist ${stamp}`;
+    await page.goto(spaceURL);
+    await page.getByRole('link', { name: 'Create page', exact: true }).click();
+    await page.getByLabel('Page title').fill(title);
+    await page.getByRole('textbox', { name: 'Page content' }).fill('What to check before a release.');
+    await page.getByRole('button', { name: 'Save page', exact: true }).click();
+    await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
 
-  await expect.poll(async () => {
-    const found = await (await page.request.get(`/rest/api/3/search/jql?fields=summary&jql=${encodeURIComponent(`project = ZZ AND summary ~ "${title}"`)}`, { headers })).json();
-    return (found.issues ?? []).map((issue: any) => issue.fields?.summary ?? '').join(' | ');
-  }, { timeout: 20_000 }).toContain(`Review ${title}`);
+    await expect.poll(async () => {
+      const found = await (await page.request.get(`/rest/api/3/search/jql?fields=summary&jql=${encodeURIComponent(`project = ZZ AND summary ~ "${title}"`)}`, { headers })).json();
+      return (found.issues ?? []).map((issue: any) => issue.fields?.summary ?? '').join(' | ');
+    }, { timeout: 20_000 }).toContain(`Review ${title}`);
 
-  await expect.poll(async () => {
+    await expect.poll(async () => {
+      await page.goto(ruleURL);
+      return await page.locator('.automation-audit tbody').innerText();
+    }, { timeout: 15_000 }).toContain('SUCCESS');
+  } finally {
     await page.goto(ruleURL);
-    return await page.locator('.automation-audit tbody').innerText();
-  }, { timeout: 15_000 }).toContain('SUCCESS');
-  await page.getByRole('button', { name: 'Disable' }).click();
-  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
-  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
-  await expect(page).toHaveURL('/settings/automation');
+    await page.getByRole('button', { name: 'Disable' }).click();
+    await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+    await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+    await expect(page).toHaveURL('/settings/automation');
+  }
 });
 
 // A rule the wiki starts answers in the wiki: under the page that asked.
@@ -1185,30 +1258,105 @@ test('admin builds a rule that answers a page in the wiki', async ({ page }) => 
   await expect(page.getByRole('note')).toHaveCount(0);
   await expect(page.getByRole('combobox', { name: 'Action', exact: true }).first()).toHaveValue('confluence.page.comment');
 
-  // Writing a page is what starts it, and the answer lands on that page.
-  const title = `Design review ${stamp}`;
-  await page.goto(spaceURL);
-  await page.getByRole('link', { name: 'Create page', exact: true }).click();
-  await page.getByLabel('Page title').fill(title);
-  await page.getByRole('textbox', { name: 'Page content' }).fill('Please read this before Friday.');
-  await page.getByRole('button', { name: 'Save page', exact: true }).click();
-  await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
-  const pageURL = page.url();
+  // A page trigger is not scoped to a space, so every page written anywhere
+  // while this rule is enabled gets answered. Take it down whatever happens
+  // here, or a later journey's page is the one that gets commented on.
+  try {
+    // Writing a page is what starts it, and the answer lands on that page.
+    const title = `Design review ${stamp}`;
+    await page.goto(spaceURL);
+    await page.getByRole('link', { name: 'Create page', exact: true }).click();
+    await page.getByLabel('Page title').fill(title);
+    await page.getByRole('textbox', { name: 'Page content' }).fill('Please read this before Friday.');
+    await page.getByRole('button', { name: 'Save page', exact: true }).click();
+    await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
+    const pageURL = page.url();
 
-  await expect.poll(async () => {
-    await page.goto(pageURL);
-    return await page.locator('body').innerText();
-  }, { timeout: 20_000 }).toContain(`Read by ${name}: ${title}`);
-  await expect(page.getByText(`read-${stamp}`).first()).toBeVisible();
+    // Comment and label are two actions of one run, and the run lands after
+    // the page is saved, so wait for both rather than for the first of them.
+    await expect.poll(async () => {
+      await page.goto(pageURL);
+      return await page.locator('body').innerText();
+    }, { timeout: 20_000 }).toContain(`Read by ${name}: ${title}`);
+    await expect.poll(async () => {
+      await page.goto(pageURL);
+      return await page.locator('body').innerText();
+    }, { timeout: 20_000 }).toContain(`read-${stamp}`);
 
-  await expect.poll(async () => {
+    await expect.poll(async () => {
+      await page.goto(ruleURL);
+      return await page.locator('.automation-audit tbody').innerText();
+    }, { timeout: 15_000 }).toContain('SUCCESS');
+  } finally {
     await page.goto(ruleURL);
-    return await page.locator('.automation-audit tbody').innerText();
-  }, { timeout: 15_000 }).toContain('SUCCESS');
-  await page.getByRole('button', { name: 'Disable' }).click();
-  await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
-  await page.getByRole('button', { name: 'Delete rule permanently' }).click();
-  await expect(page).toHaveURL('/settings/automation');
+    await page.getByRole('button', { name: 'Disable' }).click();
+    await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+    await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+    await expect(page).toHaveURL('/settings/automation');
+  }
+});
+
+// A rule keeps a page up to date and then puts it away: it writes at the end
+// of the page it ran for, and archives it.
+test('admin builds a rule that writes at the end of a page and archives it', async ({ page }) => {
+  await login(page);
+  const stamp = Date.now();
+  const spaceKey = `WAP${String(stamp).slice(-6)}`;
+  await page.goto('/wiki');
+  await page.locator('.wiki-create-space > summary').click();
+  await page.getByLabel('Space name').fill(`Appended pages ${stamp}`);
+  await page.getByLabel('Space key').fill(spaceKey);
+  await page.getByRole('button', { name: 'Create space', exact: true }).click();
+  await expect(page).toHaveURL(/\/wiki\/spaces\/\d+$/);
+  const spaceURL = page.url();
+
+  await page.goto('/settings/automation/new');
+  const name = `E2E page append ${stamp}`;
+  await page.getByLabel('Rule name').fill(name);
+  await page.getByRole('combobox', { name: 'Trigger', exact: true }).selectOption('confluence.page.created');
+  await page.getByRole('combobox', { name: 'Action', exact: true }).selectOption('confluence.page.append');
+  await page.getByRole('combobox', { name: 'Value', exact: true }).first().fill(`Filed by {{rule.name}} ${stamp}`);
+  await page.locator('.automation-action-empty').first().getByLabel('Additional action').selectOption('confluence.page.archive');
+  await page.getByRole('button', { name: 'Create rule' }).click();
+  await expect(page).toHaveURL(/\/settings\/automation\/[0-9a-f-]+$/);
+  const ruleURL = page.url();
+  await expect(page.getByRole('note')).toHaveCount(0);
+
+  // The trigger is not scoped to a space, so take the rule down whatever
+  // happens here: every page written anywhere would otherwise be archived.
+  try {
+    const title = `Weekly note ${stamp}`;
+    await page.goto(spaceURL);
+    await page.getByRole('link', { name: 'Create page', exact: true }).click();
+    await page.getByLabel('Page title').fill(title);
+    await page.getByRole('textbox', { name: 'Page content' }).fill('What happened this week.');
+    await page.getByRole('button', { name: 'Save page', exact: true }).click();
+    await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
+    const pageURL = page.url();
+
+    // What was on the page is still there, with the rule's line after it, and
+    // the page ends up archived.
+    await expect.poll(async () => {
+      await page.goto(pageURL);
+      return await page.locator('body').innerText();
+    }, { timeout: 20_000 }).toContain(`Filed by ${name} ${stamp}`);
+    await expect(page.locator('body')).toContainText('What happened this week.');
+    await expect.poll(async () => {
+      await page.goto(pageURL);
+      return await page.getByRole('status', { name: 'Archived page' }).count();
+    }, { timeout: 20_000 }).toBe(1);
+
+    await expect.poll(async () => {
+      await page.goto(ruleURL);
+      return await page.locator('.automation-audit tbody').innerText();
+    }, { timeout: 15_000 }).toContain('SUCCESS');
+  } finally {
+    await page.goto(ruleURL);
+    await page.getByRole('button', { name: 'Disable' }).click();
+    await page.locator('.automation-danger').getByText('Delete rule', { exact: true }).click();
+    await page.getByRole('button', { name: 'Delete rule permanently' }).click();
+    await expect(page).toHaveURL('/settings/automation');
+  }
 });
 
 // Advanced branching: the same actions, once for each item in a list.

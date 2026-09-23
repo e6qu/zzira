@@ -2,7 +2,9 @@ package web
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -35,7 +37,71 @@ func (h *Handler) ServiceAssetsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not authorize service asset administration.", http.StatusInternalServerError)
 		return
 	}
-	h.writeWorkspacePage(w, r, "page_service_assets", user, workspaceID, servicePageData{Desk: desk, AssetInventory: inventory, CanAgent: true, CanAdmin: admin}, "service-agent", desk.ProjectID)
+	history, err := h.Store.ServiceAssetInventoryHistory(r.Context(), workspaceID, user.ID, deskID)
+	if err != nil {
+		http.Error(w, "Could not load what has happened to these objects.", http.StatusInternalServerError)
+		return
+	}
+	comments, err := h.Store.ServiceAssetInventoryComments(r.Context(), workspaceID, user.ID, deskID)
+	if err != nil {
+		http.Error(w, "Could not load what people have said about these objects.", http.StatusInternalServerError)
+		return
+	}
+	data := servicePageData{Desk: desk, AssetInventory: inventory, CanAgent: true, CanAdmin: admin, AssetHistory: history, AssetComments: comments}
+	// An import redirects back here with what it wrote, so the inventory the
+	// page shows is the one the import left behind.
+	data.AssetImportError = r.URL.Query().Get("importError")
+	created, createdErr := strconv.Atoi(r.URL.Query().Get("imported"))
+	updated, updatedErr := strconv.Atoi(r.URL.Query().Get("reimported"))
+	deleted, _ := strconv.Atoi(r.URL.Query().Get("unimported"))
+	if createdErr == nil && updatedErr == nil {
+		data.AssetImport = &models.ServiceAssetImport{Created: created, Updated: updated, Deleted: deleted}
+	}
+	h.writeWorkspacePage(w, r, "page_service_assets", user, workspaceID, data, "service-agent", desk.ProjectID)
+}
+
+// serviceAssetImportLimit is the largest file an import reads. A thousand
+// objects of typed attributes are far smaller than this.
+const serviceAssetImportLimit = 4 << 20
+
+// ServiceAssetImport reads a comma separated file of objects for one schema.
+func (h *Handler) ServiceAssetImport(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return
+	}
+	deskID := r.PathValue("desk")
+	back := "/service/agent/" + deskID + "/assets"
+	r.Body = http.MaxBytesReader(w, r.Body, serviceAssetImportLimit+(1<<20))
+	if err := r.ParseMultipartForm(serviceAssetImportLimit); err != nil { // #nosec G120 -- body capped by MaxBytesReader above
+		redirectLocal(w, r, back+"?importError="+url.QueryEscape("that file could not be read")+"#import")
+		return
+	}
+	file, header, err := r.FormFile("file")
+	text := r.PostFormValue("objects")
+	if err == nil {
+		defer func() { _ = file.Close() }()
+		if header.Size > serviceAssetImportLimit {
+			redirectLocal(w, r, back+"?importError="+url.QueryEscape("that file is larger than 4 MB")+"#import")
+			return
+		}
+		body, readErr := io.ReadAll(io.LimitReader(file, serviceAssetImportLimit+1))
+		if readErr != nil {
+			redirectLocal(w, r, back+"?importError="+url.QueryEscape("that file could not be read")+"#import")
+			return
+		}
+		text = string(body)
+	}
+	if strings.TrimSpace(text) == "" {
+		redirectLocal(w, r, back+"?importError="+url.QueryEscape("choose a file or paste the objects to import")+"#import")
+		return
+	}
+	imported, err := h.Commands.ImportServiceAssetObjects(r.Context(), user.ID, workspaceID, deskID, r.PostFormValue("schemaId"), text, r.PostFormValue("reconcile") == "true")
+	if err != nil {
+		redirectLocal(w, r, back+"?importError="+url.QueryEscape(err.Error())+"#import")
+		return
+	}
+	redirectLocal(w, r, back+"?imported="+strconv.Itoa(imported.Created)+"&reimported="+strconv.Itoa(imported.Updated)+"&unimported="+strconv.Itoa(imported.Deleted)+"#import")
 }
 
 func parseServiceAssetAttributes(value string) ([]models.ServiceAssetAttribute, error) {
@@ -154,4 +220,26 @@ func (h *Handler) ServiceRequestAssetSettings(w http.ResponseWriter, r *http.Req
 		return
 	}
 	redirectLocal(w, r, "/service/requests/"+r.PathValue("key")+"#asset-impact")
+}
+
+// ServiceAssetObjectComment says something about an object, or takes a
+// comment away. Agents of the desk may say something; whoever wrote a comment,
+// and any site administrator, may remove it.
+func (h *Handler) ServiceAssetObjectComment(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	deskID, objectID := r.PathValue("desk"), r.PostFormValue("objectId")
+	var err error
+	if r.PostFormValue("action") == "delete" {
+		err = h.Store.DeleteServiceAssetObjectComment(r.Context(), workspaceID, user.ID, objectID, r.PostFormValue("commentId"))
+	} else {
+		_, err = h.Store.CreateServiceAssetObjectComment(r.Context(), workspaceID, user.ID, objectID, r.PostFormValue("body"))
+	}
+	if err != nil {
+		http.Error(w, "Could not update the comments on this object: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	redirectLocal(w, r, "/service/agent/"+deskID+"/assets#objects")
 }

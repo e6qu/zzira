@@ -14,6 +14,17 @@ async function downloadCSV(page: Page): Promise<{ name: string; lines: string[] 
   return { name: download.suggestedFilename(), lines: fs.readFileSync((await download.path())!, 'utf8').trim().split('\n') };
 }
 
+// doneTransition is the transition that finishes a work item, which a
+// workflow names rather than numbers.
+async function doneTransition(page: Page, key: string): Promise<string> {
+  const transitions = await (await page.request.get(`/rest/api/3/issue/${key}/transitions`, {
+    headers: { Authorization: apiAuthHeader() },
+  })).json();
+  const done = (transitions.transitions ?? []).find((transition: any) => transition.to?.statusCategory?.key === 'done'
+    || transition.to?.name === 'Done');
+  return String(done.id);
+}
+
 async function accessible(page: Page) {
   // Axe counts controls under the sticky header as covered, so pages are
   // checked from the top rather than wherever an anchor scrolled them.
@@ -143,6 +154,40 @@ test('plan a release, assign scope, publish notes, archive and delete', async ({
   } finally {
     await context.setOffline(false);
   }
+  // The hub says where the project's work has been: this deployment put it
+  // into production, and the hub reads that back.
+  await page.goto('/projects/ZZ/releases');
+  const environments = page.getByRole('region', { name: 'Environments' });
+  await expect(environments).toContainText('production');
+  await expect(environments).toContainText('Production');
+  await expect(environments).toContainText('work item');
+
+  // A project can ask for its conditions before a version ships: this one
+  // wants its work resolved, and the work in this release is not.
+  await page.goto('/projects/ZZ/settings');
+  const conditions = page.locator('#release-gates');
+  await conditions.getByLabel('Nothing unresolved is left in it, unless it moves to another version').check();
+  await conditions.getByRole('button', { name: 'Save release conditions' }).click();
+  await expect(page.locator('#release-gates')).toContainText('Release conditions saved');
+
+  await page.goto(releaseURL);
+  await expect(page.getByRole('region', { name: 'Before it ships' })).toContainText('Not yet:');
+  const refused = await page.request.put(`/rest/api/3/version/${id}`, {
+    headers: { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' },
+    data: { released: true },
+  });
+  expect(refused.status(), await refused.text()).toBe(409);
+  expect(await refused.text()).toContain('work is resolved');
+
+  // Resolved, it ships, and the conditions are put back for the next journey.
+  expect((await page.request.post(`/rest/api/3/issue/${issue.key}/transitions`, {
+    headers: { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' },
+    data: { transition: { id: await doneTransition(page, issue.key) } },
+  })).status()).toBe(204);
+  await page.goto('/projects/ZZ/settings');
+  await page.locator('#release-gates').getByLabel('Nothing unresolved is left in it, unless it moves to another version').uncheck();
+  await page.locator('#release-gates').getByRole('button', { name: 'Save release conditions' }).click();
+
   await page.goto(releaseURL);
   await page.getByRole('button', { name: 'Release version', exact: true }).click();
   await expect(page.locator('.page-header .eyebrow')).toHaveText('Released');

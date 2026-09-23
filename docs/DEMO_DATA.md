@@ -4,12 +4,13 @@ A demo site is built from a scenario: one JSON document that declares a
 company's people, projects, work, releases, deliveries, service requests and
 knowledge. `demo/company.json` is the company the repository ships: Northwind, a business
 that has been running for three years. Applying it gives a site with that
-history behind it -- 37 people in eight teams, nine projects, hundreds of
+history behind it -- 37 people in eleven teams, twelve projects, hundreds of
 sprints and releases, thousands of pieces of work with the worklogs, comments
 and deployments that went with them, a support desk with years of requests,
-and four dashboards a site like it would keep: delivery health (the DORA
-metrics and the deployments behind them), this sprint, support and operations,
-and each person's own work. Building it takes a few minutes, because every
+seven wiki spaces, an Assets inventory of thirty typed objects, files on the
+work that carries evidence, and five dashboards a site like it would keep:
+delivery health (the DORA metrics and the deployments behind them), this
+sprint, support and operations, and each person's own work. Building it takes a few minutes, because every
 piece of it is written through the same commands a person's clicks would run.
 
 ```bash
@@ -94,16 +95,18 @@ show.
 | Section | What it builds |
 | --- | --- |
 | `site` | The workspace: its slug and name |
-| `groups`, `people` | Accounts, their roles and group membership. A person marked `customer` has no seat on the site and reaches the portal only |
+| `groups`, `people` | Accounts, their roles and group membership. A person marked `customer` has no seat on the site and reaches the portal only, and one with a `locale` reads the site's own words in that language |
 | `hierarchy` | Levels above Epic and the work types on them ([ISSUE_METADATA.md](ISSUE_METADATA.md#work-type-hierarchy)) |
 | `customFields` | Fields the work uses, with options for select lists |
-| `projects` | Projects with their type and template, components, versions, a board with its sprints, and a service desk with agents and request types |
-| `workItems` | Work with its parent, sprint, versions, labels, estimates and field values, plus `events` — the transitions, comments, worklogs, assignments, links, watches and votes that happened to it |
-| `deployments`, `commits` | Deliveries to environments and the changes they carried, which the delivery (DORA) report counts: deployments give the frequency and the failure rate, and commits paired with them give the lead time ([REPORTS.md](REPORTS.md)) |
-| `plans` | Cross-project plans, and the teams that work in them |
-| `service` | Customer organizations and the requests they raised, with their conversation and satisfaction rating |
-| `wiki` | Spaces, page trees, blog posts and comments |
-| `filters`, `dashboards` | The searches people saved, and the dashboards they keep, with the gadgets on them. A gadget names its `type` (the catalog key without `com.zzira:`) and whatever that kind reads: a `project` and `days` window, a scrum `board`, a saved `filter` or `jql`, a `groupBy` and `yGroupBy`, `dateField` or `cumulative` |
+| `projects` | Projects with their type and template, components, versions, a board with its sprints, and a service desk with agents, request types (each with the `fields` its form asks, including an Assets object field's schema and AQL filter) and the queues its agents work from A released version carries the `relatedWork` it links out to: its notes and the change that carried it. |
+| `workItems` | Work with its parent, sprint, versions, labels, `estimate`, `due` day and field values, plus `events` — the transitions, comments, worklogs, assignments, links, watches and votes that happened to it |
+| `deployments`, `commits` | Deliveries to environments and the changes they carried, which the delivery (DORA) report counts: deployments give the frequency and the failure rate, and commits paired with them give the lead time ([REPORTS.md](REPORTS.md)) Each deployment also records the build that produced it, so a work item's development panel reads both. |
+| `plans` | Cross-project plans, the teams that work in them, and the cross-project `releases` that group versions from several projects into one delivery |
+| `translations` | What the site calls a work type, a priority, a resolution or a status in the other languages its people read ([ISSUE_METADATA](ISSUE_METADATA.md#translating-the-words-on-a-work-item)) |
+| `automation` | The rules the company runs: what starts them, what they are scoped to, and what they do |
+| `service` | Customer organizations with their members and the `desks` they are customers of, the requests they raised with their conversation and satisfaction rating, and `assets` — the desk's inventory: schemas, the objects in them, and what each object needs from the others. A schema's attribute is a bare name for a text field, or `{"name","type","required","options"}` for a number, date, boolean or select one A request's `participants` are the colleagues it was shared with. |
+| `wiki` | Spaces, page trees, blog posts and comments, and the `content` a space holds beside them: whiteboards with their objects and the lines between them, databases with their columns, records and views, folders, and embedded pages A page carries `labels`, the `files` attached to it (their content comes from the name, as a work item's attachment does) and the people who `likes` it; a blog post carries labels and likes. A space's `roles` say who administers it, who works in it and who only reads it. |
+| `filters`, `dashboards` | The searches people saved, and the dashboards they keep, with the gadgets on them. A gadget names its `type` (the catalog key without `com.zzira:`) and whatever that kind reads: a `project` and `days` window, a scrum `board`, a saved `filter` or `jql`, a `groupBy` and `yGroupBy`, `dateField` or `cumulative` A filter's `favourites` are the people who starred it, and a filter nobody `shared` can only be starred by its owner. |
 
 ## Generated history
 
@@ -116,7 +119,9 @@ scenario declares the *shape* of its history and the generator writes it:
   "teams": [{ "name": "Payments", "members": ["ravi", "ines"], "projects": ["pay"] }],
   "projects": [{ "project": "pay", "board": "pay-board", "workPerSprint": 9,
                  "releaseEvery": 3, "deploymentsPerWeek": 5, "failureRate": 0.07,
-                 "bugShare": 0.3, "themes": ["card payments", "refunds"] }],
+                 "bugShare": 0.3, "points": "points", "impact": "impact",
+                 "linkShare": 0.18, "watchShare": 0.25,
+                 "themes": ["card payments", "refunds"] }],
   "service": { "project": "help", "requestsPerWeek": 6, "incidentShare": 0.18 },
   "knowledge": { "space": "ENG", "pagesPerMonth": 2.5, "postsPerQuarter": 2 }
 }
@@ -131,10 +136,49 @@ scenario declares the *shape* of its history and the generator writes it:
   so the two never collide.
 - Expanding consumes the plan: the scenario that reaches the applier has every
   sprint, release, work item, deployment, commit, request and page declared.
+- `points` names the field the work is estimated in. Without it a board has
+  nothing to draw a velocity, a burndown or a sprint health from, which is most
+  of what a board is for.
+- `impact` names a select field the work carries, so the site has custom field
+  values to group, filter and report on. A scenario names an option by its
+  value -- "Several customers" -- and the applier writes it the way an option
+  field reads it.
+- `linkShare` and `watchShare` are how much of a sprint's work is linked to the
+  work beside it and watched by somebody. A link points backwards, at work
+  already raised, because the timeline is replayed in order.
+- `service` is one desk and `services` are the rest: a company with an external
+  desk and an internal one has two queues filling over the same years, each
+  with its own agents, request types and customers. An internal desk's
+  customers are the people who work here, and raising a request enrols them.
+- `approvalType` is the request type somebody has to approve, `approvers` the
+  people who answer, and `assets` the objects an incident is about. Most access
+  requests are approved, a few refused and closed, and a few left waiting.
+- A share of the generated bugs are the outages the team had: labelled
+  `incident`, raised at the highest priority and always resolved. Each project
+  has one in the last month, because a delivery report whose time to restore
+  says "No data" reads as a report that does not work. A project says what it
+  counts as an incident with `incidentJql`.
+- Generated work carries an `estimate` like curated work does, and about a
+  third of it is `due` on a day, so the time tracking, user workload, version
+  workload and calendar surfaces have something to show for every year of the
+  history rather than only for the curated weeks.
 
 Every entity has an `id` that the rest of the document refers to: a work item
 names its `parent` and `sprint`, a deployment names the `workItems` it carried,
 a request names its `requestType`.
+
+## Estimates and due dates
+
+`estimate` is the original estimate, written the way Jira writes one -- `2d`,
+`4h`, `1w 2d` -- in the site's working time of eight hours a day and five days
+a week. The applier raises the work carrying it as both the original and the
+remaining estimate, so a `worklog` event afterwards moves the remaining
+estimate down exactly as logging work in the site does, and work that logs more
+than it estimated reads as over-run in the time tracking report.
+
+`due` is a day offset, as a version's `releaseDay` is: `"due": -2` is work that
+was due the day before yesterday and is still open. It cannot fall before the
+day the work was raised.
 
 ## Events
 
@@ -144,13 +188,44 @@ An event is one thing that happened on one day:
 { "day": -60, "kind": "transition", "actor": "ravi", "status": "Done", "resolution": "Done" }
 { "day": -59, "kind": "comment", "actor": "ines", "body": "Reviewed and merged." }
 { "day": -58, "kind": "worklog", "actor": "ravi", "seconds": 7200 }
+{ "day": -57, "minutes": 48, "kind": "transition", "status": "Done", "resolution": "Done" }
+{ "day": -57, "kind": "approval", "actor": "sara", "body": "Manager approval", "approvers": ["nora"] }
+{ "day": -56, "kind": "approve", "actor": "nora" }
 ```
 
-The kinds are `transition`, `comment`, `worklog`, `assign`, `link`, `watch` and
-`vote`. A transition names the status it moves to; the applier runs the workflow
+The kinds are `transition`, `comment`, `worklog`, `assign`, `link`, `watch`,
+`vote`, `attach`, and, on a service request only, `approval`, `approve` and
+`decline`. A
+transition names the status it moves to; the applier runs the workflow
 transition that leads there, so conditions, validators and post functions all
 run. A resolution is taken from the transition screen when it asks for one, and
 recorded as an edit when it does not.
+
+`minutes` is how far into the working day an event happened, for the times a
+day is too coarse to say what happened: an outage found at nine and over by ten
+is fifty minutes of recovery, which is what the delivery report's time to
+restore reads. Events inside a day are still replayed in the order they are
+written.
+
+`asset` connects the request to something in the desk's inventory, as
+`"affected"` unless the event says `"role": "depends_on"`. What depends on that
+object is then reached through the relationships, so an incident on a service
+shows what else it takes down.
+
+`attach` puts a file on the work item: `{ "day": -57, "kind": "attach",
+"actor": "ravi", "file": "console.log" }`. The content comes from the name, so
+rebuilding writes the same bytes: `.png` is an image a browser renders, `.log`
+and `.txt` are lines of text, `.csv` is a table and `.json` is a document. On a
+service request the file arrives the way the portal sends one -- uploaded to
+the desk, then carried by a comment, public unless the event says
+`"internal": true` -- and `body` is that comment.
+
+A comment on a service request is a reply through the desk: public unless the
+event says `"internal": true`, which is an agent's note the customer never sees.
+A public reply stops the desk's time to first response; a note leaves it
+running, as it does in the product. `approval` asks the people it names to
+approve, and `approve` or `decline` is one of them answering, so the actor has
+to be one of the approvers.
 
 ## What is checked before anything is written
 
@@ -158,9 +233,15 @@ Applying a scenario that contradicts itself is refused rather than half-built:
 unknown people, projects, sprints, versions, components or fields; duplicate
 ids; events before the work existed or out of order; a released version with no
 release date; a satisfaction rating outside 1 to 5; a sprint that ends before it
-starts.
+starts; an estimate that is not a duration; work due before it was raised; a
+queue whose query does not parse; a request answered by somebody who is not an
+agent of that desk; an approval answered before anybody asked for one.
 
 ## Tests
+
+Every gadget in the catalog is on one of the company's dashboards, and a test
+holds it there: a gadget nobody has put on a dashboard is one nobody has
+looked at.
 
 `internal/demo` checks that a scenario survives being written and read again,
 that each contradiction above is refused, that a scenario builds into the

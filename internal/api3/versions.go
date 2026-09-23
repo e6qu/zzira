@@ -21,6 +21,10 @@ func versionError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, store.ErrVersionValidation), errors.Is(err, store.ErrRelatedWorkValidation):
 		jiraError(w, 400, err.Error())
+	case errors.Is(err, store.ErrReleaseGate):
+		// The project's release conditions refused it: the request is fine,
+		// the site's state is not, which is what 409 says.
+		jiraError(w, 409, strings.TrimPrefix(err.Error(), store.ErrReleaseGate.Error()+": "))
 	case errors.Is(err, store.ErrRelatedWorkNotFound):
 		jiraError(w, 404, "The version or related work does not exist.")
 	case errors.Is(err, store.ErrProjectPermission):

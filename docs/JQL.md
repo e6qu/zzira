@@ -41,7 +41,8 @@ status.
   `issueLinkType`, `level`, `category`, `hierarchyLevel`,
   `statusCategoryChangedDate`, `lastViewed`, `filter` (and its aliases
   `request`, `savedFilter` and `searchRequest`),
-  `"Request participants"`, `request-channel-type`, service SLA fields,
+  `"Request participants"`, `request-channel-type`, `"Request Type"`,
+  `Organizations`, service SLA fields,
   typed custom fields (`cf[N]`, id or name), app field aliases and indexed
   entity properties. `issueKey` and `type` are Jira's aliases for `key` and
   `issuetype`.
@@ -211,8 +212,10 @@ advanced (`?mode=advanced`) modes and saves queries as
 
 See [PLAN.md](../PLAN.md).
 
-- JSM fields not searchable: `Organizations`, because a request is not shared
-  with an organization here; only a desk is.
+- `Organizations` searches the organizations a request is shared with, which
+  here means the ones its customer belongs to that its desk serves -- what the
+  portal already shows a colleague. A request is not shared with an
+  organization one at a time, as JSM lets a customer do when they raise it.
 - `versionedRepresentations` carry only the current value, not field history.
 - Value validation covers status, priority, resolution and work type (by name
   or id). A project, component, version, user or custom field option that does

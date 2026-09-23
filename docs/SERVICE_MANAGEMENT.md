@@ -46,6 +46,14 @@ checks and 320 px reflow.
   auto-enrollment does not restore it.
 - **Portals:** a portal is open to every active site customer, or closed to
   direct members and members of linked organizations.
+- **What a customer may do to the work item behind their request** -- read it,
+  comment on it, attach a file -- comes from the project's permission scheme,
+  through the service portal customer holder the default scheme grants
+  ([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)). A scheme that drops that
+  holder leaves the portal showing a comment box the site then refuses.
+- **Raising a request enrolls whoever raised it** as a customer of the site,
+  in its directory and holding the site's customer role unless they already
+  hold another, which is the same account an administrator creates by hand.
 - **REST visibility:** service desk lists and lookups answer only a desk's
   administrators, agents and admitted users; everyone else gets 403.
 - **Comments:** comments made in the ordinary Jira issue view have no public
@@ -393,9 +401,9 @@ active first. Values of `requestOwnership` combine:
 ## Assets
 
 - **Workspace:** each site has one Assets workspace, and each desk has its own
-  inventory in it. REST exposes only the workspace itself:
-  `GET /rest/servicedeskapi/assets/workspace` (also at the deprecated
-  `/insight/workspace`).
+  inventory in it. `GET /rest/servicedeskapi/assets/workspace` (also at the
+  deprecated `/insight/workspace`) names it, and the Assets API below is served
+  beneath it.
 - **Schemas:** a key, a name and 1–30 attributes (text, number, date, boolean,
   or select with 1–50 options).
   - A schema is also the object type; there is no separate type hierarchy.
@@ -407,6 +415,12 @@ active first. Values of `requestOwnership` combine:
   request links.
 - **Transactions:** every change writes the state and a synced action in one
   transaction.
+- **History:** an object's card carries what has happened to it -- added,
+  changed (with the fields that changed), deleted -- read from those actions
+  rather than kept a second time. The REST resource reports the same.
+- **Comments:** an object carries what its attributes cannot say -- why a
+  service is tier 1, what the vendor answered. Agents of the desk read and
+  write them; whoever wrote one, and any site administrator, can remove it.
 - **Access:** agents can view. Only site administrators create, edit, move or
   delete. Customers cannot read inventory.
 - **Workspace page:** shows the dependency map (SVG) and an accessible
@@ -416,6 +430,50 @@ active first. Values of `requestOwnership` combine:
     cycles, stays within the desk, and reports the shortest depth.
   - Direct links can be edited; inferred impact is derived.
 - **Object fields:** see [Request types and portal fields](#request-types-and-portal-fields).
+- **Import (site administrators):** the Assets page loads a comma separated
+  file of objects for one schema. Its first row names the columns: `Key` and
+  `Label`, optionally `X` and `Y`, and any attribute of the schema, named as
+  the schema names it or by the key it is stored under.
+  - A row whose key already belongs to an object in that schema updates it and
+    keeps its place on the canvas; every other row creates an object, laid out
+    in rows after the ones already there.
+  - The file is read and checked whole, and then written in one transaction, so
+    a refused row leaves the inventory exactly as it was. At most 1000 objects
+    and 4 MB at a time.
+  - **This file is the whole schema** reconciles instead of adding: an object
+    of that schema the file leaves out is deleted, with its relationships and
+    the request links that named it, in the same transaction.
+
+### Assets API
+
+Served at `/jsm/assets/workspace/{workspaceId}/v1`, where the workspace is the
+one `GET /rest/servicedeskapi/assets/workspace` names. A schema is also its
+object type, so `objectschema` and `objecttype` answer for the same ids. An
+agent of the desk reads; only site administrators write. An id in a desk the
+caller does not agent answers 404, the same as an id that was never there.
+
+| Operation | What it does |
+| --- | --- |
+| `GET /objectschema/list` | Every schema the caller agents, with its object count |
+| `GET /objectschema/{id}` | One schema |
+| `GET /objectschema/{id}/objecttypes/flat` | The schema as its one object type, with its attributes |
+| `GET /objecttype/{id}/attributes` | The schema's attributes, typed, with select options |
+| `POST /object/navlist/aql` | `{"qlQuery","objectTypeId","startAt","maxResults"}`; answers `objectEntries` and a total |
+| `POST /object/create` | `{"objectTypeId","objectKey","label","attributes","position"}` |
+| `GET /object/{id}` | One object, its attributes and its place on the canvas |
+| `PUT /object/{id}` | Changes only what the body names |
+| `DELETE /object/{id}` | Deletes the object, its relationships and its request links |
+| `GET /object/{id}/referenceinfo` | The relationships it is either end of, inbound and outbound |
+| `GET /object/{id}/connectedTickets` | The requests that name it |
+| `GET /object/{id}/history` | What has happened to the object, oldest first: who wrote it, when, and which fields that write changed |
+| `GET/POST /object/{id}/comment` | What people have said about the object, and saying something new (`{"comment"}`) |
+| `DELETE /object/{id}/comment/{commentId}` | Removes a comment: its author may, and so may a site administrator |
+| `POST /objectschema/create` | `{"name","objectSchemaKey","description","serviceDeskId","attributes"}`; an attribute with no type is text |
+| `DELETE /objectschema/{id}` | Deletes the schema, its objects and everything that named them |
+| `POST /objectschema/{id}/import` | The import above, as `{"file"}` or the body itself. `{"reconcile":true}` (or `?reconcile=true`) makes the file the whole schema: an object it leaves out is deleted |
+
+An attribute is written and read under the key its schema gave it, and a value
+is checked against the attribute's type exactly as the Assets page checks it.
 
 ## Portal and help center settings
 
@@ -455,11 +513,34 @@ as partial. They cover:
   and SLAs.
 - Approvals, temporary uploads and attachments, subscriptions, and feedback.
 
+## Assets filters
+
+An Assets object field on a request type's form is scoped to one schema, and
+narrowed further by an AQL filter written where the schema is chosen:
+
+```
+objectType = "Business services" AND Tier IN ("1", "2")
+"Owner" = Platform AND Runbook IS NOT EMPTY
+NOT (objectType = Vendors)
+```
+
+- `objectType` (also `type`, `schema`) is the object's schema, `Name` (also
+  `Label`) its label and `Key` its key; anything else is one of its attributes,
+  named as the schema names it or by the key it is stored under.
+- The comparisons are `=`, `!=`, `IN`, `NOT IN`, `LIKE` (contains),
+  `IS EMPTY` and `IS NOT EMPTY`, joined with `AND`, `OR`, `NOT` and brackets.
+  Values are quoted with `"` or `'`, doubling the quote to include one.
+- A filter is read when it is saved, so a form never carries one the site
+  cannot read, and a field whose filter fails offers nothing rather than
+  everything.
+- What AQL has that this does not: references between objects, functions such
+  as `objectTypeAndChildren()`, dot paths through reference attributes, and
+  `ORDER BY`.
+
 ## Gaps
 
 See [PLAN.md](../PLAN.md).
-- Assets public REST API: objects, schemas, object types, attributes, AQL
-  search, and object import or reconciliation.
+- Assets: attachments on an object.
 - Assets object type hierarchy, typed reference attributes and AQL in JQL
   (`aqlFunction()`).
 - Request type restrictions (`RESTRICTED` returns nothing).
@@ -469,10 +550,11 @@ See [PLAN.md](../PLAN.md).
 - Customizable customer notification email templates.
 - Knowledge base ranking and article analytics.
 - Incident review templates.
-- `Organizations` as a JQL field, which needs a request to be shared with an
-  organization rather than only a desk ([JQL.md](JQL.md#gaps)). Everything
-  else a queue, an SLA goal or an automation rule may write is the site's
-  own JQL.
+- Sharing a request with one organization when it is raised. `Organizations`
+  is searchable ([JQL.md](JQL.md)) and reads the organizations the customer
+  belongs to that the desk serves, which is what the portal shows their
+  colleagues; picking one request at a time is what remains. Everything a
+  queue, an SLA goal or an automation rule may write is the site's own JQL.
 
 ## See also
 

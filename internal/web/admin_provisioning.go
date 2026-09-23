@@ -2,11 +2,15 @@ package web
 
 import (
 	"context"
+	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 // A provider writes people and groups into the directory over SCIM, and until
@@ -27,6 +31,20 @@ type adminProvisioning struct {
 	// People and Groups are what the provider manages.
 	People []adminProvisionedPerson
 	Groups []adminProvisionedGroup
+	// Keys are the provisioning keys this directory has issued, and Issued
+	// is a key just made, shown once because the site keeps only its hash.
+	Keys   []adminProvisioningKey
+	Issued string
+}
+
+// adminProvisioningKey is one key a provider can provision this directory
+// with.
+type adminProvisioningKey struct {
+	ID       string
+	Name     string
+	Created  string
+	LastUsed string
+	Revoked  bool
 }
 
 // adminProvisionedPerson is one account a provider created.
@@ -108,6 +126,17 @@ func (h *Handler) provisioning(ctx context.Context, workspaceID string, director
 	sort.Slice(view.Groups, func(first, second int) bool {
 		return strings.ToLower(view.Groups[first].Name) < strings.ToLower(view.Groups[second].Name)
 	})
+	keys, err := h.Store.DirectoryAPIKeys(ctx, directory.ID)
+	if err != nil {
+		return adminProvisioning{}, err
+	}
+	for _, key := range keys {
+		shown := adminProvisioningKey{ID: key.ID, Name: key.Name, Created: displayMoment(key.CreatedAt, layout), Revoked: key.RevokedAt != nil}
+		if key.LastUsedAt != nil {
+			shown.LastUsed = displayMoment(*key.LastUsedAt, layout)
+		}
+		view.Keys = append(view.Keys, shown)
+	}
 	if !latest.IsZero() {
 		view.LastWritten = displayMoment(latest, layout)
 	}
@@ -121,4 +150,64 @@ func displayMoment(at time.Time, layout string) string {
 		return ""
 	}
 	return at.In(time.Local).Format(layout)
+}
+
+// AdminProvisioningKeys issues and revokes the keys a provider provisions this
+// site's directory with. A key is shown once, because the site keeps only its
+// hash -- a key that is lost is replaced rather than recovered.
+func (h *Handler) AdminProvisioningKeys(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	organization, err := h.Store.OrganizationByWorkspace(r.Context(), workspaceID)
+	if err != nil || organization == nil {
+		http.Error(w, "Could not read the organization.", http.StatusInternalServerError)
+		return
+	}
+	switch r.PostFormValue("action") {
+	case "issue":
+		directories, err := h.Store.DirectoriesByOrganization(r.Context(), organization.ID)
+		if err != nil || len(directories) == 0 {
+			http.Error(w, "Could not read the directory.", http.StatusInternalServerError)
+			return
+		}
+		plain, hash, err := authn.NewAPIToken()
+		if err != nil {
+			http.Error(w, "Could not issue a key.", http.StatusInternalServerError)
+			return
+		}
+		if _, err := h.Store.CreateDirectoryAPIKey(r.Context(), organization.ID, user.ID, directories[0].ID,
+			r.PostFormValue("name"), hash); err != nil {
+			h.adminProvisioningBack(w, r, "", err.Error())
+			return
+		}
+		// The key travels back in the URL once, as a password reset link
+		// does: it is what the person is here to copy, and the site cannot
+		// show it again.
+		h.adminProvisioningBack(w, r, plain, "")
+	case "revoke":
+		if err := h.Store.RevokeDirectoryAPIKey(r.Context(), organization.ID, strings.TrimSpace(r.PostFormValue("key"))); err != nil {
+			h.adminProvisioningBack(w, r, "", err.Error())
+			return
+		}
+		h.adminProvisioningBack(w, r, "", "")
+	default:
+		http.Error(w, "unknown provisioning key action", http.StatusBadRequest)
+	}
+}
+
+// adminProvisioningBack returns to the provisioning section, carrying a key
+// that was just issued or what went wrong.
+func (h *Handler) adminProvisioningBack(w http.ResponseWriter, r *http.Request, issued, failure string) {
+	query := url.Values{}
+	switch {
+	case failure != "":
+		query.Set("error", strings.TrimPrefix(failure, store.ErrDirectoryKey.Error()+": "))
+	case issued != "":
+		query.Set("issued", issued)
+	default:
+		query.Set("saved", "Provisioning key revoked")
+	}
+	redirectLocal(w, r, "/admin?"+query.Encode()+"#admin-provisioning")
 }

@@ -310,7 +310,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 			}
 		}
 	}
-	if err := s.syncServiceSLAsAfterIssueChange(ctx, in.ActorID, in.WorkspaceID, &previous, issue, time.Now().UTC()); err != nil {
+	if err := s.syncServiceSLAsAfterIssueChange(ctx, in.ActorID, in.WorkspaceID, &previous, issue, store.ActionTimeOr(ctx, time.Now().UTC())); err != nil {
 		return nil, nil, err
 	}
 	return issue, action, nil
@@ -753,7 +753,7 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	if err = s.deliverIssueEvent(ctx, workspaceID, actorID, updated, action, eventID, notificationKind, notificationVerb); err != nil {
 		return updated, action, err
 	}
-	if err := s.syncServiceSLAsAfterIssueChange(ctx, actorID, workspaceID, issue, updated, time.Now().UTC()); err != nil {
+	if err := s.syncServiceSLAsAfterIssueChange(ctx, actorID, workspaceID, issue, updated, store.ActionTimeOr(ctx, time.Now().UTC())); err != nil {
 		return nil, nil, err
 	}
 	if updated.Status.ID != issue.Status.ID {

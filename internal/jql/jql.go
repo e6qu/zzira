@@ -672,6 +672,10 @@ func canonicalField(field string) string {
 		return "requestparticipants"
 	case "request channel type", "request-channel-type":
 		return "requestchanneltype"
+	case "organization", "organisation", "organisations":
+		return "organizations"
+	case "request type", "request-type", "customer request type":
+		return "requesttype"
 	default:
 		// cf[10000] names a custom field by its number.
 		lower := strings.ToLower(field)
@@ -1174,6 +1178,9 @@ func DefaultResolver() FieldResolver {
 			// The channel a service request came in on, which only a request
 			// has at all.
 			"requestchanneltype": "(SELECT service_request.channel FROM service_requests service_request WHERE service_request.issue_id=i.id)",
+			// The request type a customer raised this under, by name, which
+			// only a request has at all.
+			"requesttype": "(SELECT request_type.name FROM service_requests service_request JOIN service_request_types request_type ON request_type.id=service_request.request_type_id WHERE service_request.issue_id=i.id)",
 		},
 		TextColumns: []string{"i.summary", "i.description::text"},
 		DefaultOrder: map[string]string{
@@ -1408,6 +1415,8 @@ func (c *compiler) clause(cl Clause) string {
 		return c.userSetClause(cl, "issue_votes", "voter_row", "issue_id")
 	case "requestparticipants":
 		return c.userSetClause(cl, "service_request_participants", "participant_row", "request_issue_id")
+	case "organizations":
+		return c.requestOrganizationsClause(cl)
 	case "attachments":
 		return c.attachmentsClause(cl)
 	case "issuelinktype":
@@ -2087,6 +2096,42 @@ func (c *compiler) commentClause(cl Clause) string {
 // userSetClause matches the people attached to a work item rather than named
 // on it -- who watches it, who voted for it -- which is how Jira's watcher
 // and voter fields search.
+// requestOrganizationsClause searches the organizations a service request is
+// shared with. A request is shared with the organizations its customer belongs
+// to that its desk serves, which is what the portal shows a colleague of the
+// person who raised it, so that is what this asks about. An organization is
+// named as the portal names it -- "Riverbank" -- or by its id.
+func (c *compiler) requestOrganizationsClause(cl Clause) string {
+	shared := func(condition string) string {
+		return `EXISTS (SELECT 1 FROM service_requests organization_request
+			JOIN service_desk_organizations desk_organization ON desk_organization.service_desk_id=organization_request.service_desk_id
+			JOIN service_organization_users organization_member ON organization_member.organization_id=desk_organization.organization_id
+			  AND organization_member.user_id=organization_request.customer_id
+			JOIN service_organizations organization ON organization.id=desk_organization.organization_id
+			WHERE organization_request.issue_id=i.id AND (` + condition + `))`
+	}
+	switch cl.Op {
+	case "empty":
+		return "(NOT " + shared("TRUE") + ")"
+	case "notempty":
+		return shared("TRUE")
+	case "=", "!=", "in", "notin":
+	default:
+		c.err = &SyntaxError{0, cl.Field + " supports =, !=, IN, NOT IN, IS EMPTY and IS NOT EMPTY"}
+		return ""
+	}
+	matches := make([]string, 0, len(cl.Values))
+	for _, value := range cl.Values {
+		named := c.arg(value)
+		matches = append(matches, shared("lower(organization.name)=lower("+named+") OR organization.id="+named))
+	}
+	match := "(" + strings.Join(matches, " OR ") + ")"
+	if cl.Op == "!=" || cl.Op == "notin" {
+		return "(NOT " + match + ")"
+	}
+	return match
+}
+
 func (c *compiler) userSetClause(cl Clause, table, alias, issueColumn string) string {
 	any := "EXISTS (SELECT 1 FROM " + table + " " + alias + " WHERE " + alias + "." + issueColumn + "=i.id)"
 	switch cl.Op {

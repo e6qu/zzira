@@ -62,6 +62,11 @@ Base paths (the Cloud ID comes from `GET /_edge/tenant_info`):
   rule is run on it. A required question that was not answered refuses the run
   and says so under the control; a rule that ran re-renders the work item,
   because it has just changed it.
+- **Run automation** in the navigator: the same rules, over a selection. It
+  runs the rule on each selected work item one at a time, so a rule refused on
+  one does not stop the rest, and says how many of them it ran on. One run
+  covers at most fifty work items, which is the limit the Automation API's own
+  bulk invocation takes.
 
 The editor offers every trigger, condition and action in the tables below and
 the rule's branches placed last, each one its conditions and then its actions,
@@ -197,12 +202,15 @@ values. Most actions set a desired state, so a replayed action does nothing.
 | `confluence.page.comment` | `comment`, optional `pageId` | Comments on the page as the actor. The page is the one named, else the page the run is about; a rule with neither fails rather than guessing. Text is escaped into storage format |
 | `confluence.page.label` | `label`, optional `pageId` and `prefix` (default `global`) | Attaches a label as the actor. A label the page already carries counts as done |
 | `confluence.page.create` | `spaceKey`, optional `title` | Creates a page as the actor (fails without view and create rights). Default title is the key and summary; the page names the rule and the work item |
+| `confluence.page.append` | `body`, optional `pageId` | Writes `body` at the end of the page as the actor, in one new version, escaped into storage format. This is how a rule keeps a running list |
+| `confluence.page.archive` | optional `pageId` and `descendants` | Archives the page as the actor, with the pages under it when `descendants` is true. A page already archived counts as done |
 | `jira.issue.lookup` | `jql`, optional `limit` (1-100, default 100) | Runs the query as the rule actor and keeps what it found as `{{lookupIssues}}`, which reads as the work it found (`ZZ-3, ZZ-7`) and holds `{key, id, summary, status, assignee, project}` for each. `{{lookupIssues.size}}` is how many, and a branch over `{{lookupIssues}}` runs for each of them, reading `{{<item>.key}}` and the rest. Finding nothing is an answer, not a failure: the list is empty. Reading changes nothing, so a rule whose only action is a lookup reports no action |
 | `jira.create.variable` | `variableName`, `variableValue` | Names a value for the rest of the rule, read as `{{variableName}}`. The value is rendered before it is stored, so a variable can be built from other smart values. A name is a letter then letters, digits, `_` or `-`, at most 64, and cannot be one of the smart values a rule already has (`issue`, `triggerIssue`, `initiator`, `rule`, `now`, `webResponse`, `webhookData`, `userInputs`, `version`, `sprint`, `deletedIssue`). Setting one again replaces it. At most 50 per run, 32,768 characters each. Changes nothing about the work, so a rule whose only action is this one reports no action |
 
 `jira.issue.create`, `jira.issue.outgoing-webhook`, `jira.create.variable`,
-`jira.issue.lookup`, `confluence.page.create`, `confluence.page.comment` and
-`confluence.page.label` run without a work item. The others need one. (Until now `confluence.page.create`
+`jira.issue.lookup`, `confluence.page.create`, `confluence.page.comment`,
+`confluence.page.label`, `confluence.page.append` and `confluence.page.archive`
+run without a work item. The others need one. (Until now `confluence.page.create`
 was refused without one, which is not what this said.)
 
 ## Branches
@@ -307,13 +315,12 @@ invoked a manual rule. Unknown values render empty. Rendered text is limited to
 See [PLAN.md](../PLAN.md).
 - Connections: stored, returned and redacted by the API, but no action uses
   them.
-- Confluence actions beyond creating, commenting on and labelling a page, and
-  triggers for spaces, attachments and custom content.
+- Confluence actions beyond creating a page, commenting on it, labelling it,
+  writing at the end of it and archiving it, and triggers for spaces,
+  attachments and custom content.
 - Usage limits: no monthly execution quota or per-rule usage tracking.
 - The rest of Jira's trigger, condition, action and branch catalog (watchers,
   cloning, deleting comments and links), and branches nested inside branches.
-- Running a manual rule over a selection of work items: **Run automation** runs
-  it on the work item it is on, while the API takes up to fifty objects.
 
 ## See also
 

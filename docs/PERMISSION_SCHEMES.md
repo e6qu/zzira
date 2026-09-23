@@ -31,6 +31,13 @@ Malformed ids, unknown expansions, invalid holders, duplicate grants or scheme n
 - **Permissions:** Jira's 36 project permissions and 9 global permissions (`internal/store/permission_schemes.go`), then permissions active apps declare through Connect's `jiraProjectPermissions` and `jiraGlobalPermissions`. An app permission key is `{appKey}__{moduleKey}`. Schemes grant project permissions only.
 - **Holders:** `anyone`, application role, assignee, group, group custom field, project lead, project role, reporter, service portal customer (`sd.customer.portal.only`), user, user custom field. Users, groups and roles must exist in the workspace. Group renames propagate, deleted principals are removed, and role-deletion swaps update grants atomically.
 - **Default scheme:** every workspace has scheme `10000`. The Members role holds 33 work permissions; the Administrators role holds `ADMINISTER_PROJECTS`, `EDIT_WORKFLOW` and `EDIT_ISSUE_LAYOUT`. New projects get this scheme (`migrations/130_permission_schemes.sql`).
+  - The service portal customer holder holds `BROWSE_PROJECTS`, `CREATE_ISSUES`, `ADD_COMMENTS`, `CREATE_ATTACHMENTS` and `DELETE_OWN_ATTACHMENTS` in it (`migrations/274_service_customer_permissions.sql`). The holder answers only where the project has a service desk the person is admitted to, so a project with no desk is unchanged by it.
+- **The portal customer holder reads no seat on the site.** Every other holder
+  but `anyone` first requires a membership; a portal-only customer has none,
+  which is what makes them portal-only, and the holder is checked beside
+  `anyone` instead (`migrations/275_service_customer_project_permission.sql`).
+  It admits an active site customer of a desk that is open, that lists them, or
+  that is linked to an organization they belong to.
 
 ## Global permissions
 

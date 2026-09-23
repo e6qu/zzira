@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -139,4 +140,116 @@ func (s *Store) PlanReleaseViews(ctx context.Context, workspaceID, userID string
 	}
 	sort.SliceStable(views, func(i, j int) bool { return views[i].Name < views[j].Name })
 	return views, nil
+}
+
+// CrossProjectReleaseNames is what each version ships as part of, by version
+// id: the names of the cross-project releases that group it, read from the
+// plans this person may see. The release hub lists a project's versions, so it
+// asks once for all of them rather than once each.
+func (s *Store) CrossProjectReleaseNames(ctx context.Context, workspaceID, userID string) (map[string][]string, error) {
+	names := map[string][]string{}
+	plans, err := s.visiblePlans(ctx, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	for _, plan := range plans {
+		for _, release := range plan.CrossProjectReleases {
+			if release.Name == "" {
+				continue
+			}
+			for _, id := range release.ReleaseIDs {
+				key := strconv.FormatInt(id, 10)
+				if !slices.Contains(names[key], release.Name) {
+					names[key] = append(names[key], release.Name)
+				}
+			}
+		}
+	}
+	return names, nil
+}
+
+// visiblePlans are the active plans this person may see, read a page at a
+// time: a site's plans are not capped, and looking at the first page only
+// would hide a release that is in the second.
+func (s *Store) visiblePlans(ctx context.Context, workspaceID, userID string) ([]Plan, error) {
+	visible := []Plan{}
+	for after := int64(0); ; {
+		page, _, err := s.Plans(ctx, workspaceID, false, false, after, 100)
+		if err != nil {
+			return nil, err
+		}
+		for _, plan := range page {
+			view, _, err := s.PlanAccess(ctx, workspaceID, userID, plan)
+			if err != nil {
+				return nil, err
+			}
+			if view {
+				visible = append(visible, plan)
+			}
+		}
+		if len(page) < 100 {
+			return visible, nil
+		}
+		after = page[len(page)-1].ID
+	}
+}
+
+// VersionCrossProjectRelease is a cross-project release a version ships in,
+// named with the plan that groups it.
+type VersionCrossProjectRelease struct {
+	PlanID   int64
+	PlanName string
+	Release  PlanReleaseView
+}
+
+// CrossProjectReleasesForVersion is every cross-project release that ships the
+// given version, read from the plans this person may see. A version belongs to
+// one project, so this is the only way its project's release hub can say what
+// else ships with it.
+func (s *Store) CrossProjectReleasesForVersion(ctx context.Context, workspaceID, userID, versionID string) ([]VersionCrossProjectRelease, error) {
+	id, err := strconv.ParseInt(versionID, 10, 64)
+	if err != nil {
+		return nil, nil
+	}
+	plans, err := s.visiblePlans(ctx, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	found := []VersionCrossProjectRelease{}
+	for _, plan := range plans {
+		wanted := false
+		for _, release := range plan.CrossProjectReleases {
+			if slices.Contains(release.ReleaseIDs, id) {
+				wanted = true
+				break
+			}
+		}
+		if !wanted {
+			continue
+		}
+		views, err := s.PlanReleaseViews(ctx, workspaceID, userID, plan)
+		if err != nil {
+			return nil, err
+		}
+		for _, release := range views {
+			ships := false
+			for _, member := range release.Members {
+				if member.Version != nil && member.Version.ID == versionID {
+					ships = true
+					break
+				}
+			}
+			if !ships {
+				continue
+			}
+			found = append(found, VersionCrossProjectRelease{PlanID: plan.ID, PlanName: plan.Name, Release: release})
+		}
+	}
+	sort.SliceStable(found, func(i, j int) bool {
+		if found[i].PlanName != found[j].PlanName {
+			return found[i].PlanName < found[j].PlanName
+		}
+		return found[i].Release.Name < found[j].Release.Name
+	})
+	return found, nil
 }

@@ -75,7 +75,9 @@ test('epic and release burndowns follow the work through sprints', async ({ page
   await expect(page.getByRole('heading', { name: 'Epic burndown', level: 1 })).toBeVisible();
   await page.getByLabel('Board', { exact: true }).selectOption({ label: board.name });
   await page.getByRole('button', { name: 'Show board' }).click();
-  await page.getByLabel('Epic', { exact: true }).selectOption(epic.key);
+  // The chooser is named for what it holds: a site with a level above the
+  // epic offers those too, and says so.
+  await page.getByRole('combobox', { name: /^Epic/ }).selectOption(epic.key);
   await page.getByRole('button', { name: 'Show epic' }).click();
   const sprints = page.getByRole('table', { name: 'Work completed, added and remaining in each sprint' });
   await page.getByText('View sprint by sprint').click();

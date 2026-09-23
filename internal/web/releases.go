@@ -20,6 +20,9 @@ type releaseRow struct {
 	Version  *models.Version
 	Progress models.VersionProgress
 	Overdue  bool
+	// ShipsWith names the cross-project releases this version is part of, so
+	// the hub says a version goes out with others rather than alone.
+	ShipsWith []string
 	// First and Last are the version's place in the project's whole order, not
 	// in a filtered view of it, so the end rows offer no move that does nothing.
 	First bool
@@ -53,9 +56,19 @@ type releasesData struct {
 	// Reorderable is false while a filter is on, because a version moves
 	// within the project's whole order rather than within the rows on screen.
 	Reorderable bool
-	Error       string
-	Query       string
-	Status      string
+	// ShipsWith are the cross-project releases this version is part of: what
+	// else goes out with it, in the other projects a plan groups it with.
+	ShipsWith []store.VersionCrossProjectRelease
+	// Gates are the project's release conditions, and GateRefusal what would
+	// refuse this version today, so the page says it before the button does.
+	Gates       store.ReleaseGates
+	GateRefusal string
+	// Environments are what the project's deployments have put where, and
+	// what is waiting to be promoted into each.
+	Environments []store.EnvironmentState
+	Error        string
+	Query        string
+	Status       string
 }
 
 // releaseApproval is an approval request with the approver's name.
@@ -68,6 +81,9 @@ func releaseWebError(err error) (int, string) {
 	switch {
 	case errors.Is(err, store.ErrVersionValidation):
 		return 400, err.Error()
+	case errors.Is(err, store.ErrReleaseGate):
+		// The project's own conditions refused it, and the page says which.
+		return 409, strings.TrimPrefix(err.Error(), store.ErrReleaseGate.Error()+": ")
 	case errors.Is(err, store.ErrProjectPermission):
 		return 403, err.Error()
 	case errors.Is(err, pgx.ErrNoRows):
@@ -134,7 +150,18 @@ func (h *Handler) Releases(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load releases.", 500)
 		return
 	}
+	// What is running where: the release hub is where somebody asks whether
+	// what they are about to ship has been anywhere yet.
+	if data.Environments, err = h.Store.ProjectEnvironments(r.Context(), ws, project.ID, user.ID); err != nil {
+		http.Error(w, "Could not load the project's environments.", 500)
+		return
+	}
 	data.Reorderable = data.Status == "" && data.Query == ""
+	grouped, err := h.Store.CrossProjectReleaseNames(r.Context(), ws, user.ID)
+	if err != nil {
+		http.Error(w, "Could not load cross-project releases.", 500)
+		return
+	}
 	for index, v := range versions {
 		if data.Status != "" && strings.ToLower(v.State()) != data.Status {
 			continue
@@ -149,7 +176,8 @@ func (h *Handler) Releases(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Rows = append(data.Rows, releaseRow{Version: v, Progress: store.VersionProgress(issues),
 			Overdue: !v.Released && v.ReleaseDate != "" && v.ReleaseDate < time.Now().UTC().Format("2006-01-02"),
-			First:   index == 0, Last: index == len(versions)-1})
+			First:   index == 0, Last: index == len(versions)-1,
+			ShipsWith: grouped[v.ID]})
 	}
 	h.writeWorkspacePageStatus(w, r, "page_releases", user, ws, data, "releases", project.Key, status)
 }
@@ -304,6 +332,22 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 		if approver.AccountID == user.ID {
 			mine := approver
 			data.MyApproval = &mine
+		}
+	}
+	// A version belongs to one project, so what ships with it across the
+	// others is only knowable through the plans that group them.
+	if data.ShipsWith, err = h.Store.CrossProjectReleasesForVersion(r.Context(), ws, user.ID, version.ID); err != nil {
+		http.Error(w, "Could not load what ships with this release.", 500)
+		return
+	}
+	if data.Gates, err = h.Store.ReleaseGatesFor(r.Context(), project.ID); err != nil {
+		http.Error(w, "Could not load the project's release conditions.", 500)
+		return
+	}
+	if !data.Version.Released {
+		if data.GateRefusal, err = h.Store.ReleaseRefusalFor(r.Context(), project.ID, version.ID, data.Version.MoveUnfixedIssuesToID); err != nil {
+			http.Error(w, "Could not read the project's release conditions.", 500)
+			return
 		}
 	}
 	h.writeWorkspacePageStatus(w, r, "page_release", user, ws, data, "releases", project.Key, status)

@@ -375,10 +375,6 @@ test('an administrator makes one person sign in through the identity provider', 
 // the only thing that answered was the API: an administrator had no way to see
 // whether the provider was connected, or who it had created.
 test('an administrator sees what an identity provider has provisioned', async ({ page, request }) => {
-  // A provider holds a bearer token of an organization administrator, as it
-  // holds an API key in Atlassian.
-  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-  const auth = { Authorization: `Bearer ${tokens['demo@zzira.dev']}`, 'Content-Type': 'application/json' };
   const stamp = Date.now();
   await login(page);
   await page.goto('/admin');
@@ -388,6 +384,18 @@ test('an administrator sees what an identity provider has provisioned', async ({
   const address = await provisioning.locator('code').first().innerText();
   const directoryID = address.split('/scim/directory/')[1];
   expect(directoryID).toBeTruthy();
+
+  // And the key the provider holds is issued here, shown once.
+  await expect(provisioning).toContainText('No key has been issued');
+  await provisioning.getByLabel('Name this key').fill(`Okta ${stamp}`);
+  await provisioning.getByRole('button', { name: 'Issue a provisioning key' }).click();
+  const issued = page.getByRole('region', { name: 'User provisioning' });
+  await expect(issued).toContainText('Copy this key now');
+  const key = (await issued.locator('.admin-provisioning-key').innerText()).trim();
+  expect(key).toMatch(/^zzira_/);
+  await expect(issued).toContainText(`Okta ${stamp}`);
+  await expect(issued).toContainText('never used');
+  const auth = { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
 
   const person = await request.post(`/scim/directory/${directoryID}/Users`, {
     headers: auth,
@@ -421,7 +429,14 @@ test('an administrator sees what an identity provider has provisioned', async ({
   await expect(written.getByRole('table', { name: 'Groups a provider manages' })).toContainText(`extgroup-${stamp}`);
   // What SCIM does not do is said where somebody setting it up will read it.
   await expect(written).toContainText('Product access is not provisioned');
+  // The key says it has been used, and once it is revoked it provisions
+  // nothing -- without touching anybody's account.
+  await expect(written).not.toContainText('never used');
   await accessible(page);
+  await written.getByRole('button', { name: `Revoke Okta ${stamp}` }).click();
+  await expect(page.getByRole('region', { name: 'User provisioning' })).toContainText('Revoked');
+  const refused = await request.get(`/scim/directory/${directoryID}/Users`, { headers: auth });
+  expect(refused.status()).toBe(401);
 });
 
 // A site with a hundred contractors puts the contractors' group under the

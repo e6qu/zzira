@@ -139,7 +139,7 @@ Work types, priorities and resolutions need site administration. `/settings/hier
 
 ## Code
 
-`internal/api3/issue_metadata.go`, `internal/store/issue_metadata.go`, `internal/store/issue_metadata_tasks.go`, `internal/store/issue_schemes.go`, `internal/store/work_type_hierarchy.go`, `internal/web/issue_metadata_admin.go`, `internal/web/work_type_hierarchy.go`, `migrations/162_issue_metadata.sql`; tests in `internal/api3/issue_metadata_test.go`, `internal/store/priority_schemes_test.go`, `internal/store/work_type_hierarchy_test.go`, `e2e/priority_schemes.spec.ts`, `internal/commands/resolution_test.go` and `internal/commands/hierarchy_workflow_test.go`.
+`internal/api3/issue_metadata.go`, `internal/store/issue_metadata.go`, `internal/store/issue_metadata_tasks.go`, `internal/store/issue_schemes.go`, `internal/store/work_type_hierarchy.go`, `internal/web/issue_metadata_admin.go`, `internal/web/work_type_hierarchy.go`, `migrations/162_issue_metadata.sql`; tests in `internal/api3/issue_metadata_test.go`, `internal/store/priority_schemes_test.go`, `internal/store/work_type_hierarchy_test.go`, `e2e/priority_schemes.spec.ts`, `e2e/issue_metadata_translations.spec.ts`, `internal/store/issue_metadata_translations_test.go`, `internal/commands/resolution_test.go` and `internal/commands/hierarchy_workflow_test.go`.
 
 ## Field translations
 
@@ -150,6 +150,33 @@ dialog, on the work item, and as `translatedName` over REST -- and the field
 keeps the name the site gave it everywhere the site speaks for itself. Removing
 a translation takes that language back to the site's name.
 
+## Translating the words on a work item
+
+A work type, a priority, a resolution and a status are named once per language
+too, on the settings page each of them has. An administrator opens
+**Translations** on the row, gives an IETF language tag (`es`, `pt-br`), the
+name in that language and, if it helps, the description.
+
+- `GET /rest/api/3/issuetype`, `/priority`, `/resolution` and `/status`, and the
+  single resources under them, report `translatedName` and
+  `translatedDescription` for the caller's language beside the site's own
+  `name`, which is what every other resource takes and what JQL searches.
+- A reader's language is the one they chose (`/rest/api/3/mypreferences/locale`),
+  else the one their client asked for in `Accept-Language`.
+- A site translated into `pt-br` answers a reader who asked for `pt`, and the
+  other way round: the region is dropped before the language is given up.
+- Removing a translation takes that language back to the site's own name.
+- **In the browser:** a person chooses their language on their profile, from
+  the languages the site has been translated into, and the work item view then
+  reads in it: the item's work type, priority, resolution and status, the work
+  under and beside it, and the priorities and resolutions its fields offer.
+  The site's own words are unchanged underneath, so a search, a form and the
+  REST API all still take them.
+
+The names live in `issue_metadata_translations`, keyed by the kind of thing and
+its id, and each write is recorded in the governance log like every other
+settings change.
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
@@ -158,7 +185,7 @@ Tracked in [PLAN.md](../PLAN.md).
 - Team-managed scoping (`scope`, `entityId`) is not modelled; every type is company-managed.
 - A priority scheme update applies its mappings before answering, so the 202 has no `task`.
 - The system avatar catalogue has five work type icons; Jira's is larger.
-- Work types, priorities, resolutions and statuses are not translated; fields are.
+- A translated name reaches the metadata resources, the settings pages and the work item view (the item, the work under and beside it, and the priorities and resolutions its fields offer). The board and the search results still read the site's own names, as JQL does.
 
 ## See also
 

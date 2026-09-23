@@ -57,6 +57,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(authn.WithAnonymous(r.Context()))
 	}
 	r = h.withRequestViewer(r)
+	if strings.HasPrefix(r.URL.Path, assetsPrefix) {
+		h.assetsRoute(w, r)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/rest/servicedeskapi/") {
 		h.serviceDeskRoute(w, r)
 		return
