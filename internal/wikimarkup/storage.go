@@ -73,7 +73,9 @@ func macroIDAttribute(id string) string {
 	if !macroIdentifier.MatchString(id) {
 		return ""
 	}
-	return ` data-macro-id="` + id + `"`
+	// Quoted the way every other attribute in this file is, so the quoting is
+	// one thing to read rather than one to trust twice.
+	return ` data-macro-id=` + quotedAttribute(id)
 }
 
 // tocEntry is one heading a table of contents links to.
