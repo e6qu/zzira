@@ -212,9 +212,9 @@ objects from a file, and an Assets REST API under the Assets workspace
 
 - Object schemas, object types with inheritance, typed attributes (including
   reference, user, group, status, date, URL), object keys and labels.
-- Assets REST API: attachments and icons on an object. Schemas, object types,
-  attributes, objects, AQL search, imports, an object's history and its
-  comments are served, and a schema is created and deleted through it.
+- Assets REST API: icons on an object. Schemas, object types, attributes,
+  objects, AQL search, imports, and an object's history, comments and files are
+  served, and a schema is created and deleted through it.
 - AQL parser and evaluator; `aqlFunction()` in JQL; AQL-filtered Assets fields.
 - Imports: JSON and object schema files, column mapping and schedules. A comma
   separated file of objects for one schema is imported from the page and over

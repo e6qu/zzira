@@ -421,6 +421,10 @@ active first. Values of `requestOwnership` combine:
 - **Comments:** an object carries what its attributes cannot say -- why a
   service is tier 1, what the vendor answered. Agents of the desk read and
   write them; whoever wrote one, and any site administrator, can remove it.
+- **Files:** an object also carries what people keep about it -- the
+  photograph of the rack, the signed contract, the licence export -- up to
+  32 MB each. Agents of the desk add and read them; whoever added one, and any
+  site administrator, removes it, and the file goes with it.
 - **Access:** agents can view. Only site administrators create, edit, move or
   delete. Customers cannot read inventory.
 - **Workspace page:** shows the dependency map (SVG) and an accessible
@@ -468,6 +472,9 @@ caller does not agent answers 404, the same as an id that was never there.
 | `GET /object/{id}/history` | What has happened to the object, oldest first: who wrote it, when, and which fields that write changed |
 | `GET/POST /object/{id}/comment` | What people have said about the object, and saying something new (`{"comment"}`) |
 | `DELETE /object/{id}/comment/{commentId}` | Removes a comment: its author may, and so may a site administrator |
+| `GET /object/{id}/attachment` | The files kept with the object, each with where to read it |
+| `GET /object/{id}/attachment/{attachmentId}` | The file itself |
+| `DELETE /object/{id}/attachment/{attachmentId}` | Removes a file: whoever kept it may, and so may a site administrator |
 | `POST /objectschema/create` | `{"name","objectSchemaKey","description","serviceDeskId","attributes"}`; an attribute with no type is text |
 | `DELETE /objectschema/{id}` | Deletes the schema, its objects and everything that named them |
 | `POST /objectschema/{id}/import` | The import above, as `{"file"}` or the body itself. `{"reconcile":true}` (or `?reconcile=true`) makes the file the whole schema: an object it leaves out is deleted |
@@ -540,7 +547,7 @@ NOT (objectType = Vendors)
 ## Gaps
 
 See [PLAN.md](../PLAN.md).
-- Assets: attachments on an object.
+- Assets: object type hierarchy and reference attributes ([the filter above](#assets-filters) says what AQL still lacks).
 - Assets object type hierarchy, typed reference attributes and AQL in JQL
   (`aqlFunction()`).
 - Request type restrictions (`RESTRICTED` returns nothing).

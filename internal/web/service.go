@@ -154,6 +154,8 @@ type servicePageData struct {
 	AssetHistory map[string][]models.ServiceAssetObjectChange
 	// AssetComments is what people have said about each object, by object id.
 	AssetComments map[string][]models.ServiceAssetObjectComment
+	// AssetFiles are the files kept with each object, by object id.
+	AssetFiles    map[string][]models.ServiceAssetObjectAttachment
 	RequestAssets []models.ServiceRequestAsset
 	FieldValues   map[string]string
 	// FieldOptions are the options each select field on a portal form offers,

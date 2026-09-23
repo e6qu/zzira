@@ -74,3 +74,16 @@ type ServiceAssetObjectComment struct {
 	Body         string
 	At           string
 }
+
+// ServiceAssetObjectAttachment is a file kept with an object: the photograph
+// of the rack, the signed contract, the licence export.
+type ServiceAssetObjectAttachment struct {
+	ID, ObjectID string
+	AuthorID     string
+	AuthorName   string
+	Filename     string
+	MediaType    string
+	Size         int64
+	BlobRef      string
+	At           string
+}

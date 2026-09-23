@@ -326,6 +326,8 @@ func main() {
 	mux.HandleFunc("POST /service/agent/{desk}/assets/objects", webHandler.ServiceAssetObjectSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/assets/import", webHandler.ServiceAssetImport)
 	mux.HandleFunc("POST /service/agent/{desk}/assets/comments", webHandler.ServiceAssetObjectComment)
+	mux.HandleFunc("POST /service/agent/{desk}/assets/files", webHandler.ServiceAssetObjectFile)
+	mux.HandleFunc("GET /service/agent/{desk}/assets/objects/{object}/files/{file}", webHandler.ServiceAssetObjectFileDownload)
 	mux.HandleFunc("POST /service/agent/{desk}/assets/relationships", webHandler.ServiceAssetRelationshipSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/agents", webHandler.ServiceAgentSettings)
 	mux.HandleFunc("POST /service/agent/{desk}/operations", webHandler.ServiceOperationsSettings)

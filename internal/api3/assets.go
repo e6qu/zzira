@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
@@ -76,6 +79,12 @@ func (h *Handler) assetsRoute(w http.ResponseWriter, r *http.Request) {
 		h.assetObjectComments(w, r, workspaceID, actorID, parts[1])
 	case len(parts) == 4 && parts[0] == "object" && parts[2] == "comment" && r.Method == http.MethodDelete:
 		h.assetObjectCommentDelete(w, r, workspaceID, actorID, parts[1], parts[3])
+	case len(parts) == 3 && parts[0] == "object" && parts[2] == "attachment" && r.Method == http.MethodGet:
+		h.assetObjectAttachments(w, r, workspaceID, actorID, assetsWorkspace, parts[1])
+	case len(parts) == 4 && parts[0] == "object" && parts[2] == "attachment" && r.Method == http.MethodGet:
+		h.assetObjectAttachmentContent(w, r, workspaceID, actorID, parts[1], parts[3])
+	case len(parts) == 4 && parts[0] == "object" && parts[2] == "attachment" && r.Method == http.MethodDelete:
+		h.assetObjectAttachmentDelete(w, r, workspaceID, actorID, parts[1], parts[3])
 	default:
 		jiraError(w, http.StatusNotFound, "That Assets resource does not exist.")
 	}
@@ -572,4 +581,58 @@ func assetCommentBean(comment models.ServiceAssetObjectComment) map[string]any {
 		"created": comment.At,
 		"author":  map[string]string{"id": comment.AuthorID, "displayName": comment.AuthorName},
 	}
+}
+
+// assetObjectAttachments lists the files kept with an object. Uploading one
+// is a multipart form, which the Assets page sends; this reports what is
+// there and where to read each file.
+func (h *Handler) assetObjectAttachments(w http.ResponseWriter, r *http.Request, workspaceID, actorID, assetsWorkspace, objectID string) {
+	files, err := h.Store.ServiceAssetObjectAttachments(r.Context(), workspaceID, actorID, objectID)
+	if err != nil {
+		assetError(w, err, "Could not load that Assets object.")
+		return
+	}
+	beans := make([]map[string]any, 0, len(files))
+	for _, file := range files {
+		beans = append(beans, map[string]any{
+			"id": file.ID, "filename": file.Filename, "mimeType": file.MediaType, "size": file.Size,
+			"created": file.At,
+			"author":  map[string]string{"id": file.AuthorID, "displayName": file.AuthorName},
+			"url":     h.assetsBase(assetsWorkspace) + "/object/" + objectID + "/attachment/" + file.ID,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"total": len(beans), "entries": beans})
+}
+
+// assetObjectAttachmentContent serves one file's bytes.
+func (h *Handler) assetObjectAttachmentContent(w http.ResponseWriter, r *http.Request, workspaceID, actorID, objectID, attachmentID string) {
+	file, err := h.Store.ServiceAssetObjectAttachment(r.Context(), workspaceID, actorID, objectID, attachmentID)
+	if err != nil {
+		assetWriteError(w, err)
+		return
+	}
+	reader, _, err := h.Blobs.Get(r.Context(), file.BlobRef)
+	if err != nil {
+		jiraError(w, http.StatusNotFound, "That file is no longer stored.")
+		return
+	}
+	defer func() { _ = reader.Close() }()
+	w.Header().Set("Content-Type", file.MediaType)
+	w.Header().Set("Content-Length", strconv.FormatInt(file.Size, 10))
+	w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(file.Filename))
+	if _, err := io.Copy(w, reader); err != nil {
+		log.Printf("api3: serve asset attachment %s: %s", strconv.Quote(file.ID), strconv.Quote(err.Error()))
+	}
+}
+
+func (h *Handler) assetObjectAttachmentDelete(w http.ResponseWriter, r *http.Request, workspaceID, actorID, objectID, attachmentID string) {
+	blobRef, err := h.Store.DeleteServiceAssetObjectAttachment(r.Context(), workspaceID, actorID, objectID, attachmentID)
+	if err != nil {
+		assetWriteError(w, err)
+		return
+	}
+	if err := h.Blobs.Delete(r.Context(), blobRef); err != nil {
+		log.Printf("api3: remove asset attachment blob %s: %s", strconv.Quote(blobRef), strconv.Quote(err.Error()))
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
