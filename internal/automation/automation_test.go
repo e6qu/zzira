@@ -75,6 +75,13 @@ func newAutomationFixture(t *testing.T) *automationFixture {
 			`DELETE FROM boards WHERE project_id IN (SELECT id FROM projects WHERE workspace_id=$1)`,
 			`DELETE FROM projects WHERE workspace_id=$1`,
 			`DELETE FROM automation_rules WHERE workspace_id=$1`,
+			// The pages and spaces rules wrote: a workspace still holding a
+			// space, or a space still holding a page, keeps both.
+			`UPDATE wiki_spaces SET homepage_id=NULL WHERE workspace_id=$1`,
+			`DELETE FROM wiki_page_versions WHERE page_id IN (SELECT p.id FROM wiki_pages p JOIN wiki_spaces s ON s.id=p.space_id WHERE s.workspace_id=$1)`,
+			`DELETE FROM wiki_pages WHERE space_id IN (SELECT id FROM wiki_spaces WHERE workspace_id=$1)`,
+			`DELETE FROM wiki_labels WHERE workspace_id=$1`,
+			`DELETE FROM wiki_spaces WHERE workspace_id=$1`,
 			`DELETE FROM memberships WHERE workspace_id=$1`,
 			`DELETE FROM workspaces WHERE id=$1`,
 		} {

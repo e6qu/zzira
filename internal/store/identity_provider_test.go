@@ -58,7 +58,12 @@ func TestIdentityProviderSessionWritesOrganizationLoginAudit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, userID) }()
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE user_id=$1`, userID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM oidc_identities WHERE user_id=$1`, userID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, userID)
+	}()
 	if err := st.CreateIdentityProviderSession(ctx, HashToken(NewID("session")), userID, "id-token", "https://accounts.google.com", "subject", "", "google", time.Hour); err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +101,7 @@ func TestIdentityProviderLinkLifecycleRevokesOnlyRemovedProvider(t *testing.T) {
 	}
 	defer func() {
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM organization_audit_events WHERE target_id=$1`, userID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM oidc_identities WHERE user_id=$1`, userID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE user_id=$1`, userID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, userID)

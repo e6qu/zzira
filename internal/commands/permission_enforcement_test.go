@@ -51,7 +51,7 @@ func TestWorkItemCommandsCheckProjectPermissions(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		for _, statement := range []string{
-			`DELETE FROM issue_links WHERE inward_issue_id IN (SELECT id FROM issues WHERE project_id=$1) OR outward_issue_id IN (SELECT id FROM issues WHERE project_id=$1)`,
+			`DELETE FROM issue_links WHERE inward_id IN (SELECT id FROM issues WHERE project_id=$1) OR outward_id IN (SELECT id FROM issues WHERE project_id=$1)`,
 			`DELETE FROM sprints WHERE board_id IN (SELECT id FROM boards WHERE project_id=$1)`,
 			`DELETE FROM boards WHERE project_id=$1`,
 			`DELETE FROM issues WHERE project_id=$1`,

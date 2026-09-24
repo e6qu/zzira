@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/store"
@@ -30,6 +32,9 @@ func TestSCIMProvisioningJourney(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspaceID, adminID, memberID := store.NewID("ws"), store.NewID("usr"), store.NewID("usr")
+	// The person this journey provisions is named for this run alone: a name
+	// other packages also use would reach users this test did not make.
+	dana := fmt.Sprintf("dana-%d@example.test", time.Now().UnixNano())
 	for _, userID := range []string{adminID, memberID} {
 		if _, err := st.Pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$1 || '@example.invalid','unused',$1)`, userID); err != nil {
 			t.Fatal(err)
@@ -60,9 +65,15 @@ func TestSCIMProvisioningJourney(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
+		// The person is named for this run, so the rows that name them are
+		// this run's to take away.
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM api_tokens WHERE user_id IN (SELECT id FROM users WHERE email=$1)`, dana)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE user_id IN (SELECT id FROM users WHERE email=$1)`, dana)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE email=$1`, dana)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM api_tokens WHERE user_id IN ($1,$2)`, adminID, memberID)
-		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id IN (SELECT user_id FROM directory_users WHERE directory_id=$1::uuid) AND id NOT IN ($2,$3)`, directoryID, adminID, memberID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM api_tokens WHERE user_id IN (SELECT user_id FROM directory_users WHERE directory_id=$1::uuid)`, directoryID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id IN (SELECT user_id FROM directory_users WHERE directory_id=$1::uuid) AND id NOT IN ($2,$3)`, directoryID, adminID, memberID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM workspaces WHERE id=$1`, workspaceID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM organizations WHERE id::text=$1`, organization.ID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id IN ($1,$2)`, adminID, memberID)
@@ -155,24 +166,24 @@ func TestSCIMProvisioningJourney(t *testing.T) {
 	}
 
 	// A person the provider creates.
-	created := call(adminToken, http.MethodPost, base+"/Users", `{
+	created := call(adminToken, http.MethodPost, base+"/Users", fmt.Sprintf(`{
 		"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],
-		"externalId":"idp-1","userName":"dana@example.test","displayName":"Dana Example",
+		"externalId":"idp-1","userName":%q,"displayName":"Dana Example",
 		"name":{"givenName":"Dana","familyName":"Example"},
-		"emails":[{"value":"dana@example.test","primary":true,"type":"work"}],"active":true}`, http.StatusCreated)
+		"emails":[{"value":%q,"primary":true,"type":"work"}],"active":true}`, dana, dana), http.StatusCreated)
 	userID, _ := created["id"].(string)
-	if userID == "" || created["userName"] != "dana@example.test" || created["active"] != true || created["externalId"] != "idp-1" {
+	if userID == "" || created["userName"] != dana || created["active"] != true || created["externalId"] != "idp-1" {
 		t.Fatalf("created user = %v", created)
 	}
 	if name, _ := created["name"].(map[string]any); name == nil || name["givenName"] != "Dana" {
 		t.Fatalf("created user name = %v", created["name"])
 	}
 	// The same userName twice is a conflict, not a second person.
-	call(adminToken, http.MethodPost, base+"/Users", `{"userName":"dana@example.test","displayName":"Dana Again"}`, http.StatusConflict)
+	call(adminToken, http.MethodPost, base+"/Users", fmt.Sprintf(`{"userName":%q,"displayName":"Dana Again"}`, dana), http.StatusConflict)
 
 	// Filters: the ones an identity provider sends, and a refusal for one
 	// this directory cannot answer.
-	found := call(adminToken, http.MethodGet, base+`/Users?filter=userName+eq+%22dana@example.test%22`, "", http.StatusOK)
+	found := call(adminToken, http.MethodGet, base+"/Users?filter=userName+eq+%22"+dana+"%22", "", http.StatusOK)
 	if found["totalResults"].(float64) != 1 {
 		t.Fatalf("filtered users = %v", found)
 	}
@@ -235,10 +246,10 @@ func TestSCIMProvisioningJourney(t *testing.T) {
 		t.Fatalf("the person's directory membership is still active (%v)", err)
 	}
 	// ...and a replace brings them back, with a new name.
-	call(adminToken, http.MethodPut, base+"/Users/"+userID, `{
+	call(adminToken, http.MethodPut, base+"/Users/"+userID, fmt.Sprintf(`{
 		"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],
-		"externalId":"idp-1","userName":"dana@example.test","displayName":"Dana Restored",
-		"name":{"givenName":"Dana","familyName":"Restored"},"active":true}`, http.StatusOK)
+		"externalId":"idp-1","userName":%q,"displayName":"Dana Restored",
+		"name":{"givenName":"Dana","familyName":"Restored"},"active":true}`, dana), http.StatusOK)
 	restored := call(adminToken, http.MethodGet, base+"/Users/"+userID, "", http.StatusOK)
 	if restored["active"] != true || restored["displayName"] != "Dana Restored" {
 		t.Fatalf("restored user = %v", restored)

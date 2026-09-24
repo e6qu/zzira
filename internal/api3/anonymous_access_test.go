@@ -62,8 +62,9 @@ func TestAnonymousAccess(t *testing.T) {
 		exec(`DELETE FROM projects WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM actions WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
-		exec(`DELETE FROM workspaces WHERE id=$1`, workspaceID)
 		exec(`DELETE FROM api_tokens WHERE user_id=$1`, adminID)
+		exec(`DELETE FROM users WHERE id=$1`, adminID)
+		exec(`DELETE FROM workspaces WHERE id=$1`, workspaceID)
 	})
 
 	service := &commands.Service{Store: st, Blobs: blobs}

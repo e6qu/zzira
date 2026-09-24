@@ -50,7 +50,7 @@ func TestDORALeadTimeMeasuresTheDeliveryThatCarriedTheChange(t *testing.T) {
 	pipeline := "pipeline-" + NewID("p")
 	t.Cleanup(func() {
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM software_deployments WHERE workspace_id=$1 AND pipeline_id=$2`, workspaceID, pipeline)
-		_, _ = st.Pool.Exec(ctx, `DELETE FROM development_repositories WHERE workspace_id=$1 AND id=$2`, workspaceID, "lead-repo-"+project.ID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM development_repositories WHERE workspace_id=$1 AND repository_id=$2`, workspaceID, "lead-repo-"+project.ID)
 	})
 	deployment := func(sequence int64, at time.Time) models.SoftwareDeployment {
 		return models.SoftwareDeployment{
