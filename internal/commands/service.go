@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -558,7 +559,11 @@ func (s *Service) serviceRequestSLAHistory(ctx context.Context, workspaceID, iss
 		for _, item := range entry.Items {
 			change.Events = append(change.Events, serviceSLAFieldEvents(item.Field, item.From, item.To)...)
 			if item.Field == "status" && item.From != item.To {
-				change.Status = item.To
+				// The changelog names a status by its id and carries its
+				// name beside it; a pause condition speaks of the status by
+				// its name, as the live evaluation of the same condition
+				// does.
+				change.Status = cmp.Or(item.ToString, item.To)
 			}
 		}
 		if len(change.Events) > 0 {

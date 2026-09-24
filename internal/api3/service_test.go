@@ -1312,7 +1312,11 @@ func TestServiceProjectAndRequestTypeContract(t *testing.T) {
 	}
 	// A pause condition that asks only about status is replayed with the
 	// history, so the rebuilt cycle is paused from the moment the request
-	// entered that status rather than from the recalculation.
+	// entered that status rather than from the recalculation. The wait makes
+	// the difference between the two moments too wide to miss: a pause that
+	// begins at the recalculation is wrong by however long the
+	// administrator took, and this would rather say so than pass quickly.
+	time.Sleep(2500 * time.Millisecond)
 	if err := handler.Commands.UpdateServiceSLAMetric(ctx, actorID, workspaceID, serviceDeskID, lateSLA.ID, `status = "In Progress"`, time.Hour.Milliseconds()); err != nil {
 		t.Fatal(err)
 	}
