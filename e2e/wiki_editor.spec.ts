@@ -74,8 +74,9 @@ test('a writer formats a page with the editor rather than by typing storage', as
   await editor.locator('.wiki-panel-warning p').nth(1).click();
   await page.keyboard.press('End');
   await page.keyboard.type(' Drain first.');
-  await editor.click();
-  await page.keyboard.press('End');
+  // Out of the panel by keyboard: where the editor's middle falls depends on
+  // the shape of the page so far, and a click could land back inside it.
+  await page.keyboard.press('ArrowDown');
   await toolbar.getByLabel('Status colour').selectOption('red');
   await toolbar.getByLabel('Macro').selectOption('status');
   await expect(editor.locator('[data-macro=status]')).toHaveText('Status');

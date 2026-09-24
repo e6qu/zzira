@@ -796,6 +796,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (selection) { selection.removeAllRanges(); selection.addRange(range); }
     caret = range.cloneRange();
   };
+  // A panel's title is written back as a plain parameter, so a macro the
+  // caret put inside it would be flattened into the title's words and lost
+  // when the page is saved. An inline insertion aimed at a title lands in
+  // the paragraph after the panel instead.
+  const caretInPanelTitle = (container) => {
+    let node = container;
+    while (node && node !== editor) {
+      if (node.nodeType === Node.ELEMENT_NODE && node.classList.contains('wiki-panel-title')) return node.parentElement;
+      node = node.parentNode;
+    }
+    return null;
+  };
   const insertInline = (node) => {
     focusEditor();
     if (!node) return;
@@ -805,6 +817,18 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     const range = selection.getRangeAt(0);
+    const panel = caretInPanelTitle(range.startContainer);
+    if (panel) {
+      const following = panel.nextElementSibling;
+      if (following && following.tagName === 'P') {
+        range.selectNodeContents(following);
+      } else {
+        const paragraph = el('p', {});
+        panel.after(paragraph);
+        range.selectNodeContents(paragraph);
+      }
+      range.collapse(false);
+    }
     range.deleteContents();
     range.insertNode(node);
     range.setStartAfter(node);
