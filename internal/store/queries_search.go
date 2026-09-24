@@ -92,6 +92,40 @@ func (s *Store) Search(ctx context.Context, workspaceID, userID string, c jql.Co
 	return out, total, rows.Err()
 }
 
+// WebhookJQLMatch reports whether an issue the workspace administrator can
+// browse answers the filter, as a webhook's optional JQL condition and a
+// Connect app's event filter do. Webhooks are admin-configured, so their
+// filters use a workspace administrator's complete issue view.
+func (s *Store) WebhookJQLMatch(ctx context.Context, workspaceID, jqlText string) (bool, error) {
+	adminID, err := s.FirstAdminID(ctx, workspaceID)
+	if err != nil {
+		return false, err
+	}
+	q, err := jql.Parse(jqlText)
+	if err != nil {
+		return false, err
+	}
+	if err := s.ExpandAppJQL(ctx, workspaceID, q); err != nil {
+		return false, err
+	}
+	resolver, err := s.JQLResolver(ctx, workspaceID)
+	if err != nil {
+		return false, err
+	}
+	// The search owns $1 for the workspace, so the clause is numbered from $2;
+	// a clause numbered from $1 shifts every placeholder and the statement
+	// never runs.
+	compiled := jql.CompileAt(q, adminID, resolver, 2)
+	if compiled.Err != nil {
+		return false, compiled.Err
+	}
+	issues, _, err := s.Search(ctx, workspaceID, adminID, compiled, 1, 0)
+	if err != nil {
+		return false, err
+	}
+	return len(issues) > 0, nil
+}
+
 // MatchIssueIDs evaluates one compiled query only against the caller-supplied
 // issue IDs. This keeps Jira's bulk match resource bounded independently of the
 // workspace's total issue count and applies the same issue-security predicate

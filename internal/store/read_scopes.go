@@ -30,7 +30,7 @@ func (s *Store) StatusesInProjectWorkflows(ctx context.Context, workspaceID stri
 		), referenced AS (
 		  SELECT t->>'to' AS id FROM active, jsonb_array_elements(COALESCE(active.def->'transitions','[]'::jsonb)) t
 		  UNION SELECT source FROM active, jsonb_array_elements(COALESCE(active.def->'transitions','[]'::jsonb)) t,
-		    jsonb_array_elements_text(COALESCE(t->'from','[]'::jsonb)) source
+		    jsonb_array_elements_text(CASE WHEN jsonb_typeof(t->'from')='array' THEN t->'from' ELSE '[]'::jsonb END) source
 		  UNION SELECT layout->>'statusReference' FROM active, jsonb_array_elements(COALESCE(active.def->'statuses','[]'::jsonb)) layout
 		)
 		SELECT st.id,st.name,st.description,st.category,COALESCE(st.project_id,''),st.workspace_id IS NULL,st.jira_id

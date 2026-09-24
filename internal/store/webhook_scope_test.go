@@ -94,3 +94,52 @@ func TestWebhookClaimsAreWorkspaceScopedAndBounded(t *testing.T) {
 		t.Fatalf("early failure state=%s scheduled=%v, want a scheduled retry", state, scheduled)
 	}
 }
+
+// A webhook's JQL filter, and a Connect app's event filter with it, is
+// evaluated through the same search the product uses, so the filter's clause
+// must arrive numbered from $2 — the search owns $1 for the workspace. A
+// clause numbered from $1 shifted every placeholder, the statement failed
+// with "could not determine data type of parameter $3", and the delivery was
+// silently marked as filtered out.
+func TestWebhookJQLMatchRunsTheFilterThroughSearch(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	st, err := Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(st.Close)
+	if err := Migrate(ctx, st.Pool); err != nil {
+		t.Fatal(err)
+	}
+
+	workspaceID, actorID := NewID("ws"), NewID("usr")
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := st.Pool.Exec(ctx, query, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec(`INSERT INTO workspaces(id,slug,name) VALUES($1,$1,'Webhook filters')`, workspaceID)
+	exec(`INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$2,'test','Webhook admin')`, actorID, actorID+"@example.invalid")
+	exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'admin')`, workspaceID, actorID)
+	t.Cleanup(func() {
+		drop := func(query string, args ...any) { _, _ = st.Pool.Exec(ctx, query, args...) }
+		drop(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
+		drop(`DELETE FROM workspaces WHERE id=$1`, workspaceID)
+		drop(`DELETE FROM users WHERE id=$1`, actorID)
+	})
+
+	// The shape the webhook dispatcher builds: the rule's own filter with the
+	// issue's key forced onto it.
+	match, err := st.WebhookJQLMatch(ctx, workspaceID, `(project = WH AND status != Done) AND key = "WH-1"`)
+	if err != nil {
+		t.Fatalf("evaluate webhook filter: %v", err)
+	}
+	if match {
+		t.Fatal("filter matched an issue in a workspace that has none")
+	}
+}

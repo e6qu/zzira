@@ -29,7 +29,6 @@ import (
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/confluence"
 	"github.com/e6qu/zzira/internal/demo"
-	"github.com/e6qu/zzira/internal/jql"
 	"github.com/e6qu/zzira/internal/mailer"
 	"github.com/e6qu/zzira/internal/notifybus"
 	"github.com/e6qu/zzira/internal/scim"
@@ -210,41 +209,16 @@ func main() {
 	bus := notifybus.New()
 	sse := &syncapi.SSEHandler{Store: st, Bus: bus, WorkspaceSlug: workspaceSlug}
 	sync := &syncapi.Handler{Store: st, WorkspaceSlug: workspaceSlug}
-	webhookSearch := func(ctx context.Context, wsID, jqlText string) (bool, error) {
-		// Webhooks are admin-configured, so their filters use a workspace
-		// administrator's complete issue view.
-		adminID, err := st.FirstAdminID(ctx, wsID)
-		if err != nil {
-			return false, err
-		}
-		q, err := jql.Parse(jqlText)
-		if err != nil {
-			return false, err
-		}
-		if err := st.ExpandAppJQL(ctx, wsID, q); err != nil {
-			return false, err
-		}
-		resolver, err := st.JQLResolver(ctx, wsID)
-		if err != nil {
-			return false, err
-		}
-		compiled := jql.CompileAt(q, adminID, resolver, 1)
-		if compiled.Err != nil {
-			return false, compiled.Err
-		}
-		issues, _, err := st.Search(ctx, wsID, adminID, compiled, 1, 0)
-		return err == nil && len(issues) > 0, nil
-	}
 	dispatcher := &webhooks.Dispatcher{
 		Store:   st,
 		Client:  &http.Client{Timeout: 10 * time.Second},
-		Checker: &webhooks.JQLChecker{Search: webhookSearch},
+		Checker: &webhooks.JQLChecker{Search: st.WebhookJQLMatch},
 	}
 	go dispatcher.Run(ctx, workspaceID)
 	if providerSecrets != nil {
 		go (&apps.OutboundRunner{
 			Store: st, Secrets: providerSecrets,
-			Client: &http.Client{Timeout: 10 * time.Second}, Search: webhookSearch,
+			Client: &http.Client{Timeout: 10 * time.Second}, Search: st.WebhookJQLMatch,
 		}).Run(ctx, workspaceID)
 	}
 	go (&automation.Runner{Service: automationSvc}).Run(ctx, workspaceID)
