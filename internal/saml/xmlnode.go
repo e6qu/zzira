@@ -121,6 +121,9 @@ func Parse(document []byte) (*Node, error) {
 // Children are the elements directly under this one.
 func (n *Node) Children() []*Node {
 	children := []*Node{}
+	if n == nil {
+		return children
+	}
 	for _, item := range n.Content {
 		if child, ok := item.(*Node); ok {
 			children = append(children, child)
@@ -162,6 +165,9 @@ func (n *Node) lookupPrefix(prefix string) string {
 	if prefix == "xml" {
 		return xmlNamespace
 	}
+	if n == nil {
+		return ""
+	}
 	for element := n; element != nil; element = element.Parent {
 		for _, attr := range element.Attrs {
 			if declared, ok := attr.IsNamespace(); ok && declared == prefix {
@@ -175,6 +181,9 @@ func (n *Node) lookupPrefix(prefix string) string {
 // Attr is the value of an attribute of this element with no prefix, and
 // whether it is there at all.
 func (n *Node) Attr(local string) (string, bool) {
+	if n == nil {
+		return "", false
+	}
 	for _, attr := range n.Attrs {
 		if attr.Prefix == "" && attr.Local == local {
 			return attr.Value, true
@@ -186,6 +195,9 @@ func (n *Node) Attr(local string) (string, bool) {
 // Text is the text directly inside this element, with the text of everything
 // under it, which is what a SAML value is.
 func (n *Node) Text() string {
+	if n == nil {
+		return ""
+	}
 	var text strings.Builder
 	var walk func(node *Node)
 	walk = func(node *Node) {
