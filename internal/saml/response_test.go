@@ -239,6 +239,25 @@ func TestAnUnsignedOrForeignAssertionIsRefused(t *testing.T) {
 	}
 }
 
+// A provider that answers without saying how the sign-in went is refused in
+// words, not by falling over: the answer is read before anyone has signed in,
+// so nothing an unsigned answer holds may take the reading down.
+func TestAStatusWithoutACodeIsRefusedRatherThanFatal(t *testing.T) {
+	site := ServiceProvider{EntityID: siteEntityID, ACSURL: siteACS}
+	idp := newSigner(t)
+	document := `<samlp:Response xmlns:samlp="` + protocolNamespace + `" xmlns:saml="` + assertionNamespace + `"` +
+		` ID="response-1" Version="2.0" IssueInstant="2026-09-23T10:00:00Z" InResponseTo="id-request-1">` +
+		`<samlp:Status><samlp:StatusMessage>later</samlp:StatusMessage></samlp:Status></samlp:Response>`
+	posted := base64.StdEncoding.EncodeToString([]byte(document))
+	_, err := ReadResponse(posted, Provider{EntityID: issuerEntityID, Certificates: idp.certificates}, site, "id-request-1", readingTime())
+	if err == nil {
+		t.Fatal("the answer was read")
+	}
+	if !strings.Contains(err.Error(), "refused the sign-in") {
+		t.Fatalf("error %q does not say the sign-in was refused", err)
+	}
+}
+
 // Signature wrapping: a second assertion smuggled in beside the signed one,
 // hoping the reader takes the wrong one.
 func TestASmuggledAssertionIsRefused(t *testing.T) {
