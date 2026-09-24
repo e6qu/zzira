@@ -60,9 +60,14 @@ func TestSCIMProvisioningJourney(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
+		// The journey provisions the same named people every run, so a run
+		// also takes the tokens and rows earlier runs left behind.
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM api_tokens WHERE user_id IN (SELECT id FROM users WHERE email IN ('dana@example.test','liwei@example.test','sofia@example.test','nadia@example.test'))`)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM api_tokens WHERE user_id IN ($1,$2)`, adminID, memberID)
-		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id IN (SELECT user_id FROM directory_users WHERE directory_id=$1::uuid) AND id NOT IN ($2,$3)`, directoryID, adminID, memberID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM api_tokens WHERE user_id IN (SELECT user_id FROM directory_users WHERE directory_id=$1::uuid)`, directoryID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id IN (SELECT user_id FROM directory_users WHERE directory_id=$1::uuid) AND id NOT IN ($2,$3)`, directoryID, adminID, memberID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE email IN ('dana@example.test','liwei@example.test','sofia@example.test','nadia@example.test')`)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM workspaces WHERE id=$1`, workspaceID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM organizations WHERE id::text=$1`, organization.ID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id IN ($1,$2)`, adminID, memberID)

@@ -26,6 +26,11 @@ func TestWorkflowPersistenceValidatesDefinitionsAndAssignments(t *testing.T) {
 	otherProjectID := NewID("project_workflow_test")
 	t.Cleanup(func() {
 		_, _ = st.Pool.Exec(ctx, `UPDATE projects SET workflow_id='wf_default' WHERE id='prj_default'`)
+		// The assignment test bound the demo project to this workflow; any
+		// project still bound, or scheme still defaulting to it, would keep
+		// the workflow in place.
+		_, _ = st.Pool.Exec(ctx, `UPDATE projects SET workflow_id='wf_default', workflow_scheme_id=NULL WHERE workflow_id=$1 OR workflow_scheme_id IN (SELECT id FROM workflow_schemes WHERE default_workflow_id=$1)`, workflowID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM workflow_schemes WHERE default_workflow_id=$1`, workflowID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM projects WHERE id=$1`, otherProjectID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM workflows WHERE id=$1`, workflowID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM workspaces WHERE id=$1`, otherWorkspaceID)

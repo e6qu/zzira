@@ -131,6 +131,16 @@ func TestCopyingSchemesCarriesTheirConfiguration(t *testing.T) {
 	if len(fullSecurity.Levels[0].Grants) != 1 || fullSecurity.Levels[0].Grants[0].HolderType != "user" {
 		t.Fatalf("the copy's level members: %+v", fullSecurity.Levels[0].Grants)
 	}
+	// The next copy takes the next name, as every scheme's copy does. The
+	// name check once read a table the site never had, so every copy after
+	// the first was named as if it were the first.
+	securityAgain, err := st.CopyIssueSecurityScheme(ctx, ws, admin, security.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if securityAgain.Name != "Copy 2 of Restricted" {
+		t.Fatalf("the second copy is %q", securityAgain.Name)
+	}
 
 	// A screen with its tabs and fields, in order.
 	screen, err := st.CreateScreen(ctx, ws, admin, "Triage", "What we ask when work arrives")

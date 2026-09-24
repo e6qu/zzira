@@ -53,7 +53,7 @@ func TestServiceDeskStaffSurvivesATrashedProject(t *testing.T) {
 		t.Fatalf("add the reader to the workspace: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = st.Pool.Exec(ctx, `DELETE FROM workspace_members WHERE user_id=$1`, reader.ID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE user_id=$1`, reader.ID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, reader.ID)
 	})
 

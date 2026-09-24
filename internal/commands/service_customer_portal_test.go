@@ -63,7 +63,10 @@ func TestAPortalCustomerWorksTheirOwnRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, customer.ID) })
+	t.Cleanup(func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM service_requests WHERE customer_id=$1`, customer.ID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, customer.ID)
+	})
 	// A portal-only customer holds no seat on the site: that is what makes
 	// them one, and it is what every check below has to cope with.
 	var seated bool
@@ -102,7 +105,10 @@ func TestAPortalCustomerWorksTheirOwnRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, other.ID) })
+	t.Cleanup(func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM service_requests WHERE customer_id=$1`, other.ID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, other.ID)
+	})
 	if _, err := service.AddServiceRequestComment(ctx, other.ID, workspaceID, raised.Issue.ID, nil, "Let me in", true); err == nil {
 		t.Fatal("a customer commented on a request that is not theirs")
 	}

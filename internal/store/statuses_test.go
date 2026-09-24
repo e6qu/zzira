@@ -33,6 +33,10 @@ func TestStatusLifecycleProtectsReferencesAndBuiltIns(t *testing.T) {
 	statusID := NewID("status_test")
 	workflowID := NewID("workflow_test")
 	t.Cleanup(func() {
+		// The assignment bound a project and its scheme to the workflow;
+		// either would keep it in place.
+		_, _ = st.Pool.Exec(ctx, `UPDATE projects SET workflow_id='wf_default', workflow_scheme_id=NULL WHERE workflow_id=$1`, workflowID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM workflow_schemes WHERE default_workflow_id=$1`, workflowID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM workflows WHERE id=$1`, workflowID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM statuses WHERE id=$1`, statusID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM organization_audit_events WHERE target_id=$1`, statusID)

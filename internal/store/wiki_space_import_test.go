@@ -10,6 +10,22 @@ import (
 	"github.com/e6qu/zzira/internal/models"
 )
 
+// deleteWikiSpaceTree takes a space away with the pages and blog posts it
+// holds, and the versions they keep: the space names them and they name the
+// space back, so none of it can leave while any of it remains.
+func deleteWikiSpaceTree(ctx context.Context, st *Store, spaceID string) {
+	for _, query := range []string{
+		`DELETE FROM wiki_page_versions WHERE page_id IN (SELECT id FROM wiki_pages WHERE space_id=$1::bigint)`,
+		`DELETE FROM wiki_pages WHERE space_id=$1::bigint`,
+		`DELETE FROM wiki_blog_post_versions WHERE blog_post_id IN (SELECT id FROM wiki_blog_posts WHERE space_id=$1::bigint)`,
+		`DELETE FROM wiki_blog_posts WHERE space_id=$1::bigint`,
+		`DELETE FROM wiki_space_properties WHERE space_id=$1::bigint`,
+		`DELETE FROM wiki_spaces WHERE id=$1::bigint`,
+	} {
+		_, _ = st.Pool.Exec(ctx, query, spaceID)
+	}
+}
+
 // A space export carries a manifest, and importing one makes the space again:
 // the same pages, in the same tree, with the same words.
 func TestASpaceExportCanBeReadBackIn(t *testing.T) {
@@ -38,7 +54,7 @@ func TestASpaceExportCanBeReadBackIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create the space: %v", err)
 	}
-	t.Cleanup(func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM wiki_spaces WHERE id=$1::bigint`, space.ID) })
+	t.Cleanup(func() { deleteWikiSpaceTree(ctx, st, space.ID) })
 	parent, err := st.SaveWikiPage(ctx, workspaceID, actorID, models.WikiPage{
 		SpaceID: space.ID, Title: "Runbooks", Status: "current",
 		Body: models.WikiBody{Representation: "storage", Value: "<p>How we keep it up.</p>"},
@@ -124,7 +140,7 @@ func TestASpaceExportCanBeReadBackIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("import the export: %v", err)
 	}
-	t.Cleanup(func() { _, _ = st.Pool.Exec(ctx, `DELETE FROM wiki_spaces WHERE id=$1::bigint`, result.Space.ID) })
+	t.Cleanup(func() { deleteWikiSpaceTree(ctx, st, result.Space.ID) })
 	if result.Pages != 2 || result.BlogPosts != 1 {
 		t.Fatalf("the import made %d pages and %d blog posts", result.Pages, result.BlogPosts)
 	}

@@ -53,7 +53,7 @@ func TestAuthenticationPolicyCoversAGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = st.Pool.Exec(ctx, `DELETE FROM workspace_members WHERE user_id=$1`, contractor.ID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM memberships WHERE user_id=$1`, contractor.ID)
 		_, _ = st.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, contractor.ID)
 	})
 	if err := st.SetGroupMember(ctx, workspaceID, actorID, directories[0].ID, group.ID, contractor.ID, true); err != nil {

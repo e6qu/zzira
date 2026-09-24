@@ -117,7 +117,7 @@ func (s *Store) CopyIssueSecurityScheme(ctx context.Context, workspaceID, actorI
 		})
 	}
 	return s.CreateIssueSecurityScheme(ctx, workspaceID, actorID,
-		copyName(original.Name, s.nameTaken(ctx, "issue_security_schemes", workspaceID)), original.Description, levels)
+		copyName(original.Name, s.nameTaken(ctx, "security_schemes", workspaceID)), original.Description, levels)
 }
 
 // CopyScreen copies a screen with its tabs and the fields on them, in order.
