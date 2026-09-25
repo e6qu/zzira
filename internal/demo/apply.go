@@ -846,7 +846,11 @@ func (a *Applier) workItem(ctx context.Context, item WorkItem) error {
 	a.mutex.Lock()
 	a.items[item.ID] = created
 	a.mutex.Unlock()
-	if item.Sprint != "" {
+	// A sprint a previous run already completed cannot take more work, and a
+	// site's closed history is not reopened for the items the scenario has
+	// gained since: they are raised without sprint membership, and their
+	// history is still replayed onto them.
+	if item.Sprint != "" && a.sprints[item.Sprint].State != "closed" {
 		sprint := a.sprints[item.Sprint]
 		if err := a.at(ctx, item.CreatedDay, func(ctx context.Context) error {
 			rank, err := a.Store.NextSprintRank(ctx, sprint.ID)

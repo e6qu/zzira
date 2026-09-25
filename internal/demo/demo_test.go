@@ -744,13 +744,19 @@ func TestReapplyingAScenarioRaisesOnlyWhatIsNew(t *testing.T) {
 	}
 
 	// The scenario gains one work item, which is the edit the README invites.
+	// It asks for a sprint the first run has already completed: the site's
+	// closed history is not reopened for it, and the second run must still
+	// raise the item rather than give up.
 	added := scenario.WorkItems[0]
 	added.ID = "added"
 	added.Summary = "Work the second run added"
 	added.Parent = ""
-	added.Sprint = ""
+	added.Sprint = scenario.Projects[0].Board.Sprints[0].ID
 	added.Events = nil
 	scenario.WorkItems = append(scenario.WorkItems, added)
+	if sprints := scenario.Projects[0].Board.Sprints; sprints[0].State != "closed" {
+		t.Fatalf("the test wants the gained item's sprint closed, and it is %q", sprints[0].State)
+	}
 
 	second, err := demo.Apply(ctx, st, cmds, scenario, demo.NewClock(today), slug)
 	if err != nil {
@@ -774,6 +780,21 @@ func TestReapplyingAScenarioRaisesOnlyWhatIsNew(t *testing.T) {
 	}
 	if raised != 1 {
 		t.Fatalf("the work item the edit added was raised %d times", raised)
+	}
+	// The item the scenario gained asked for a sprint the first run had
+	// already completed: it is raised without membership in that sprint,
+	// which stays closed with the work it finished with.
+	var inSprint int
+	if err := st.Pool.QueryRow(ctx, `
+		SELECT count(*) FROM sprint_issues si
+		JOIN sprints s ON s.id=si.sprint_id
+		JOIN issues i ON i.id=si.issue_id
+		WHERE i.workspace_id=$1 AND i.summary=$2 AND s.state='closed'`,
+		first.WorkspaceID, added.Summary).Scan(&inSprint); err != nil {
+		t.Fatal(err)
+	}
+	if inSprint != 0 {
+		t.Fatal("the gained item was put into a sprint the first run had completed")
 	}
 	// A person keeps the account they already had, and the run still reports
 	// how to sign in as them.
