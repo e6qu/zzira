@@ -945,19 +945,29 @@ func (s *Store) AddIssueToSprint(ctx context.Context, actorID, workspaceID, spri
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('sprint-issue:' || $1, 0))`, issueID); err != nil {
 		return nil, err
 	}
-	var belongs bool
+	var sprintState, sprintProjectID string
 	if err := tx.QueryRow(ctx, `
-		SELECT EXISTS(
-			SELECT 1 FROM sprints s
-			JOIN boards b ON b.id=s.board_id
-			JOIN projects p ON p.id=b.project_id
-				JOIN issues i ON i.id=$2 AND i.workspace_id=$3 AND i.project_id=b.project_id
-			WHERE s.id=$1 AND p.workspace_id=$3 AND s.state IN ('future','active')
-		)`, sprintID, issueID, workspaceID).Scan(&belongs); err != nil {
+		SELECT s.state, b.project_id FROM sprints s
+		JOIN boards b ON b.id=s.board_id
+		JOIN projects p ON p.id=b.project_id
+		WHERE s.id=$1 AND p.workspace_id=$2`, sprintID, workspaceID).Scan(&sprintState, &sprintProjectID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("the sprint does not exist in workspace %q", workspaceID)
+		}
 		return nil, err
 	}
-	if !belongs {
+	var issueProjectID string
+	if err := tx.QueryRow(ctx, `SELECT project_id FROM issues WHERE id=$1 AND workspace_id=$2`, issueID, workspaceID).Scan(&issueProjectID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("the issue does not exist in workspace %q", workspaceID)
+		}
+		return nil, err
+	}
+	if sprintProjectID != issueProjectID {
 		return nil, fmt.Errorf("sprint and issue must belong to the same project in workspace %q", workspaceID)
+	}
+	if sprintState != "future" && sprintState != "active" {
+		return nil, fmt.Errorf("the sprint has already been completed")
 	}
 	rows, err := tx.Query(ctx, `
 		SELECT si.sprint_id, si.rank
