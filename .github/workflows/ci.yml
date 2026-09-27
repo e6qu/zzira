@@ -37,6 +37,12 @@ jobs:
         run: go vet ./...
       - name: Format
         run: test -z "$(gofmt -l $(git ls-files '*.go'))" || { gofmt -l $(git ls-files '*.go'); exit 1; }
+      # CONTRIBUTING asks every change to pass golangci-lint; without it here
+      # the findings built up unseen.
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
       - name: Verify pinned Cloud API inventory
         run: |
           python3 -m unittest api/conformance/test_inventory.py api/conformance/test_coverage.py
