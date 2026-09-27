@@ -36,7 +36,9 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Format
-        run: test -z "$(gofmt -l $(git ls-files '*.go'))" || { gofmt -l $(git ls-files '*.go'); exit 1; }
+        run: |
+          unformatted=$(git ls-files -z '*.go' | xargs -0 gofmt -l)
+          test -z "$unformatted" || { echo "$unformatted"; exit 1; }
       # CONTRIBUTING asks every change to pass golangci-lint; without it here
       # the findings built up unseen.
       - name: Lint
