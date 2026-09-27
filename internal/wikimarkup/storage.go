@@ -105,8 +105,8 @@ func renderTableOfContents(headings []tocEntry, id string) string {
 	var b strings.Builder
 	b.WriteString(open + `<ol>`)
 	for _, heading := range headings {
-		b.WriteString(fmt.Sprintf(`<li class="wiki-toc-level-%d"><a href="#%s">%s</a></li>`,
-			heading.level, html.EscapeString(heading.id), html.EscapeString(heading.text)))
+		fmt.Fprintf(&b, `<li class="wiki-toc-level-%d"><a href="#%s">%s</a></li>`,
+			heading.level, html.EscapeString(heading.id), html.EscapeString(heading.text))
 	}
 	b.WriteString("</ol></nav>")
 	return b.String()

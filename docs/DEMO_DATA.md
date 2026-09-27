@@ -134,6 +134,10 @@ scenario declares the *shape* of its history and the generator writes it:
   generator never runs a second sprint alongside it.
 - Generated releases are numbered above the highest version declared by hand,
   so the two never collide.
+- Generated sprints are named `<Project> history sprint N`, apart from the
+  sprints declared by hand. A second run finds a sprint by its name on its
+  board, so a scenario whose board has two sprints of one name is refused
+  before anything is applied.
 - Expanding consumes the plan: the scenario that reaches the applier has every
   sprint, release, work item, deployment, commit, request and page declared.
 - `points` names the field the work is estimated in. Without it a board has

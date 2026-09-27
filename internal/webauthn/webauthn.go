@@ -269,8 +269,9 @@ func publicKeyFrom(raw []byte) (crypto.PublicKey, error) {
 		if len(x.bytes) != 32 || len(y.bytes) != 32 {
 			return nil, errors.New("the credential's key is the wrong size for P-256")
 		}
-		public := &ecdsa.PublicKey{Curve: elliptic.P256(), X: new(big.Int).SetBytes(x.bytes), Y: new(big.Int).SetBytes(y.bytes)}
-		if !public.Curve.IsOnCurve(public.X, public.Y) {
+		point := append(append([]byte{4}, x.bytes...), y.bytes...)
+		public, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), point)
+		if err != nil {
 			return nil, errors.New("the credential's key is not a point on P-256")
 		}
 		return public, nil

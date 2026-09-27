@@ -786,11 +786,18 @@ func (s *Scenario) Validate() error {
 			}
 		}
 		if project.Board != nil {
+			// A re-run finds a board's sprints by name, so two sprints of one
+			// name on a board would be applied as one.
+			sprintNames := map[string]string{}
 			for _, sprint := range project.Board.Sprints {
 				if sprints[sprint.ID] {
 					return fmt.Errorf("two sprints share the id %q", sprint.ID)
 				}
 				sprints[sprint.ID] = true
+				if other, taken := sprintNames[sprint.Name]; taken {
+					return fmt.Errorf("sprints %q and %q share the name %q on one board", other, sprint.ID, sprint.Name)
+				}
+				sprintNames[sprint.Name] = sprint.ID
 				if sprint.State != "" && !slices.Contains(sprintStates, sprint.State) {
 					return fmt.Errorf("sprint %q has the unknown state %q", sprint.ID, sprint.State)
 				}
