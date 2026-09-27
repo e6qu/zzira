@@ -58,6 +58,10 @@ cd e2e && npm i && npx playwright install chromium && npm test    # browser jour
    [PLAN.md](PLAN.md) when it ships.
 5. **Run everything**: `go test ./...`, `go vet ./...`, `gofmt -l`,
    `golangci-lint run`, the wasm build (`make build`), and the browser suite.
+   A change to a migration or to the demo also runs
+   `DATABASE_URL=<an empty database> scripts/upgrade-test.sh origin/main`, which
+   is what a deploy does: `main`'s build migrates and seeds, then yours migrates
+   and seeds over it twice. CI runs it on every pull request.
 
 ## Style
 

@@ -117,6 +117,40 @@ jobs:
           path: e2e/test-results/
           retention-days: 7
 
+  # A deploy runs a new build's migrations and demo seed over a database an
+  # earlier build wrote. The test job only ever starts from nothing, so this
+  # one upgrades from the pull request's base: that build migrates and seeds
+  # an empty database, and this one migrates it and seeds it twice.
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: zzira
+          POSTGRES_PASSWORD: zzira
+          POSTGRES_DB: zzira
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U zzira"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26"
+      - name: Upgrade from the base of this pull request
+        env:
+          DATABASE_URL: postgres://zzira:zzira@localhost:5433/zzira?sslmode=disable
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/upgrade-test.sh "$BASE_SHA"
+
   govulncheck:
     runs-on: ubuntu-latest
     steps:
