@@ -132,11 +132,10 @@ func wikiTriggerData(event string, action loggedAction) json.RawMessage {
 		data = map[string]any{"blogPost": payload.BlogPost}
 	case "page_commented":
 		var payload wikiCommentPayload
-		comment := payload.comment()
 		if json.Unmarshal(action.Payload, &payload) != nil || payload.comment() == nil {
 			return nil
 		}
-		comment = payload.comment()
+		comment := payload.comment()
 		data = map[string]any{"comment": comment, "pageId": comment.PageID}
 	case "page_labelled":
 		var payload wikiLabelPayload

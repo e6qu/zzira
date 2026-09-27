@@ -35,9 +35,11 @@ func newAuthenticator(t *testing.T) *authenticator {
 // coseKey is the key as an authenticator writes it: a CBOR map of the
 // algorithm, the curve and the point.
 func (a *authenticator) coseKey() []byte {
-	x, y := a.key.PublicKey.X.Bytes(), a.key.PublicKey.Y.Bytes()
-	x = append(make([]byte, 32-len(x)), x...)
-	y = append(make([]byte, 32-len(y)), y...)
+	point, err := a.key.PublicKey.Bytes()
+	if err != nil {
+		panic(err)
+	}
+	x, y := point[1:33], point[33:65]
 	out := []byte{0xa5}
 	out = append(out, 0x01, 0x02)       // kty: EC2
 	out = append(out, 0x03, 0x26)       // alg: ES256 (-7)

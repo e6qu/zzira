@@ -242,23 +242,23 @@ func (h *Handler) patchUser(w http.ResponseWriter, r *http.Request, actorID, wor
 	active, changedActive, changedProfile, changedIdentity := entry.User.Active, false, false, false
 	for _, operation := range operations {
 		path := strings.ToLower(strings.TrimSpace(operation.Path))
-		switch {
-		case path == "active":
+		switch path {
+		case "active":
 			value, ok := operation.boolValue()
 			if !ok {
 				scimError(w, http.StatusBadRequest, "active takes true or false.", "invalidValue")
 				return
 			}
 			active, changedActive = value, true
-		case path == "displayname":
+		case "displayname":
 			profile.DisplayName, changedProfile = operation.stringValue(), true
-		case path == "name.givenname":
+		case "name.givenname":
 			givenName, changedIdentity = operation.stringValue(), true
-		case path == "name.familyname":
+		case "name.familyname":
 			familyName, changedIdentity = operation.stringValue(), true
-		case path == "externalid":
+		case "externalid":
 			externalID, changedIdentity = operation.stringValue(), true
-		case path == "":
+		case "":
 			// A patch with no path carries a fragment of the resource.
 			var fragment userRequest
 			if err := operation.decodeValue(&fragment); err != nil {

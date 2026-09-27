@@ -1,7 +1,6 @@
 package render
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -58,6 +57,6 @@ func TestStylesheetsDrawTickBoxesBigEnough(t *testing.T) {
 		}
 	}
 	if t.Failed() {
-		t.Log(fmt.Sprintf("read %d stylesheets", len(sheets)))
+		t.Logf("read %d stylesheets", len(sheets))
 	}
 }

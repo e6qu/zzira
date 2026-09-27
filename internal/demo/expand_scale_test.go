@@ -16,7 +16,11 @@ func TestShippedCompanyHasYearsOfHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	t.Cleanup(func() {
+		if err := file.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	scenario, err := demo.Read(file)
 	if err != nil {
 		t.Fatalf("read the shipped company: %v", err)

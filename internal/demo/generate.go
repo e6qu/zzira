@@ -292,8 +292,10 @@ func (s *Scenario) growProject(project *Project, generated GeneratedProject, pla
 				state = "active"
 			}
 			start, end := startDay, endDay
+			// Named apart from the sprints a scenario declares by hand, which
+			// count from 1 too.
 			board.Sprints = append(board.Sprints, Sprint{
-				ID: sprintID, Name: fmt.Sprintf("%s sprint %d", project.Name, round+1),
+				ID: sprintID, Name: fmt.Sprintf("%s history sprint %d", project.Name, round+1),
 				Goal: capitalise(pick(themes)), StartDay: &start, EndDay: &end, State: state,
 			})
 		}
