@@ -485,7 +485,16 @@ func VisibleIssuePredicateIn(alias string, userPlaceholder string, includeArchiv
 	if includeArchivedProjects {
 		live, archived = "", "TRUE"
 	}
+	// This is jira_has_project_permission taken apart so a list asks it once
+	// per project rather than once per work item: the projects whose grants
+	// admit the user without naming a work item are an uncorrelated subquery,
+	// which PostgreSQL evaluates once and hashes, and only the work items
+	// outside them ask the holders that read the work item. A work item
+	// without a security level is visible without asking about levels.
 	return alias + ".archived_at IS NULL" + live +
-		" AND jira_has_project_permission(" + alias + ".workspace_id," + alias + ".project_id," + userPlaceholder + "," + alias + ".id,'BROWSE_PROJECTS'," + archived + ")" +
-		" AND jira_issue_security_visible(" + alias + ".workspace_id," + alias + ".project_id," + alias + ".id," + userPlaceholder + "," + alias + ".security_level_id)"
+		" AND ((" + alias + ".workspace_id," + alias + ".project_id) IN (SELECT browsable.workspace_id,browsable.id FROM projects browsable" +
+		" WHERE jira_project_permission_without_issue(browsable.workspace_id,browsable.id," + userPlaceholder + ",'BROWSE_PROJECTS'," + archived + "))" +
+		" OR jira_project_permission_by_issue(" + alias + ".workspace_id," + alias + ".project_id," + userPlaceholder + "," + alias + ".id,'BROWSE_PROJECTS'," + archived + "))" +
+		" AND (COALESCE(" + alias + ".security_level_id,'')=''" +
+		" OR jira_issue_security_visible(" + alias + ".workspace_id," + alias + ".project_id," + alias + ".id," + userPlaceholder + "," + alias + ".security_level_id))"
 }
