@@ -1099,7 +1099,8 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 				FROM deleted_issue_visibility d
 				WHERE d.workspace_id=$1 AND d.issue_id = ` + ref + `
 			) scoped_issue
-			WHERE jira_issue_security_visible($1,scoped_issue.project_id,` + ref + `,$3,scoped_issue.security_level_id)
+			WHERE COALESCE(scoped_issue.security_level_id,'')=''
+			   OR jira_issue_security_visible($1,scoped_issue.project_id,` + ref + `,$3,scoped_issue.security_level_id)
 		)`
 	}
 	rows, err := s.Pool.Query(ctx, `
