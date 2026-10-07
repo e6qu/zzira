@@ -1246,6 +1246,7 @@ func pushCurrentView() {
 		ProjectKey:  projectKeyOf(issue.Key),
 		ProjectName: projectKeyOf(issue.Key),
 		CanEdit:     true,
+		CanComment:  true,
 		Comments:    comments,
 		Transitions: transitions,
 		History:     history,

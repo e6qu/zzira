@@ -309,11 +309,19 @@ type IssueView struct {
 	CanEdit     bool
 	// Editable is false while the work item's status sets jira.issue.editable
 	// to false; its fields and estimates cannot then be changed.
-	Editable            bool
-	CanTriage           bool
-	AttachmentsEnabled  bool
-	IssueLinkingEnabled bool
-	TimeTrackingEnabled bool
+	Editable             bool
+	CanAssign            bool
+	CanSchedule          bool
+	CanSetSecurity       bool
+	CanDelete            bool
+	CanComment           bool
+	CanLogWork           bool
+	CanLink              bool
+	CanAttach            bool
+	DeletableAttachments map[string]bool
+	AttachmentsEnabled   bool
+	IssueLinkingEnabled  bool
+	TimeTrackingEnabled  bool
 	// TimeTracking describes the work item's estimates and logged time in the
 	// site's duration format.
 	TimeTracking      TimeTrackingView
@@ -392,6 +400,8 @@ type WorkflowTransition struct {
 // EditDialogView drives the edit-issue dialog; rendered by both server and
 // wasm worker (offline editing). Members/levels/fields may be empty offline.
 type EditDialogView struct {
+	CanAssign      bool
+	CanSetSecurity bool
 	Issue          Issue
 	Members        []User
 	SecurityLevels []WorkflowTransition // reuse shape: ID+Name pairs

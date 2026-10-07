@@ -474,6 +474,10 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	permissions, err := h.issuePermissions(r.Context(), wsID, user.ID, issue)
+	if err != nil {
+		return nil, err
+	}
 	project, err := h.Store.ProjectByIDOrKey(r.Context(), wsID, issue.ProjectID)
 	if err != nil {
 		return nil, err
@@ -493,6 +497,17 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	visibleComments := comments[:0]
+	for _, comment := range comments {
+		visible, err := h.Store.CommentVisibleTo(r.Context(), wsID, issue.ProjectID, user.ID, comment)
+		if err != nil {
+			return nil, err
+		}
+		if visible {
+			visibleComments = append(visibleComments, comment)
+		}
+	}
+	comments = visibleComments
 	history, err := h.Store.IssueChangelog(r.Context(), wsID, issue.ID)
 	if err != nil {
 		return nil, err
@@ -514,7 +529,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
-	editView, err := h.buildEditDialogView(r.Context(), wsID, user.ID, issue)
+	editView, err := h.buildEditDialogView(r.Context(), wsID, user.ID, issue, permissions)
 	if err != nil {
 		return nil, err
 	}
@@ -528,11 +543,8 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	// A transition is offered only to someone who may move the work, as the
 	// REST resource offers them: a control the server would refuse is not a
 	// control.
-	canTransition, err := h.Store.HasProjectPermission(r.Context(), wsID, user.ID, issue.ProjectID, issue.ID, "TRANSITION_ISSUES")
-	if err != nil {
-		return nil, err
-	}
-	if canTransition {
+	canTransition := permissions["TRANSITION_ISSUES"]
+	if canTransition && issue.ArchivedAt == "" {
 		for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
 			message, _, _ := t.ScreenReminder()
 			screenFields := t.ScreenFields()
@@ -552,10 +564,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		return nil, err
 	}
 	resolutionValues := resolutions
-	canResolve, err := h.Store.HasProjectPermission(r.Context(), wsID, user.ID, issue.ProjectID, issue.ID, "RESOLVE_ISSUES")
-	if err != nil {
-		return nil, err
-	}
+	canResolve := permissions["RESOLVE_ISSUES"]
 	// The priority field offers what the project's priority scheme holds.
 	priorities, err := h.Store.PrioritiesForProject(r.Context(), wsID, issue.ProjectID)
 	if err != nil {
@@ -669,7 +678,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		activity = append(activity, models.IssueActivityItem{
 			Kind: "worklog", ID: worklog.ID, AuthorID: worklog.AuthorID, AuthorName: authorName,
 			Created: worklog.Created, Body: worklog.Comment, TimeSpentSeconds: worklog.TimeSpentSeconds,
-			CanDelete: worklog.AuthorID == user.ID,
+			CanDelete: permissions["DELETE_ALL_WORKLOGS"] || (worklog.AuthorID == user.ID && permissions["DELETE_OWN_WORKLOGS"]),
 		})
 	}
 	for _, entry := range history {
@@ -726,56 +735,69 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
-	canEditForms, err := h.Store.HasProjectPermission(r.Context(), wsID, user.ID, issue.ProjectID, issue.ID, "EDIT_ISSUES")
-	if err != nil {
-		return nil, err
+	editable = editable && issue.ArchivedAt == ""
+	for i := range activity {
+		activity[i].CanDelete = activity[i].CanDelete && editable
 	}
+	deletableAttachments := map[string]bool{}
+	for _, attachment := range attachments {
+		deletableAttachments[attachment.ID] = issue.ArchivedAt == "" && (permissions["DELETE_ALL_ATTACHMENTS"] || (attachment.AuthorID == user.ID && permissions["DELETE_OWN_ATTACHMENTS"]))
+	}
+	canEditForms := permissions["EDIT_ISSUES"]
 	view := &models.IssueView{
-		Issue:               *issue,
-		ProjectKey:          project.Key,
-		ProjectName:         project.Name,
-		BoardID:             boardID,
-		CanEdit:             true,
-		Editable:            editable,
-		CanTriage:           true,
-		CanEditForms:        canEditForms && editable && issue.ArchivedAt == "",
-		AttachmentsEnabled:  configuration.AttachmentsEnabled,
-		IssueLinkingEnabled: configuration.IssueLinkingEnabled,
-		TimeTrackingEnabled: configuration.TimeTrackingEnabled,
-		TimeTracking:        models.NewTimeTrackingView(*issue, configuration.TimeTracking),
-		VotingEnabled:       configuration.VotingEnabled,
-		WatchingEnabled:     configuration.WatchingEnabled,
-		CurrentUserID:       user.ID,
-		Comments:            derefComments(comments),
-		Transitions:         transitions,
-		History:             history,
-		Attachments:         derefAttachments(attachments),
-		Worklogs:            derefWorklogs(worklogs),
-		Activity:            activity,
-		Members:             editView.Members,
-		Priorities:          priorities,
-		Resolutions:         resolutionValues,
-		CanResolve:          canResolve,
-		SecurityLevels:      editView.SecurityLevels,
-		SecurityLevelName:   h.Store.SecurityLevelName(r.Context(), issue.ProjectID, issue.SecurityLevelID),
-		CustomFields:        editView.CustomFields,
-		Watchers:            watchers,
-		IsWatching:          isWatching,
-		Voters:              voters,
-		HasVoted:            hasVoted,
-		Links:               linkViews,
-		LinkTypes:           linkTypeValues,
-		Children:            derefIssues(children),
-		ParentOptions:       parentOptions,
-		Forms:               derefForms(forms),
-		Development:         development,
-		Delivery:            delivery,
-		CodeDisabled:        !codeEnabled,
-		DeploymentsDisabled: !deploymentsEnabled,
-		AppPanels:           appPanels,
-		AppActivityTabs:     appActivityTabs,
-		AppContexts:         appContexts,
-		AppIssueContent:     appIssueContent,
+		Issue:                *issue,
+		ProjectKey:           project.Key,
+		ProjectName:          project.Name,
+		BoardID:              boardID,
+		CanEdit:              permissions["EDIT_ISSUES"] && editable,
+		Editable:             editable,
+		CanAssign:            permissions["ASSIGN_ISSUES"] && editable,
+		CanSchedule:          permissions["EDIT_ISSUES"] && permissions["SCHEDULE_ISSUES"] && editable,
+		CanSetSecurity:       permissions["EDIT_ISSUES"] && permissions["SET_ISSUE_SECURITY"] && editable,
+		CanDelete:            permissions["DELETE_ISSUES"] && issue.ArchivedAt == "",
+		CanComment:           permissions["ADD_COMMENTS"] && issue.ArchivedAt == "",
+		CanLogWork:           permissions["WORK_ON_ISSUES"] && editable,
+		CanLink:              permissions["LINK_ISSUES"] && issue.ArchivedAt == "",
+		CanAttach:            permissions["CREATE_ATTACHMENTS"] && issue.ArchivedAt == "",
+		DeletableAttachments: deletableAttachments,
+		CanEditForms:         canEditForms && editable && issue.ArchivedAt == "",
+		AttachmentsEnabled:   configuration.AttachmentsEnabled,
+		IssueLinkingEnabled:  configuration.IssueLinkingEnabled,
+		TimeTrackingEnabled:  configuration.TimeTrackingEnabled,
+		TimeTracking:         models.NewTimeTrackingView(*issue, configuration.TimeTracking),
+		VotingEnabled:        configuration.VotingEnabled,
+		WatchingEnabled:      configuration.WatchingEnabled,
+		CurrentUserID:        user.ID,
+		Comments:             derefComments(comments),
+		Transitions:          transitions,
+		History:              history,
+		Attachments:          derefAttachments(attachments),
+		Worklogs:             derefWorklogs(worklogs),
+		Activity:             activity,
+		Members:              editView.Members,
+		Priorities:           priorities,
+		Resolutions:          resolutionValues,
+		CanResolve:           canResolve,
+		SecurityLevels:       editView.SecurityLevels,
+		SecurityLevelName:    h.Store.SecurityLevelName(r.Context(), issue.ProjectID, issue.SecurityLevelID),
+		CustomFields:         editView.CustomFields,
+		Watchers:             watchers,
+		IsWatching:           isWatching,
+		Voters:               voters,
+		HasVoted:             hasVoted,
+		Links:                linkViews,
+		LinkTypes:            linkTypeValues,
+		Children:             derefIssues(children),
+		ParentOptions:        parentOptions,
+		Forms:                derefForms(forms),
+		Development:          development,
+		Delivery:             delivery,
+		CodeDisabled:         !codeEnabled,
+		DeploymentsDisabled:  !deploymentsEnabled,
+		AppPanels:            appPanels,
+		AppActivityTabs:      appActivityTabs,
+		AppContexts:          appContexts,
+		AppIssueContent:      appIssueContent,
 	}
 	// The page reads in the language the person chose, wherever the site
 	// shows a name it chose itself.
@@ -841,7 +863,7 @@ func derefIssues(in []*models.Issue) []models.Issue {
 // persisted issue state while offline.
 // buildEditDialogView is the edit form's data. reader is who is reading it,
 // so the fields carry the names their language gives them.
-func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, issue *models.Issue) (*models.EditDialogView, error) {
+func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, issue *models.Issue, permissions map[string]bool) (*models.EditDialogView, error) {
 	members, err := h.Store.MembersByWorkspace(ctx, wsID)
 	if err != nil {
 		return nil, err
@@ -857,7 +879,7 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	if err := h.Store.TranslateFields(ctx, wsID, h.Store.LocaleForUser(ctx, wsID, reader), customFields); err != nil {
 		return nil, err
 	}
-	view := &models.EditDialogView{Issue: *issue}
+	view := &models.EditDialogView{Issue: *issue, CanAssign: permissions["ASSIGN_ISSUES"], CanSetSecurity: permissions["SET_ISSUE_SECURITY"]}
 	for _, m := range members {
 		view.Members = append(view.Members, *m)
 	}
@@ -2657,7 +2679,25 @@ func (h *Handler) EditDialog(w http.ResponseWriter, r *http.Request, key string)
 		http.NotFound(w, r)
 		return
 	}
-	view, err := h.buildEditDialogView(r.Context(), wsID, user.ID, issue)
+	permissions, err := h.issuePermissions(r.Context(), wsID, user.ID, issue)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !permissions["EDIT_ISSUES"] {
+		http.Error(w, "You do not have permission to edit this work item.", http.StatusForbidden)
+		return
+	}
+	editable, err := h.Commands.IssueEditable(r.Context(), issue)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if issue.ArchivedAt != "" || !editable {
+		http.Error(w, "The work item cannot be edited in its current state.", http.StatusBadRequest)
+		return
+	}
+	view, err := h.buildEditDialogView(r.Context(), wsID, user.ID, issue, permissions)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -2686,10 +2726,12 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 	}
 	summary := strings.TrimSpace(r.PostFormValue("summary"))
 	description := adf.ParagraphDoc(r.PostFormValue("description"))
-	assignee := r.PostFormValue("assignee")
 	in := commands.UpdateIssueInput{
 		ActorID: user.ID, WorkspaceID: wsID, IssueIDOrKey: key,
-		Summary: &summary, Description: description, AssigneeID: &assignee,
+		Summary: &summary, Description: description,
+	}
+	if values, ok := r.PostForm["assignee"]; ok && len(values) > 0 {
+		in.AssigneeID = &values[0]
 	}
 	if sec, ok := r.PostForm["security"]; ok {
 		in.SecurityLevelID = &sec[0] // "" = public

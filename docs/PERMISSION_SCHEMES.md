@@ -90,3 +90,19 @@ Tracked in [PLAN.md](../PLAN.md).
 - `internal/api3/permission_schemes_test.go`: all 16 operations, validation, assignment conflicts, direct and group grants, delegated administration, visibility in work items, projects and search, discovery, paging, actions.
 - `internal/api3/project_administration_test.go`: each project configuration operation for a project administrator who is not a site administrator, and for a member without the permission.
 - `e2e/permission_schemes.spec.ts`: scheme creation, grant editing, assignment, delegated inspection, effective API permissions, 320px reflow.
+
+## Issue page controls
+
+The issue page checks each action against its own project permission. Someone
+with Browse projects can watch or vote without Edit issues. Add comments and Work
+on issues expose separate composers; Assign issues exposes assignment without
+granting other field edits. Scheduling and security changes also require their
+respective permissions alongside Edit issues. Own/all deletion permissions decide
+which attachment and work-log removal controls appear.
+
+The edit dialog requires Edit issues and an editable, unarchived work item.
+It omits assignment and security controls when those permissions are absent;
+omitting assignment from a save preserves the current assignee. Restricted
+comments are filtered by group or project-role membership before rendering
+activity bodies and counts. The shared comment command checks Add comments, so
+a browser POST cannot bypass a hidden composer.
