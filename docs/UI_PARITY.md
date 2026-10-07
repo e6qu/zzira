@@ -36,7 +36,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | Site admin manages people, access and Jira settings | ✅ | `admin`, `password`, `two_step`, `api_tokens`, `people`, `global_permissions`, `identity-providers`, `saml`, `passkeys`, `permission_schemes`, `permission_helper`, `notification_schemes`, `notification_helper`, `notification_preferences`, `notifications`, `issue_security_schemes` | A SCIM provider is pointed at the address `/admin` shows and holds a key issued there, as Atlassian's own is ([ADMIN](ADMIN.md), [SCIM](SCIM.md)) |
 | Site admin manages apps | 🟡 | `apps` (including an app's own configure page and the pages it adds to a profile) | Dialogs, web sections and keyboard shortcuts; Forge compute; workflow modules ([APPS](APPS.md)) |
 
-Evidence names refer to `e2e/<name>.spec.ts`. `wire-ids` and `accessibility` apply across all journeys; see [WIRE_IDS.md](WIRE_IDS.md) and [ACCESSIBILITY.md](ACCESSIBILITY.md).
+Evidence names refer to `e2e/<name>.spec.ts`. `wire-ids`, `accessibility` and `ux_recovery` apply across journeys; see [WIRE_IDS.md](WIRE_IDS.md) and [ACCESSIBILITY.md](ACCESSIBILITY.md). Recovery checks cover visible form errors without losing drafts, dialog keyboard isolation and loading cancellation, blocked browser storage, and board column alignment.
 
 ## Quality gate for every journey
 

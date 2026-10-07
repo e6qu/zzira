@@ -1,14 +1,6 @@
+import { apiAuthHeader } from './auth';
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
-import * as fs from 'fs';
-import * as path from 'path';
-
-function apiAuthHeader(): string {
-  const email = 'demo@zzira.dev';
-  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-  const token = process.env.ZZIRA_API_TOKEN ?? tokens[email];
-  return 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
-}
 
 async function login(page: Page, email = 'demo@zzira.dev', password = 'demo1234') {
   await page.goto('/login');

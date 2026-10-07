@@ -1,13 +1,7 @@
+import { apiAuthHeader } from './auth';
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
 import * as fs from 'fs';
-import * as path from 'path';
-
-function apiAuthHeader(): string {
-  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-  const token = process.env.ZZIRA_API_TOKEN ?? tokens['demo@zzira.dev'];
-  return 'Basic ' + Buffer.from(`demo@zzira.dev:${token}`).toString('base64');
-}
 
 async function downloadCSV(page: Page): Promise<{ name: string; lines: string[] }> {
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: 'Download CSV' }).click()]);
@@ -66,16 +60,20 @@ test('plan a release, assign scope, publish notes, archive and delete', async ({
   await expect(page).toHaveURL(/\/browse\/ZZ-\d+$/);
   const issue = { key: page.url().split('/').pop()! };
   const deliverySequence = Date.now();
+  // The DORA report defaults to the last 30 days; fixtures must stay in that
+  // window as the calendar advances.
+  const builtAt = new Date(deliverySequence - 2 * 86400_000).toISOString();
+  const deployedAt = new Date(deliverySequence - 2 * 86400_000 + 3600_000).toISOString();
   const buildResponse = await page.request.post('/rest/builds/0.1/bulk', { headers: { Authorization: apiAuthHeader() }, data: {
     properties: { accountId: 'release-e2e' }, builds: [{ pipelineId: `release-${deliverySequence}`, buildNumber: 1,
       updateSequenceNumber: deliverySequence, displayName: 'Release candidate build', url: 'https://ci.example/release/build',
-      state: 'successful', lastUpdated: '2026-09-06T12:00:00Z', issueKeys: [issue.key] }],
+      state: 'successful', lastUpdated: builtAt, issueKeys: [issue.key] }],
   } });
   expect(buildResponse.status()).toBe(202);
   const deploymentResponse = await page.request.post('/rest/deployments/0.1/bulk', { headers: { Authorization: apiAuthHeader() }, data: {
     properties: { accountId: 'release-e2e' }, deployments: [{ deploymentSequenceNumber: deliverySequence,
       updateSequenceNumber: deliverySequence, displayName: 'Production rollout', url: 'https://deploy.example/release',
-      description: 'Release deployment', lastUpdated: '2026-09-06T13:00:00Z', state: 'successful', issueKeys: [issue.key],
+      description: 'Release deployment', lastUpdated: deployedAt, state: 'successful', issueKeys: [issue.key],
       pipeline: { id: `release-${deliverySequence}`, displayName: 'Release pipeline', url: 'https://ci.example/release' },
       environment: { id: 'production', displayName: 'Production', type: 'production' } }],
   } });

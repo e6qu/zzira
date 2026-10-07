@@ -1,18 +1,11 @@
+import { apiAuthHeader } from './auth';
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
-import * as fs from 'fs';
-import * as path from 'path';
 
 // A project manager plans an epic's work on the software project timeline,
 // and the Roadmap feature governs whether the timeline exists.
 
 const DEMO = { email: 'demo@zzira.dev', password: 'demo1234' };
-
-function apiAuthHeader(): string {
-  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-  const token = process.env.ZZIRA_API_TOKEN ?? tokens[DEMO.email];
-  return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
-}
 
 async function accessible(page: Page) {
   // Axe counts controls under the sticky header as covered, so pages are

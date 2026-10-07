@@ -1,11 +1,9 @@
+import { apiAuthHeader as seedAuthHeader } from './auth';
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
-import * as fs from 'fs';
-import * as path from 'path';
 
 function basicAuth(email: string): string {
-  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-  return 'Basic ' + Buffer.from(`${email}:${tokens[email]}`).toString('base64');
+  return seedAuthHeader(email);
 }
 
 async function accessible(page: Page) {

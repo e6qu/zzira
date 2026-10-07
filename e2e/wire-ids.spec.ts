@@ -1,6 +1,5 @@
+import { apiAuthHeader } from './auth';
 import { expect, test, APIRequestContext } from '@playwright/test';
-import * as fs from 'fs';
-import * as path from 'path';
 
 // Clients must only ever see the ids Jira, Jira Software and Jira Service
 // Management use. This crawls the read APIs on a seeded site and fails on any
@@ -8,12 +7,6 @@ import * as path from 'path';
 // status reference or a URL.
 
 const DEMO = { email: 'demo@zzira.dev' };
-
-function apiAuthHeader(): string {
-  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-  const token = process.env.ZZIRA_API_TOKEN ?? tokens[DEMO.email];
-  return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
-}
 
 const STORED_ID = /^(st|prj|brd|spr|wf|workflow|flt|lnk|cmt|att|wl|iss|qf|status|project|board|sprint|filter|queue|scheme|task)_[A-Za-z0-9_]+$/;
 const STORED_ID_IN_URL = /\/(st|prj|brd|spr|wf|workflow|flt|lnk|cmt|att|wl|iss|qf|status|project|board|sprint|filter)_[A-Za-z0-9]+/;

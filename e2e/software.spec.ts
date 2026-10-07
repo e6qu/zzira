@@ -1,18 +1,11 @@
+import { apiAuthHeader } from './auth';
 import { expect, test } from '@playwright/test';
-import * as fs from 'fs';
-import * as path from 'path';
 
 // A Jira Software client on the seeded site: an epic and its story, ranking,
 // a board created from a filter with story point estimation, feature flag data
 // on the story and a Jira expression over the result.
 
 const DEMO = { email: 'demo@zzira.dev' };
-
-function apiAuthHeader(): string {
-  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-  const token = process.env.ZZIRA_API_TOKEN ?? tokens[DEMO.email];
-  return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
-}
 
 test('Jira Software client works with epics, ranking, estimation, DevOps data and expressions', async ({ request }) => {
   const headers = { Authorization: apiAuthHeader() };

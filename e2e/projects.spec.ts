@@ -1,13 +1,5 @@
+import { apiAuthHeader } from './auth';
 import { expect, test } from '@playwright/test';
-import fs from 'fs';
-import path from 'path';
-
-function apiAuthHeader(): string {
-  const email = 'demo@zzira.dev';
-  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-  const token = process.env.ZZIRA_API_TOKEN ?? tokens[email];
-  return 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
-}
 
 test('create a project, use its board, and update settings through UI and API', async ({ page }) => {
   await page.goto('/login');

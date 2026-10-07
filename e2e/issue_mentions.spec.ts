@@ -1,10 +1,8 @@
+import { apiAuthHeader as seedAuthHeader, seedPassword } from './auth';
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
-import * as fs from 'fs';
-import * as path from 'path';
 
-const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-const authFor = (email: string) => ({ Authorization: 'Basic ' + Buffer.from(`${email}:${tokens[email]}`).toString('base64') });
+const authFor = (email: string) => ({ Authorization: seedAuthHeader(email) });
 
 async function accessible(page: Page) {
   // Axe counts controls under the sticky header as covered, so the page is
@@ -25,7 +23,7 @@ test('mentioning someone in a comment notifies them', async ({ page }) => {
 
   await page.goto('/login');
   await page.fill('#login-email', 'demo@zzira.dev');
-  await page.fill('#login-password', tokens['demo@zzira.dev.password']);
+  await page.fill('#login-password', seedPassword());
   await page.click('button[type=submit]');
   await expect(page).not.toHaveURL(/\/login/);
   await page.goto(`/browse/${key}`);

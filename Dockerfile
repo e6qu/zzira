@@ -14,9 +14,9 @@ RUN cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" /out/wasm_exec.js
 # Runtime: scratch — the static binary is the entire dependency surface.
 FROM scratch
 COPY --from=build /out/zzira-server /zzira-server
+COPY web/static /static
 COPY --from=build /out/zzira-worker.wasm /static/zzira-worker.wasm
 COPY --from=build /out/wasm_exec.js /static/wasm/wasm_exec.js
-COPY web/static /static
 # The demo scenario the -mode=demo flag defaults to. Without it in the image,
 # the documented `docker compose exec zzira /zzira-server -mode=demo` answers
 # "open demo/company.json: no such file or directory" -- the mode cannot build

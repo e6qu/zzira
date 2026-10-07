@@ -7,11 +7,11 @@ LDFLAGS = -s -w -X github.com/e6qu/zzira/internal/build.Version=$(VERSION)
 
 .PHONY: all assets server client-wasm test build migrate dev down reset seed demo conformance e2e clean
 
-all: assets build test
+all: build test
 
-assets:
+assets: client-wasm
+	mkdir -p web/static/wasm
 	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" web/static/wasm/wasm_exec.js
-	mkdir -p bin
 	cp bin/zzira-worker.wasm web/static/zzira-worker.wasm
 
 server:
@@ -20,7 +20,7 @@ server:
 client-wasm:
 	GOOS=js GOARCH=wasm go build -ldflags '$(LDFLAGS)' -o bin/zzira-worker.wasm ./cmd/client
 
-build: server client-wasm
+build: server assets
 
 test:
 	go test ./...
@@ -55,7 +55,7 @@ reset:
 seed:
 	go run ./cmd/server -mode=seed
 
-# demo builds the declarative demo company: three months of history across
+# demo builds the declarative demo company: three years of history across
 # Jira, Jira Software, Jira Service Management and Confluence. It builds into
 # the workspace `make dev` serves, or the company would be in a site the
 # server never shows.
@@ -71,7 +71,8 @@ conformance: build
 loadtest: build
 	./bin/loadtest
 
-e2e: build dev
+# Run against a seeded server already started in another terminal with make dev.
+e2e: build
 	cd e2e && npx playwright test
 
 clean:

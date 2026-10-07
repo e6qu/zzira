@@ -342,6 +342,7 @@ type IssueView struct {
 	Children          []Issue
 	ParentOptions     []CreateFieldOption
 	Forms             []IssueForm
+	CanEditForms      bool
 	Development       []DevelopmentItem
 	Delivery          []DeliveryItem
 	// CodeDisabled and DeploymentsDisabled hide what a project turned off.
