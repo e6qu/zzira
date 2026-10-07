@@ -107,3 +107,11 @@ Tracked in [PLAN.md](../PLAN.md).
 
 - A transition screen renders its fields as one list; a screen's tabs are not shown as tabs.
 - `development-triggers` has only the branch-created trigger. Jira also triggers on commits, pull requests, reviews and deployments.
+
+The issue page offers each action using its project permission: edit, assignment,
+scheduling, security, deletion, comments, links, attachments, and work logs are
+independent. Own/all deletion permissions apply to the matching attachment or
+work-log author. Workflow-frozen fields disable field and work-log changes;
+archived issues offer no mutations. Restricted comments use the same group and
+project-role visibility checks in the browser as in the REST API. Comment creation
+also checks Add comments in the command shared by browser and API handlers.

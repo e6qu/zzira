@@ -998,6 +998,9 @@ func (s *Service) AddComment(ctx context.Context, in AddCommentInput) (*models.C
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := s.requirePermission(ctx, in.WorkspaceID, in.ActorID, issue.ProjectID, issue.ID, "ADD_COMMENTS"); err != nil {
+		return nil, nil, err
+	}
 	body := in.Body
 	if len(body) == 0 && in.PlainText != "" {
 		body = adf.ParagraphDoc(in.PlainText)

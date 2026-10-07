@@ -23,6 +23,7 @@ func (e *PermissionError) Unwrap() error { return ErrPermission }
 
 // permissionMessages are the refusals Jira gives for each project permission.
 var permissionMessages = map[string]string{
+	"ADD_COMMENTS":              "You do not have permission to comment on this work item.",
 	"ASSIGN_ISSUES":             "You do not have permission to assign work items in this project.",
 	"CREATE_ISSUES":             "You do not have permission to create work items in this project.",
 	"DELETE_ISSUES":             "You do not have permission to delete this work item.",
