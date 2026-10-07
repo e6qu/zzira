@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/e6qu/zzira/compare/v0.16.0...v0.16.1) (2026-09-28)
+
+
+### Performance Improvements
+
+* ask a list's project permission once per project, not per work item ([#188](https://github.com/e6qu/zzira/issues/188)) ([d2026ff](https://github.com/e6qu/zzira/commit/d2026ff5f7f9827d3ac3bd68bf3cf4b3e0608bad))
+
 ## [0.16.0](https://github.com/e6qu/zzira/compare/v0.15.1...v0.16.0) (2026-09-20)
 
 
