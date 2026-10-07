@@ -5,7 +5,8 @@
 <meta name="color-scheme" content="light dark">
 <script>
   (function () {
-    var saved = localStorage.getItem('zzira-theme');
+    var saved;
+    try { saved = localStorage.getItem('zzira-theme'); } catch (_) { /* storage may be blocked */ }
     var theme = saved === 'light' || saved === 'dark'
       ? saved
       : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
@@ -21,12 +22,12 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=58">
-<link rel="preload" href="/static/zzira-worker.wasm?v=4" as="fetch" crossorigin>
+<link rel="stylesheet" href="/static/css/workspace.css?v=59">
+<link rel="preload" href="/static/zzira-worker.wasm?v=5" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
 <script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js?v=36" defer></script>
+<script src="/static/app.js?v=37" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -266,8 +267,8 @@
 
       <section class="issue-section issue-forms" aria-labelledby="forms-title">
         <div class="section-heading"><h2 id="forms-title">Forms <span class="section-count">{{len .Forms}}</span></h2></div>
-        {{if .Forms}}<ul class="linked-work-list" id="issue-forms-list">{{range .Forms}}<li><span class="link-relationship">{{if .Submitted}}Submitted{{else}}Open{{end}}</span><strong>{{.Name}}</strong><span class="muted">{{if .Internal}}Internal{{else}}Customer visible{{end}}</span>{{if $.CanTriage}}<form method="post" action="/issues/{{$.Issue.Key}}/forms/{{.ID}}/action/{{if .Submitted}}reopen{{else}}submit{{end}}" hx-post="/issues/{{$.Issue.Key}}/forms/{{.ID}}/action/{{if .Submitted}}reopen{{else}}submit{{end}}" hx-target="#issue-view-holder" hx-swap="innerHTML"><button type="submit" class="btn">{{if .Submitted}}Reopen{{else}}Submit{{end}}</button></form><form method="post" action="/issues/{{$.Issue.Key}}/forms/{{.ID}}/action/delete" hx-post="/issues/{{$.Issue.Key}}/forms/{{.ID}}/action/delete" hx-target="#issue-view-holder" hx-swap="innerHTML" hx-confirm="Delete form {{.Name}}?"><button type="submit" class="icon-danger" aria-label="Delete form {{.Name}}">×</button></form>{{end}}</li>{{end}}</ul>{{else}}<p class="muted">No forms attached.</p>{{end}}
-        {{if .CanTriage}}<details class="link-create"><summary class="quiet-action">Attach form</summary><form method="post" action="/issues/{{.Issue.Key}}/forms" hx-post="/issues/{{.Issue.Key}}/forms" hx-target="#issue-view-holder" hx-swap="innerHTML"><label for="form-template">Template ID</label><input id="form-template" name="template" maxlength="255" required placeholder="employee-onboarding"><label for="form-name">Form name</label><input id="form-name" name="name" maxlength="255" placeholder="Employee onboarding"><button type="submit" class="btn btn-primary">Attach form</button></form></details>{{end}}
+        {{if .Forms}}<ul class="linked-work-list" id="issue-forms-list">{{range .Forms}}<li><span class="link-relationship">{{if .Submitted}}Submitted{{else}}Open{{end}}</span><strong>{{.Name}}</strong><span class="muted">{{if .Internal}}Internal{{else}}Customer visible{{end}}</span>{{if $.CanEditForms}}<form method="post" action="/issues/{{$.Issue.Key}}/forms/{{.ID}}/action/{{if .Submitted}}reopen{{else}}submit{{end}}" hx-post="/issues/{{$.Issue.Key}}/forms/{{.ID}}/action/{{if .Submitted}}reopen{{else}}submit{{end}}" hx-target="#issue-view-holder" hx-swap="innerHTML"><button type="submit" class="btn">{{if .Submitted}}Reopen{{else}}Submit{{end}}</button></form><form method="post" action="/issues/{{$.Issue.Key}}/forms/{{.ID}}/action/delete" hx-post="/issues/{{$.Issue.Key}}/forms/{{.ID}}/action/delete" hx-target="#issue-view-holder" hx-swap="innerHTML" hx-confirm="Delete form {{.Name}}?"><button type="submit" class="icon-danger" aria-label="Delete form {{.Name}}">×</button></form>{{end}}</li>{{end}}</ul>{{else}}<p class="muted">No forms attached.</p>{{end}}
+        {{if .CanEditForms}}<details class="link-create"><summary class="quiet-action">Attach form</summary><form method="post" action="/issues/{{.Issue.Key}}/forms" hx-post="/issues/{{.Issue.Key}}/forms" hx-target="#issue-view-holder" hx-swap="innerHTML"><label for="form-template">Template ID</label><input id="form-template" name="template" maxlength="255" required placeholder="employee-onboarding"><label for="form-name">Form name</label><input id="form-name" name="name" maxlength="255" placeholder="Employee onboarding"><button type="submit" class="btn btn-primary">Attach form</button></form></details>{{end}}
       </section>
 
       {{if not .CodeDisabled}}<section class="issue-section issue-development" aria-labelledby="development-title">

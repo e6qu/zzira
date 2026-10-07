@@ -1,13 +1,10 @@
+import { apiAuthHeader as seedAuthHeader } from './auth';
 import { test, expect, APIRequestContext, Page } from '@playwright/test';
-import * as fs from 'fs';
-import * as path from 'path';
 
 const DEMO = { email: 'demo@zzira.dev', password: 'demo1234' };
 
 function authFor(email: string): string {
-  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-  const token = process.env.ZZIRA_API_TOKEN && email === DEMO.email ? process.env.ZZIRA_API_TOKEN : tokens[email];
-  return 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
+  return seedAuthHeader(email);
 }
 
 async function loginAsAna(page: Page) {

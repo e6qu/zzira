@@ -1,12 +1,6 @@
+import { apiAuthHeader } from './auth';
 import { expect, test } from '@playwright/test';
 import axe from 'axe-core';
-import * as fs from 'fs';
-import * as path from 'path';
-
-function apiAuthHeader(): string {
-  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-  return 'Basic ' + Buffer.from(`demo@zzira.dev:${tokens['demo@zzira.dev']}`).toString('base64');
-}
 
 async function accessible(page: import('@playwright/test').Page) {
   // Axe counts controls under the sticky header as covered, so pages are

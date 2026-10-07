@@ -32,6 +32,7 @@ func fixtureIssue() models.IssueView {
 		CanEdit:             true,
 		Editable:            true,
 		CanTriage:           true,
+		CanEditForms:        true,
 		AttachmentsEnabled:  true,
 		IssueLinkingEnabled: true,
 		TimeTrackingEnabled: true,

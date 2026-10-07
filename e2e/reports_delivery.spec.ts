@@ -1,18 +1,13 @@
+import { apiAuthHeader } from './auth';
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
 import * as fs from 'fs';
-import * as path from 'path';
 
 // An engineering manager asks two questions the DORA page answers only as
 // single numbers: how often do we ship, and how long does work take once it
 // starts.
 
 const DEMO = { email: 'demo@zzira.dev', password: 'demo1234' };
-
-function apiAuthHeader(): string {
-  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-  return 'Basic ' + Buffer.from(`${DEMO.email}:${tokens[DEMO.email]}`).toString('base64');
-}
 
 async function downloadCSV(page: Page): Promise<{ name: string; lines: string[] }> {
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: 'Download CSV' }).click()]);

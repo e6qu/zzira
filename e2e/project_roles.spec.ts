@@ -1,11 +1,5 @@
+import { apiAuthHeader } from './auth';
 import { expect, test } from '@playwright/test';
-import * as fs from 'fs';
-import * as path from 'path';
-
-function apiAuthHeader(): string {
-  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-  return 'Basic ' + Buffer.from(`demo@zzira.dev:${tokens['demo@zzira.dev']}`).toString('base64');
-}
 
 async function login(page: import('@playwright/test').Page, email: string, password: string) {
   await page.goto('/login');

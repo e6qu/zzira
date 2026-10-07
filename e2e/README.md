@@ -4,7 +4,7 @@ These browser specs prove the persona journeys listed in [docs/UI_PARITY.md](../
 
 ## Run
 
-Start from a freshly migrated and seeded database: `make reset` is that database, and running the whole suite against one a previous run left behind produces failures that belong to the leftovers rather than to the code. The server embeds its templates and static files, so rebuild it after any UI change.
+Start from a freshly migrated and seeded database: `make reset` is that database, and running the whole suite against one a previous run left behind produces failures that belong to the leftovers rather than to the code. The server embeds its templates and serves static files from disk. `make build` rebuilds the server and refreshes the browser worker and its Go runtime assets.
 
 ```sh
 make build                     # server and wasm worker (bin/, web/static/)
@@ -32,9 +32,12 @@ npx playwright test backlog.spec.ts   # one spec
 |---|---|
 | `ZZIRA_URL` | Server to test (default `http://localhost:8080`) |
 | `ZZIRA_API_TOKEN` | API token for the demo user, instead of `data/seed-tokens.json` |
+| `ZZIRA_SEED_TOKENS` | Path to the tested instance's credentials file, including other personas' tokens and seeded passwords |
 | `ZZIRA_EXTERNAL_URL` | The server's external URL, for the identity provider specs |
 
 CI (`.github/workflows/ci.yml`) runs the whole suite against a server configured with `ZZIRA_ALLOW_INSECURE_OIDC=true` and test Atlassian client credentials. Traces from failed tests are kept in `test-results/`.
+
+Every spec using seeded API credentials uses `auth.ts`. A demo token override works without a local credentials file; journeys involving other personas read their own credentials from `ZZIRA_SEED_TOKENS` or the default file. `make e2e` builds the assets and runs the suite against an already running server; start `make dev` in another terminal first.
 
 ## Specs
 
@@ -48,6 +51,6 @@ CI (`.github/workflows/ci.yml`) runs the whole suite against a server configured
 | Automation and apps | `automation`, `apps` |
 | Service Management | `service`, `service_assets` |
 | Confluence | `wiki`, `wiki_content_tree`, `wiki_database`, `wiki_drafts_purge`, `wiki_live_editing`, `wiki_mentions`, `wiki_page_details`, `wiki_page_lifecycle`, `wiki_presence`, `wiki_space_admin`, `wiki_space_tools`, `wiki_watches`, `wiki_whiteboard` |
-| Cross-cutting | `accessibility` ([ACCESSIBILITY.md](../docs/ACCESSIBILITY.md)), `wire-ids` ([WIRE_IDS.md](../docs/WIRE_IDS.md)) |
+| Cross-cutting | `accessibility` ([ACCESSIBILITY.md](../docs/ACCESSIBILITY.md)), `ux_recovery` (board alignment, rejected edits, network errors, dialog isolation, loading cancellation and blocked storage), `wire-ids` ([WIRE_IDS.md](../docs/WIRE_IDS.md)) |
 
 Each name is `<name>.spec.ts` in this directory.

@@ -1,16 +1,7 @@
+import { apiAuthHeader } from './auth';
 import { test, expect, Page } from '@playwright/test';
-import * as fs from 'fs';
-import * as path from 'path';
 
 const DEMO = { email: 'demo@zzira.dev', password: 'demo1234' };
-
-function apiAuthHeader(): string {
-  const tokenFile = path.join(__dirname, '..', 'data', 'seed-tokens.json');
-  const tokens = JSON.parse(fs.readFileSync(tokenFile, 'utf8'));
-  const token = process.env.ZZIRA_API_TOKEN ?? tokens[DEMO.email];
-  if (!token) throw new Error('no API token: run `go run ./cmd/server -mode=seed`');
-  return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
-}
 
 async function login(page: Page) {
   await page.goto('/login');

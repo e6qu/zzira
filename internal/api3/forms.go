@@ -2,16 +2,19 @@ package api3
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/e6qu/zzira/internal/store"
 )
 
 func (h *Handler) issueFormsRoute(w http.ResponseWriter, r *http.Request) {
-	wsID, _, authErr := h.authWorkspace(r)
+	wsID, actorID, authErr := h.authWorkspace(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -50,9 +53,9 @@ func (h *Handler) issueFormsRoute(w http.ResponseWriter, r *http.Request) {
 				jiraError(w, http.StatusBadRequest, "A formTemplate id is required.")
 				return
 			}
-			form, err := h.Store.AttachIssueForm(r.Context(), wsID, issue.ID, request.FormTemplate.ID, request.FormTemplate.Name)
+			form, err := h.Commands.ChangeIssueForm(r.Context(), actorID, wsID, issue.ID, "", store.IssueFormChange{Action: "attach", TemplateID: request.FormTemplate.ID, Name: request.FormTemplate.Name})
 			if err != nil {
-				jiraError(w, http.StatusBadRequest, err.Error())
+				writeFormChangeError(w, err, http.StatusBadRequest)
 				return
 			}
 			writeJSON(w, http.StatusOK, formIndexBean(form))
@@ -79,7 +82,7 @@ func (h *Handler) issueFormsRoute(w http.ResponseWriter, r *http.Request) {
 				jiraError(w, http.StatusBadRequest, "Form answers must be a JSON object.")
 				return
 			}
-			form, err := h.Store.SaveIssueFormAnswers(r.Context(), wsID, issue.ID, formID, request.Answers)
+			form, err := h.Commands.ChangeIssueForm(r.Context(), actorID, wsID, issue.ID, formID, store.IssueFormChange{Action: "answers", Answers: request.Answers})
 			if err != nil {
 				status := http.StatusBadRequest
 				if err == pgx.ErrNoRows {
@@ -88,13 +91,13 @@ func (h *Handler) issueFormsRoute(w http.ResponseWriter, r *http.Request) {
 						status = http.StatusNotFound
 					}
 				}
-				jiraError(w, status, err.Error())
+				writeFormChangeError(w, err, status)
 				return
 			}
 			writeJSON(w, http.StatusOK, formBean(form))
 		case http.MethodDelete:
-			if err := h.Store.DeleteIssueForm(r.Context(), wsID, issue.ID, formID); err != nil {
-				jiraError(w, http.StatusNotFound, "Form does not exist.")
+			if _, err := h.Commands.ChangeIssueForm(r.Context(), actorID, wsID, issue.ID, formID, store.IssueFormChange{Action: "delete"}); err != nil {
+				writeFormChangeError(w, err, http.StatusNotFound)
 				return
 			}
 			writeJSON(w, http.StatusOK, formID)
@@ -110,25 +113,25 @@ func (h *Handler) issueFormsRoute(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch parts[6] {
 	case "submit":
-		_, err = h.Store.SetIssueFormStatus(r.Context(), wsID, issue.ID, formID, true)
+		_, err = h.Commands.ChangeIssueForm(r.Context(), actorID, wsID, issue.ID, formID, store.IssueFormChange{Action: "submit"})
 		if err == nil {
 			writeJSON(w, http.StatusOK, map[string]string{"status": "submitted"})
 			return
 		}
 	case "reopen":
-		_, err = h.Store.SetIssueFormStatus(r.Context(), wsID, issue.ID, formID, false)
+		_, err = h.Commands.ChangeIssueForm(r.Context(), actorID, wsID, issue.ID, formID, store.IssueFormChange{Action: "reopen"})
 		if err == nil {
 			writeJSON(w, http.StatusOK, map[string]string{"status": "open"})
 			return
 		}
 	case "external":
-		_, err = h.Store.SetIssueFormVisibility(r.Context(), wsID, issue.ID, formID, false)
+		_, err = h.Commands.ChangeIssueForm(r.Context(), actorID, wsID, issue.ID, formID, store.IssueFormChange{Action: "external"})
 		if err == nil {
 			writeJSON(w, http.StatusOK, map[string]string{"visibility": "external"})
 			return
 		}
 	case "internal":
-		_, err = h.Store.SetIssueFormVisibility(r.Context(), wsID, issue.ID, formID, true)
+		_, err = h.Commands.ChangeIssueForm(r.Context(), actorID, wsID, issue.ID, formID, store.IssueFormChange{Action: "internal"})
 		if err == nil {
 			writeJSON(w, http.StatusOK, map[string]string{"visibility": "internal"})
 			return
@@ -137,7 +140,7 @@ func (h *Handler) issueFormsRoute(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, http.StatusNotFound, "Form action does not exist.")
 		return
 	}
-	jiraError(w, http.StatusNotFound, "Form does not exist.")
+	writeFormChangeError(w, err, http.StatusNotFound)
 }
 
 func formIndexBean(form *models.IssueForm) map[string]any {
@@ -165,4 +168,16 @@ func formBean(form *models.IssueForm) map[string]any {
 		},
 		"state": map[string]any{"answers": answers, "status": status, "visibility": visibility},
 	}
+}
+
+func writeFormChangeError(w http.ResponseWriter, err error, status int) {
+	message := err.Error()
+	if errors.Is(err, commands.ErrPermission) {
+		status = http.StatusForbidden
+	} else if errors.Is(err, commands.ErrIssueArchived) || errors.Is(err, commands.ErrIssueNotEditable) {
+		status = http.StatusBadRequest
+	} else if status == http.StatusNotFound {
+		message = "Form does not exist."
+	}
+	jiraError(w, status, message)
 }

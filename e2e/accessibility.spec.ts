@@ -1,15 +1,8 @@
+import { apiAuthHeader } from './auth';
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
-import * as fs from 'fs';
-import * as path from 'path';
 
 const DEMO = { email: 'demo@zzira.dev', password: 'demo1234' };
-
-function apiAuthHeader(): string {
-  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-  const token = process.env.ZZIRA_API_TOKEN ?? tokens[DEMO.email];
-  return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
-}
 
 // Accessibility specs run before the journey files on a fresh CI database.
 // Own the minimum issue/board fixture instead of relying on another spec's

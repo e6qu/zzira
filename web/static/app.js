@@ -4,11 +4,26 @@
 (function () {
   'use strict';
 
+  // Preferences must not prevent using the page when storage is blocked or full.
+  function storageGet(area, key) {
+    try { return window[area].getItem(key); } catch (_) { return null; }
+  }
+  function storageSet(area, key, value) {
+    try { window[area].setItem(key, value); } catch (_) { /* keep the current page usable */ }
+  }
+  function storageRemove(area, key) {
+    try { window[area].removeItem(key); } catch (_) { /* storage may be blocked */ }
+  }
+
+  function modalIsOpen() {
+    return document.getElementById('modal-root')?.style.display === 'block';
+  }
+
   const authPage = location.pathname === '/login' || location.pathname === '/signed-out';
-  if (authPage) sessionStorage.removeItem('zzira-replica-id');
+  if (authPage) storageRemove('sessionStorage', 'zzira-replica-id');
 
   function savedTheme() {
-    const value = localStorage.getItem('zzira-theme');
+    const value = storageGet('localStorage', 'zzira-theme');
     return value === 'light' || value === 'dark' ? value : null;
   }
 
@@ -30,7 +45,7 @@
       button.dataset.ready = '1';
       button.addEventListener('click', () => {
         const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-        localStorage.setItem('zzira-theme', next);
+        storageSet('localStorage', 'zzira-theme', next);
         applyTheme(next);
       });
     });
@@ -41,13 +56,13 @@
     const banner = document.querySelector('[data-announcement-hash]');
     if (!banner) return;
     const hash = banner.getAttribute('data-announcement-hash');
-    if (localStorage.getItem('zzira-announcement-dismissed') === hash) {
+    if (storageGet('localStorage', 'zzira-announcement-dismissed') === hash) {
       banner.hidden = true;
       return;
     }
     const dismiss = banner.querySelector('[data-dismiss-announcement]');
     if (dismiss) dismiss.addEventListener('click', () => {
-      localStorage.setItem('zzira-announcement-dismissed', hash);
+      storageSet('localStorage', 'zzira-announcement-dismissed', hash);
       banner.hidden = true;
     });
   }
@@ -58,9 +73,9 @@
       if (panel.dataset.ready) return;
       panel.dataset.ready = '1';
       const storageKey = 'zzira-issue-context:' + panel.dataset.issueContextKey;
-      panel.open = localStorage.getItem(storageKey) === 'open';
+      panel.open = storageGet('localStorage', storageKey) === 'open';
       panel.addEventListener('toggle', () => {
-        localStorage.setItem(storageKey, panel.open ? 'open' : 'closed');
+        storageSet('localStorage', storageKey, panel.open ? 'open' : 'closed');
       });
     });
   }
@@ -116,7 +131,7 @@
       document.body.classList.remove('nav-open');
       document.body.classList.toggle('nav-collapsed', !open);
       if (sidebar) sidebar.inert = false;
-      localStorage.setItem('zzira-sidebar', open ? 'open' : 'collapsed');
+      storageSet('localStorage', 'zzira-sidebar', open ? 'open' : 'collapsed');
     }
     document.querySelectorAll('[data-nav-toggle]').forEach((button) => {
       button.setAttribute('aria-expanded', String(open));
@@ -126,7 +141,7 @@
 
   function initShell() {
     const media = window.matchMedia('(max-width: 960px)');
-    const startOpen = media.matches ? false : localStorage.getItem('zzira-sidebar') !== 'collapsed';
+    const startOpen = media.matches ? false : storageGet('localStorage', 'zzira-sidebar') !== 'collapsed';
     setNavigationState(startOpen);
     document.querySelectorAll('[data-nav-toggle]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -140,11 +155,16 @@
       link.addEventListener('click', () => { if (media.matches) setNavigationState(false); });
     });
     media.addEventListener('change', (event) => {
-      setNavigationState(event.matches ? false : localStorage.getItem('zzira-sidebar') !== 'collapsed');
+      setNavigationState(event.matches ? false : storageGet('localStorage', 'zzira-sidebar') !== 'collapsed');
     });
     document.addEventListener('keydown', (event) => {
+      if (event.defaultPrevented) return;
       const target = event.target;
       const typing = target && (target.matches('input, textarea, select') || target.closest('[contenteditable]'));
+      if (modalIsOpen()) {
+        if (event.key === 'Escape') { event.preventDefault(); window.zzira.closeModal(); }
+        return;
+      }
       if (event.key === 'Escape' && target instanceof Element) {
         const details = target.closest('details[open]');
         if (details) {
@@ -352,6 +372,7 @@
     });
 
     document.addEventListener('keydown', (event) => {
+      if (event.defaultPrevented || modalIsOpen()) return;
       const target = event.target;
       const typing = target instanceof Element && (target.matches('input, textarea, select') || target.closest('[contenteditable]'));
       if (typing || event.metaKey || event.ctrlKey || event.altKey || !rows.length) return;
@@ -374,12 +395,12 @@
     const knownColumns = new Set(columnInputs.map((input) => input.value));
     let visibleColumns = new Set(knownColumns);
     try {
-      const storedColumns = localStorage.getItem('zzira-navigator-columns');
+      const storedColumns = storageGet('localStorage', 'zzira-navigator-columns');
       const saved = JSON.parse(storedColumns || 'null');
       if (Array.isArray(saved)) visibleColumns = new Set(saved.filter((column) => knownColumns.has(column)));
       else if (!storedColumns && window.matchMedia('(max-width: 680px)').matches) visibleColumns = new Set(['type']);
     } catch (_) {
-      localStorage.removeItem('zzira-navigator-columns');
+      storageRemove('localStorage', 'zzira-navigator-columns');
     }
     function applyColumns() {
       columnInputs.forEach((input) => { input.checked = visibleColumns.has(input.value); });
@@ -393,7 +414,7 @@
       input.addEventListener('change', () => {
         if (input.checked) visibleColumns.add(input.value);
         else visibleColumns.delete(input.value);
-        localStorage.setItem('zzira-navigator-columns', JSON.stringify(Array.from(visibleColumns)));
+        storageSet('localStorage', 'zzira-navigator-columns', JSON.stringify(Array.from(visibleColumns)));
         applyColumns();
       });
     });
@@ -507,6 +528,7 @@
     selectFieldTab(list, Array.from(list.querySelectorAll('[data-field-tab]')).indexOf(tab));
   });
   document.addEventListener('keydown', (event) => {
+    if (event.defaultPrevented) return;
     const target = event.target;
     const tab = target instanceof Element ? target.closest('[data-field-tab]') : null;
     if (!tab || (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft')) return;
@@ -529,6 +551,7 @@
   });
   document.body.addEventListener('htmx:afterSettle', () => initIssueTriage(document));
   document.addEventListener('keydown', (event) => {
+    if (event.defaultPrevented || modalIsOpen()) return;
     const target = event.target;
     const typing = target instanceof Element && (target.matches('input, textarea, select') || target.closest('[contenteditable]'));
     if (typing || event.metaKey || event.ctrlKey || event.altKey || event.key.toLocaleLowerCase() !== 'w') return;
@@ -546,14 +569,14 @@
     document.body.hasAttribute('data-board');
   function replicaID() {
     const key = 'zzira-replica-id';
-    const existing = sessionStorage.getItem(key);
+    const existing = storageGet('sessionStorage', key);
     if (existing) return existing;
     const id = crypto.randomUUID();
-    sessionStorage.setItem(key, id);
+    storageSet('sessionStorage', key, id);
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=13&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=14&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
@@ -587,6 +610,7 @@
 
   let modalReturnFocus = null;
   let modalReturnFocusSelector = '';
+  let editRequest = null;
   const modalInertState = new Map();
   function setBackgroundInert(inert) {
     Array.from(document.body.children).forEach((child) => {
@@ -601,7 +625,10 @@
     });
   }
   function modalFocusable(modal) {
-    return Array.from(modal.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+    return Array.from(modal.querySelectorAll('a[href], button, input, select, textarea, summary, [contenteditable], [tabindex]'))
+      .filter((element) => element.tabIndex >= 0 && !element.matches(':disabled') &&
+        !element.closest('[inert]') && element.getClientRects().length > 0 &&
+        getComputedStyle(element).visibility !== 'hidden');
   }
   function initModals(scope) {
     const root = scope || document;
@@ -613,13 +640,14 @@
       backdrop.addEventListener('click', () => window.zzira.closeModal());
     });
     modal.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') { event.preventDefault(); window.zzira.closeModal(); return; }
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); window.zzira.closeModal(); return; }
       if (event.key !== 'Tab') return;
       const targets = modalFocusable(modal);
-      if (!targets.length) { event.preventDefault(); return; }
+      if (!targets.length) { event.preventDefault(); modal.focus(); return; }
       const first = targets[0], last = targets[targets.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      const outsideOrder = !targets.includes(document.activeElement);
+      if (event.shiftKey && (document.activeElement === first || outsideOrder)) { event.preventDefault(); last.focus(); }
+      if (!event.shiftKey && (document.activeElement === last || outsideOrder)) { event.preventDefault(); first.focus(); }
     });
     const autofocus = modal.querySelector('[autofocus]') || modalFocusable(modal)[0] || modal;
     autofocus.focus();
@@ -627,7 +655,7 @@
 
   function setModalHTML(html) {
     const root = document.getElementById('modal-root');
-    if (!root) return;
+    if (!root || !modalIsOpen()) return;
     root.innerHTML = html;
     root.style.display = 'block';
     initModals(root);
@@ -664,13 +692,16 @@
   }
 
   window.__bannerLog = [];
+  let announcementTimer = 0;
   function announce(text, ms) {
     window.__bannerLog.push(text);
+    if (window.__bannerLog.length > 100) window.__bannerLog.shift();
     const el = banner();
     if (!el) return;
+    clearTimeout(announcementTimer);
     el.textContent = text;
     el.hidden = false;
-    if (ms) setTimeout(() => { el.hidden = true; }, ms);
+    if (ms) announcementTimer = setTimeout(() => { el.hidden = true; }, ms);
   }
 
   if (worker) worker.onmessage = (e) => {
@@ -705,7 +736,7 @@
         break;
       case 'revoked':
         worker.terminate();
-        sessionStorage.removeItem('zzira-replica-id');
+        storageRemove('sessionStorage', 'zzira-replica-id');
         if (navigator.serviceWorker.controller) {
           navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_PRIVATE_CACHE' });
         }
@@ -866,6 +897,10 @@
   document.body.addEventListener('htmx:beforeSwap', (event) => {
     const detail = event.detail;
     const target = detail.target;
+    if (target?.id === 'modal-root' && !modalIsOpen()) {
+      detail.shouldSwap = false;
+      return;
+    }
     // A form that refuses what was typed answers 400 with the form again and
     // the reason. htmx drops error responses, so say that an HTML-bodied 400
     // is an answer to show: without this the refusal is silence, and somebody
@@ -1091,6 +1126,7 @@
       if (root) root.style.display = 'block';
     },
     closeModal() {
+      if (editRequest) { editRequest.abort(); editRequest = null; }
       const root = document.getElementById('modal-root');
       if (root) { root.style.display = 'none'; root.innerHTML = ''; }
       setBackgroundInert(false);
@@ -1113,6 +1149,7 @@
     openEdit(key, trigger) {
       const root = document.getElementById('modal-root');
       if (!root) return;
+      if (editRequest) editRequest.abort();
       modalReturnFocus = trigger instanceof HTMLElement ? trigger : document.activeElement;
       modalReturnFocusSelector = '#edit-issue-button';
       // Mark the modal region as active before the asynchronous renderer
@@ -1131,12 +1168,18 @@
         postWorker({ type: 'edit-dialog', issueId });
         return;
       }
-      fetch(`/issues/${key}/edit`).then(r => {
+      const request = new AbortController();
+      editRequest = request;
+      fetch(`/issues/${encodeURIComponent(key)}/edit`, { signal: request.signal }).then(r => {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.text();
       }).then(html => {
+        if (editRequest !== request) return;
+        editRequest = null;
         setModalHTML(html);
-      }).catch(() => {
+      }).catch((error) => {
+        if (error.name === 'AbortError' || editRequest !== request) return;
+        editRequest = null;
         window.zzira.closeModal();
         announce('could not open editor', 4000);
       });
@@ -1392,7 +1435,8 @@
   // actions immediately so the replica can't clobber the fresh fragment.
   document.body.addEventListener('htmx:afterRequest', (evt) => {
     const elt = evt.detail.elt;
-    if (evt.detail.successful && elt && elt.tagName === 'FORM') {
+    const status = evt.detail.xhr?.status || 0;
+    if (evt.detail.successful && status >= 200 && status < 300 && elt && elt.tagName === 'FORM') {
       // The server response is newer than any replica render deferred while
       // this form was dirty; never let that stale render win after the swap.
       pendingRootHtml = null;
@@ -1404,6 +1448,45 @@
       mutationAwaitingSync = false;
       mutationMinSeq = 0;
     }
+  });
+
+  // HTMX does not swap plain-text rejections or network errors. Keep the
+  // entered fields and give the person a visible explanation next to them.
+  document.body.addEventListener('htmx:afterRequest', (event) => {
+    const detail = event.detail;
+    if (detail.successful) return;
+    const element = detail.elt;
+    const form = element instanceof Element ? element.closest('form') : null;
+    const xhr = detail.xhr;
+    const status = xhr?.status || 0;
+    let message = status === 0
+      ? 'Could not reach the server. Check your connection and try again.'
+      : 'Could not complete this action. Try again.';
+    if (status >= 400 && status < 500 && (xhr.getResponseHeader('Content-Type') || '').startsWith('text/plain')) {
+      message = xhr.responseText.trim() || message;
+    }
+    if (!form || !form.isConnected) {
+      if (detail.target?.id === 'modal-root') window.zzira.closeModal();
+      announce(message, 5000);
+      return;
+    }
+    form.dataset.dirty = 'true';
+    let alert = form.querySelector('[data-request-error]');
+    if (!alert) {
+      alert = document.createElement('p');
+      alert.className = 'error';
+      alert.dataset.requestError = 'true';
+      alert.setAttribute('role', 'alert');
+      alert.tabIndex = -1;
+      (form.querySelector('.edit-form-body, .create-form-body') || form).append(alert);
+    }
+    alert.textContent = message;
+    alert.focus();
+    alert.scrollIntoView({ block: 'nearest' });
+  });
+  document.body.addEventListener('htmx:beforeRequest', (event) => {
+    const form = event.detail.elt instanceof Element ? event.detail.elt.closest('form') : null;
+    if (form) form.querySelectorAll('[data-request-error]').forEach((alert) => alert.remove());
   });
 
   // ---- Board drag & drop: rank (+ transition) commands ----

@@ -1,19 +1,13 @@
+import { apiAuthHeader } from './auth';
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
 import * as fs from 'fs';
-import * as path from 'path';
 
 const DEMO = { email: 'demo@zzira.dev', password: 'demo1234' };
 const sprintName = `Planning sprint ${Date.now()}`;
 const updatedGoal = 'Ship the planning journey with API and browser parity';
 let firstIssueKey = '';
 let secondIssueKey = '';
-
-function apiAuthHeader(): string {
-  const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-  const token = process.env.ZZIRA_API_TOKEN ?? tokens[DEMO.email];
-  return 'Basic ' + Buffer.from(`${DEMO.email}:${token}`).toString('base64');
-}
 
 async function downloadCSV(page: Page): Promise<{ name: string; lines: string[] }> {
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: 'Download CSV' }).click()]);

@@ -15,7 +15,7 @@ browser tests.
 ```bash
 docker compose up -d postgres
 make seed          # migrations and a demo@zzira.dev account
-make demo          # the Northwind demo company, with three months of history
+make demo          # the Northwind demo company, with three years of history
 make dev           # http://localhost:8080
 ```
 

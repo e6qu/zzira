@@ -15,6 +15,13 @@ zzira runs the 23 system rules Jira documents.
 | Screens | `transition-screen`, `remind-people-to-update-fields` |
 
 Approval conditions read the work item's service approvals.
+
+Attached forms are changed through the command layer by people holding the
+project's Edit issues permission, on editable work items. The browser and Forms
+API share this check for attaching, answering, submitting, reopening, changing
+visibility and deleting a form. Each successful change records an `issue_form`
+action in the same transaction; refused changes record nothing. Form actions
+follow the work item's visibility in delta sync. Forms remain an online surface.
 `block-in-progress-approval` takes no parameters and blocks while any
 approval is pending. `jsd-approvals-block-until-approved` and
 `jsd-approvals-block-until-rejected` need `approvalConfigurationJson` holding a

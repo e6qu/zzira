@@ -2,6 +2,8 @@ package models
 
 import "encoding/json"
 
+const EntityIssueForm = "issue_form"
+
 // IssueForm is an Advanced Forms (formerly ProForma) instance attached to an
 // issue. Design remains template-owned; the instance stores answers and state.
 type IssueForm struct {

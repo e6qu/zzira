@@ -1,11 +1,9 @@
+import { apiAuthHeader as seedAuthHeader, seedPassword } from './auth';
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
-import * as fs from 'fs';
-import * as path from 'path';
 
 const EMAIL = 'ana@zzira.dev';
-const tokens = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'seed-tokens.json'), 'utf8'));
-const auth = { Authorization: 'Basic ' + Buffer.from(`${EMAIL}:${tokens[EMAIL]}`).toString('base64') };
+const auth = { Authorization: seedAuthHeader(EMAIL) };
 
 async function accessible(page: Page) {
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -29,7 +27,7 @@ test('a member chooses autowatch and own-change notifications from their profile
 
   await page.goto('/login');
   await page.fill('#login-email', EMAIL);
-  await page.fill('#login-password', tokens[`${EMAIL}.password`]);
+  await page.fill('#login-password', seedPassword(EMAIL));
   await page.click('button[type=submit]');
   await expect(page).not.toHaveURL(/\/login/);
   await page.goto('/profile');

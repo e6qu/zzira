@@ -726,6 +726,10 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	canEditForms, err := h.Store.HasProjectPermission(r.Context(), wsID, user.ID, issue.ProjectID, issue.ID, "EDIT_ISSUES")
+	if err != nil {
+		return nil, err
+	}
 	view := &models.IssueView{
 		Issue:               *issue,
 		ProjectKey:          project.Key,
@@ -734,6 +738,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		CanEdit:             true,
 		Editable:            editable,
 		CanTriage:           true,
+		CanEditForms:        canEditForms && editable && issue.ArchivedAt == "",
 		AttachmentsEnabled:  configuration.AttachmentsEnabled,
 		IssueLinkingEnabled: configuration.IssueLinkingEnabled,
 		TimeTrackingEnabled: configuration.TimeTrackingEnabled,
