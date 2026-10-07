@@ -52,3 +52,21 @@ func (s *Store) IssueHierarchyStatuses(ctx context.Context, workspaceID, issueID
 	}
 	return parentStatus, children, rows.Err()
 }
+
+// VisibleChildIssues supplies a reader's list without restricted or archived children.
+func (s *Store) VisibleChildIssues(ctx context.Context, workspaceID, parentID, readerID string) ([]*models.Issue, error) {
+	rows, err := s.Pool.Query(ctx, issueJoin+` WHERE i.workspace_id=$1 AND i.parent_id=$2 AND `+VisibleIssuePredicate("i", "$3")+` ORDER BY i.key`, workspaceID, parentID, readerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*models.Issue{}
+	for rows.Next() {
+		issue, err := scanIssue(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, issue)
+	}
+	return out, rows.Err()
+}

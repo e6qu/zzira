@@ -286,13 +286,13 @@ func appendHierarchyAction(ctx context.Context, tx pgx.Tx, workspaceID, actorID,
 
 // ParentOptions lists the work items in a project that a work type at level
 // may take as a parent: those one level above it, most recently updated first.
-func (s *Store) ParentOptions(ctx context.Context, workspaceID, projectID string, level int) ([]models.CreateFieldOption, error) {
+func (s *Store) ParentOptions(ctx context.Context, workspaceID, projectID, readerID string, level int) ([]models.CreateFieldOption, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT i.jira_id::text, i.key, i.summary
 		FROM issues i JOIN issue_types t ON t.id=i.issuetype_id
 		LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$2 AND o.entity_type='issuetype' AND o.entity_id=t.id
-		WHERE i.project_id=$1 AND COALESCE(o.hierarchy_level,t.hierarchy_level)=$3
-		ORDER BY i.updated_seq DESC, i.key LIMIT 200`, projectID, workspaceID, level+1)
+		WHERE i.project_id=$1 AND COALESCE(o.hierarchy_level,t.hierarchy_level)=$3 AND `+VisibleIssuePredicate("i", "$4")+`
+		ORDER BY i.updated_seq DESC, i.key LIMIT 200`, projectID, workspaceID, level+1, readerID)
 	if err != nil {
 		return nil, err
 	}

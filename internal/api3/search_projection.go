@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/e6qu/zzira/internal/adf"
+	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
 )
 
@@ -424,7 +425,11 @@ func (h *Handler) searchIssueBeans(ctx context.Context, workspaceID, userID stri
 	beans := make([]map[string]any, 0, len(issues))
 	editMetadata := map[string]map[string]any{}
 	fulls := make([]map[string]any, len(issues))
-	for index, issue := range issues {
+	visibleIssues, err := authz.IssuesWithVisibleParents(ctx, h.Store, userID, issues)
+	if err != nil {
+		return nil, err
+	}
+	for index, issue := range visibleIssues {
 		fulls[index] = h.issueBean(issue)
 	}
 	h.addTimeTracking(ctx, issues, fulls)
@@ -489,7 +494,7 @@ func (h *Handler) searchIssueBeans(ctx context.Context, workspaceID, userID stri
 			bean["editmeta"] = metadata
 		}
 		if hasSearchExpand(options, "changelog") {
-			page, err := h.issueChangelogPage(ctx, workspaceID, issue.ID, true)
+			page, err := h.issueChangelogPage(ctx, workspaceID, userID, issue.ID, true)
 			if err != nil {
 				return nil, err
 			}

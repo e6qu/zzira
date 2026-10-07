@@ -1100,8 +1100,9 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 				FROM deleted_issue_visibility d
 				WHERE d.workspace_id=$1 AND d.issue_id = ` + ref + `
 			) scoped_issue
-			WHERE COALESCE(scoped_issue.security_level_id,'')=''
-			   OR jira_issue_security_visible($1,scoped_issue.project_id,` + ref + `,$3,scoped_issue.security_level_id)
+			WHERE jira_has_project_permission($1,scoped_issue.project_id,$3,` + ref + `,'BROWSE_PROJECTS')
+			 AND (COALESCE(scoped_issue.security_level_id,'')=''
+			   OR jira_issue_security_visible($1,scoped_issue.project_id,` + ref + `,$3,scoped_issue.security_level_id))
 		)`
 	}
 	rows, err := s.Pool.Query(ctx, `
@@ -1181,7 +1182,7 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 		    END = $3
 			  )
 			  AND (
-			    a.entity_type NOT IN ('issue','comment','attachment','worklog','watcher','vote','sprint_issue','issue_link')
+			    a.entity_type NOT IN ('issue','comment','attachment','worklog','watcher','vote','sprint_issue','issue_link','issue_property','issue_form')
 			    OR (
 			      `+canSeeIssue(issueRef)+`
 			      AND (a.entity_type <> 'issue_link' OR `+canSeeIssue(linkOtherIssueRef)+`)
@@ -1214,7 +1215,11 @@ func (s *Store) ActionPageSince(ctx context.Context, workspaceID, userID string,
 	if err != nil {
 		return nil, since, err
 	}
-	return kept, to, nil
+	shaped, err := s.shapeReplicaActions(ctx, workspaceID, userID, kept)
+	if err != nil {
+		return nil, since, err
+	}
+	return shaped, to, nil
 }
 
 // withoutUnreadableNotifications drops the notification actions whose subject

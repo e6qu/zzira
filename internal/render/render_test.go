@@ -47,6 +47,7 @@ func fixtureIssue() models.IssueView {
 		VotingEnabled:        true,
 		WatchingEnabled:      true,
 		CurrentUserID:        "usr_1",
+		Assignees:            []models.User{{ID: "usr_1", DisplayName: "Demo User"}},
 		Members:              []models.User{{ID: "usr_1", DisplayName: "Demo User"}},
 		Priorities:           []models.Priority{{ID: "pr_medium", Name: "Medium"}},
 		LinkTypes:            []models.LinkType{{ID: "lt_blocks", Name: "Blocks", Inward: "is blocked by", Outward: "blocks"}},

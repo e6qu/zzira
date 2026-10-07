@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/e6qu/zzira/internal/adf"
+	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -297,12 +298,21 @@ func (h *Handler) getServiceQueue(w http.ResponseWriter, r *http.Request, worksp
 		writeJSON(w, http.StatusOK, h.serviceQueueBean(*queue, r.URL.Query().Get("includeCount") == "true"))
 		return
 	}
-	// Each request carries only the fields the queue is configured to show.
-	beans := make([]map[string]any, 0, len(requests))
+	// Shape each distinct parent once, then project the fields the queue shows.
+	issues := make([]*models.Issue, 0, len(requests))
 	for _, request := range requests {
-		bean := projectSearchIssue(h.issueBean(request.Issue), queue.Fields, false)
+		issues = append(issues, request.Issue)
+	}
+	visibleIssues, err := authz.IssuesWithVisibleParents(r.Context(), h.Store, actorID, issues)
+	if err != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	beans := make([]map[string]any, 0, len(requests))
+	for _, issue := range visibleIssues {
+		full := h.issueBean(issue)
+		bean := projectSearchIssue(full, queue.Fields, false)
 		if _, projected := bean["fields"]; !projected {
-			full := h.issueBean(request.Issue)
 			bean["key"], bean["self"], bean["fields"] = full["key"], full["self"], map[string]any{}
 		}
 		beans = append(beans, bean)

@@ -55,3 +55,20 @@ Tracked in [PLAN.md](../PLAN.md).
 - `internal/api3/issue_security_schemes_test.go`: all 20 operations, permission refusals, validation, paging, filters, both tasks and their conflicts, cross-user visibility, actions.
 - `e2e/issue_security_schemes.spec.ts`: scheme and level creation, project assignment, project settings view, restricted creation, another user's 404 and then 200 once granted, unassignment and deletion, 320px reflow. Both pages are in the light and dark axe sweep.
 - `migrations/132_issue_security_schemes.sql`: schema, holder rows and the visibility function.
+
+## Relationships and replicas
+
+A visible work item does not grant access to its parent or children. Browser
+parent choices and create metadata filter restricted and archived candidates
+before applying their result limit; child lists do the same. Parent references
+are shaped for the reader in REST, search, Agile, service queues, expressions,
+and browser pages. Lists check each distinct parent once per response.
+
+Parent changes in browser, REST, and expression history omit inaccessible
+references. Bootstrap snapshots omit parents outside the snapshot and filter
+restricted comments by group or project-role membership. Incremental issue
+actions redact inaccessible parent values and history references. Comment
+upserts are checked against the comment’s current visibility and become delete
+actions when inaccessible or already deleted, so replay cannot restore their
+body. Action cursors still advance through filtered records, and issue property
+and attached-form actions receive the same issue visibility gate.

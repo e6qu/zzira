@@ -352,7 +352,7 @@ func (h *Handler) agileIssueSearch(w http.ResponseWriter, r *http.Request, works
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	beans, err := h.agileIssueBeans(r.Context(), issues)
+	beans, err := h.agileIssueBeans(r.Context(), userID, issues)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
