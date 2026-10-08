@@ -767,7 +767,7 @@ func (l *expressionLoader) issueRecord(issue *models.Issue) *jexpr.Record {
 			return list, nil
 		},
 		"changelogs": func(*jexpr.Context) (jexpr.Value, error) {
-			entries, err := h.Store.IssueChangelog(ctx, l.workspaceID, issue.ID)
+			entries, err := h.Store.IssueChangelogForReader(ctx, l.workspaceID, l.userID, issue.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -928,7 +928,7 @@ func (l *expressionLoader) issueRecord(issue *models.Issue) *jexpr.Record {
 				return l.projectRecord(project), nil
 			},
 		},
-		Bean: func(*jexpr.Context) (any, error) { return h.IssueBean(issue), nil },
+		Bean: func(*jexpr.Context) (any, error) { return h.IssueBeanForReader(ctx, l.userID, issue) },
 	}
 }
 

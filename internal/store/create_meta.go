@@ -29,6 +29,23 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 	if err != nil {
 		return nil, err
 	}
+	accessible := projects[:0]
+	for _, project := range projects {
+		allowed, err := s.HasProjectPermission(ctx, workspaceID, userID, project.ID, "", "BROWSE_PROJECTS")
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			allowed, err = s.HasProjectPermission(ctx, workspaceID, userID, project.ID, "", "CREATE_ISSUES")
+			if err != nil {
+				return nil, err
+			}
+		}
+		if allowed {
+			accessible = append(accessible, project)
+		}
+	}
+	projects = accessible
 	issueTypes, err := s.IssueTypes(ctx, workspaceID)
 	if err != nil {
 		return nil, err
@@ -107,8 +124,8 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 			SELECT i.jira_id::text, i.key, i.summary, COALESCE(o.hierarchy_level,t.hierarchy_level)
 			FROM issues i JOIN issue_types t ON t.id=i.issuetype_id
 			LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$2 AND o.entity_type='issuetype' AND o.entity_id=t.id
-			WHERE i.project_id=$1 AND NOT t.subtask
-			ORDER BY i.updated_seq DESC, i.key LIMIT 200`, project.ID, workspaceID)
+			WHERE i.project_id=$1 AND NOT t.subtask AND `+VisibleIssuePredicate("i", "$3")+`
+			ORDER BY i.updated_seq DESC, i.key LIMIT 200`, project.ID, workspaceID, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -150,12 +167,20 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 				}
 			}
 		}
+		assignable, err := s.AssignableUsersForProject(ctx, workspaceID, project.ID, "")
+		if err != nil {
+			return nil, err
+		}
+		assigneeOptions := make([]models.CreateFieldOption, 0, len(assignable))
+		for _, user := range assignable {
+			assigneeOptions = append(assigneeOptions, models.CreateFieldOption{ID: user.ID, Name: user.DisplayName})
+		}
 		fields := []models.CreateFieldMeta{
 			{ID: "project", Name: "Project", Type: "project", Required: true, Section: "context", Options: projectOptions},
 			{ID: "issuetype", Name: "Issue type", Type: "issuetype", Required: true, Section: "context", Options: projectTypeOptions},
 			{ID: "summary", Name: "Summary", Type: "string", Required: true, Section: "primary"},
 			{ID: "description", Name: "Description", Type: "doc", Section: "primary"},
-			{ID: "assignee", Name: "Assignee", Type: "user", Section: "details", Options: memberOptions},
+			{ID: "assignee", Name: "Assignee", Type: "user", Section: "details", Options: assigneeOptions},
 			{ID: "priority", Name: "Priority", Type: "priority", Section: "details", Options: projectPriorityOptions},
 			{ID: "labels", Name: "Labels", Type: "array", Description: "Separate labels with commas. Spaces are not allowed inside a label.", Section: "details"},
 			{ID: "duedate", Name: "Due date", Type: "date", Section: "details"},

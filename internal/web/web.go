@@ -466,7 +466,7 @@ func (h *Handler) issueForUser(r *http.Request, user *models.User, wsID, idOrKey
 	if err != nil || !visible {
 		return nil, fmt.Errorf("issue %q not found", idOrKey)
 	}
-	return issue, nil
+	return authz.IssueWithVisibleParent(r.Context(), h.Store, user.ID, issue)
 }
 
 func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrKey string) (*models.IssueView, error) {
@@ -508,7 +508,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		}
 	}
 	comments = visibleComments
-	history, err := h.Store.IssueChangelog(r.Context(), wsID, issue.ID)
+	history, err := h.Store.IssueChangelogForReader(r.Context(), wsID, user.ID, issue.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -604,7 +604,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
-	children, err := h.Store.ChildIssues(r.Context(), wsID, issue.ID)
+	children, err := h.Store.VisibleChildIssues(r.Context(), wsID, issue.ID, user.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -636,7 +636,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	}
 	// The work item's parent comes from one level above its own work type, in
 	// its own project.
-	parentOptions, err := h.Store.ParentOptions(r.Context(), wsID, issue.ProjectID, issue.IssueType.HierarchyLevel)
+	parentOptions, err := h.Store.ParentOptions(r.Context(), wsID, issue.ProjectID, user.ID, issue.IssueType.HierarchyLevel)
 	if err != nil {
 		return nil, err
 	}
@@ -775,6 +775,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		Worklogs:             derefWorklogs(worklogs),
 		Activity:             activity,
 		Members:              editView.Members,
+		Assignees:            editView.Assignees,
 		Priorities:           priorities,
 		Resolutions:          resolutionValues,
 		CanResolve:           canResolve,
@@ -882,6 +883,22 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	view := &models.EditDialogView{Issue: *issue, CanAssign: permissions["ASSIGN_ISSUES"], CanSetSecurity: permissions["SET_ISSUE_SECURITY"]}
 	for _, m := range members {
 		view.Members = append(view.Members, *m)
+	}
+	assignable, err := h.Store.AssignableUsersForProject(ctx, wsID, issue.ProjectID, issue.ID)
+	if err != nil {
+		return nil, err
+	}
+	currentIncluded := false
+	for _, user := range assignable {
+		view.Assignees = append(view.Assignees, *user)
+		if issue.Assignee != nil && user.ID == issue.Assignee.ID {
+			currentIncluded = true
+		}
+	}
+	// Keeping the current assignment is valid even if that person can no longer
+	// receive new work; opening the editor must not silently unassign them.
+	if issue.Assignee != nil && !currentIncluded {
+		view.Assignees = append(view.Assignees, *issue.Assignee)
 	}
 	if scheme != nil {
 		for _, lvl := range scheme.Levels {
@@ -1318,7 +1335,7 @@ func (h *Handler) CreateDialog(w http.ResponseWriter, r *http.Request) {
 	values := firstFormValues(r)
 	data, err := h.buildCreateDialogData(r.Context(), wsID, user.ID, values)
 	if err != nil {
-		http.Error(w, "create metadata unavailable", http.StatusInternalServerError)
+		writeCreateMetadataError(w, err)
 		return
 	}
 	writeFragment(w, "create_dialog", data)
@@ -1342,7 +1359,7 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 	values := firstFormValues(r)
 	data, err := h.buildCreateDialogData(r.Context(), wsID, user.ID, values)
 	if err != nil {
-		http.Error(w, "create metadata unavailable", http.StatusInternalServerError)
+		writeCreateMetadataError(w, err)
 		return
 	}
 	customFields, err := createFieldsFromForm(data.Selected.Fields, values)
@@ -1392,7 +1409,7 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		nextValues := map[string]string{"project": data.Selected.Project.Key, "issuetype": values["issuetype"], "createAnother": "true"}
 		data, err = h.buildCreateDialogData(r.Context(), wsID, user.ID, nextValues)
 		if err != nil {
-			http.Error(w, "create metadata unavailable", http.StatusInternalServerError)
+			writeCreateMetadataError(w, err)
 			return
 		}
 		data.CreatedKey = issue.Key
@@ -1419,13 +1436,23 @@ func firstFormValues(r *http.Request) map[string]string {
 	return values
 }
 
+var errNoCreatableProject = errors.New("You do not have permission to create work items in any project.")
+
+func writeCreateMetadataError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errNoCreatableProject) {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+	http.Error(w, "create metadata unavailable", http.StatusInternalServerError)
+}
+
 func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID string, requested map[string]string) (createDialogData, error) {
-	meta, err := h.Store.IssueCreateMetadata(ctx, workspaceID, userID)
+	meta, err := h.Store.IssueCreateMetadataForCreation(ctx, workspaceID, userID)
 	if err != nil {
 		return createDialogData{}, err
 	}
 	if len(meta.Projects) == 0 {
-		return createDialogData{}, fmt.Errorf("no project is available")
+		return createDialogData{}, errNoCreatableProject
 	}
 	selected := meta.Projects[0]
 	for _, project := range meta.Projects {

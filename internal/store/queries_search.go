@@ -341,6 +341,16 @@ func (s *Store) BootstrapSnapshot(ctx context.Context, workspaceID, userID strin
 		return nil, err
 	}
 
+	visibleIDs := make(map[string]bool, len(issues))
+	for _, issue := range issues {
+		visibleIDs[issue.ID] = true
+	}
+	for _, issue := range issues {
+		if issue.Parent != nil && !visibleIDs[issue.Parent.ID] {
+			issue.Parent = nil
+		}
+	}
+
 	comments := []models.Comment{}
 	crows, err := tx.Query(ctx, `
 		SELECT c.id, c.issue_id, c.author_id, COALESCE(u.display_name,''), c.body,
@@ -348,7 +358,7 @@ func (s *Store) BootstrapSnapshot(ctx context.Context, workspaceID, userID strin
 		FROM comments c
 		JOIN issues i ON i.id = c.issue_id AND i.workspace_id = c.workspace_id
 		LEFT JOIN users u ON u.id = c.author_id
-		WHERE c.workspace_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` ORDER BY c.created_at`, workspaceID, userID)
+		WHERE c.workspace_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` AND `+commentVisibilityPredicate("$1", "i.project_id", "$2", "c.visibility_type", "c.visibility_value")+` ORDER BY c.created_at`, workspaceID, userID)
 	if err != nil {
 		return nil, err
 	}

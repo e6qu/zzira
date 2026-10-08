@@ -106,3 +106,13 @@ omitting assignment from a save preserves the current assignee. Restricted
 comments are filtered by group or project-role membership before rendering
 activity bodies and counts. The shared comment command checks Add comments, so
 a browser POST cannot bypass a hidden composer.
+
+Assignment choices use active, assignable users in the project and work-item
+context; custom user fields and mentions keep their own member choices. The
+current assignee remains in an edit picker even if they cannot receive new
+assignments, so saving unrelated changes preserves that assignment.
+
+Browser and REST creation share the same project permission filter. General
+field metadata omits inaccessible projects but remains available for editing
+when a reader lacks Create issues. A browser reader who cannot create in any
+project receives a permission refusal instead of a server error.

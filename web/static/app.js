@@ -576,7 +576,7 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=15&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=16&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
@@ -1044,7 +1044,9 @@
   }
   document.addEventListener('DOMContentLoaded', pushView);
   document.body.addEventListener('htmx:afterSettle', pushView);
-  document.body.addEventListener('htmx:afterSettle', () => initModals(document));
+  // Bind focus containment as soon as the dialog is visible; keyboard input
+  // can arrive before HTMX's delayed settle event.
+  document.body.addEventListener('htmx:afterSwap', () => initModals(document));
 
   // ---- Outbox: intercept command forms when offline ----
   const KIND_BY_PATH = [

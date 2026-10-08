@@ -319,7 +319,7 @@ func (h *Handler) createIssues(w http.ResponseWriter, r *http.Request) {
 
 // issueChangelog serves GET /issue/{key}/changelog, oldest first.
 func (h *Handler) issueChangelog(w http.ResponseWriter, r *http.Request, idOrKey string) {
-	workspaceID, _, e := h.authWorkspace(r)
+	workspaceID, readerID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
@@ -336,7 +336,7 @@ func (h *Handler) issueChangelog(w http.ResponseWriter, r *http.Request, idOrKey
 	if maxResults > 100 {
 		maxResults = 100
 	}
-	values, err := h.issueChangelogBeans(r.Context(), workspaceID, issue.ID, false)
+	values, err := h.issueChangelogBeans(r.Context(), workspaceID, readerID, issue.ID, false)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -355,7 +355,7 @@ func (h *Handler) issueChangelog(w http.ResponseWriter, r *http.Request, idOrKey
 
 // changelogByIDs serves POST /issue/{key}/changelog/list.
 func (h *Handler) changelogByIDs(w http.ResponseWriter, r *http.Request, idOrKey string) {
-	workspaceID, _, e := h.authWorkspace(r)
+	workspaceID, readerID, e := h.authWorkspace(r)
 	if e != nil {
 		writeJerr(w, e)
 		return
@@ -379,7 +379,7 @@ func (h *Handler) changelogByIDs(w http.ResponseWriter, r *http.Request, idOrKey
 	for _, id := range request.ChangelogIDs {
 		wanted[strconv.FormatInt(id, 10)] = true
 	}
-	values, err := h.issueChangelogBeans(r.Context(), workspaceID, issue.ID, false)
+	values, err := h.issueChangelogBeans(r.Context(), workspaceID, readerID, issue.ID, false)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -458,7 +458,7 @@ func (h *Handler) bulkChangelogs(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		seen[issue.ID] = true
-		values, err := h.issueChangelogBeans(r.Context(), workspaceID, issue.ID, false)
+		values, err := h.issueChangelogBeans(r.Context(), workspaceID, readerID, issue.ID, false)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return

@@ -438,39 +438,7 @@ func (h *Handler) createMetaProject(r *http.Request, projectIDOrKey string) (*mo
 // creatableMetadata is the create metadata for the projects where the caller
 // holds Create issues; the project field offers only those projects.
 func (h *Handler) creatableMetadata(r *http.Request, workspaceID, userID string) (*models.IssueCreateMetadata, error) {
-	meta, err := h.Store.IssueCreateMetadata(r.Context(), workspaceID, userID)
-	if err != nil {
-		return nil, err
-	}
-	creatable, err := h.Store.ProjectsWithPermissions(r.Context(), workspaceID, userID, []string{"CREATE_ISSUES"})
-	if err != nil {
-		return nil, err
-	}
-	allowed := map[string]bool{}
-	for _, project := range creatable {
-		allowed[project.ID] = true
-	}
-	projects := meta.Projects[:0]
-	for _, project := range meta.Projects {
-		if !allowed[project.Project.ID] {
-			continue
-		}
-		for i := range project.Fields {
-			if project.Fields[i].ID != "project" {
-				continue
-			}
-			options := []models.CreateFieldOption{}
-			for _, option := range project.Fields[i].Options {
-				if allowed[option.ID] {
-					options = append(options, option)
-				}
-			}
-			project.Fields[i].Options = options
-		}
-		projects = append(projects, project)
-	}
-	meta.Projects = projects
-	return meta, nil
+	return h.Store.IssueCreateMetadataForCreation(r.Context(), workspaceID, userID)
 }
 
 // createMetaIssueTypeBean is the issue type bean create metadata carries: the

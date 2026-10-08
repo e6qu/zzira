@@ -1778,8 +1778,8 @@ func (h *Handler) changelogMetadataID(ctx context.Context, workspaceID, field, i
 	return id
 }
 
-func (h *Handler) issueChangelogBeans(ctx context.Context, workspaceID, issueID string, newestFirst bool) ([]map[string]any, error) {
-	entries, err := h.Store.IssueChangelog(ctx, workspaceID, issueID)
+func (h *Handler) issueChangelogBeans(ctx context.Context, workspaceID, readerID, issueID string, newestFirst bool) ([]map[string]any, error) {
+	entries, err := h.Store.IssueChangelogForReader(ctx, workspaceID, readerID, issueID)
 	if err != nil {
 		return nil, err
 	}
@@ -1816,8 +1816,8 @@ func (h *Handler) issueChangelogBeans(ctx context.Context, workspaceID, issueID 
 	return values, nil
 }
 
-func (h *Handler) issueChangelogPage(ctx context.Context, workspaceID, issueID string, newestFirst bool) (map[string]any, error) {
-	histories, err := h.issueChangelogBeans(ctx, workspaceID, issueID, newestFirst)
+func (h *Handler) issueChangelogPage(ctx context.Context, workspaceID, readerID, issueID string, newestFirst bool) (map[string]any, error) {
+	histories, err := h.issueChangelogBeans(ctx, workspaceID, readerID, issueID, newestFirst)
 	if err != nil {
 		return nil, err
 	}
@@ -1903,6 +1903,23 @@ func (h *Handler) issueEditFields(ctx context.Context, workspaceID, userID strin
 				continue
 			}
 			field := source
+			if field.ID == "assignee" {
+				assignable, err := h.Store.AssignableUsersForProject(ctx, workspaceID, issue.ProjectID, issue.ID)
+				if err != nil {
+					return nil, err
+				}
+				field.Options = nil
+				currentIncluded := false
+				for _, user := range assignable {
+					field.Options = append(field.Options, models.CreateFieldOption{ID: user.ID, Name: user.DisplayName})
+					if issue.Assignee != nil && user.ID == issue.Assignee.ID {
+						currentIncluded = true
+					}
+				}
+				if issue.Assignee != nil && !currentIncluded {
+					field.Options = append(field.Options, models.CreateFieldOption{ID: issue.Assignee.ID, Name: issue.Assignee.DisplayName})
+				}
+			}
 			if field.ID == "parent" {
 				field.Required = issue.IssueType.Subtask
 			}
@@ -1939,4 +1956,13 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	if err := json.NewEncoder(w).Encode(body); err != nil {
 		log.Printf("api3: encode response: %v", err)
 	}
+}
+
+// IssueBeanForReader shapes relationships for an authenticated read path.
+func (h *Handler) IssueBeanForReader(ctx context.Context, readerID string, issue *models.Issue) (map[string]any, error) {
+	visible, err := authz.IssueWithVisibleParent(ctx, h.Store, readerID, issue)
+	if err != nil {
+		return nil, err
+	}
+	return h.IssueBean(visible), nil
 }

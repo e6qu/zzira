@@ -334,6 +334,7 @@ type IssueView struct {
 	Attachments       []Attachment
 	Worklogs          []Worklog
 	Activity          []IssueActivityItem
+	Assignees         []User
 	Members           []User
 	Priorities        []Priority
 	Resolutions       []Resolution
@@ -403,6 +404,7 @@ type EditDialogView struct {
 	CanAssign      bool
 	CanSetSecurity bool
 	Issue          Issue
+	Assignees      []User
 	Members        []User
 	SecurityLevels []WorkflowTransition // reuse shape: ID+Name pairs
 	CustomFields   []CustomFieldView

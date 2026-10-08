@@ -84,11 +84,16 @@ func pageParams(w http.ResponseWriter, r *http.Request) (int, int, bool) {
 
 // agileIssueBeans adds Jira Software's fields to issue beans: the open sprint,
 // closed sprints, the flag and the epic.
-func (h *Handler) agileIssueBeans(ctx context.Context, issues []*models.Issue) ([]map[string]any, error) {
+func (h *Handler) agileIssueBeans(ctx context.Context, readerID string, issues []*models.Issue) ([]map[string]any, error) {
 	beans := make([]map[string]any, 0, len(issues))
 	if len(issues) == 0 {
 		return beans, nil
 	}
+	visibleIssues, err := authz.IssuesWithVisibleParents(ctx, h.Store, readerID, issues)
+	if err != nil {
+		return nil, err
+	}
+	issues = visibleIssues
 	issueIDs := make([]string, 0, len(issues))
 	parentIDs := []string{}
 	for _, issue := range issues {
@@ -190,7 +195,7 @@ func (h *Handler) scopedIssuePage(w http.ResponseWriter, r *http.Request, worksp
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	beans, err := h.agileIssueBeans(r.Context(), issues)
+	beans, err := h.agileIssueBeans(r.Context(), userID, issues)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -234,7 +239,7 @@ func (h *Handler) scopedIssueScroll(w http.ResponseWriter, r *http.Request, work
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	beans, err := h.agileIssueBeans(r.Context(), issues)
+	beans, err := h.agileIssueBeans(r.Context(), userID, issues)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -783,7 +788,7 @@ func (h *Handler) agileIssueRoute(w http.ResponseWriter, r *http.Request, parts 
 	}
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodGet:
-		beans, err := h.agileIssueBeans(r.Context(), []*models.Issue{issue})
+		beans, err := h.agileIssueBeans(r.Context(), userID, []*models.Issue{issue})
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
