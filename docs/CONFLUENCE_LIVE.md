@@ -79,7 +79,12 @@ document. The request body is:
   line shows whether live editing is on or reconnecting.
 - **Offline.** Unsent typing is saved in `localStorage`, together with the
   session, revision and last synced text. The entry is removed once
-  everything is shared.
+  everything is shared. Input is kept immediately, including before the first
+  successful exchange, using the rendered body as its initial merge base.
+  - **Account isolation.** Recovery keys include the signed-in account. Another
+    account using the same browser cannot recover that writer’s unsent typing.
+    Legacy entries without an account are left unread because their owner
+    cannot be established.
   - **Reopening.** An editor opened later, even offline from the page cache,
     starts from the saved text and merges it when it reconnects. Saved text
     that the page already contains is discarded.

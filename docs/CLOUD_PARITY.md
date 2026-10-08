@@ -60,7 +60,7 @@ errors.
 | Assets | Per-desk schemas, objects, relationships, request impact, portal field ([SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md#assets)) | [Plan 8](../PLAN.md#8-assets): object types, AQL, REST API, imports |
 | Confluence | All v1 and v2 operations served; spaces, pages, blog posts, comments, templates, history, CQL, tasks, analytics, redaction, audit ([CONFLUENCE_SITE_SURFACES.md](CONFLUENCE_SITE_SURFACES.md)) | [Plan 10](../PLAN.md#10-confluence): import, export, macros, permissions UI |
 | Whiteboards and databases | Form-driven canvas with objects and connectors; databases ([CONFLUENCE_SITE_SURFACES.md](CONFLUENCE_SITE_SURFACES.md#whiteboards)) | [Plan 11](../PLAN.md#11-whiteboards-and-diagrams) |
-| Live collaboration | Polled presence and body merge, carets, offline typing ([CONFLUENCE_LIVE.md](CONFLUENCE_LIVE.md)) | [Plan 12](../PLAN.md#12-live-collaboration) |
+| Live collaboration | Polled presence and body merge, carets, account-scoped offline recovery from the first keystroke ([CONFLUENCE_LIVE.md](CONFLUENCE_LIVE.md)) | [Plan 12](../PLAN.md#12-live-collaboration) |
 | Development integrations | Dev info, builds, deployments, feature flags, remote links, operations, security, deployment gating, rate limits ([JIRA_SOFTWARE.md](JIRA_SOFTWARE.md#development-and-devops-data)) | [Plan 13](../PLAN.md#13-apps): async processing, issue view panels |
 | Apps | Connect and native descriptors, signed lifecycle, JWT, scopes, storage, 20 Connect module families, dynamic modules, JQL functions, webhooks ([APPS.md](APPS.md)) | [Plan 13](../PLAN.md#13-apps) |
 | Local-first | Work item replica, outbox, offline edits, convergence, revocation purge | [Plan 14](../PLAN.md#14-local-first-closure) |

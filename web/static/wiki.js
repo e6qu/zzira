@@ -361,13 +361,18 @@ const startLiveEditing = (status, text, form) => {
   // exchange, so a second editor of the same page never takes typing the
   // first still holds: it only takes what an editor that closed, or stopped
   // answering for ten seconds, left behind.
-  const keptPrefix = `zzira-live:${status.dataset.liveUrl}#`;
+  // A browser profile can switch accounts; recover only this writer's draft.
+  const account = status.dataset.liveAccount;
+  const keptPrefix = `zzira-live:v2:${encodeURIComponent(account)}:${status.dataset.liveUrl}#`;
   const keptKey = `${keptPrefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
   const keep = (closed = false) => {
+    if (!account) return;
     try {
       const current = text.get();
-      if (synced !== null && current !== synced) localStorage.setItem(keptKey, JSON.stringify({ session, revision, synced, text: current, at: Date.now(), closed }));
-      else if (synced !== null) localStorage.removeItem(keptKey);
+      // The server-rendered body is a merge base before the first exchange.
+      const base = synced === null ? initial : synced;
+      if (current !== base) localStorage.setItem(keptKey, JSON.stringify({ session, revision, synced: base, text: current, at: Date.now(), closed }));
+      else localStorage.removeItem(keptKey);
     } catch {
       // Storage may be full or unavailable; live editing carries on without it.
     }
@@ -377,7 +382,7 @@ const startLiveEditing = (status, text, form) => {
   try {
     for (let index = 0; index < localStorage.length; index += 1) {
       const key = localStorage.key(index);
-      if (!key || !key.startsWith(keptPrefix)) continue;
+      if (!account || !key || !key.startsWith(keptPrefix)) continue;
       const entry = JSON.parse(localStorage.getItem(key) || 'null');
       if (!entry || !Number.isFinite(entry.at) || !(entry.closed || Date.now() - entry.at > 10000)) continue;
       if (!kept || entry.at > kept.at) {
@@ -487,6 +492,7 @@ const startLiveEditing = (status, text, form) => {
   }
   let pending = 0;
   const soon = () => {
+    keep();
     window.clearTimeout(pending);
     pending = window.setTimeout(sync, 250);
   };
