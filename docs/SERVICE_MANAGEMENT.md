@@ -100,7 +100,7 @@ checks and 320 px reflow.
 
   | Field type | Input |
   |---|---|
-  | Select, cascading select | Options of the context that applies to the project (cascading children grouped under their parent) |
+  | Select, cascading select | Options of the context that applies to the project; cascading details offer only the selected parent’s children |
   | Multi-select | One checkbox per option |
   | Date, URL, number | Matching HTML inputs |
   | Labels | Space-separated |
@@ -113,7 +113,9 @@ checks and 320 px reflow.
 
 - **Validation:** the portal form, `validValues` and the request view list the
   same choices. An answer outside them is refused, as is an Assets object from
-  another schema.
+  another schema. Refused portal drafts retain their answers and “Share with”
+  choice. Changing a cascading parent clears an incompatible detail; detail
+  controls without choices stay disabled.
 - **Conditional fields:** a field can be shown only when another visible,
   non-conditional select or multi-select field on the form has one of the
   chosen options. Portal and REST creation require a conditional field only
