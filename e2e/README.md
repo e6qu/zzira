@@ -49,7 +49,7 @@ Every spec using seeded API credentials uses `auth.ts`. A demo token override wo
 | Reports and dashboards | `reports_flow`, `reports_progress`, `reports_burndown`, `reports_workload`, `report_subscriptions`, `dashboards`, `dashboard_reports`, `dashboard_subscriptions`, `v6` |
 | Administration | `admin`, `api_tokens`, `global_permissions`, `issue_metadata`, `hierarchy`, `project_roles`, `permission_schemes`, `permission_helper`, `notification_schemes`, `notification_helper`, `notification_preferences`, `notifications`, `issue_security_schemes`, `screens`, `screen_schemes`, `field_configurations`, `custom_field_contexts`, `custom_field_options`, `classification_levels` |
 | Automation and apps | `automation`, `apps` |
-| Service Management | `service`, `service_assets` |
+| Service Management | `service`, `service_assets`, `service_request_sharing`, `service_form_recovery` |
 | Confluence | `wiki`, `wiki_content_tree`, `wiki_database`, `wiki_drafts_purge`, `wiki_live_editing`, `wiki_mentions`, `wiki_page_details`, `wiki_page_lifecycle`, `wiki_presence`, `wiki_space_admin`, `wiki_space_tools`, `wiki_watches`, `wiki_whiteboard` |
 | Cross-cutting | `accessibility` ([ACCESSIBILITY.md](../docs/ACCESSIBILITY.md)), `ux_recovery` (board alignment, rejected edits, network errors, dialog isolation, loading cancellation and blocked storage), `wire-ids` ([WIRE_IDS.md](../docs/WIRE_IDS.md)) |
 

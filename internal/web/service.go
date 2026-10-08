@@ -1436,6 +1436,8 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 			return "", fmt.Errorf("No active member of this site uses %s.", email)
 		}
 		customFields := map[string]json.RawMessage{}
+		// Sharing is part of the draft, including when another answer is invalid.
+		data.FieldValues["share_with"] = r.PostFormValue("share_with")
 		var descriptionADF json.RawMessage
 		chosen := map[string][]string{}
 		for _, field := range fields {
@@ -1511,7 +1513,6 @@ func (h *Handler) ServiceRequestForm(w http.ResponseWriter, r *http.Request) {
 		// keeps it to themselves.
 		sharedWith := []string{}
 		if chosen := r.PostFormValue("share_with"); chosen != "" {
-			data.FieldValues["share_with"] = chosen
 			sharedWith = append(sharedWith, chosen)
 		}
 		request, err := h.Commands.CreateServiceRequest(r.Context(), commands.CreateServiceRequestInput{ActorID: user.ID, WorkspaceID: workspaceID, ServiceDeskID: desk.ID, RequestTypeID: requestType.ID, Channel: "portal", Summary: data.Summary, Description: data.Description, DescriptionADF: descriptionADF, Fields: customFields, OrganizationIDs: sharedWith})

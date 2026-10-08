@@ -8,8 +8,8 @@
 // own navigation history and network observability. The private page cache
 // is instead purged by app.js posting CLEAR_PRIVATE_CACHE once it detects it
 // landed on /login or /signed-out, independent of how that page was reached.
-const STATIC_CACHE = 'zzira-static-v16';
-const PAGE_CACHE = 'zzira-pages-v16';
+const STATIC_CACHE = 'zzira-static-v17';
+const PAGE_CACHE = 'zzira-pages-v17';
 const CURRENT_CACHES = new Set([STATIC_CACHE, PAGE_CACHE]);
 const STATIC_PREFIX = '/static/';
 

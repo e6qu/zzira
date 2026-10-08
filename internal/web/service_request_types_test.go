@@ -201,6 +201,43 @@ func TestServiceRequestTypeSettingsShapeThePortal(t *testing.T) {
 		t.Fatalf("a portal search = %s", found)
 	}
 
+	t.Run("a refused request keeps its sharing choice and answers", func(t *testing.T) {
+		if err := st.EnrollServiceCustomer(ctx, workspaceID, customerID); err != nil {
+			t.Fatal(err)
+		}
+		organization, err := service.CreateServiceOrganization(ctx, adminID, workspaceID, "Draft sharing "+projectKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := service.DeleteServiceOrganization(ctx, adminID, workspaceID, organization.ID); err != nil {
+				t.Error(err)
+			}
+		})
+		if err := service.SetServiceOrganizationUsers(ctx, adminID, workspaceID, organization.ID, []string{customerID}, true); err != nil {
+			t.Fatal(err)
+		}
+		if err := service.SetServiceDeskOrganization(ctx, adminID, workspaceID, deskID, organization.ID, true); err != nil {
+			t.Fatal(err)
+		}
+		form := url.Values{"field_summary": {"   "}, "field_description": {"Keep this draft."}, "share_with": {organization.ID}}
+		request := httptest.NewRequest(http.MethodPost, "/service/portals/"+deskID+"/request/"+monitorID, strings.NewReader(form.Encode()))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		request.SetPathValue("desk", deskID)
+		request.SetPathValue("requestType", monitorID)
+		request.AddCookie(&http.Cookie{Name: "zzira_session", Value: customerSession})
+		response := httptest.NewRecorder()
+		h.ServiceRequestForm(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("a blank summary = %d: %s", response.Code, response.Body.String())
+		}
+		for _, want := range []string{"Summary is required.", "Keep this draft.", `value="` + organization.ID + `" selected`} {
+			if !strings.Contains(response.Body.String(), want) {
+				t.Errorf("the refused draft does not retain %q", want)
+			}
+		}
+	})
+
 	// Taking a request type out of every group hides it from the portal.
 	if code := post(adminSession, "request-types", url.Values{"action": {"groups"}, "requestTypeId": {monitorID}}).Code; code != http.StatusSeeOther {
 		t.Fatalf("clearing a request type's groups = %d, want 303", code)

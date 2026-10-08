@@ -63,9 +63,16 @@ test('a customer shares a request with their organization, and the agent changes
 
   // Now the portal asks who the next request is for.
   await customer.goto(`/service/portals/${desk.id}/request/${requestType.id}`);
-  await customer.getByLabel('Summary').fill(`The card reader by the loading bay is dead ${key}`);
+  await customer.getByLabel('Summary').fill('   ');
+  await customer.getByLabel('Description').fill('Keep these details while correcting the summary.');
   await accessible(customer);
   await customer.getByLabel('Share with').selectOption({ label: organizationName });
+  const sharedOrganizationID = await customer.getByLabel('Share with').inputValue();
+  await customer.getByRole('button', { name: 'Send request' }).click();
+  await expect(customer.getByRole('alert')).toContainText('Summary is required.');
+  await expect(customer.getByLabel('Share with')).toHaveValue(sharedOrganizationID);
+  await expect(customer.getByLabel('Description')).toHaveValue('Keep these details while correcting the summary.');
+  await customer.getByLabel('Summary').fill(`The card reader by the loading bay is dead ${key}`);
   await customer.getByRole('button', { name: 'Send request' }).click();
   await expect(customer.getByRole('heading', { name: `The card reader by the loading bay is dead ${key}`, level: 1 })).toBeVisible();
   await expect(customer.locator('#shared-with')).toContainText(organizationName);
