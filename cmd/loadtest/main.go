@@ -94,7 +94,7 @@ func main() {
 	// LOADTEST_KEEP leaves the seeded database behind, which is how a slow
 	// number above is taken apart with EXPLAIN afterwards.
 	if os.Getenv("LOADTEST_KEEP") != "" {
-		fmt.Println("kept:", loadDSN)
+		fmt.Println("kept: zzira_load")
 		return
 	}
 	if err := resetDatabase(ctx); err != nil {

@@ -1043,8 +1043,8 @@ func ensureBootstrapAdmin(ctx context.Context, st *store.Store, email string) er
 	return st.EnsureBootstrapAdmin(ctx, email, "Bootstrap Admin", hash, "admin")
 }
 
-// seedUsers creates the demo users (idempotent per user) and prints a fresh
-// API token for each missing token holder.
+// seedUsers keeps the demo users and writes fresh API credentials to the
+// local artifact on each run, without printing credentials.
 func seedUsers(ctx context.Context, st *store.Store) error {
 	wsID, _, err := st.DefaultWorkspace(ctx)
 	if err != nil {

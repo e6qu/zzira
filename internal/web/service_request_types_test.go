@@ -33,20 +33,29 @@ func TestServiceRequestTypeSettingsShapeThePortal(t *testing.T) {
 	if err := store.Migrate(ctx, st.Pool); err != nil {
 		t.Fatal(err)
 	}
-	workspaceID, workspaceSlug, err := st.DefaultWorkspace(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	adminID, err := st.FirstAdminID(ctx, workspaceID)
-	if err != nil {
-		t.Fatal(err)
-	}
 	exec := func(query string, args ...any) {
 		t.Helper()
 		if _, execErr := st.Pool.Exec(ctx, query, args...); execErr != nil {
 			t.Fatal(execErr)
 		}
 	}
+	// This journey must also run alone on an empty test database.
+	workspaceID, workspaceSlug, adminID := store.NewID("ws"), store.NewID("portal"), store.NewID("usr")
+	exec(`INSERT INTO workspaces(id,slug,name) VALUES($1,$2,'Portal test')`, workspaceID, workspaceSlug)
+	var organizationID string
+	if err := st.Pool.QueryRow(ctx, `SELECT organization_id::text FROM sites WHERE workspace_id=$1`, workspaceID).Scan(&organizationID); err != nil {
+		t.Fatal(err)
+	}
+	exec(`INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$2,'test','Desk administrator')`, adminID, adminID+"@example.invalid")
+	exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'admin')`, workspaceID, adminID)
+	t.Cleanup(func() {
+		exec(`DELETE FROM actions WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM sessions WHERE user_id=$1`, adminID)
+		exec(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM workspaces WHERE id=$1`, workspaceID)
+		exec(`DELETE FROM organizations WHERE id::text=$1`, organizationID)
+		exec(`DELETE FROM users WHERE id=$1`, adminID)
+	})
 	customerID := store.NewID("usr")
 	exec(`INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$2,'test','Portal visitor')`, customerID, customerID+"@example.invalid")
 	exec(`INSERT INTO memberships(workspace_id,user_id,role) VALUES($1,$2,'member')`, workspaceID, customerID)

@@ -1,8 +1,20 @@
 # Documentation
 
-Each page describes one surface as it behaves today and lists its gaps. Remaining
-work is in [PLAN.md](../PLAN.md); status per product is in
-[CLOUD_PARITY.md](CLOUD_PARITY.md).
+Use the entry point that matches your task. Feature references below describe
+current behavior and link to remaining work.
+
+| Task | Guide |
+|---|---|
+| Run or explore the site | [Getting started](GETTING_STARTED.md) |
+| Change code and validate it | [Contributing](../CONTRIBUTING.md) |
+| Run a browser journey | [End-to-end tests](../e2e/README.md) |
+| Check current coverage | [Compatibility ledger](CLOUD_PARITY.md), [user journeys](UI_PARITY.md) |
+| Choose remaining work | [Delivery plan](../PLAN.md) |
+
+The compatibility ledger owns current product status; the delivery plan owns
+remaining work and its order. Generated API inventories and assessments under
+`api/conformance/` own operation counts and evidence. Keep detailed behavior in
+the owning feature page rather than copying it into setup guides or the plan.
 
 ## Status
 
