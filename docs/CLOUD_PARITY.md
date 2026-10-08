@@ -30,14 +30,16 @@ same evidence by family.
 
 ## Compatibility promise
 
-A client of the site-scoped Jira, Jira Software, Jira Service Management or
-Confluence APIs works by changing its base URL: same paths, methods,
+The target is for a client of the site-scoped Jira, Jira Software, Jira Service
+Management or Confluence APIs to work by changing its base URL: same paths, methods,
 authentication, bodies, status codes, headers, paging, expansions, ids,
 permission errors and concurrency rules. Automation is served at
 `/gateway/api/automation/public/...`. Clients that hardcode `api.atlassian.com` or
 `auth.atlassian.com` need an endpoint override. Atlassian billing, Atlassian's AI
 models and Atlassian-hosted Forge compute are out of scope and return explicit
-errors.
+errors. Current implementations remain assessed as partial; consult the
+operation evidence and the owning surface’s documented gaps before relying on
+a specific client behavior.
 
 ## Status
 
@@ -45,21 +47,21 @@ errors.
 |---|---|---|
 | Identity | Password, sessions, self-service API tokens (labelled, expiring, revocable, shown once); OIDC (Google, Entra, Atlassian 3LO, custom providers with encrypted rotation); SAML 2.0 sign-in ([ADMIN.md](ADMIN.md)); identity linking; back-channel logout; login audit; an instance that accepts only its identity provider's sessions ([shauth-sso.md](shauth-sso.md)) | [Plan 6](../PLAN.md#6-enterprise-identity): SAML single logout and encrypted assertions, SCIM product access, managed accounts |
 | Organization administration | All 47 Organizations operations; directories, groups, domains (DNS verification), IP allowlists, managed profiles, audit, product plans ([ADMIN.md](ADMIN.md)) | [Plan 6](../PLAN.md#6-enterprise-identity) |
-| Permissions | Permission, notification and issue security schemes enforced in the command layer behind every work item change, including board drags, navigator bulk actions, attached forms and service agent actions; browser issue controls follow their individual permissions; relationships, history and replicas respect issue and comment visibility; project roles; global permissions; anonymous REST reads ([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)) | Everything Jira's permission model covers is built |
+| Permissions | Permission, notification and issue security schemes enforced in the command layer behind every work item change, including board drags, navigator bulk actions, attached forms and service agent actions; browser issue controls follow their individual permissions; relationships, history and replicas respect issue and comment visibility; project roles; global permissions; anonymous REST reads ([PERMISSION_SCHEMES.md](PERMISSION_SCHEMES.md)) | [Plan 15](../PLAN.md#15-certification): certification across operations and journeys |
 | Projects | Create and edit for all project types; categories, properties, features, sender, templates; archive, trash, restore, delete; components; versions ([PROJECT_GOVERNANCE.md](PROJECT_GOVERNANCE.md), [PROJECT_LIFECYCLE.md](PROJECT_LIFECYCLE.md)) | [Plan 1](../PLAN.md#1-work-item-model): sender use, template refs |
-| Fields and screens | Work types on a hierarchy an administrator extends above Epic, work type schemes, priorities with their schemes, and resolutions, all administered in the browser; custom fields, contexts and options; field configurations; screens and screen schemes ([ISSUE_METADATA.md](ISSUE_METADATA.md), [JIRA_PLATFORM.md](JIRA_PLATFORM.md)) | [Plan 1](../PLAN.md#1-work-item-model): per-language translations for work types, priorities, resolutions and statuses |
+| Fields and screens | Work types on a hierarchy an administrator extends above Epic, work type schemes, priorities with their schemes, and resolutions, all administered in the browser; custom fields, contexts and options; field configurations; screens and screen schemes ([ISSUE_METADATA.md](ISSUE_METADATA.md), [JIRA_PLATFORM.md](JIRA_PLATFORM.md)) | [Plan 1](../PLAN.md#1-work-item-model): work type scoping and alternatives, priority update tasks |
 | Work items | Create, edit, transition, comments, links, attachments, votes, watches, worklogs, time tracking, resolution, properties, archive, bulk edit/move/transition/delete/watch ([ISSUE_SURFACE.md](ISSUE_SURFACE.md), [BULK_ISSUES.md](BULK_ISSUES.md)) | [Plan 1](../PLAN.md#1-work-item-model): classification, worklog fields |
 | Workflows | Workflow editor, drafts and publishing; conditions, validators, post functions, transition screens; workflow schemes ([WORKFLOW_RULES.md](WORKFLOW_RULES.md), [WORKFLOW_SCHEMES.md](WORKFLOW_SCHEMES.md)) | [Plan 1](../PLAN.md#1-work-item-model), [Plan 13](../PLAN.md#13-apps): app rules executed |
 | Search | JQL with history predicates and 54 built-in functions, app functions, autocomplete, saved filters, sharing, subscriptions ([JQL.md](JQL.md), [FILTERS.md](FILTERS.md)) | [Plan 5](../PLAN.md#5-jql-and-filters) |
-| Boards and sprints | Scrum and Kanban boards, backlog, ranking, epics, estimation, column and swimlane configuration, board administrators, parallel sprints; a drag runs a real workflow transition ([AGILE_BOARDS.md](AGILE_BOARDS.md)) | [Plan 1](../PLAN.md#1-work-item-model): boards and backlogs stop at the epic level |
+| Boards and sprints | Scrum and Kanban boards, backlog, ranking, epics, estimation, column and swimlane configuration, board administrators, parallel sprints; a drag runs a real workflow transition ([AGILE_BOARDS.md](AGILE_BOARDS.md)) | [Plan 1](../PLAN.md#1-work-item-model): reports above Epic; boards and backlogs deliberately stop at Epic |
 | Plans | Plan REST, sources, exclusions, scenarios, teams, capacity, dependencies, scheduling a scenario automatically ([JIRA_SOFTWARE.md](JIRA_SOFTWARE.md)) | [Plan 2](../PLAN.md#2-plans): scheduling against releases, adding a team in the browser |
 | Releases | Release hub, readiness, approvals, related work, release notes, ordering, unresolved-work moves ([RELEASES.md](RELEASES.md)) | [Plan 3](../PLAN.md#3-cross-project-releases) |
 | Reports and dashboards | Sprint, velocity, cumulative flow, control, epic, version, created vs resolved, resolution time, DORA and service reports; dashboards, gadgets (including DORA and deployment frequency), wallboards, email ([REPORTS.md](REPORTS.md), [DASHBOARDS.md](DASHBOARDS.md)) | [Plan 4](../PLAN.md#4-boards-reports-and-dora): more reports, configurable DORA |
-| Automation | All 15 Automation operations; event, scheduled, manual and incoming-webhook triggers; conditions; 14 action types; templates; audit ([AUTOMATION.md](AUTOMATION.md)) | [Plan 7](../PLAN.md#7-automation): connections, usage limits, Confluence triggers, branches |
+| Automation | All 15 Automation operations; event, scheduled, manual and incoming-webhook triggers; conditions; 14 action types; templates; audit ([AUTOMATION.md](AUTOMATION.md)) | [Plan 7](../PLAN.md#7-automation): connections, usage limits, nested branches |
 | Service Management | Portals, request types, forms with draft recovery and parent-scoped cascading choices, queues, SLAs, approvals, CSAT, customers, organizations, knowledge base, incidents, problems, changes, reports ([SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md)) | [Plan 9](../PLAN.md#9-service-management) |
-| Assets | Per-desk schemas, objects, relationships, request impact, portal field ([SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md#assets)) | [Plan 8](../PLAN.md#8-assets): object types, AQL, REST API, imports |
-| Confluence | All v1 and v2 operations served; spaces, pages, blog posts, comments, templates, history, CQL, tasks, analytics, redaction, audit ([CONFLUENCE_SITE_SURFACES.md](CONFLUENCE_SITE_SURFACES.md)) | [Plan 10](../PLAN.md#10-confluence): import, export, macros, permissions UI |
-| Whiteboards and databases | Form-driven canvas with objects and connectors; databases ([CONFLUENCE_SITE_SURFACES.md](CONFLUENCE_SITE_SURFACES.md#whiteboards)) | [Plan 11](../PLAN.md#11-whiteboards-and-diagrams) |
+| Assets | Per-desk schemas, objects, relationships, request impact, portal field, Assets REST API, CSV imports and AQL-filtered portal choices ([SERVICE_MANAGEMENT.md](SERVICE_MANAGEMENT.md#assets)) | [Plan 8](../PLAN.md#8-assets): attribute inheritance, typed references, AQL in JQL, richer imports and per-schema roles |
+| Confluence | All v1 and v2 operations served; spaces, pages, blog posts, comments, templates, history, CQL, tasks, analytics, redaction, audit ([CONFLUENCE_SITE_SURFACES.md](CONFLUENCE_SITE_SURFACES.md)) | [Plan 10](../PLAN.md#10-confluence): Confluence import/export formats, remaining macros and permission classes |
+| Whiteboards and databases | Canvas with draggable objects, form controls and connectors; databases ([CONFLUENCE_SITE_SURFACES.md](CONFLUENCE_SITE_SURFACES.md#whiteboards)) | [Plan 11](../PLAN.md#11-whiteboards-and-diagrams) |
 | Live collaboration | Polled presence and body merge, carets, account-scoped offline recovery from the first keystroke ([CONFLUENCE_LIVE.md](CONFLUENCE_LIVE.md)) | [Plan 12](../PLAN.md#12-live-collaboration) |
 | Development integrations | Dev info, builds, deployments, feature flags, remote links, operations, security, deployment gating, rate limits ([JIRA_SOFTWARE.md](JIRA_SOFTWARE.md#development-and-devops-data)) | [Plan 13](../PLAN.md#13-apps): async processing, issue view panels |
 | Apps | Connect and native descriptors, signed lifecycle, JWT, scopes, storage, 20 Connect module families, dynamic modules, JQL functions, webhooks ([APPS.md](APPS.md)) | [Plan 13](../PLAN.md#13-apps) |

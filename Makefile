@@ -5,7 +5,7 @@ DATABASE_NAME ?= zzira
 VERSION ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 LDFLAGS = -s -w -X github.com/e6qu/zzira/internal/build.Version=$(VERSION)
 
-.PHONY: all assets server client-wasm test build migrate dev down reset seed demo conformance e2e clean
+.PHONY: all assets server client-wasm test build migrate dev down reset seed demo conformance loadtest-build loadtest e2e clean
 
 all: build test
 
@@ -23,7 +23,7 @@ client-wasm:
 build: server assets
 
 test:
-	go test ./...
+	go test -count=1 ./...
 	GOOS=js GOARCH=wasm go build ./... 
 
 migrate:
@@ -68,7 +68,10 @@ conformance: build
 	python3 api/conformance/coverage.py --check
 	go test ./internal/api3 ./internal/confluence -v
 
-loadtest: build
+loadtest-build:
+	go build -ldflags '$(LDFLAGS)' -o bin/loadtest ./cmd/loadtest
+
+loadtest: loadtest-build
 	./bin/loadtest
 
 # Run against a seeded server already started in another terminal with make dev.

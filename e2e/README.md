@@ -4,27 +4,45 @@ These browser specs prove the persona journeys listed in [docs/UI_PARITY.md](../
 
 ## Run
 
-Start from a freshly migrated and seeded database: `make reset` is that database, and running the whole suite against one a previous run left behind produces failures that belong to the leftovers rather than to the code. The server embeds its templates and serves static files from disk. `make build` rebuilds the server and refreshes the browser worker and its Go runtime assets.
+Use [Run ZZIRA locally](../docs/GETTING_STARTED.md) to prepare a disposable
+instance. Browser journeys require a freshly migrated and seeded database;
+reusing a previous run's data can invalidate fixture assumptions. Keep the
+server database separate from `TEST_DATABASE_URL` used by Go tests.
 
 ```sh
-make build                     # server and wasm worker (bin/, web/static/)
-make reset                     # empty, migrated and seeded, as CI starts
-make dev                       # Postgres on :5433, migrate, seed, server on :8080
+# Repository root; stop the development server before resetting its database.
+make build
+make reset
+make dev
+```
+
+In another terminal:
+
+```sh
 cd e2e
 npm ci
 npx playwright install chromium
-npx playwright test            # whole suite
-npx playwright test backlog.spec.ts   # one spec
+npx playwright test
+# Or run the journey you changed:
+npx playwright test backlog.spec.ts
 ```
 
+`make reset` destroys the selected development database. Never use it against
+a site whose data you want to keep. Rebuild and restart after changing embedded
+templates; `make build` refreshes both server and browser WASM assets.
+
 **What the harness does**
-- Playwright starts `fake-hydra.mjs` on `127.0.0.1:8100`. It stands in for an OIDC identity provider in the sign-in and sign-out specs.
+
+- Playwright starts the fake OIDC provider (`fake-hydra.mjs`, port 8100) and
+  SAML provider (`fake-saml-idp.mjs`, port 8200). Local runs can reuse them.
 - Specs run one at a time (`workers: 1`) in Chromium. CI retries a failing spec twice.
 
 **Credentials**
-- `-mode=seed` creates the demo users `demo@zzira.dev` / `demo1234`.
-- It also writes their API tokens to `data/seed-tokens.json` (under `DATA_DIR` if set).
-- Specs call the REST API with those tokens. Set `ZZIRA_API_TOKEN` to override them.
+
+Specs use [auth.ts](auth.ts) to read the tested instance's seeded tokens.
+`ZZIRA_API_TOKEN` overrides the demo account only. Journeys involving other
+personas also need `ZZIRA_SEED_TOKENS` or the default `data/seed-tokens.json`.
+Credential artifacts are described in the [setup guide](../docs/GETTING_STARTED.md#credentials-and-configuration).
 
 **Environment**
 
@@ -37,20 +55,16 @@ npx playwright test backlog.spec.ts   # one spec
 
 CI (`.github/workflows/ci.yml`) runs the whole suite against a server configured with `ZZIRA_ALLOW_INSECURE_OIDC=true` and test Atlassian client credentials. Traces from failed tests are kept in `test-results/`.
 
-Every spec using seeded API credentials uses `auth.ts`. A demo token override works without a local credentials file; journeys involving other personas read their own credentials from `ZZIRA_SEED_TOKENS` or the default file. `make e2e` builds the assets and runs the suite against an already running server; start `make dev` in another terminal first.
+`make e2e` builds assets and runs the suite against an already running server.
+Restart that server if its embedded templates changed; the build alone does not
+update a running process.
 
-## Specs
+## Find a journey
 
-| Area | Specs |
-|---|---|
-| Sign-in, shell, offline | `v0`, `identity-providers`, `session-isolation`, `revocation`, `v5`, `directories` |
-| Work items and search | `create`, `v1`, `v2`, `v3`, `triage`, `issue_permissions`, `relationship_visibility`, `resolution`, `filters`, `issue_mentions`, `navigator_bulk`, `people` |
-| Jira Software | `backlog`, `board_columns`, `board_swimlanes`, `v4`, `projects`, `software`, `timeline`, `plans_view`, `plans_teams`, `releases` |
-| Reports and dashboards | `reports_flow`, `reports_progress`, `reports_burndown`, `reports_workload`, `report_subscriptions`, `dashboards`, `dashboard_reports`, `dashboard_subscriptions`, `v6` |
-| Administration | `admin`, `api_tokens`, `global_permissions`, `issue_metadata`, `hierarchy`, `project_roles`, `permission_schemes`, `permission_helper`, `notification_schemes`, `notification_helper`, `notification_preferences`, `notifications`, `issue_security_schemes`, `screens`, `screen_schemes`, `field_configurations`, `custom_field_contexts`, `custom_field_options`, `classification_levels` |
-| Automation and apps | `automation`, `apps` |
-| Service Management | `service`, `service_assets`, `service_request_sharing`, `service_form_recovery` |
-| Confluence | `wiki`, `wiki_content_tree`, `wiki_database`, `wiki_drafts_purge`, `wiki_draft_recovery`, `wiki_live_editing`, `wiki_mentions`, `wiki_page_details`, `wiki_page_lifecycle`, `wiki_presence`, `wiki_space_admin`, `wiki_space_tools`, `wiki_watches`, `wiki_whiteboard` |
-| Cross-cutting | `accessibility` ([ACCESSIBILITY.md](../docs/ACCESSIBILITY.md)), `ux_recovery` (board alignment, rejected edits, network errors, dialog isolation, loading cancellation and blocked storage), `wire-ids` ([WIRE_IDS.md](../docs/WIRE_IDS.md)) |
+[docs/UI_PARITY.md](../docs/UI_PARITY.md) maps personas to the specs that prove
+their journeys. Each evidence name there is `<name>.spec.ts` in this directory.
+List the current tests from `e2e/` without starting a server:
 
-Each name is `<name>.spec.ts` in this directory.
+```sh
+npx playwright test --list
+```

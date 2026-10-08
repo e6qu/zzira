@@ -4,13 +4,19 @@
 
 ## Run
 
+`make loadtest` builds `bin/loadtest` and runs it. The harness always drops and
+recreates the database named `zzira_load`; both DSNs must refer to the same
+PostgreSQL instance, and `LOADTEST_DSN` must select `zzira_load`. Use a disposable
+instance with enough disk for the million-action workload. To compile without
+running the workload, use `make loadtest-build`.
+
 ```sh
 LOADTEST_ADMIN_DSN=postgres://…/postgres LOADTEST_DSN=postgres://…/zzira_load make loadtest
 ```
 
 `LOADTEST_KEEP=1` leaves the seeded database behind, which is how a slow number here is taken apart with `EXPLAIN (ANALYZE, BUFFERS)` afterwards.
 
-A million actions is about 7 GB of database. The run drops it at the end, but a Postgres in a virtual machine (Podman, Docker Desktop) keeps the space: its disk image grows and does not shrink by itself. `podman machine ssh sudo fstrim -av` gives it back.
+A million actions is about 7 GB of database. The run recreates an empty database at the end, but a Postgres in a virtual machine (Podman, Docker Desktop) keeps the space: its disk image grows and does not shrink by itself. `podman machine ssh sudo fstrim -av` gives it back.
 
 What the tool does:
 1. Drops and recreates the `zzira_load` database, then migrates it.

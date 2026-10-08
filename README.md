@@ -1,11 +1,14 @@
 # ZZIRA
 
-A self-hosted Jira Cloud, Jira Software, Jira Service Management and Confluence
-Cloud. The screens and the REST APIs behave like Atlassian's, so a client works
-by pointing at your own server instead of `*.atlassian.net`. Inside, it follows
-Linear's [delta sync](https://linear.app/now/rebuilding-delta-sync-read-path)
-architecture: one command layer writes an immutable action log, and every
-browser keeps a permission-shaped local replica.
+ZZIRA reimplements Jira Cloud, Jira Software, Jira Service Management and
+Confluence for a self-hosted site. It serves the pinned REST operations and
+browser journeys, with compatibility still assessed as partial; see the
+[coverage ledger](docs/CLOUD_PARITY.md) for evidence and gaps.
+
+The architecture follows Linear's
+[delta sync](https://linear.app/now/rebuilding-delta-sync-read-path): one command
+layer writes an immutable action log, and browsers keep permission-shaped local
+replicas of work items.
 
 - **Jira** — projects, work types on a configurable hierarchy, fields, screens,
   workflows, permissions, JQL, bulk operations.
@@ -20,52 +23,19 @@ browser keeps a permission-shaped local replica.
 
 ## Try it
 
-```bash
-docker compose up -d --build            # Postgres and the server
-docker compose exec zzira /zzira-server -mode=migrate
-docker compose exec zzira /zzira-server -mode=demo   # a company with three years of history
+```sh
+docker compose up -d --build
+docker compose exec zzira /zzira-server -mode=seed
 ```
 
-Or run it from source against a local Postgres:
+Open <http://localhost:8080> and sign in as `demo@zzira.dev` / `demo1234`.
+For source setup, credential locations and persistent files, use the
+[getting-started guide](docs/GETTING_STARTED.md).
 
-```bash
-docker compose up -d postgres
-make seed      # migrations plus a demo@zzira.dev account
-make demo      # the Northwind demo company
-make dev       # serve on http://localhost:8080
-```
-
-`-mode=demo` builds **Northwind**: twelve projects across eleven teams, boards
-with three years of closed and active sprints, a hundred shipped releases with
-the deployments and incidents behind them, two service desks with their
-customers, requests, SLAs and Assets inventory, and seven wiki spaces the teams
-wrote, with the files, labels and comments that came with them. The people, their passwords and API tokens are written to
-`data/demo-credentials.json`. Everything it builds is declared in
-[demo/company.json](demo/company.json) — change it, run the mode again, and you
-have your own company: a second run raises only what the scenario has gained
-and leaves the rest as it is.
-
-It builds into the workspace the instance serves — `-workspace`, else
-`WORKSPACE_SLUG`, else the scenario's own slug — so seeding a deployment lands
-where the server will show it: see [docs/DEMO_DATA.md](docs/DEMO_DATA.md).
-
-```bash
-WORKSPACE_SLUG=acme go run ./cmd/server -mode=demo
-```
-
-An instance published behind single sign-on should set
-`ZZIRA_LOCAL_CREDENTIALS=off` before it is seeded: the passwords and API tokens
-the demo mints are then not a way in, and only the identity provider's sessions
-are accepted ([docs/shauth-sso.md](docs/shauth-sso.md#single-sign-on-only)).
-
-With `make seed`, sign in as `demo@zzira.dev` / `demo1234`. The seeded API token
-is printed once; use it for Basic auth:
-
-```bash
-curl -u demo@zzira.dev:<token> -X POST localhost:8080/rest/api/3/issue \
-  -H 'Content-Type: application/json' \
-  -d '{"fields":{"project":{"key":"ZZ"},"summary":"Hello","issuetype":{"name":"Task"}}}'
-```
+Add the populated Northwind company with
+`docker compose exec zzira /zzira-server -mode=demo`. Its projects, teams,
+history and wiki content are declared in [demo/company.json](demo/company.json).
+[Demo data](docs/DEMO_DATA.md) explains how to customize and reapply it.
 
 ## Where to go next
 

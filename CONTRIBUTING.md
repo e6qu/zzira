@@ -9,25 +9,41 @@ invent something different, and not a reason to skip the surface.
 
 ## Set up
 
-You need Go (see `go.mod`), Docker or Podman for Postgres, and Node for the
-browser tests.
+Follow [Run ZZIRA locally](docs/GETTING_STARTED.md) for prerequisites, the
+minimal site, Northwind demo data and credential locations. Use a separate,
+disposable PostgreSQL database for Go integration tests; they write and remove
+fixtures.
 
-```bash
-docker compose up -d postgres
-make seed          # migrations and a demo@zzira.dev account
-make demo          # the Northwind demo company, with three years of history
-make dev           # http://localhost:8080
-```
+## Validation
 
-Two databases are in play: the one the server uses (`DATABASE_URL`) and the one
-the Go tests use (`TEST_DATABASE_URL`). Keep them apart, or a test run will
-delete what you were looking at.
+Create the Go test database once, then use it for the checks:
 
-```bash
+```sh
+docker compose up -d --wait postgres
+docker compose exec -T postgres createdb -U zzira zzira_gotest
 export TEST_DATABASE_URL='postgres://zzira:zzira@localhost:5433/zzira_gotest?sslmode=disable'
-go test ./...                                   # unit and integration
-cd e2e && npm i && npx playwright install chromium && npm test    # browser journeys
+make test
+go vet ./...
+golangci-lint run
+make build
 ```
+
+`make test` runs uncached Go tests plus the full WASM compile gate. Without
+`TEST_DATABASE_URL`, database-backed tests skip; a passing unit-only run does
+not validate persistence or permissions. With a fresh database, run the full
+suite so fixtures that older tests share are established. A focused package
+check must provide its own fixtures.
+
+Check formatting with `git ls-files -z '*.go' | xargs -0 gofmt -l`; it should
+print nothing. Browser setup and fresh-instance requirements belong in
+[e2e/README.md](e2e/README.md). CI runs the full browser suite, security scans,
+image build, upgrade test and pinned API checks; local focused journeys are
+useful while making a change.
+
+For migrations or demo changes, also run
+`DATABASE_URL=<an empty database> scripts/upgrade-test.sh origin/main`.
+It builds the base revision, migrates and seeds it, then applies the changed
+revision twice, matching an upgrade. CI runs this gate for every PR.
 
 ## How the code is arranged
 
@@ -39,7 +55,8 @@ cd e2e && npm i && npx playwright install chromium && npm test    # browser jour
 - **State and its action commit in one transaction.** The action log is what
   browsers sync and what reports read; a write that skips it is invisible to
   both.
-- **Internal ids never reach a client.** Clients see Jira's numeric ids; see
+- **Internal ids never reach a client.** Clients see the product's ids,
+  numeric or opaque as its contract requires; see
   [docs/WIRE_IDS.md](docs/WIRE_IDS.md).
 - **The renderer is shared.** `internal/render` compiles for the server and for
   WebAssembly, so a page renders the same offline.
@@ -47,7 +64,7 @@ cd e2e && npm i && npx playwright install chromium && npm test    # browser jour
 ## Making a change
 
 1. **Check it is really missing.** Documents have been wrong in both directions;
-   `grep` before building. Correcting a document that claims something is
+   search the code before building. Correcting a document that claims something is
    missing is legitimate work on its own.
 2. **Build the whole slice**: schema, command, REST, browser page, permissions,
    the action log, tests, and the docs that own the surface.
@@ -56,12 +73,8 @@ cd e2e && npm i && npx playwright install chromium && npm test    # browser jour
 4. **Keep the ledgers true.** Update the owning page in `docs/`, the status row
    in [docs/CLOUD_PARITY.md](docs/CLOUD_PARITY.md), and delete the item from
    [PLAN.md](PLAN.md) when it ships.
-5. **Run everything**: `go test ./...`, `go vet ./...`, `gofmt -l`,
-   `golangci-lint run`, the wasm build (`make build`), and the browser suite.
-   A change to a migration or to the demo also runs
-   `DATABASE_URL=<an empty database> scripts/upgrade-test.sh origin/main`, which
-   is what a deploy does: `main`'s build migrates and seeds, then yours migrates
-   and seeds over it twice. CI runs it on every pull request.
+5. **Validate the final change** with the checks above and the complete CI
+   gates. Record what passed and any remaining limitations in the PR.
 
 ## Style
 

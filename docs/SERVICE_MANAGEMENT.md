@@ -415,7 +415,8 @@ active first. Values of `requestOwnership` combine:
   beneath it.
 - **Schemas:** a key, a name and 1–30 attributes (text, number, date, boolean,
   or select with 1–50 options).
-  - A schema is also the object type; there is no separate type hierarchy.
+  - A schema is also its object type. Types can sit under another type of the
+    same desk, but attributes are not inherited; see [Assets filters](#assets-filters).
 - **Objects:** a key, a label, values checked against the schema, and canvas
   coordinates.
 - **Relationships:** named and directed between two objects. The source depends

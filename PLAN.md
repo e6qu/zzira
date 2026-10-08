@@ -13,21 +13,14 @@ assessment), [docs index](docs/README.md).
 
 ## Target
 
-| Contract | Operations |
-|---|---:|
-| Jira Cloud Platform REST v3 | 617 |
-| Jira Software Cloud REST | 105 |
-| Jira Service Management Cloud REST | 75 |
-| Confluence Cloud REST v1 | 130 |
-| Confluence Cloud REST v2 | 218 |
-| Automation REST | 15 |
-| Organizations REST | 47 |
-| **Total** | **1,207** |
+The [compatibility ledger](docs/CLOUD_PARITY.md#contracts) owns the pinned
+contract counts and current assessment. The operation inventory and coverage
+files under `api/conformance/` are generated evidence; this plan owns remaining
+work and its delivery order.
 
-All 1,207 are served and assessed as partial; none is missing. Surfaces without an
-OpenAPI document (Connect and Forge modules, Assets, automation components,
-workflow rules, product UI) follow Atlassian's documented and observed behavior.
-A missing specification is not a reason to skip a surface.
+Surfaces without an OpenAPI document (Connect and Forge modules, Assets,
+automation components, workflow rules, product UI) follow Atlassian's documented
+and observed behavior. A missing specification is not a reason to skip a surface.
 
 Out of scope, reported as explicit errors: Atlassian billing, Atlassian's AI
 models, and Atlassian-hosted Forge compute. Clients that hardcode
@@ -69,9 +62,9 @@ Each numbered item is one or more substantial PRs.
   above the epic level would be ours, not Jira's.
 
 **Metadata and configuration UI.**
-- Per-language translations reach the metadata resources and the settings
-  pages ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#translating-the-words-on-a-work-item)); the work item view, the board
-  and search results still read the site's own names, as JQL does.
+- Work type alternatives must share workflow, field configuration and screen
+  schemes; team-managed scoping, asynchronous priority-scheme updates and a
+  larger avatar catalogue remain ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#gaps)).
 - The screen catalog includes Reporter, Environment, Attachment and Linked
   work items; `projectKey` honored on tab-field reads.
 - Issue security scheme form sends the level mapping for projects with secured
@@ -215,16 +208,19 @@ links, the Assets portal field, the workspace discovery endpoints, an import of
 objects from a file, and an Assets REST API under the Assets workspace
 ([SERVICE_MANAGEMENT](docs/SERVICE_MANAGEMENT.md#assets-api)).
 
-- Object schemas, object types with inheritance, typed attributes (including
-  reference, user, group, status, date, URL), object keys and labels.
+- Separate object types within a schema, inherited attributes, and reference,
+  user, group, status and URL attribute types. Each schema is currently its
+  own object type, with a parent type and object keys and labels.
 - Assets REST API: icons on an object. Schemas, object types, attributes,
   objects, AQL search, imports, and an object's history, comments and files are
   served, and a schema is created and deleted through it.
-- AQL parser and evaluator; `aqlFunction()` in JQL; AQL-filtered Assets fields.
+- AQL in JQL (`aqlFunction()`). Assets search and portal fields already use
+  AQL, including relationship traversal and `objectTypeAndChildren()`.
 - Imports: JSON and object schema files, column mapping and schedules. A comma
   separated file of objects for one schema is imported from the page and over
   REST, and reconciled against the schema when it is the whole inventory.
-- Agent browser UI for schemas and objects; per-schema roles.
+- Per-schema roles. Agents already manage schemas, objects and relationships
+  in the browser.
 
 ## 9. Service Management
 
@@ -256,12 +252,12 @@ objects from a file, and an Assets REST API under the Assets workspace
   PDF, Word, CSV, per page) including hierarchy, comments, whiteboards, databases
   and custom content. A space this site exported reads back in with its page
   tree and blog posts ([CONFLUENCE_SPACES](docs/CONFLUENCE_SPACES.md#gaps)).
-- Space icons, browser rename and description edit; emptying the space trash 60
+- Space icons; emptying the space trash 60
   days after a space lands there; `routeOverrideEnabled`, `contentMode` and
   themes take effect.
 - Permissions: `export/space`, `restrict_content/space`, `archive/page`,
-  anonymous and guest grants, content permission checks beyond pages, browser UI
-  for grants and custom roles; GUEST, ANONYMOUS and APP transition principals;
+  anonymous and guest grants, content permission checks beyond pages;
+  GUEST, ANONYMOUS and APP transition principals;
   transition UI.
 - Look and feel: site-wide theme, admin UI, app themes.
 - CQL: relevance and stemming; whiteboards, databases, folders, Smart Links and
@@ -276,10 +272,11 @@ objects from a file, and an Assets REST API under the Assets workspace
 
 ## 11. Whiteboards and diagrams
 
-ZZIRA has a form-driven canvas with stickies, text and shapes, labelled
-connectors, a fixed 1400×800 SVG render, and whiteboard lifecycle in v2.
+ZZIRA has a canvas with draggable stickies, text and shapes, form controls,
+labelled connectors, a fixed 1400×800 SVG render, and whiteboard lifecycle in v2.
 
-- Direct manipulation: drag, resize, pan, zoom, multi-select, keyboard editing.
+- Direct manipulation beyond dragging: resize, pan, zoom, multi-select, keyboard
+  editing.
 - Shapes library, freehand, images, frames and sections, grouping, alignment and
   snapping.
 - Connectors with anchors, routing and arrowheads; automatic graph layout.
