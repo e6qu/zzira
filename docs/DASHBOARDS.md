@@ -137,6 +137,12 @@ When a share is revoked, the person's rendered gadgets are cleared on their next
 - Gadgets of different colors are shown together.
 - Gadgets are read-only.
 - The page reloads when the dashboard's automatic refresh interval passes.
+- Pause rotation stops rotation and automatic reloads. A board that only reloads
+  offers Pause refresh. Resume restarts updates on the next interval.
+- Updates wait while the tab is hidden, a gadget has focus, or its table is
+  expanded. They resume after the interaction ends.
+- Reduced-motion preferences start updates paused. Turning reduced motion on
+  also pauses a running board; the viewer can explicitly resume it.
 
 **Slide show**
 - The site has one slide show.
@@ -184,4 +190,4 @@ Remaining work is tracked in [PLAN.md](../PLAN.md).
 - [DEMO_DATA.md](DEMO_DATA.md): a demo scenario declares dashboards and the gadgets on them, and `-mode=demo` builds them.
 - [APPS.md](APPS.md): app modules.
 - Code: `internal/web/custom_dashboards.go`, `internal/web/dashboard_report_gadgets.go`, `internal/web/dashboard_stream_gadgets.go`, `internal/web/dashboard_wallboard.go`, `internal/store/dashboard_*.go`.
-- Browser tests: `e2e/dashboards.spec.ts`, `e2e/dashboard_refresh_recovery.spec.ts`, `e2e/dashboard_reports.spec.ts`, `e2e/dashboard_subscriptions.spec.ts`, `e2e/v6.spec.ts`.
+- Browser tests: `e2e/dashboards.spec.ts`, `e2e/dashboard_refresh_recovery.spec.ts`, `e2e/wallboard_controls.spec.ts`, `e2e/dashboard_reports.spec.ts`, `e2e/dashboard_subscriptions.spec.ts`, `e2e/v6.spec.ts`.
