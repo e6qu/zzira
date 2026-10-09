@@ -134,6 +134,19 @@ const editorMentions = (editor) => ({
 });
 
 
+// Keep the deadline through JSON parsing: headers alone do not finish an
+// exchange. A stalled connection must release the editor so it can retry.
+const wikiLiveJSON = async (url, options, controller = new AbortController()) => {
+  const deadline = window.setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal, redirect: 'error' });
+    if (!response.ok) throw new Error(`live editing answered ${response.status}`);
+    return await response.json();
+  } finally {
+    window.clearTimeout(deadline);
+  }
+};
+
 // An open page or blog post reports itself every few seconds. The answer says
 // who else has it open, and whether its version or comments have changed
 // since it was loaded, so readers and writers see each other's work.
@@ -143,17 +156,25 @@ const startLive = (element) => {
   const editing = element.dataset.editing === 'true';
   const interval = Number(element.dataset.interval) || 15000;
   let baseline = null;
+  let busy = false;
+  let stopped = false;
+  let request;
   const describe = (present) => present.map((person) => `${person.displayName}${person.editing ? ' (editing)' : ''}`).join(', ');
   const report = async () => {
+    if (busy || stopped) return;
+    busy = true;
+    request = new AbortController();
     const body = new URLSearchParams({ editing: String(editing) });
     let state;
     try {
-      const response = await fetch(element.dataset.presenceUrl, { method: 'POST', body, credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      if (!response.ok) return;
-      state = await response.json();
+      state = await wikiLiveJSON(element.dataset.presenceUrl, { method: 'POST', body, credentials: 'same-origin', headers: { Accept: 'application/json' } }, request);
     } catch {
       return;
+    } finally {
+      busy = false;
+      request = null;
     }
+    if (stopped) return;
     if (!baseline) baseline = { version: state.version, comments: state.commentCount };
     const others = state.present || [];
     const coEditors = others.filter((person) => person.editing);
@@ -185,7 +206,11 @@ const startLive = (element) => {
   };
   report();
   const timer = setInterval(report, interval);
-  window.addEventListener('pagehide', () => clearInterval(timer));
+  window.addEventListener('pagehide', () => {
+    stopped = true;
+    clearInterval(timer);
+    request?.abort();
+  });
 };
 
 
@@ -354,6 +379,7 @@ const startLiveEditing = (status, text, form) => {
   let stopped = false;
   let offline = false;
   let cursors = [];
+  let request;
   // Edits not yet shared are kept on this device, so closing the page or
   // reloading it offline loses nothing: the next editor on this page starts
   // from them and merges them like any unsent typing.
@@ -423,17 +449,16 @@ const startLiveEditing = (status, text, form) => {
   const sync = async () => {
     if (busy || composing || stopped) return;
     busy = true;
+    request = new AbortController();
     try {
       const sent = text.get();
       const selection = text.selection();
       const change = synced === null ? null : liveDiff(synced, sent);
-      const response = await fetch(status.dataset.liveUrl, {
+      const state = await wikiLiveJSON(status.dataset.liveUrl, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ session, revision, changes: change ? [change] : [], cursor: selection }),
-      });
-      if (!response.ok) throw new Error(`live editing answered ${response.status}`);
-      const state = await response.json();
+      }, request);
       if (stopped) return;
       const current = text.get();
       if (typeof state.body === 'string') {
@@ -467,13 +492,15 @@ const startLiveEditing = (status, text, form) => {
       offline = false;
       if (liveDiff(synced, text.get())) window.setTimeout(sync, 50);
     } catch {
+      if (stopped) return;
       if (!offline) say('Live editing is reconnecting. Your changes are kept on this device and merge when it is back.');
       offline = true;
       cursors = [];
       drawCursors();
     } finally {
       busy = false;
-      keep();
+      request = null;
+      if (!stopped) keep();
     }
   };
   if (kept && typeof kept.synced === 'string' && typeof kept.text === 'string' && typeof kept.session === 'string' && Number.isInteger(kept.revision)) {
@@ -504,10 +531,13 @@ const startLiveEditing = (status, text, form) => {
   text.element.addEventListener('compositionstart', () => { composing = true; });
   text.element.addEventListener('compositionend', () => { composing = false; soon(); });
   const timer = window.setInterval(sync, 1000);
-  form.addEventListener('submit', () => { stopped = true; window.clearInterval(timer); drawCursors(); });
+  form.addEventListener('submit', () => { stopped = true; window.clearInterval(timer); request?.abort(); drawCursors(); });
   window.addEventListener('pagehide', () => {
+    stopped = true;
     window.clearInterval(timer);
+    window.clearTimeout(pending);
     keep(true);
+    request?.abort();
   });
   sync();
 };
