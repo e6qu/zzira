@@ -18,12 +18,18 @@ Dashboards collect gadgets that show work, charts and reports. Each viewer sees 
 - choose a layout: `A`, `AA`, `AB`, `BA` or `AAA`;
 - reorder gadgets;
 - give gadgets one of eight accent colors;
-- configure gadget queries.
+- configure gadget queries;
+- set automatic refresh to every 1, 5 or 15 minutes.
 
 **Every viewer** can:
 - add the dashboard to favourites;
-- refresh it by hand;
-- set it to refresh automatically every 1, 5 or 15 minutes.
+- refresh it by hand.
+
+Refresh shows progress and times out after 15 seconds if the site does not respond.
+A failed refresh keeps the last loaded results and lets the viewer retry.
+Automatic refresh waits while the tab is hidden, configuration is open, a gadget
+has focus, or a gadget table is expanded. It checks again before applying a
+response so an interaction started during the request is preserved.
 
 When a share is revoked, the person's rendered gadgets are cleared on their next refresh. The service worker never caches the content refresh endpoint (`/dashboards/{id}/content`).
 
@@ -178,4 +184,4 @@ Remaining work is tracked in [PLAN.md](../PLAN.md).
 - [DEMO_DATA.md](DEMO_DATA.md): a demo scenario declares dashboards and the gadgets on them, and `-mode=demo` builds them.
 - [APPS.md](APPS.md): app modules.
 - Code: `internal/web/custom_dashboards.go`, `internal/web/dashboard_report_gadgets.go`, `internal/web/dashboard_stream_gadgets.go`, `internal/web/dashboard_wallboard.go`, `internal/store/dashboard_*.go`.
-- Browser tests: `e2e/dashboards.spec.ts`, `e2e/dashboard_reports.spec.ts`, `e2e/dashboard_subscriptions.spec.ts`, `e2e/v6.spec.ts`.
+- Browser tests: `e2e/dashboards.spec.ts`, `e2e/dashboard_refresh_recovery.spec.ts`, `e2e/dashboard_reports.spec.ts`, `e2e/dashboard_subscriptions.spec.ts`, `e2e/v6.spec.ts`.
