@@ -1192,21 +1192,49 @@
         postWorker({ type: 'edit-dialog', issueId });
         return;
       }
+      setModalHTML(`<div class="modal-backdrop" data-modal-backdrop aria-hidden="true"></div>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-loading-title" tabindex="-1">
+          <div class="modal-header"><h2 id="edit-loading-title">Loading issue editor</h2>
+            <button type="button" class="icon-button modal-close" onclick="window.zzira.closeModal()" aria-label="Close dialog">×</button></div>
+          <p data-edit-loading-status role="status">Loading the issue fields…</p>
+          <div class="project-form-actions"><button class="btn" type="button" onclick="window.zzira.closeModal()">Cancel</button></div>
+        </div>`);
       const request = new AbortController();
       editRequest = request;
-      fetch(`/issues/${encodeURIComponent(key)}/edit`, { signal: request.signal }).then(r => {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.text();
+      let timedOut = false;
+      const deadline = setTimeout(() => { timedOut = true; request.abort(); }, 15000);
+      fetch(`/issues/${encodeURIComponent(key)}/edit`, { signal: request.signal, redirect: 'error' }).then(async response => {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const html = await response.text();
+        const fragment = new DOMParser().parseFromString(html, 'text/html');
+        const dialog = fragment.querySelector('.modal[role="dialog"]');
+        const form = dialog?.querySelector('form');
+        if (form?.getAttribute('hx-post') !== `/issues/${encodeURIComponent(key)}/edit`) throw new Error('Invalid editor');
+        return html;
       }).then(html => {
         if (editRequest !== request) return;
         editRequest = null;
         setModalHTML(html);
-      }).catch((error) => {
-        if (error.name === 'AbortError' || editRequest !== request) return;
+      }).catch(() => {
+        if (editRequest !== request) return;
         editRequest = null;
-        window.zzira.closeModal();
-        announce('could not open editor', 4000);
-      });
+        const status = root.querySelector('[data-edit-loading-status]');
+        if (!status) return;
+        root.querySelector('#edit-loading-title').textContent = 'Could not open issue editor';
+        status.setAttribute('role', 'alert');
+        status.setAttribute('tabindex', '-1');
+        status.className = 'form-error';
+        status.textContent = timedOut
+          ? 'Loading took too long. Try again or cancel to return to the issue.'
+          : 'Could not load the issue fields. Check your connection or sign in again, then retry.';
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'btn btn-primary';
+        retry.textContent = 'Retry';
+        retry.addEventListener('click', () => window.zzira.openEdit(key, modalReturnFocus));
+        root.querySelector('.project-form-actions').prepend(retry);
+        status.focus();
+      }).finally(() => clearTimeout(deadline));
     }
   };
   pendingUIActions.forEach(([name, args]) => {
