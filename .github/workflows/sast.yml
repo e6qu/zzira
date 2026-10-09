@@ -10,9 +10,12 @@ permissions:
 jobs:
   semgrep:
     runs-on: ubuntu-latest
-    container:
-      image: semgrep/semgrep
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install Semgrep
+        run: python -m pip install semgrep==1.180.0
       - name: semgrep scan (security rulesets)
         run: semgrep scan --config p/golang --config p/secrets --config p/xss --error --severity ERROR
