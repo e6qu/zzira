@@ -74,7 +74,14 @@ test('a person registers a security key and signs in with it', async ({ page, br
   await theirs.context().clearCookies();
   await submitLogin(theirs, email, password);
   await expect(theirs).toHaveURL(/\/login\/verify/);
+  await expect(theirs.getByRole('heading', { name: 'Use your security key', exact: true })).toBeVisible();
+  await expect(theirs.getByLabel('Code', { exact: true })).toHaveCount(0);
   await expect(theirs.getByRole('button', { name: 'Use a security key' })).toBeVisible();
+  const wrongMethod = await theirs.request.post('/login/verify', {
+    headers: { Origin: new URL(theirs.url()).origin }, form: { code: 'invalid' },
+  });
+  expect(wrongMethod.status()).toBe(400);
+  expect(await wrongMethod.text()).toContain('Use your security key to finish signing in');
   await accessible(theirs);
   // An HTML sign-in response must leave the pending challenge available
   // for a real retry rather than navigating as if authentication succeeded.

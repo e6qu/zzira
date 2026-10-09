@@ -32,9 +32,8 @@ func signInChallengeCookieName() string {
 
 type twoStepVerifyData struct {
 	Error string
-	// Keys says the account has a security key, so the page offers it beside
-	// the code.
-	Keys bool
+	Codes bool // A confirmed authenticator app also supplies recovery codes.
+	Keys  bool
 }
 
 // twoStepSecret opens the sealed secret an account's authenticator app holds.
@@ -79,46 +78,53 @@ func clearSignInChallenge(w http.ResponseWriter) {
 	})
 }
 
-// VerifySignInForm asks for the code a waiting sign-in owes.
+// VerifySignInForm offers the enrolled methods that can finish a sign-in.
 func (h *Handler) VerifySignInForm(w http.ResponseWriter, r *http.Request) {
 	noStoreAuthResponse(w)
 	challenge, ok := h.waitingSignIn(r)
 	if !ok {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		h.restartVerification(w, r)
 		return
 	}
-	if !h.waitingSignInVerifies(r, challenge) {
+	methods, err := h.waitingSignInMethods(r, challenge)
+	if errors.Is(err, store.ErrTwoStepCode) {
+		h.restartVerification(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !methods.Codes && !methods.Keys {
 		// The sign-in is held by a policy that requires a second step this
 		// account has not set up: the enrolment is the step.
 		http.Redirect(w, r, "/login/enrol", http.StatusSeeOther)
 		return
 	}
-	writePage(w, "page_two_step_verify", twoStepVerifyData{Keys: h.waitingSignInKeys(r, challenge)})
+	writePage(w, "page_two_step_verify", methods)
 }
 
-// waitingSignInVerifies says whether the account this sign-in belongs to has
-// something to answer with: an authenticator app, or a security key.
-func (h *Handler) waitingSignInVerifies(r *http.Request, challenge string) bool {
+// waitingSignInMethods offers only methods this account has finished setting
+// up. A pending authenticator enrolment cannot answer a code challenge.
+func (h *Handler) waitingSignInMethods(r *http.Request, challenge string) (twoStepVerifyData, error) {
 	userID, err := h.Store.SignInChallengeUser(r.Context(), authn.SessionHash(challenge))
 	if err != nil {
-		return false
+		return twoStepVerifyData{}, err
 	}
-	if enrolment, err := h.Store.TwoStep(r.Context(), userID); err == nil && enrolment.Confirmed {
-		return true
+	enrolment, err := h.Store.TwoStep(r.Context(), userID)
+	if err != nil {
+		return twoStepVerifyData{}, err
 	}
 	keys, err := h.Store.WebAuthnCredentials(r.Context(), userID)
-	return err == nil && len(keys) > 0
+	if err != nil {
+		return twoStepVerifyData{}, err
+	}
+	return twoStepVerifyData{Codes: enrolment.Confirmed, Keys: len(keys) > 0}, nil
 }
 
-// waitingSignInKeys says whether the account this sign-in belongs to has a
-// security key, which is what the page offers beside the code.
-func (h *Handler) waitingSignInKeys(r *http.Request, challenge string) bool {
-	userID, err := h.Store.SignInChallengeUser(r.Context(), authn.SessionHash(challenge))
-	if err != nil {
-		return false
-	}
-	keys, err := h.Store.WebAuthnCredentials(r.Context(), userID)
-	return err == nil && len(keys) > 0
+func (h *Handler) restartVerification(w http.ResponseWriter, r *http.Request) {
+	clearSignInChallenge(w)
+	http.Redirect(w, r, "/login?notice=verification-ended", http.StatusSeeOther)
 }
 
 // VerifySignInSubmit answers a waiting sign-in with a code.
@@ -129,19 +135,35 @@ func (h *Handler) VerifySignInSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	challenge, ok := h.waitingSignIn(r)
 	if !ok {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		h.restartVerification(w, r)
 		return
 	}
-	if !h.waitingSignInVerifies(r, challenge) {
+	methods, err := h.waitingSignInMethods(r, challenge)
+	if errors.Is(err, store.ErrTwoStepCode) {
+		h.restartVerification(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !methods.Codes && !methods.Keys {
 		http.Redirect(w, r, "/login/enrol", http.StatusSeeOther)
+		return
+	}
+	if !methods.Codes {
+		methods.Error = "Use your security key to finish signing in. This account has no authenticator app."
+		writePageStatus(w, "page_two_step_verify", methods, http.StatusBadRequest)
 		return
 	}
 	signIn, err := authn.CompleteSignIn(r.Context(), h.Store, challenge, r.PostFormValue("code"), h.twoStepSecret)
 	if errors.Is(err, store.ErrTwoStepCode) {
-		writePageStatus(w, "page_two_step_verify", twoStepVerifyData{
-			Error: "That code is not right. Use the code your authenticator app shows now, or one of your recovery codes.",
-			Keys:  h.waitingSignInKeys(r, challenge),
-		}, http.StatusUnauthorized)
+		if _, valid := h.waitingSignIn(r); !valid {
+			h.restartVerification(w, r)
+			return
+		}
+		methods.Error = "That code is not right. Use the code your authenticator app shows now, or one of your recovery codes."
+		writePageStatus(w, "page_two_step_verify", methods, http.StatusUnauthorized)
 		return
 	}
 	if err != nil {
@@ -303,12 +325,12 @@ func (h *Handler) EnrolTwoStepForm(w http.ResponseWriter, r *http.Request) {
 	noStoreAuthResponse(w)
 	challenge, ok := h.waitingSignIn(r)
 	if !ok {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		h.restartVerification(w, r)
 		return
 	}
 	userID, err := h.Store.SignInChallengeUser(r.Context(), authn.SessionHash(challenge))
 	if err != nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		h.restartVerification(w, r)
 		return
 	}
 	if h.ProviderSecrets == nil {
@@ -395,12 +417,12 @@ func (h *Handler) EnrolTwoStepSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	challenge, ok := h.waitingSignIn(r)
 	if !ok {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		h.restartVerification(w, r)
 		return
 	}
 	userID, err := h.Store.SignInChallengeUser(r.Context(), authn.SessionHash(challenge))
 	if err != nil {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		h.restartVerification(w, r)
 		return
 	}
 	enrolment, err := h.Store.TwoStep(r.Context(), userID)
@@ -427,6 +449,10 @@ func (h *Handler) EnrolTwoStepSubmit(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		if _, valid := h.waitingSignIn(r); !valid {
+			h.restartVerification(w, r)
+			return
+		}
 		uri, path, extent, err := twoStepSetup(string(plain), issuer, person.Email)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
@@ -448,6 +474,10 @@ func (h *Handler) EnrolTwoStepSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	signIn, err := authn.CompleteEnrolledSignIn(r.Context(), h.Store, challenge)
+	if errors.Is(err, store.ErrTwoStepCode) {
+		h.restartVerification(w, r)
+		return
+	}
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

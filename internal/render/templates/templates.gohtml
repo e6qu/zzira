@@ -1138,17 +1138,17 @@
 <body class="login-body">
   <main class="login-card" aria-labelledby="two-step-verify-title">
     <span class="logo-mark" aria-hidden="true">Z</span>
-    <h1 id="two-step-verify-title">Enter your code</h1>
+    <h1 id="two-step-verify-title">{{if .Codes}}Enter your code{{else}}Use your security key{{end}}</h1>
     {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
-    <p>Your password was accepted. Finish signing in with the six-digit code your authenticator app shows, or one of your recovery codes.</p>
+    {{if .Codes}}<p>Your password was accepted. Finish signing in with the six-digit code your authenticator app shows, or one of your recovery codes.</p>
     <form method="post" action="/login/verify">
       <label for="two-step-code">Code</label>
       <input id="two-step-code" name="code" inputmode="text" autocomplete="one-time-code" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus>
       <button class="btn btn-primary btn-block" type="submit">Verify</button>
-    </form>
-    {{if .Keys}}<p class="login-separator"><span>or use your security key</span></p>
+    </form>{{else}}<p>Your password was accepted. Use your registered security key or passkey to finish signing in.</p>{{end}}
+    {{if .Keys}}{{if .Codes}}<p class="login-separator"><span>or use your security key</span></p>{{end}}
     <p class="form-error" data-passkey-signin-status role="status" aria-live="polite" hidden></p>
-    <button class="btn btn-secondary btn-block" type="button" data-passkey-signin>Use a security key</button>
+    <button class="btn {{if .Codes}}btn-secondary{{else}}btn-primary{{end}} btn-block" type="button" data-passkey-signin>Use a security key</button>
     <script src="/static/passkeys.js?v=2" defer></script>{{end}}
     <p><a href="/login">Sign in as someone else</a></p>
   </main>
