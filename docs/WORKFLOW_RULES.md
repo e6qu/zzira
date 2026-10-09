@@ -97,6 +97,19 @@ Workflow resources follow Jira's permissions:
 
 `/settings/workflows` lists workflows. `/settings/workflows/{id}` is the editor: statuses and transitions on a map, per-status approval and editable settings, drafts, and project assignment. Statuses are managed at `/settings/statuses`.
 
+Move a status by dragging its header or focusing the status and using arrow
+keys. Arrow keys inside its controls do not move it. Clicking or canceling a
+drag leaves the layout unchanged. Layout edits save to the draft in order,
+keeping the latest pending position for each status, so rapid edits to
+different statuses are all retained.
+
+While layout edits save, publish, discard and other workflow mutations wait.
+A failed or refused save restores the last confirmed position and offers a
+retry by moving the status again; sign-in redirects are not save acknowledgements.
+The error names refused statuses and remains visible when another status saves.
+Stalled requests time out after 15 seconds and unlock the editor. The browser
+journey is covered by `e2e/workflow_layout_recovery.spec.ts`.
+
 ## Code
 
 `internal/workflow/workflow.go`, `internal/api3/api3_workflow_capabilities.go`, `internal/web/directories.go`, `migrations/196_workflow_agent_runs_and_transition_ids.sql`.
