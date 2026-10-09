@@ -214,22 +214,28 @@ public key and its counter.
   what a copied key looks like.
 - **A challenge is issued here and read once**, for registering or for signing
   in, and expires in five minutes.
-- **At sign-in.** A registered key earns the second step by itself: a password
-  alone no longer signs that account in, because whoever registered a key
-  expects to be asked for it. The page offers the key beside the code, and an
-  account with a key but no authenticator app signs in with the key alone. A browser with no key of its own cannot answer
-  for somebody else, because the signature is the key's.
+- **At sign-in.** Registering a key makes the password only the first step.
+  The page offers only enrolled methods: a key-only account sees a security-key
+  prompt, a confirmed authenticator app offers codes, and an account with both
+  can choose either. A browser without the registered key cannot answer for
+  somebody else, because the signature is the key's.
 - **Interrupted requests.** The browser shows progress while waiting for the key
   and the site. Network requests time out after 15 seconds; this does not shorten
   the key prompt. Cancellation or an unconfirmed response restores the controls
   and keeps the registration name so the person can retry.
+- **Expired verification.** Verification and policy-required enrolment allow five
+  wrong codes and last ten minutes. Expiry or the final refusal clears the waiting
+  cookie and returns to sign-in with an explanation. Starting again preserves a
+  pending enrolment key already added to the authenticator app.
 - **Removing a key** leaves the account as it was: with no key and no
   authenticator app, a password signs in again unless a policy requires the
   second step.
 - Code: `internal/webauthn`, `internal/web/passkeys.go`,
-  `internal/store/webauthn.go`, `web/static/passkeys.js`. Browser test:
+  `internal/store/webauthn.go`, `internal/web/two_step.go`,
+  `web/static/passkeys.js`. Browser tests:
   `e2e/passkeys.spec.ts`, which drives Chrome's own virtual authenticator,
-  and `e2e/passkey_recovery.spec.ts` for interrupted requests.
+  `e2e/passkey_recovery.spec.ts` for interrupted requests, and
+  `e2e/two_step.spec.ts` for code verification and enrolment recovery.
 
 ## SAML single sign-on
 

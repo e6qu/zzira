@@ -1120,7 +1120,11 @@ func (h *Handler) LoginForm(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("saved") == "password" {
 		notice = "Your password is set. Sign in with it."
 	}
-	writePage(w, "page_login", loginPageData{Notice: notice, Providers: providers, Password: !authn.LocalCredentialsRefused(r.Context())})
+	verificationError := ""
+	if r.URL.Query().Get("notice") == "verification-ended" {
+		verificationError = "Your verification expired or reached its attempt limit. Sign in again to start a new verification."
+	}
+	writePage(w, "page_login", loginPageData{Notice: notice, Error: verificationError, Providers: providers, Password: !authn.LocalCredentialsRefused(r.Context())})
 }
 
 func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {

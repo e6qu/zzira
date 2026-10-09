@@ -76,7 +76,7 @@ test('a person protects their account with a second step and signs in with it', 
   await expect(symbol).toHaveAttribute('aria-label', /QR code/);
   expect(((await symbol.locator('path').getAttribute('d')) ?? '').length).toBeGreaterThan(200);
   await accessible(theirs);
-  await theirs.fill('#two-step-confirm-code', '000000');
+  await theirs.fill('#two-step-confirm-code', 'wrong');
   await theirs.getByRole('button', { name: 'Confirm' }).click();
   await expect(theirs.getByRole('alert')).toContainText('That code is not right');
 
@@ -102,9 +102,21 @@ test('a person protects their account with a second step and signs in with it', 
   await expect(elsewhere).toHaveURL('/login/verify');
   await expect(elsewhere.getByRole('heading', { name: 'Enter your code' })).toBeVisible();
   await accessible(elsewhere);
-  await elsewhere.fill('#two-step-code', '000000');
+  await elsewhere.fill('#two-step-code', 'wrong');
   await elsewhere.getByRole('button', { name: 'Verify' }).click();
   await expect(elsewhere.getByRole('alert')).toContainText('That code is not right');
+  // The fifth refusal ends this challenge; offering another code would
+  // promise a retry that cannot work. A fresh password starts a new one.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await elsewhere.fill('#two-step-code', 'invalid');
+    await elsewhere.getByRole('button', { name: 'Verify' }).click();
+  }
+  await expect(elsewhere).toHaveURL(/\/login\?notice=verification-ended$/);
+  await expect(elsewhere.getByRole('alert')).toContainText('Sign in again');
+  await expect(elsewhere.locator('#two-step-code')).toHaveCount(0);
+  await accessible(elsewhere);
+  await submitLogin(elsewhere, email, password);
+  await expect(elsewhere).toHaveURL('/login/verify');
   await elsewhere.fill('#two-step-code', authenticatorCode(confirmed));
   await elsewhere.getByRole('button', { name: 'Verify' }).click();
   await expect(elsewhere).not.toHaveURL(/\/login/);
@@ -166,9 +178,18 @@ test('a person protects their account with a second step and signs in with it', 
   // The key survives a reload, so an app that already holds it still works.
   await required.reload();
   expect(((await required.locator('.two-step-key dd code').first().textContent()) ?? '').trim()).toBe(enrolKey);
-  await required.fill('#two-step-enrol-code', '000000');
+  await required.fill('#two-step-enrol-code', 'wrong');
   await required.getByRole('button', { name: 'Confirm and sign in' }).click();
   await expect(required.getByRole('alert')).toContainText('That code is not right');
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await required.fill('#two-step-enrol-code', 'wrong');
+    await required.getByRole('button', { name: 'Confirm and sign in' }).click();
+  }
+  await expect(required).toHaveURL(/\/login\?notice=verification-ended$/);
+  await expect(required.getByRole('alert')).toContainText('Sign in again');
+  await submitLogin(required, email, password);
+  await expect(required).toHaveURL('/login/enrol');
+  expect(((await required.locator('.two-step-key dd code').first().textContent()) ?? '').trim()).toBe(enrolKey);
   await required.fill('#two-step-enrol-code', authenticatorCode(enrolKey));
   await required.getByRole('button', { name: 'Confirm and sign in' }).click();
   await expect(required.getByRole('heading', { name: 'Keep your recovery codes' })).toBeVisible();
