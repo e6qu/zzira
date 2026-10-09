@@ -962,9 +962,9 @@
     </section>{{end}}
     {{if .Data.Self}}<section class="surface-card profile-passkeys" id="security-keys" aria-labelledby="profile-passkeys-title"><div class="section-heading"><div><span class="eyebrow">Security</span><h2 id="profile-passkeys-title">Security keys</h2><p>A security key or passkey answers a sign-in instead of a code. It is tied to this site, so a page pretending to be this one cannot use it.</p></div></div>
       <ul class="profile-passkey-list">{{range .Data.Passkeys}}<li><span><strong>{{.Label}}</strong><small>Added {{.Added}}{{if .LastUsed}} · last used {{.LastUsed}}{{end}}{{if .UserVerified}} · checks who is using it{{end}}</small></span><form method="post" action="/profile/passkeys/{{.ID}}/delete"><button class="btn btn-subtle" type="submit">Remove<span class="sr-only"> {{.Label}}</span></button></form></li>{{else}}<li><small>No security key is registered on this account.</small></li>{{end}}</ul>
-      <p data-passkey-status hidden></p>
+      <p data-passkey-status role="status" aria-live="polite" hidden></p>
       <div class="project-details-form"><label for="passkey-label">Name this key</label><input id="passkey-label" data-passkey-label maxlength="80" placeholder="Work laptop"><div class="project-form-actions"><button class="btn btn-primary" type="button" data-passkey-register>Register a security key</button></div></div>
-      <script src="/static/passkeys.js?v=1" defer></script>
+      <script src="/static/passkeys.js?v=2" defer></script>
     </section>{{end}}
     {{if .Data.Self}}<section class="surface-card profile-password" id="password" aria-labelledby="profile-password-title"><div class="section-heading"><div><span class="eyebrow">Security</span><h2 id="profile-password-title">Password</h2><p>{{if .Data.PasswordManaged}}Your organization signs this account in through its identity provider, so it has no password to change.{{else}}A new password is at least {{.Data.PasswordMinimum}} characters, and changing it ends every other session you left open.{{end}}</p></div></div>{{if not .Data.PasswordManaged}}{{if .Data.PasswordError}}<div class="form-error" role="alert"><strong>Password not changed</strong><span>{{.Data.PasswordError}}</span></div>{{end}}<form class="project-details-form" method="post" action="/profile/password"><label for="profile-current-password">Current password</label><input id="profile-current-password" name="currentPassword" type="password" autocomplete="current-password" required><label for="profile-new-password">New password</label><input id="profile-new-password" name="newPassword" type="password" autocomplete="new-password" minlength="{{.Data.PasswordMinimum}}" maxlength="72" required><label for="profile-confirm-password">Confirm new password</label><input id="profile-confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="{{.Data.PasswordMinimum}}" maxlength="72" required><div class="project-form-actions"><button class="btn btn-primary" type="submit">Change password</button></div></form>{{end}}</section>{{end}}
     {{if and .Data.Self .Data.Locales}}<section class="surface-card profile-language" aria-labelledby="profile-language-title"><div class="section-heading"><div><span class="eyebrow">Language</span><h2 id="profile-language-title">Reading language</h2><p>The site's work types, priorities, resolutions and statuses read in the language you choose. Searching and everything you send still use the site's own words.</p></div></div><form class="project-details-form" method="post" action="/profile/language"><label for="profile-locale">Language</label><select id="profile-locale" name="locale"><option value="">The site's own language</option>{{range .Data.Locales}}<option value="{{.}}"{{if eq . $.Data.Locale}} selected{{end}}>{{.}}</option>{{end}}</select><div class="project-form-actions"><button class="btn btn-primary" type="submit">Save language</button></div></form></section>{{end}}
@@ -1147,9 +1147,9 @@
       <button class="btn btn-primary btn-block" type="submit">Verify</button>
     </form>
     {{if .Keys}}<p class="login-separator"><span>or use your security key</span></p>
-    <p class="form-error" data-passkey-signin-status hidden></p>
+    <p class="form-error" data-passkey-signin-status role="status" aria-live="polite" hidden></p>
     <button class="btn btn-secondary btn-block" type="button" data-passkey-signin>Use a security key</button>
-    <script src="/static/passkeys.js?v=1" defer></script>{{end}}
+    <script src="/static/passkeys.js?v=2" defer></script>{{end}}
     <p><a href="/login">Sign in as someone else</a></p>
   </main>
 </body></html>

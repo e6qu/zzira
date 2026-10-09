@@ -76,6 +76,17 @@ test('a person registers a security key and signs in with it', async ({ page, br
   await expect(theirs).toHaveURL(/\/login\/verify/);
   await expect(theirs.getByRole('button', { name: 'Use a security key' })).toBeVisible();
   await accessible(theirs);
+  // An HTML sign-in response must leave the pending challenge available
+  // for a real retry rather than navigating as if authentication succeeded.
+  await theirs.route('**/login/verify/passkey', route => route.fulfill({
+    status: 200, contentType: 'text/html', body: '<html>Sign in</html>',
+  }));
+  await theirs.getByRole('button', { name: 'Use a security key' }).click();
+  await expect(theirs.locator('[data-passkey-signin-status]')).toContainText('did not confirm');
+  await expect(theirs).toHaveURL(/\/login\/verify/);
+  await expect(theirs.getByRole('button', { name: 'Use a security key' })).toBeEnabled();
+  await accessible(theirs);
+  await theirs.unroute('**/login/verify/passkey');
   await theirs.getByRole('button', { name: 'Use a security key' }).click();
   await expect(theirs).toHaveURL(/\/$/);
 
