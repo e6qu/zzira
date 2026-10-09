@@ -28,14 +28,14 @@ test.afterEach(async ({ request }) => {
   for (const id of dashboards) expect((await request.delete(`/rest/api/3/dashboard/${id}`, { headers: auth() })).status()).toBe(204);
 });
 
-async function openWallboard(page: Page, refresh = false, rotates = true) {
+async function openWallboard(page: Page, refresh = false, rotates = true, titles = ['First chart', 'Second chart']) {
   const response = await page.request.post('/rest/api/3/dashboard', { headers: auth(), data: {
     name: `Wallboard controls ${Date.now()}`, sharePermissions: [], editPermissions: [],
   } });
   expect(response.status()).toBe(200);
   const id = (await response.json()).id;
   dashboards.push(id);
-  for (const [row, title] of ['First chart', 'Second chart'].entries()) {
+  for (const [row, title] of titles.entries()) {
     const gadget = await page.request.post(`/rest/api/3/dashboard/${id}/gadget`, { headers: auth(), data: {
       moduleKey: 'com.zzira:bubble-chart', title, color: rotates || row === 0 ? 'blue' : 'red', position: { column: 0, row },
     } });
@@ -52,6 +52,7 @@ async function openWallboard(page: Page, refresh = false, rotates = true) {
   }
   await page.clock.install();
   await page.goto(`/dashboards/${id}/wallboard`);
+  return id;
 }
 
 async function accessible(page: Page) {
@@ -128,3 +129,38 @@ test('turning on reduced motion pauses rotation until the viewer resumes it', as
   await page.clock.fastForward(30001);
   await expect(page.getByRole('heading', { name: 'Second chart', exact: true })).toBeVisible();
 });
+
+test('a short refresh interval still shows the last gadget for a full interval', async ({ page }) => {
+  await openWallboard(page, true, true, ['First chart', 'Second chart', 'Third chart']);
+  await page.clock.fastForward(30001);
+  await expect(page.getByRole('heading', { name: 'Second chart', exact: true })).toBeVisible();
+  await page.clock.fastForward(30001);
+  await expect(page.getByRole('heading', { name: 'Third chart', exact: true })).toBeVisible();
+  const loaded = page.waitForEvent('load');
+  await page.clock.fastForward(30001);
+  await loaded;
+  await expect(page.getByRole('heading', { name: 'First chart', exact: true })).toBeVisible();
+});
+
+for (const rotating of [false, true]) {
+  test(`a single-dashboard slide show refreshes after its ${rotating ? 'gadget' : 'dashboard'} pass`, async ({ page }) => {
+    const id = await openWallboard(page, false, rotating);
+    await page.goto(`/dashboards/${id}`);
+    await page.locator('.dashboard-footer summary').filter({ hasText: 'Configure wallboard slide show' }).click();
+    const chosen = page.getByRole('group', { name: 'Dashboards in the slide show', exact: true });
+    for (const input of await chosen.locator('input:checked').all()) await input.uncheck();
+    await chosen.locator(`input[name=slideshowDashboard][value="${id}"]`).check();
+    await page.getByLabel('Seconds per dashboard', { exact: true }).fill('10');
+    await page.getByRole('button', { name: 'Save slide show', exact: true }).click();
+    await page.goto('/dashboards/slideshow');
+    await expect(page.locator('[data-wallboard]')).toHaveAttribute('data-refresh', '10000');
+    if (rotating) {
+      await page.clock.fastForward(10001);
+      await expect(page.getByRole('heading', { name: 'Second chart', exact: true })).toBeVisible();
+    } else await expect(page.getByRole('button', { name: 'Pause refresh', exact: true })).toBeVisible();
+    const loaded = page.waitForEvent('load');
+    await page.clock.fastForward(10001);
+    await loaded;
+    await expect(page.getByRole('heading', { name: 'First chart', exact: true })).toBeVisible();
+  });
+}

@@ -136,7 +136,9 @@ When a share is revoked, the person's rendered gadgets are cleared on their next
 - Consecutive gadgets of the same color in a column form a group. The group shows one gadget at a time and switches every 30 seconds.
 - Gadgets of different colors are shown together.
 - Gadgets are read-only.
-- The page reloads when the dashboard's automatic refresh interval passes.
+- The page reloads after the dashboard's automatic refresh interval passes and
+  every color group has completed a pass. Each gadget stays visible for its full
+  interval, so a short refresh interval cannot skip later gadgets.
 - Pause rotation stops rotation and automatic reloads. A board that only reloads
   offers Pause refresh. Resume restarts updates on the next interval.
 - Updates wait while the tab is hidden, a gadget has focus, or its table is
@@ -151,9 +153,12 @@ When a share is revoked, the person's rendered gadgets are cleared on their next
   - 5 to 3,600 seconds per dashboard (default 30);
   - optional random order.
 - Each viewer sees only the chosen dashboards they can view.
-- The slide show reloads after each full pass.
+- The slide show reloads after each full pass. With only one available dashboard,
+  grouped gadgets rotate at the chosen interval and the page reloads after the
+  longest group completes a pass.
 
-Both pages have a **Pause rotation** control and an exit link.
+Rotating boards offer **Pause rotation**; boards that only refresh offer
+**Pause refresh**. Every wallboard and slide show has an exit link.
 
 ## Dashboard emails
 

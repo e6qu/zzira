@@ -7,6 +7,11 @@
   const button = board.querySelector('[data-wallboard-pause]');
   const status = document.getElementById('wallboard-status');
   const loaded = Date.now();
+  // A reload starts every group at its first gadget. Give the longest group
+  // a complete pass, including the last gadget's display interval, first.
+  const passLength = Math.max(1, ...[...board.querySelectorAll('[data-wallboard-group]')]
+    .map(group => group.querySelectorAll(':scope > [data-wallboard-gadget]').length));
+  let ticks = 0;
   let timer;
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   const action = button?.dataset.wallboardAction || 'rotation';
@@ -44,11 +49,15 @@
     if (slides.length > 1) {
       if (showNext(slides) === 0) { location.reload(); return; }
     } else {
+      ticks++;
+      if (refresh > 0 && Date.now() - loaded >= refresh && ticks >= passLength) {
+        location.reload();
+        return;
+      }
       for (const group of current()?.querySelectorAll('[data-wallboard-group]') || []) {
         const gadgets = [...group.querySelectorAll(':scope > [data-wallboard-gadget]')];
         if (gadgets.length > 1) showNext(gadgets);
       }
-      if (refresh > 0 && Date.now() - loaded >= refresh) { location.reload(); return; }
     }
     timer = setTimeout(rotate, interval);
   }

@@ -62,7 +62,7 @@
 {{end}}{{end}}
 
 {{define "page_dashboard_wallboard"}}
-<!doctype html><html lang="en"><head><title>{{.Data.Title}} · Wallboard · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/dashboards.css?v=6"><script src="/static/wallboard.js?v=2" defer></script><script src="/static/connect-host.js?v=1" defer></script></head><body class="wallboard">
+<!doctype html><html lang="en"><head><title>{{.Data.Title}} · Wallboard · {{(site $).Title}}</title>{{template "head" .}}<link rel="stylesheet" href="/static/css/dashboards.css?v=6"><script src="/static/wallboard.js?v=3" defer></script><script src="/static/connect-host.js?v=1" defer></script></head><body class="wallboard">
 <main id="main-content" class="wallboard-main" data-wallboard data-interval="{{.Data.IntervalSeconds}}" data-refresh="{{.Data.RefreshMS}}" data-slideshow="{{.Data.Slideshow}}">
 <header class="wallboard-bar"><h1>{{.Data.Title}}</h1><span id="wallboard-status" class="sr-only" role="status"></span>{{if or .Data.Rotates .Data.RefreshMS}}<button class="btn" type="button" data-wallboard-pause data-wallboard-action="{{if .Data.Rotates}}rotation{{else}}refresh{{end}}" aria-pressed="false">Pause {{if .Data.Rotates}}rotation{{else}}refresh{{end}}</button>{{end}}<a class="btn" href="{{.Data.ExitURL}}">{{.Data.Exit}}</a></header>
 {{range $index, $slide := .Data.Slides}}<section class="wallboard-slide" data-wallboard-slide aria-labelledby="wallboard-slide-{{.Dashboard.ID}}"{{if $index}} hidden{{end}}><h2 id="wallboard-slide-{{.Dashboard.ID}}" class="{{if not $.Data.Slideshow}}sr-only{{else}}wallboard-slide-title{{end}}">{{.Dashboard.Name}}</h2>

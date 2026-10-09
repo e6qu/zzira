@@ -124,6 +124,11 @@ func (h *Handler) DashboardWallboardSlideshow(w http.ResponseWriter, r *http.Req
 	if show.RandomOrder {
 		shuffleSlides(data.Slides)
 	}
+	if len(data.Slides) == 1 {
+		// A viewer may see only one of the chosen dashboards. That pass must
+		// still refresh, after its rotating gadget groups have been shown.
+		data.RefreshMS = show.IntervalSeconds * 1000
+	}
 	data.Rotates = data.Rotates || len(data.Slides) > 1
 	h.writeWorkspacePage(w, r, "page_dashboard_wallboard", user, ws, data, "dashboards", "")
 }
