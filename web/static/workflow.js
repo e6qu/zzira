@@ -9,7 +9,22 @@
     const state = map.querySelector('.workflow-save-state');
     let drawFrame = 0;
     let saveInFlight = false;
-    let queuedSave = null;
+    const queuedSaves = new Map();
+    const failedStatuses = new Set();
+    const keyboardTimers = new Map();
+    const confirmed = new Map(Array.from(nodes, ([id, node]) => [id, {
+      x: parseFloat(node.style.left), y: parseFloat(node.style.top),
+    }]));
+    const mutationControls = Array.from(document.querySelectorAll('.workflow-publish button, .workflow-node form button, .workflow-inspector form button'))
+      .filter(button => !button.disabled);
+    const busy = () => saveInFlight || queuedSaves.size > 0 || keyboardTimers.size > 0;
+    const updateBusy = () => {
+      map.setAttribute('aria-busy', String(busy()));
+      mutationControls.forEach(button => { button.disabled = busy(); });
+    };
+    document.addEventListener('submit', event => {
+      if (busy() && event.target.closest('.workflow-publish, .workflow-node, .workflow-inspector')) event.preventDefault();
+    });
     let stateTimer = 0;
 
     const svgElement = (name, attributes = {}) => {
@@ -63,12 +78,12 @@
       });
     };
 
-    const showState = (message, error = false) => {
+    const showState = (message, error = false, temporary = true) => {
       clearTimeout(stateTimer);
       state.textContent = message;
       state.hidden = false;
       state.classList.toggle('is-error', error);
-      if (!error) stateTimer = window.setTimeout(() => { state.hidden = true; }, 2200);
+      if (!error && temporary) stateTimer = window.setTimeout(() => { state.hidden = true; }, 2200);
     };
 
     const revealDraftControls = () => {
@@ -82,28 +97,56 @@
       }
     };
 
+    const failureMessage = () => {
+      const names = Array.from(failedStatuses, id => nodes.get(id).querySelector('h3').textContent.trim());
+      return `Position was not saved. Unsaved statuses: ${names.join(', ')}. Check your connection or access, then move those statuses again.`;
+    };
+
     const persistQueuedPosition = async () => {
-      if (saveInFlight || !queuedSave) return;
+      if (saveInFlight || !queuedSaves.size) return;
       saveInFlight = true;
-      while (queuedSave) {
-        const save = queuedSave;
-        queuedSave = null;
-        showState('Saving position…');
+      updateBusy();
+      while (queuedSaves.size) {
+        const [id, save] = queuedSaves.entries().next().value;
+        queuedSaves.delete(id);
+        showState('Saving position…', false, false);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
         try {
-          const body = new URLSearchParams({ status: save.status, x: String(save.x), y: String(save.y) });
-          const response = await fetch(map.dataset.layoutUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body });
-          if (!response.ok) throw new Error(await response.text());
+          const body = new URLSearchParams({ status: id, x: String(save.x), y: String(save.y) });
+          const response = await fetch(map.dataset.layoutUrl, {
+            method: 'POST', credentials: 'same-origin', redirect: 'error', signal: controller.signal,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body,
+          });
+          if (response.status !== 204) throw new Error('Position not acknowledged');
+          confirmed.set(id, save);
+          failedStatuses.delete(id);
           showState('Position saved to draft');
           revealDraftControls();
-        } catch (error) {
-          showState(error.message || 'Position was not saved', true);
+        } catch (_) {
+          failedStatuses.add(id);
+          // A newer queued edit owns the visible position until it is saved.
+          if (!queuedSaves.has(id) && !keyboardTimers.has(nodes.get(id))) {
+            const previous = confirmed.get(id);
+            moveNode(nodes.get(id), previous.x, previous.y);
+          }
+          showState(failureMessage(), true);
+        } finally {
+          clearTimeout(timeout);
         }
       }
       saveInFlight = false;
+      updateBusy();
+      // Saving another status must not hide an earlier refusal.
+      if (failedStatuses.size) showState(failureMessage(), true);
     };
 
     const savePosition = (node) => {
-      queuedSave = { status: node.dataset.statusId, x: Math.round(parseFloat(node.style.left)), y: Math.round(parseFloat(node.style.top)) };
+      // Coalesce each status independently; another status must never replace it.
+      queuedSaves.set(node.dataset.statusId, {
+        x: Math.round(parseFloat(node.style.left)), y: Math.round(parseFloat(node.style.top)),
+      });
+      updateBusy();
       void persistQueuedPosition();
     };
 
@@ -119,10 +162,9 @@
       nodes.forEach((node) => {
         const handle = node.querySelector('header');
         let drag = null;
-        let keyboardTimer = 0;
 
         handle.addEventListener('pointerdown', (event) => {
-          if (event.button !== 0 || event.target.closest('button,a,input,select,textarea')) return;
+          if (event.button !== 0 || !event.isPrimary || busy() || map.querySelector('.is-moving') || event.target.closest('button,a,input,select,textarea')) return;
           drag = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, left: parseFloat(node.style.left), top: parseFloat(node.style.top) };
           handle.setPointerCapture(event.pointerId);
           node.classList.add('is-moving');
@@ -138,20 +180,28 @@
           const original = drag;
           drag = null;
           node.classList.remove('is-moving');
-          if (save) savePosition(node);
-          else moveNode(node, original.left, original.top);
+          if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+          if (!save) moveNode(node, original.left, original.top);
+          else if (parseFloat(node.style.left) !== original.left || parseFloat(node.style.top) !== original.top) savePosition(node);
         };
         handle.addEventListener('pointerup', (event) => finishDrag(event, true));
         handle.addEventListener('pointercancel', (event) => finishDrag(event, false));
+        handle.addEventListener('lostpointercapture', (event) => finishDrag(event, false));
 
         node.addEventListener('keydown', (event) => {
+          if (event.target !== node || drag) return;
           const directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
           const direction = directions[event.key];
           if (!direction) return;
           const step = event.shiftKey ? 4 : 16;
           moveNode(node, parseFloat(node.style.left) + direction[0] * step, parseFloat(node.style.top) + direction[1] * step);
-          clearTimeout(keyboardTimer);
-          keyboardTimer = window.setTimeout(() => savePosition(node), 250);
+          clearTimeout(keyboardTimers.get(node));
+          keyboardTimers.set(node, window.setTimeout(() => {
+            keyboardTimers.delete(node);
+            savePosition(node);
+          }, 250));
+          showState('Saving position…', false, false);
+          updateBusy();
           event.preventDefault();
         });
       });
