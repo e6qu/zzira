@@ -219,12 +219,17 @@ public key and its counter.
   expects to be asked for it. The page offers the key beside the code, and an
   account with a key but no authenticator app signs in with the key alone. A browser with no key of its own cannot answer
   for somebody else, because the signature is the key's.
+- **Interrupted requests.** The browser shows progress while waiting for the key
+  and the site. Network requests time out after 15 seconds; this does not shorten
+  the key prompt. Cancellation or an unconfirmed response restores the controls
+  and keeps the registration name so the person can retry.
 - **Removing a key** leaves the account as it was: with no key and no
   authenticator app, a password signs in again unless a policy requires the
   second step.
 - Code: `internal/webauthn`, `internal/web/passkeys.go`,
   `internal/store/webauthn.go`, `web/static/passkeys.js`. Browser test:
-  `e2e/passkeys.spec.ts`, which drives Chrome's own virtual authenticator.
+  `e2e/passkeys.spec.ts`, which drives Chrome's own virtual authenticator,
+  and `e2e/passkey_recovery.spec.ts` for interrupted requests.
 
 ## SAML single sign-on
 
