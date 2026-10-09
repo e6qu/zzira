@@ -19,6 +19,10 @@ jobs:
         language: [go, javascript-typescript]
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        if: matrix.language == 'go'
+        with:
+          go-version-file: go.mod
       - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
