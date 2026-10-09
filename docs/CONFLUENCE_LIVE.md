@@ -73,7 +73,11 @@ document. The request body is:
     can still publish after someone else has published.
 - **Timing.** The editor sends changes 250 ms after typing stops and syncs
   every second. During IME composition, nothing is sent until composition
-  ends.
+  ends. Each exchange has a 15-second deadline, including reading the response
+  body. A stalled exchange releases the editor to reconnect on its next poll
+  while typing stays on the device. Leaving or submitting the editor cancels
+  its pending exchange. Presence polls also wait for the previous exchange to
+  finish instead of accumulating requests.
 - **Editor view.** The rich editor redraws merged markup in place and keeps
   the caret next to the same text. Source mode keeps the selection. A status
   line shows whether live editing is on or reconnecting.
