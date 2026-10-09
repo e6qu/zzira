@@ -10,7 +10,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 |---|:-:|---|---|
 | User signs in and orients | ✅ | `identity-providers`, `session-isolation`, `directories`, `v0` | — |
 | Contributor finds work | ✅ | `v2`, `filters`, `directories`, `issue_preview_recovery` | — |
-| Contributor creates and triages work | ✅ | `create`, `v1`, `v3`, `triage`, `issue_mentions`, `custom_field_options` | — |
+| Contributor creates and triages work | ✅ | `create`, `v1`, `v3`, `issue_editor_loading`, `triage`, `issue_mentions`, `custom_field_options` | — |
 | Contributor changes many work items at once | ✅ | `navigator_bulk` (six built-in fields and the project's shared custom fields -- including cascading selects, people, groups, teams, projects and versions -- across a selection in one task, watch, unwatch), `v2` (delete, move, transition) | Work type and status are changed through bulk move and bulk transition, as Jira does ([BULK_ISSUES](BULK_ISSUES.md#gaps)) |
 | Contributor records how work was resolved | ✅ | `resolution` (transition screen, work item page, REST, a reader who may not move the work, accessibility) | — |
 | Contributor plans and runs a sprint | ✅ | `backlog`, `board_columns`, `board_swimlanes`, `v4`, `projects` | — |

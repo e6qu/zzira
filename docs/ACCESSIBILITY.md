@@ -19,6 +19,9 @@ ZZIRA's browser UI targets WCAG 2.2 Level AA across every product — [Jira](JIR
 - Focus starts inside the dialog, and `Tab` stays inside it.
 - `Escape` closes the dialog.
 - When the dialog closes, focus returns to where it was, even if the work item fragment refreshed meanwhile.
+- While an online issue editor loads, a named dialog shows progress and offers
+  Cancel and Close. Loading has a 15-second deadline, including reading the
+  response body. Failures focus a persistent error with Retry and Cancel.
 - Closing an editor while it loads cancels the request; a late response cannot reopen it.
 - Page shortcuts do not change work or navigation behind an open dialog.
 - In long create forms, the action buttons stay visible while the fields scroll.
@@ -74,6 +77,10 @@ ZZIRA's browser UI targets WCAG 2.2 Level AA across every product — [Jira](JIR
 `e2e/triage.spec.ts` covers the activity filter pressed state, sort order, and the keyboard watch shortcut.
 
 `e2e/ux_recovery.spec.ts` covers dialog focus from the dialog container, keyboard isolation, cancelling a loading editor, rejected edits and connection failures without losing drafts, blocked browser storage, and board cards aligned beneath their headings at desktop and 320 px widths.
+
+`e2e/issue_editor_loading.spec.ts` covers stalled loads, refused and unrelated
+responses, retry, loading cancellation and focus return, with error-state
+accessibility at 320 px.
 
 To run the accessibility tests against a running, seeded server:
 
