@@ -27,7 +27,7 @@
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js" defer></script>
 <script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js?v=41" defer></script>
+<script src="/static/app.js?v=42" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -488,7 +488,7 @@
 <tr data-navigator-row data-key="{{.Key}}" data-preview-url="/browse/{{.Key}}/preview">
   <td class="type-cell" data-column="type"><span class="issue-type-mini" role="img" aria-label="{{.IssueType.Name}}">✓</span></td>
   <td class="key-cell"><a href="/browse/{{.Key}}">{{.Key}}</a></td>
-  <td class="summary-cell"><a href="/browse/{{.Key}}" data-preview-link hx-get="/browse/{{.Key}}/preview" hx-target="#navigator-preview" hx-swap="innerHTML">{{.Summary}}</a></td>
+  <td class="summary-cell"><a href="/browse/{{.Key}}" data-preview-link>{{.Summary}}</a></td>
   <td data-column="status"><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></td>
   <td data-column="priority">{{if .Priority}}<span class="priority-value"><span aria-hidden="true">=</span>{{.Priority.Name}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
   <td data-column="assignee">{{if .Assignee}}<span class="person-value compact">{{template "avatar" .Assignee}}<span>{{.Assignee.DisplayName}}</span></span>{{else}}<span class="muted">Unassigned</span>{{end}}</td>
@@ -571,7 +571,7 @@
           {{if $canBulk}}<td><input type="checkbox" name="issue" value="{{.ID}}" data-bulk-issue aria-label="Select {{.Key}}"></td>{{end}}
           <td class="type-cell" data-column="type"><span class="issue-type-mini" role="img" aria-label="{{.IssueType.Name}}">✓</span></td>
           <td class="key-cell"><a href="/browse/{{.Key}}">{{.Key}}</a></td>
-          <td class="summary-cell"><a href="/browse/{{.Key}}" data-preview-link hx-get="/browse/{{.Key}}/preview" hx-target="#navigator-preview" hx-swap="innerHTML">{{.Summary}}</a></td>
+          <td class="summary-cell"><a href="/browse/{{.Key}}" data-preview-link>{{.Summary}}</a></td>
           <td data-column="status"><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></td>
           <td data-column="priority">{{if .Priority}}<span class="priority-value"><span aria-hidden="true">=</span>{{.Priority.Name}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
           <td data-column="assignee">{{if .Assignee}}<span class="person-value compact">{{template "avatar" .Assignee}}<span>{{.Assignee.DisplayName}}</span></span>{{else}}<span class="muted">Unassigned</span>{{end}}</td>

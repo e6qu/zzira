@@ -208,6 +208,12 @@ The issue navigator at `/issues/{projectKey}` has basic (`?mode=basic`) and
 advanced (`?mode=advanced`) modes and saves queries as
 [filters](FILTERS.md).
 
+Clicking a summary or moving through rows with the keyboard loads the selected
+work item in the preview. A newer selection cancels the previous load. A load
+that takes longer than 15 seconds or fails shows an error and lets you select
+the item again to retry. The previous preview remains during a temporary
+failure; an access denial clears it.
+
 ## Gaps
 
 See [PLAN.md](../PLAN.md).

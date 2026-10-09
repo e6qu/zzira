@@ -293,25 +293,57 @@
     const path = trigger.getAttribute('data-issue-preview');
     if (!selector || !path) return;
     const target = document.querySelector(selector);
-    if (!target) return;
-    if (issuePreviewRequest) issuePreviewRequest.abort();
-    issuePreviewRequest = new AbortController();
+    if (target) requestIssuePreview(path, target);
+  }
+
+  function requestIssuePreview(path, target) {
+    if (issuePreviewRequest) {
+      issuePreviewRequest.controller.abort();
+      issuePreviewRequest.target.setAttribute('aria-busy', 'false');
+    }
+    const request = { controller: new AbortController(), target };
+    issuePreviewRequest = request;
+    let timedOut = false;
+    const deadline = setTimeout(() => {
+      timedOut = true;
+      request.controller.abort();
+    }, 15000);
+    target.querySelector('[data-preview-error]')?.remove();
     target.setAttribute('aria-busy', 'true');
-    fetch(path, { headers: { 'HX-Request': 'true' }, signal: issuePreviewRequest.signal })
-      .then((response) => {
+    fetch(path, { headers: { 'HX-Request': 'true' }, signal: request.controller.signal, redirect: 'error' })
+      .then(async response => {
+        if ([401, 403, 404].includes(response.status)) {
+          if (issuePreviewRequest === request) target.replaceChildren();
+        }
         if (!response.ok) throw new Error('HTTP ' + response.status);
-        return response.text();
+        const html = await response.text();
+        const fragment = new DOMParser().parseFromString(html, 'text/html');
+        const card = fragment.querySelector('.issue-preview-card');
+        const key = decodeURIComponent(path.split('/')[2]);
+        if (!card || card.dataset.previewKey !== key) throw new Error('Invalid preview');
+        return card;
       })
-      .then((html) => {
-        target.innerHTML = html;
+      .then(card => {
+        // An earlier selection can finish reading its body after cancellation.
+        if (issuePreviewRequest !== request) return;
+        target.replaceChildren(card);
+      })
+      .catch(() => {
+        if (issuePreviewRequest !== request) return;
+        const error = document.createElement('p');
+        error.className = 'form-error';
+        error.dataset.previewError = '';
+        error.setAttribute('role', 'alert');
+        error.textContent = timedOut
+          ? 'The preview took too long to load. Select the work item again to retry.'
+          : 'Could not load this preview. Select the work item again to retry.';
+        target.prepend(error);
+      })
+      .finally(() => {
+        clearTimeout(deadline);
+        if (issuePreviewRequest !== request) return;
         target.setAttribute('aria-busy', 'false');
         issuePreviewRequest = null;
-      })
-      .catch((error) => {
-        if (error.name === 'AbortError') return;
-        target.setAttribute('aria-busy', 'false');
-        issuePreviewRequest = null;
-        announce('could not load issue preview', 4000);
       });
   }
 
@@ -359,14 +391,16 @@
       row.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       if (!loadPreview) return;
       const path = row.getAttribute('data-preview-url');
-      if (path && window.htmx && preview) {
-        preview.setAttribute('aria-busy', 'true');
-        window.htmx.ajax('GET', path, { target: '#navigator-preview', swap: 'innerHTML' });
-      }
+      if (path && preview) requestIssuePreview(path, preview);
     }
 
     selectRow(selectedIndex, false);
     rows.forEach((row, index) => {
+      row.querySelector('[data-preview-link]')?.addEventListener('click', event => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        selectRow(index, true);
+      });
       row.addEventListener('click', () => selectRow(index, false));
       row.addEventListener('focusin', () => selectRow(index, false));
     });
@@ -419,18 +453,6 @@
       });
     });
     applyColumns();
-
-    document.body.addEventListener('htmx:beforeRequest', (event) => {
-      if (preview && event.detail.elt && event.detail.elt.matches('[data-preview-link]')) preview.setAttribute('aria-busy', 'true');
-    });
-    document.body.addEventListener('htmx:afterRequest', (event) => {
-      if (!preview || !event.detail.elt || !event.detail.elt.matches('[data-preview-link]')) return;
-      preview.setAttribute('aria-busy', 'false');
-      if (!event.detail.successful) announce('could not load issue preview', 4000);
-    });
-    document.body.addEventListener('htmx:afterSwap', (event) => {
-      if (preview && event.detail.target === preview) preview.setAttribute('aria-busy', 'false');
-    });
   }
 
   let activityFilter = 'comment';

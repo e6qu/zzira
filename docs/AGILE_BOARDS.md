@@ -11,6 +11,10 @@ Boards show a project's work in columns. They also carry the board's backlog, sp
 | `/board/{id}/settings` | For board administrators. The board's columns (add, rename, delete, reorder the statuses between them, and a WIP limit each), its filter and its estimate, swimlanes (`none`, `assignee`, `epic`, `stories`, `project` or `query`), card fields (priority, assignee, labels), up to 20 quick filters, and the board's administrators (users and groups). |
 | `/projects/{key}/settings` | Create and delete the project's boards (`POST /projects/{key}/boards`). |
 
+Board and backlog previews use the same request handling as the
+[issue navigator](JQL.md): the latest selection wins, stalled loads time out,
+and a visible error lets you select the work item again to retry.
+
 ## Board REST API
 
 | Method and path | Behavior |
