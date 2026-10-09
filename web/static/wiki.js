@@ -25,6 +25,7 @@ const mentionPicker = (people) => {
   let adapter = null;
   let matches = [];
   let active = 0;
+  const composing = new WeakSet();
   const close = () => {
     list.hidden = true;
     if (field) field.removeAttribute('aria-activedescendant');
@@ -39,8 +40,14 @@ const mentionPicker = (people) => {
     if (!person) return;
     adapter.insert(person);
     close();
+    // Programmatic insertion must reach live editing and local draft recovery.
+    field.dispatchEvent(new Event('input', { bubbles: true }));
   };
   const update = (target, targetAdapter) => {
+    if (composing.has(target)) {
+      if (field === target) close();
+      return;
+    }
     const query = targetAdapter.query();
     if (query === null) {
       if (field === target) close();
@@ -72,9 +79,21 @@ const mentionPicker = (people) => {
   const attach = (target, targetAdapter) => {
     target.setAttribute('aria-autocomplete', 'list');
     target.setAttribute('aria-controls', list.id);
-    target.addEventListener('input', () => update(target, targetAdapter));
-    target.addEventListener('blur', () => { if (field === target) close(); });
+    target.addEventListener('input', event => {
+      if (event.isComposing) { if (field === target) close(); }
+      else update(target, targetAdapter);
+    });
+    target.addEventListener('compositionstart', () => {
+      composing.add(target);
+      if (field === target) close();
+    });
+    target.addEventListener('compositionend', () => {
+      composing.delete(target);
+      update(target, targetAdapter);
+    });
+    target.addEventListener('blur', () => { composing.delete(target); if (field === target) close(); });
     target.addEventListener('keydown', (event) => {
+      if (composing.has(target) || event.isComposing) { event.stopPropagation(); return; }
       if (list.hidden || field !== target) return;
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();

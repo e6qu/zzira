@@ -50,6 +50,8 @@ ZZIRA's browser UI targets WCAG 2.2 Level AA across every product — [Jira](JIR
 - Activity filters expose their pressed state.
 - Newest/oldest sorting is a real button.
 - The `w` (watch) shortcut does nothing while focus is in an editor.
+- Mention suggestions wait for input-method composition to finish before
+  taking confirmation or navigation keys.
 
 **Design system** (`web/static/css`)
 - Visible focus indicators.

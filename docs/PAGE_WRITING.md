@@ -47,6 +47,10 @@ the site keeps the same format however a page was written.
   the editor does not draw, or one of those macros configured with a
   parameter the editor does not hold -- so nothing is dropped by editing it
   (`RichEditable` in `internal/wikimarkup/richedit.go`).
+- **Mentions and composed input.** Suggestions wait until input-method
+  composition finishes, leaving its confirmation keys to the input method.
+  On published pages, choosing a person in either editor immediately updates
+  local draft recovery, including while live editing is disconnected.
 - **A link address** is held to `http`, `https` or `mailto`, because a link in
   a page is a link every reader can follow.
 - Code: `web/static/wiki.js`, `internal/wikimarkup/storage.go` (the tags a
