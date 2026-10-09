@@ -8,6 +8,7 @@
   const say = message => { if (status) status.textContent = message; };
   const width = 1400;
   const height = 800;
+  let saving = false;
 
   // canvasPoint reads where a pointer is in the canvas's own coordinates,
   // whatever size the viewport draws it at.
@@ -48,26 +49,57 @@
       width: group.dataset.width,
       height: group.dataset.height,
     });
-    const response = await fetch(`${canvas.dataset.save}/${encodeURIComponent(group.dataset.whiteboardObject)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'zzira' },
-      body: body.toString(),
-    });
-    if (!response.ok) {
-      say('That move could not be saved.');
+    const path = `${canvas.dataset.save}/${encodeURIComponent(group.dataset.whiteboardObject)}`;
+    const form = Array.from(document.querySelectorAll('.wiki-whiteboard-object-list form'))
+      .find(form => new URL(form.action).pathname === path);
+    const controls = form ? Array.from(form.closest('article').querySelectorAll('input, select, textarea, button'))
+      .filter(control => !control.disabled) : [];
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    // Editing or deleting this object must wait for its pending move.
+    controls.forEach(control => { control.disabled = true; });
+    saving = true;
+    canvas.setAttribute('aria-busy', 'true');
+    say(`Saving ${group.dataset.title || 'object'}…`);
+    try {
+      const response = await fetch(path, {
+        method: 'POST',
+        redirect: 'error',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'zzira' },
+        body: body.toString(),
+      });
+      // A successful mutation acknowledges the save without fetching a page.
+      // A sign-in page must never be mistaken for a saved move.
+      if (response.status !== 204) throw new Error('Move not acknowledged');
+      if (form) {
+        form.elements.namedItem('x').value = group.dataset.x;
+        form.elements.namedItem('y').value = group.dataset.y;
+      }
+      say(`${group.dataset.title || 'Object'} moved to ${group.dataset.x}, ${group.dataset.y}.`);
+      return true;
+    } catch (_) {
+      say('That move could not be saved. Check your connection or access, then try again.');
       return false;
+    } finally {
+      clearTimeout(timeout);
+      controls.forEach(control => { control.disabled = false; });
+      saving = false;
+      canvas.removeAttribute('aria-busy');
     }
-    say(`${group.dataset.title} moved to ${group.dataset.x}, ${group.dataset.y}.`);
-    return true;
   };
 
   let dragging = null;
   canvas.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || !event.isPrimary || dragging) return;
     const group = event.target.closest('[data-whiteboard-object]');
     if (!group) return;
+    // A second drag could otherwise race the save and its rollback.
+    if (saving) return;
     const point = canvasPoint(event);
     dragging = {
       group,
+      pointerId: event.pointerId,
       offsetX: point.x - Number(group.dataset.x),
       offsetY: point.y - Number(group.dataset.y),
       from: { x: Number(group.dataset.x), y: Number(group.dataset.y) },
@@ -78,24 +110,30 @@
   });
 
   canvas.addEventListener('pointermove', event => {
-    if (!dragging) return;
+    if (!dragging || event.pointerId !== dragging.pointerId) return;
     const point = canvasPoint(event);
     const objectWidth = Number(dragging.group.dataset.width);
     const objectHeight = Number(dragging.group.dataset.height);
-    const x = Math.round(Math.min(Math.max(point.x - dragging.offsetX, 0), width - objectWidth));
-    const y = Math.round(Math.min(Math.max(point.y - dragging.offsetY, 0), height - objectHeight));
+    const x = Math.round(Math.min(Math.max(point.x - dragging.offsetX, 0), Math.max(0, width - objectWidth)));
+    const y = Math.round(Math.min(Math.max(point.y - dragging.offsetY, 0), Math.max(0, height - objectHeight)));
     place(dragging.group, x, y);
   });
 
-  const release = async event => {
-    if (!dragging) return;
+  const release = async (event, canceled = false) => {
+    if (!dragging || event.pointerId !== dragging.pointerId) return;
     const { group, from } = dragging;
     dragging = null;
     group.classList.remove('wiki-canvas-object-dragging');
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    if (canceled) {
+      place(group, from.x, from.y);
+      say('Move canceled.');
+      return;
+    }
     if (group.dataset.x === String(from.x) && group.dataset.y === String(from.y)) return;
     if (!(await save(group))) place(group, from.x, from.y);
   };
   canvas.addEventListener('pointerup', release);
-  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('pointercancel', event => release(event, true));
+  canvas.addEventListener('lostpointercapture', event => release(event, true));
 })();

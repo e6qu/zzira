@@ -76,8 +76,14 @@ The canvas is edited only in the browser, at
 - **Moving an object.** An object is dragged on the canvas and the move is
   saved as it is let go, through the same route the form below posts to; a
   connector drawn to it follows while it moves, and a move that cannot be
-  saved puts the object back where it was. Everything the drag does is also
-  on the form, which is what a keyboard uses.
+  saved puts the object and connectors back where they were, with a visible
+  retry message. Canceled drags do not save. While a move saves, other drags
+  and that object's edit and delete controls wait; a stalled save times out
+  after 15 seconds.
+  The form's coordinates update after a successful move, so editing its
+  details preserves the new position. Everything the drag does is also on
+  the form, which is what a keyboard uses. Drag requests receive a `204`
+  acknowledgement; ordinary form submissions still redirect to the board.
 - **Permissions.** Changing the canvas needs update permission on a current
   whiteboard. An archived whiteboard is read-only until restored.
 - **Storage.** Objects and connectors are stored in `wiki_whiteboard_objects`
