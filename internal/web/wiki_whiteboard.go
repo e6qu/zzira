@@ -138,5 +138,9 @@ func (h *Handler) finishWikiWhiteboardMutation(w http.ResponseWriter, r *http.Re
 		http.Error(w, message, status)
 		return
 	}
+	if r.Header.Get("X-Requested-With") == "zzira" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	redirectLocal(w, r, "/wiki/spaces/"+whiteboard.SpaceID+"/whiteboards/"+whiteboard.ID)
 }
