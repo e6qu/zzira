@@ -1,5 +1,8 @@
 # Build stage: compile the server (static) and the browser worker (wasm).
-FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/golang:1.26.9-alpine AS build
+# The Go image comes from the Amazon ECR Public copy of Docker's official
+# images, pinned to the same index digest Docker Hub serves: Docker Hub limits
+# anonymous pulls per address, and the shared CI runners exhaust it.
+FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/golang:1.26.9-alpine@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS build
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev

@@ -12,10 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - name: Install Semgrep
-        run: python -m pip install semgrep==1.180.0
+      # Semgrep comes from PyPI at the version the requirements file pins
+      # rather than from its Docker Hub image, whose anonymous pull limit the
+      # shared runners exhaust.
+      - name: install semgrep
+        run: |
+          python3 -m venv "$RUNNER_TEMP/semgrep"
+          "$RUNNER_TEMP/semgrep/bin/pip" install --quiet -r .github/semgrep-requirements.txt
       - name: semgrep scan (security rulesets)
-        run: semgrep scan --config p/golang --config p/secrets --config p/xss --error --severity ERROR
+        run: '"$RUNNER_TEMP/semgrep/bin/semgrep" scan --config p/golang --config p/secrets --config p/xss --error --severity ERROR'
