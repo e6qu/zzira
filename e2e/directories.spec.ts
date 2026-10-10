@@ -50,7 +50,7 @@ test('project switcher keeps the shell and generic pages in the current project'
 
   const switcher = page.locator('.project-switcher');
   const summary = switcher.locator('summary');
-  await expect(summary).toHaveAttribute('aria-label', 'Switch project. Current project: ZZIRA Demo');
+  await expect(summary).toHaveAccessibleName('ZD ZZIRA Demo ZZ · Switch project');
   await expect(page.locator('.global-search')).toHaveAttribute('action', '/issues/ZZ');
   await expect(page.locator('#global-create-issue')).toHaveAttribute('hx-get', '/issues/new?project=ZZ');
   await expect(page.locator('.nav-project-overview')).toHaveAttribute('aria-current', 'page');
