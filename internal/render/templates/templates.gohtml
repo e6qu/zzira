@@ -25,7 +25,7 @@
 <link rel="stylesheet" href="/static/css/workspace.css?v=59">
 <link rel="preload" href="/static/zzira-worker.wasm?v=10" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
-<script src="/static/htmx/htmx.min.js" defer></script>
+<script src="/static/htmx/htmx.min.js?v=2.0.11" defer></script>
 <script src="/static/wasm/wasm_exec.js?go=1.27.2" defer></script>
 <script src="/static/app.js?v=46" defer></script>
 {{end}}
@@ -656,7 +656,7 @@
 <!doctype html>
 <html lang="en">
 <head><title>{{.Data.Board.Name}} · {{(site $).Title}}</title>{{template "head" .}}
-<script src="/static/sortable.min.js" defer></script>
+<script src="/static/sortable.min.js?v=1.15.7" defer></script>
 </head>
 <body class="page-board" data-board="{{.Data.Board.ID}}">
   <a class="skip-link" href="#main-content">Skip to content</a>

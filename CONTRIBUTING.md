@@ -58,7 +58,7 @@ python3 scripts/dependency-age.py --base origin/main
 ```
 
 The gate checks changed Go modules and toolchains, npm lockfile entries (including
-transitive packages), pinned Python requirements, Actions releases, container
+transitive packages) and vendored HTMX/Sortable/SQLite, pinned Python requirements, Actions releases, container
 images and CI tools against upstream metadata. Keep Actions pinned to full commit
 SHAs with release-version comments, images pinned by digest, and package manifests
 at exact versions. A failed age check states when the release becomes eligible;

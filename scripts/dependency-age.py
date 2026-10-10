@@ -3,6 +3,7 @@
 import argparse
 import datetime as dt
 import functools
+import email.utils
 import json
 import os
 from pathlib import Path
@@ -54,6 +55,27 @@ def inventory(read, paths):
         for path, package in json.loads(lock).get('packages', {}).items():
             if 'node_modules/' in path:
                 result.add(('npm', path.rsplit('node_modules/', 1)[1], package['version']))
+    if 'web/static/htmx/htmx.min.js' in paths:
+        htmx = read('web/static/htmx/htmx.min.js')
+        if htmx:
+            match = re.search(r'version:"(\d+\.\d+\.\d+)"', htmx)
+            if not match:
+                raise ValueError('vendored HTMX needs its upstream version identifier')
+            result.add(('npm', 'htmx.org', match[1]))
+    if 'web/static/sortable.min.js' in paths:
+        sortable = read('web/static/sortable.min.js')
+        if sortable:
+            match = re.search(r'Sortable (\d+\.\d+\.\d+)', sortable)
+            if not match:
+                raise ValueError('vendored Sortable needs its upstream version identifier')
+            result.add(('npm', 'sortablejs', match[1]))
+    if 'web/static/sqlite/sqlite3.js' in paths:
+        sqlite = read('web/static/sqlite/sqlite3.js')
+        if sqlite:
+            match = re.search(r'"libVersion": "(\d+\.\d+\.\d+)"', sqlite)
+            if not match:
+                raise ValueError('vendored SQLite needs its upstream version identifier')
+            result.add(('sqlite', '@sqlite.org/sqlite-wasm', match[1]))
     for path in paths:
         text = read(path)
         if path.startswith('.github/') and path.endswith('-requirements.txt'):
@@ -80,6 +102,8 @@ def inventory(read, paths):
             if 'trivy-action@' in text:
                 for version in re.findall(r'version: (v0\.[\d.]+)', text):
                     result.add(('release', 'aquasecurity/trivy', version))
+        if path not in ('Dockerfile', 'docker-compose.yml') and not path.startswith('.github/workflows/'):
+            continue
         for image in re.findall(r'(?:image[:=]\s*|FROM\s+(?:--platform=\S+\s+)?)([^\s]+)', text):
             if image == 'scratch' or '${' in image:
                 continue
@@ -97,6 +121,22 @@ def publication(dependency):
     if kind == 'go':
         escaped = ''.join('!' + c.lower() if c.isupper() else c for c in name)
         return timestamp(fetch(f'https://proxy.golang.org/{escaped}/@v/{quoted}.info')['Time'])
+    if kind == 'sqlite':
+        data = fetch('https://registry.npmjs.org/' + urllib.parse.quote(name, safe=''))
+        builds = [key for key in data['versions'] if key.startswith(version + '-build')]
+        if not builds:
+            raise ValueError('SQLite release has no upstream WASM package metadata')
+        dates = [timestamp(data['time'][build]) for build in builds]
+        major, minor, patch = map(int, version.split('.'))
+        number = major * 1000000 + minor * 10000 + patch * 100
+        year = min(dates).year
+        url = f'https://sqlite.org/{year}/sqlite-wasm-{number}.zip'
+        with urllib.request.urlopen(urllib.request.Request(url, method='HEAD'), timeout=20) as response:
+            modified = response.headers['Last-Modified']
+            if not modified:
+                raise ValueError('SQLite archive publication time unavailable')
+            dates.append(email.utils.parsedate_to_datetime(modified))
+        return max(dates)
     if kind == 'npm':
         return timestamp(fetch('https://registry.npmjs.org/' + urllib.parse.quote(name, safe=''))['time'][version])
     if kind == 'pip':
@@ -134,7 +174,7 @@ def main():
     parser.add_argument('--base', required=True, help='Pull request base SHA')
     args = parser.parse_args()
     subprocess.run(['git', 'cat-file', '-e', args.base + '^{commit}'], check=True)
-    paths = ['go.mod', 'e2e/package-lock.json', 'Dockerfile', 'docker-compose.yml']
+    paths = ['go.mod', 'e2e/package-lock.json', 'web/static/htmx/htmx.min.js', 'web/static/sortable.min.js', 'web/static/sqlite/sqlite3.js', 'Dockerfile', 'docker-compose.yml']
     paths += [str(path) for path in Path('.github').rglob('*') if path.suffix in ('.yml', '.txt')]
 
     @functools.lru_cache(maxsize=None)
@@ -145,7 +185,7 @@ def main():
     # Older branches used floating action/image tags. They are only a baseline;
     # the current manifests must be pinned before any new dependencies execute.
     def old_inventory():
-        old_paths = [path for path in paths if path in ('go.mod', 'e2e/package-lock.json') or path.endswith('-requirements.txt')]
+        old_paths = [path for path in paths if path in ('go.mod', 'e2e/package-lock.json', 'web/static/htmx/htmx.min.js', 'web/static/sortable.min.js', 'web/static/sqlite/sqlite3.js') or path.endswith('-requirements.txt')]
         return inventory(previous, old_paths)
 
     now = dt.datetime.now(UTC)
@@ -155,7 +195,7 @@ def main():
         # Keep immutable actions/images from the base out of the network check.
         for dependency in current:
             kind, name, version = dependency
-            if kind not in ('go', 'npm', 'pip'):
+            if kind not in ('go', 'npm', 'pip', 'sqlite'):
                 if kind == 'docker' and any(version in previous(path) for path in paths):
                     before.add(dependency)
                 elif kind == 'action' and any('@' + version.split('@')[1] + ' # ' + version.split('@')[0] in previous(path) for path in paths):

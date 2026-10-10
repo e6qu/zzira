@@ -37,6 +37,17 @@ class DependencyAgeTests(unittest.TestCase):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 policy.inventory(lambda file: text if file == path else '', [path])
 
+    def test_vendored_libraries_are_subject_to_the_age_gate(self):
+        files = {
+            'web/static/htmx/htmx.min.js': 'version:"2.0.11"',
+            'web/static/sortable.min.js': 'Sortable 1.15.7',
+            'web/static/sqlite/sqlite3.js': '"libVersion": "3.53.4"',
+        }
+        dependencies = policy.inventory(lambda path: files.get(path, ''), list(files))
+        self.assertIn(('npm', 'htmx.org', '2.0.11'), dependencies)
+        self.assertIn(('sqlite', '@sqlite.org/sqlite-wasm', '3.53.4'), dependencies)
+        self.assertIn(('npm', 'sortablejs', '1.15.7'), dependencies)
+
     def test_pip_versions_must_be_exact(self):
         path = '.github/test-requirements.txt'
         with self.assertRaises(ValueError):
