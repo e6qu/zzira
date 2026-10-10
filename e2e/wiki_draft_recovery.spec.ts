@@ -63,3 +63,45 @@ test('early unsynced typing survives reload and stays with its writer', async ({
   await page.getByRole('button', { name: 'Save page', exact: true }).click();
   await expect(page.getByRole('article', { name: 'Page content' })).toContainText(demoDraft);
 });
+
+for (const damaged of ['invalid JSON', 'invalid draft fields']) {
+  test(`an entry with ${damaged} does not hide a valid local draft`, async ({ page, request }) => {
+    const headers = { Authorization: apiAuthHeader() };
+    const stamp = Date.now().toString(36).toUpperCase();
+    const createdSpace = await request.post('/wiki/api/v2/spaces', { headers, data: {
+      key: `DC${stamp}`, name: `Damaged draft ${stamp}`, createPrivateSpace: false,
+    } });
+    expect(createdSpace.status()).toBe(201);
+    const space = await createdSpace.json();
+    const createdPage = await request.post('/wiki/api/v2/pages', { headers, data: {
+      spaceId: space.id, title: `Draft with ${damaged}`, status: 'current',
+      body: { representation: 'storage', value: '<p>Plan.</p>' },
+    } });
+    expect(createdPage.status()).toBe(200);
+    const document = await createdPage.json();
+    await login(page, 'demo@zzira.dev', 'demo1234');
+    const liveURL = `**/wiki/spaces/${space.id}/pages/${document.id}/live`;
+    await page.route(liveURL, route => route.abort());
+    await page.goto(`/wiki/spaces/${space.id}/pages/${document.id}/edit`);
+    const editor = page.getByRole('textbox', { name: 'Page content' });
+    await expect(editor).toHaveText('Plan.');
+    const status = page.locator('[data-wiki-live-sync]');
+    const account = await status.getAttribute('data-live-account');
+    expect(account).toBeTruthy();
+    const prefix = `zzira-live:v2:${encodeURIComponent(account!)}:/wiki/spaces/${space.id}/pages/${document.id}/live#`;
+    await page.evaluate(({ prefix, damaged }) => {
+      const entry = { session: '', revision: -1, synced: '<p>Plan.</p>',
+        text: '<p>Plan. Recovered note.</p>', at: Date.now() - 20000, closed: true };
+      localStorage.setItem(prefix + 'valid', JSON.stringify(entry));
+      localStorage.setItem(prefix + 'damaged', damaged === 'invalid JSON' ? '{broken' :
+        JSON.stringify({ ...entry, text: null, at: Date.now() }));
+    }, { prefix, damaged });
+    await page.reload();
+    await expect(editor).toHaveText('Plan. Recovered note.');
+    await page.unroute(liveURL);
+    await expect(status).toContainText('Live editing is on');
+    await expect(editor).toHaveText('Plan. Recovered note.');
+    await page.getByRole('button', { name: 'Save page', exact: true }).click();
+    await expect(page.getByRole('article', { name: 'Page content' })).toHaveText('Plan. Recovered note.');
+  });
+}
