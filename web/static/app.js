@@ -598,7 +598,7 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=18&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=19&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;

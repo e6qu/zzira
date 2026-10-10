@@ -66,6 +66,9 @@ rerun CI after that time. Semgrep's Python dependency resolver also excludes
 artifacts uploaded within the last 24 hours. Node publishes dates without times,
 so the gate conservatively counts from the end of the publication day.
 
+When changing Go or the browser renderer, update the worker, WASM, Go shim and
+service-worker cache versions together so existing browsers fetch the new build.
+
 For PostgreSQL, update patches within the deployed major. Changing major versions
 requires a separate data migration; replacing the Compose image alone does not
 upgrade an existing `pgdata` volume.
