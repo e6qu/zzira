@@ -92,6 +92,8 @@ document. The request body is:
   - **Reopening.** An editor opened later, even offline from the page cache,
     starts from the saved text and merges it when it reconnects. Saved text
     that the page already contains is discarded.
+    Damaged JSON or incomplete draft entries are skipped individually, so a
+    newer damaged entry cannot hide an older valid draft.
   - **Another editor's entry.** An editor takes over another editor's entry
     only if that editor closed or has not synced for 10 seconds.
 - **Carets.** Each sync sends the editor's `cursor`.
