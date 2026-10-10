@@ -23,11 +23,11 @@
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
 <link rel="stylesheet" href="/static/css/workspace.css?v=59">
-<link rel="preload" href="/static/zzira-worker.wasm?v=10" as="fetch" crossorigin>
+<link rel="preload" href="/static/zzira-worker.wasm?v=11" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js?v=2.0.11" defer></script>
 <script src="/static/wasm/wasm_exec.js?go=1.27.2" defer></script>
-<script src="/static/app.js?v=46" defer></script>
+<script src="/static/app.js?v=47" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -50,7 +50,7 @@
       {{if .RecentProjects}}<nav aria-label="Recent projects"><h2 class="app-switcher-heading">Recent projects</h2>{{range .RecentProjects}}<a href="/projects/{{.Key}}">{{.Name}}</a>{{end}}</nav>{{end}}
     </div>
   </details>{{end}}{{end}}
-  <a class="logo" href="/" aria-label="{{(site $).Title}} home">{{with (site $).LogoURL}}<img class="logo-image" src="{{.}}" alt="" width="30" height="30">{{else}}<span class="logo-mark" aria-hidden="true">Z</span>{{end}}{{if (site $).ShowTitle}}<span{{with (site $).NavigationHighlight}} style="color:{{.}}"{{end}}>{{(site $).Title}}</span>{{end}}</a>
+  <a class="logo" href="/" aria-label="{{if not (site $).LogoURL}}Z {{end}}{{(site $).Title}} home">{{with (site $).LogoURL}}<img class="logo-image" src="{{.}}" alt="" width="30" height="30">{{else}}<span class="logo-mark" aria-hidden="true">Z</span>{{end}} {{if (site $).ShowTitle}}<span{{with (site $).NavigationHighlight}} style="color:{{.}}"{{end}}>{{(site $).Title}}</span>{{end}}</a>
   <form class="global-search" method="get" action="{{with .Navigation}}{{with .Current}}{{.WorkURL}}{{else}}/projects{{end}}{{else}}/projects{{end}}" role="search">
     <label class="sr-only" for="global-jql-query">Search issues with JQL</label>
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
@@ -65,7 +65,7 @@
           hx-swap="innerHTML" onclick="window.zzira.openModal(this)"><span aria-hidden="true">+</span> Create</button>
   {{if .User}}
   <details class="user-menu">
-    <summary aria-label="Account menu for {{.User.DisplayName}}" data-shauth-user="{{.User.Username}}">{{template "avatar" .User}}</summary>
+    <summary aria-label="{{initials .User.DisplayName}} · Account menu for {{.User.DisplayName}}" data-shauth-user="{{.User.Username}}">{{template "avatar" .User}}</summary>
     <div class="user-popover">
       <div class="user-popover-head">{{template "avatar" .User}}<span><strong>{{.User.DisplayName}}</strong><small>{{.User.Email}}</small></span></div>
       <nav aria-label="Account"><a href="/profile">Profile</a><a href="/people">People and teams</a></nav>
@@ -85,8 +85,8 @@
   {{with .Navigation}}{{with .Projects}}
   {{$current := $.Navigation.Current}}
   <details class="project-switcher">
-    <summary aria-label="Switch project. Current project: {{with $current}}{{.Project.Name}}{{else}}none{{end}}">
-      {{with $current}}<span class="workspace-avatar" aria-hidden="true">{{initials .Project.Name}}</span><span class="workspace-copy"><strong>{{.Project.Name}}</strong><small>{{.Project.Key}} · Switch project</small></span>{{end}}
+    <summary aria-label="{{with $current}}{{initials .Project.Name}} {{.Project.Name}} {{.Project.Key}} · Switch project{{else}}Switch project{{end}}">
+      {{with $current}}<span class="workspace-avatar" aria-hidden="true">{{initials .Project.Name}}</span> <span class="workspace-copy"><strong>{{.Project.Name}}</strong> <small>{{.Project.Key}} · Switch project</small></span>{{end}}
       <svg class="project-switcher-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
     </summary>
     <div class="project-switcher-panel">
@@ -308,7 +308,7 @@
           <button type="button" data-activity-filter="worklog" aria-pressed="false">Work log <span>{{len .Worklogs}}</span></button>
           <button type="button" data-activity-filter="history" aria-pressed="false">History <span>{{len .History}}</span></button>
           {{range .AppActivityTabs}}<button type="button" class="activity-app-tab" data-activity-filter="app-{{.ID}}" aria-pressed="false">{{.Title}}</button>{{end}}
-        </div><button type="button" class="activity-sort" data-activity-sort aria-label="Sort activity oldest first" aria-pressed="false">Newest first ↓</button></div>
+        </div><button type="button" class="activity-sort" data-activity-sort aria-label="Newest first. Sort activity oldest first" aria-pressed="false">Newest first ↓</button></div>
       </div>
 
       <section class="issue-section issue-activity" aria-labelledby="activity-title">
@@ -1214,7 +1214,7 @@
 <head><title>Log in · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="login-body">
   <main class="login-shell">
-    <section class="login-story" aria-label="About ZZIRA"><a class="logo login-logo" href="/" aria-label="ZZIRA home"><span class="logo-mark" aria-hidden="true">Z</span><span>ZZIRA</span></a><div><span class="eyebrow">Local-first issue tracking</span><p class="login-display">Ship work,<br><em>not refreshes.</em></p><p>Your team’s work stays fast, available, and in sync—even when the network isn’t.</p></div><div class="login-proof"><span class="sync-dot" aria-hidden="true"></span><span><strong>Built for flow</strong><small>Jira-compatible API · Local replica</small></span></div></section>
+    <section class="login-story" aria-label="About ZZIRA"><a class="logo login-logo" href="/" aria-label="Z ZZIRA home"><span class="logo-mark" aria-hidden="true">Z</span> <span>ZZIRA</span></a><div><span class="eyebrow">Local-first issue tracking</span><p class="login-display">Ship work,<br><em>not refreshes.</em></p><p>Your team’s work stays fast, available, and in sync—even when the network isn’t.</p></div><div class="login-proof"><span class="sync-dot" aria-hidden="true"></span><span><strong>Built for flow</strong><small>Jira-compatible API · Local replica</small></span></div></section>
     <section class="login-card">
     <span class="eyebrow">Welcome back</span><h1>Log in to your workspace</h1><p class="login-intro">Continue to ZZIRA Software.</p>
     {{if .Providers}}

@@ -1394,6 +1394,20 @@ func (h *Handler) WikiPageRedirect(w http.ResponseWriter, r *http.Request) {
 	redirectLocal(w, r, wikiPageURL(page))
 }
 
+// An automation rule can archive a page between loading it and reading its
+// current-only metadata. Reload the archived view instead of returning a 500.
+func (h *Handler) redirectArchivedWikiPage(w http.ResponseWriter, r *http.Request, ws, actor, id string, cause error) bool {
+	if !errors.Is(cause, pgx.ErrNoRows) {
+		return false
+	}
+	page, err := h.Store.WikiPage(r.Context(), ws, actor, id)
+	if err != nil || page.Status != "archived" {
+		return false
+	}
+	redirectLocal(w, r, wikiPageURL(page))
+	return true
+}
+
 // WikiBlogPostRedirect resolves a blog post id, the destination of blog post
 // notifications, to the post in its space.
 func (h *Handler) WikiBlogPostRedirect(w http.ResponseWriter, r *http.Request) {
@@ -1650,6 +1664,9 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			}
 			pageLikes, likeErr := h.Store.WikiPageLikes(r.Context(), ws, user.ID, page.ID)
 			if likeErr != nil {
+				if h.redirectArchivedWikiPage(w, r, ws, user.ID, page.ID, likeErr) {
+					return
+				}
 				http.Error(w, "Could not load page likes.", 500)
 				return
 			}
@@ -1680,6 +1697,9 @@ func (h *Handler) wikiPage(w http.ResponseWriter, r *http.Request, edit bool) {
 			}
 			data.WatchingPage, err = h.Store.WikiWatchStatus(r.Context(), ws, user.ID, user.ID, "content", page.ID)
 			if err != nil {
+				if h.redirectArchivedWikiPage(w, r, ws, user.ID, page.ID, err) {
+					return
+				}
 				http.Error(w, "Could not load page watch status.", 500)
 				return
 			}

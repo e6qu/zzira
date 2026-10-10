@@ -99,7 +99,7 @@
           <button type="button" data-activity-filter="worklog" aria-pressed="false">Work log <span>1</span></button>
           <button type="button" data-activity-filter="history" aria-pressed="false">History <span>0</span></button>
           <button type="button" class="activity-app-tab" data-activity-filter="app-712" aria-pressed="false">Deployments</button>
-        </div><button type="button" class="activity-sort" data-activity-sort aria-label="Sort activity oldest first" aria-pressed="false">Newest first ↓</button></div>
+        </div><button type="button" class="activity-sort" data-activity-sort aria-label="Newest first. Sort activity oldest first" aria-pressed="false">Newest first ↓</button></div>
       </div>
 
       <section class="issue-section issue-activity" aria-labelledby="activity-title">

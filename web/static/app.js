@@ -493,7 +493,7 @@
     if (sortButton) {
       sortButton.hidden = appSelected;
       sortButton.setAttribute('aria-pressed', String(activityOldestFirst));
-      sortButton.setAttribute('aria-label', activityOldestFirst ? 'Sort activity newest first' : 'Sort activity oldest first');
+      sortButton.setAttribute('aria-label', activityOldestFirst ? 'Oldest first. Sort activity newest first' : 'Newest first. Sort activity oldest first');
       sortButton.textContent = activityOldestFirst ? 'Oldest first ↑' : 'Newest first ↓';
     }
   }
@@ -598,7 +598,7 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=19&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=20&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
