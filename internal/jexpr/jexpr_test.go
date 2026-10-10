@@ -37,7 +37,7 @@ func TestEvaluatesTheLanguage(t *testing.T) {
 		`'Jira' + ' ' + 5`:          `"Jira 5"`,
 		"`Sum: ${1 + 1}!`":          `"Sum: 2!"`,
 		`[1, 2, 3].map(x => x * 2)`: `[2,4,6]`,
-		`[1, 2, 3, 4].filter(x => x % 2 == 0).length`:         `2`,
+		`[1, 2, 3, 4].filter(x => x % 2 == 0).length`: `2`,
 		`[3, 1, 2].sort()`:                                    `[1,2,3]`,
 		`[3, 1, 2].sort((a, b) => b - a)`:                     `[3,2,1]`,
 		`[1, 2, 3].reduce((sum, x) => sum + x, 10)`:           `16`,
