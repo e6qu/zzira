@@ -47,6 +47,7 @@ ZZIRA's browser UI targets WCAG 2.2 Level AA across every product — [Jira](JIR
 - Changes to board filter results are announced in a polite status region.
 
 **Work item page**
+- Editing panels keep their open or closed state across saves and live refreshes. A focused panel summary keeps keyboard focus after a refresh.
 - Activity filters expose their pressed state.
 - Newest/oldest sorting is a real button.
 - The `w` (watch) shortcut does nothing while focus is in an editor.

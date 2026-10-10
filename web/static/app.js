@@ -493,7 +493,7 @@
     if (sortButton) {
       sortButton.hidden = appSelected;
       sortButton.setAttribute('aria-pressed', String(activityOldestFirst));
-      sortButton.setAttribute('aria-label', activityOldestFirst ? 'Sort activity newest first' : 'Sort activity oldest first');
+      sortButton.setAttribute('aria-label', activityOldestFirst ? 'Oldest first. Sort activity newest first' : 'Newest first. Sort activity oldest first');
       sortButton.textContent = activityOldestFirst ? 'Oldest first ↑' : 'Newest first ↓';
     }
   }
@@ -598,7 +598,7 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=18&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=20&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
@@ -823,28 +823,37 @@
     const el = document.querySelector('#issue-root');
     return el ? Number(el.getAttribute('data-seq') || 0) : 0;
   }
-  // Replacing the issue root resets its collapsible sections; the ones a person
-  // opened stay open across a save or a live update.
-  function openIssueSections() {
+  // Both saves and replica updates replace these panels. Keep each panel's
+  // open/closed state by identity, including a composer the person closed.
+  function issueSections() {
     const root = document.getElementById('issue-root');
     if (!root) return [];
-    return Array.from(root.querySelectorAll('details.more-fields[open]')).map((details) => details.className);
+    return Array.from(root.querySelectorAll('details[data-issue-section]')).map((details) => ({
+      key: details.dataset.issueSection,
+      open: details.open,
+      focused: details.querySelector('summary') === document.activeElement,
+    }));
   }
-  function reopenIssueSections(classNames) {
+  function restoreIssueSections(sections) {
     const root = document.getElementById('issue-root');
     if (!root) return;
-    classNames.forEach((className) => {
-      const details = root.querySelector('details.' + className.trim().split(/\s+/).join('.'));
-      if (details) details.open = true;
+    const states = new Map(sections.map((section) => [section.key, section]));
+    root.querySelectorAll('details[data-issue-section]').forEach((details) => {
+      const state = states.get(details.dataset.issueSection);
+      if (!state) return;
+      details.open = state.open;
+      if (state.focused && document.activeElement === document.body) {
+        details.querySelector('summary')?.focus({ preventScroll: true });
+      }
     });
   }
   // rootRenderCount counts how many times the work item view has been
   // replaced, so a slower render can tell that a newer one has already landed.
   let rootRenderCount = 0;
   function replaceIssueRoot(root, html) {
-    const open = openIssueSections();
+    const sections = issueSections();
     root.outerHTML = html;
-    reopenIssueSections(open);
+    restoreIssueSections(sections);
     rootRenderCount++;
   }
   // A save answers with the whole work item view, so it replaces the boxes of
@@ -937,7 +946,7 @@
     const holder = target && (target.id === 'issue-view-holder' || target.id === 'issue-root');
     const view = holder ? document.getElementById('issue-root') : null;
     typedBeforeSwap = view ? typedValues(view) : null;
-    sectionsBeforeSwap = holder ? openIssueSections() : null;
+    sectionsBeforeSwap = holder ? issueSections() : null;
   });
   document.body.addEventListener('htmx:afterSwap', (event) => {
     const swapped = event.detail && event.detail.target;
@@ -951,7 +960,7 @@
     restoreTyped(typedBeforeSwap);
     typedBeforeSwap = null;
     if (!sectionsBeforeSwap) return;
-    reopenIssueSections(sectionsBeforeSwap);
+    restoreIssueSections(sectionsBeforeSwap);
     sectionsBeforeSwap = null;
   });
 

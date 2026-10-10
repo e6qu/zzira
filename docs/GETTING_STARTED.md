@@ -31,7 +31,8 @@ you need those files to survive server-container replacement.
 ## Run from source
 
 Use the Go version in [go.mod](../go.mod), Docker Compose for PostgreSQL, and
-Node.js for browser tests.
+Node.js 24 LTS for browser tests. Compose uses PostgreSQL 17.11; existing
+PostgreSQL 17 development volumes remain compatible.
 
 ```sh
 docker compose up -d --wait postgres

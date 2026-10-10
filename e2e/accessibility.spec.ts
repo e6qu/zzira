@@ -89,6 +89,12 @@ test('WCAG A/AA: every primary page passes axe in light and dark themes', async 
     await expect(page.locator('h1')).toHaveCount(1);
     await expect(page).not.toHaveTitle('ZZIRA');
     await expectNoWCAGViolations(page);
+    const activitySort = page.locator('[data-activity-sort]');
+    if (await activitySort.count()) {
+      await activitySort.click();
+      await expectNoWCAGViolations(page);
+      await activitySort.click();
+    }
 
     const toggle = page.locator('[data-theme-toggle]');
     if (await toggle.getAttribute('aria-pressed') === 'false') await toggle.click();

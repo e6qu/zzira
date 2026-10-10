@@ -45,6 +45,34 @@ For migrations or demo changes, also run
 It builds the base revision, migrates and seeds it, then applies the changed
 revision twice, matching an upgrade. CI runs this gate for every PR.
 
+## Dependency updates
+
+Wait at least 24 hours after an upstream dependency release before adopting it.
+Dependabot applies `cooldown.default-days: 1` to every configured ecosystem.
+The `dependency-age` CI gate also checks manual and security updates; a version
+with missing publication metadata is refused. Test it locally with:
+
+```sh
+python3 -m unittest discover -s scripts -p test_dependency_age.py
+python3 scripts/dependency-age.py --base origin/main
+```
+
+The gate checks changed Go modules and toolchains, npm lockfile entries (including
+transitive packages) and vendored HTMX/Sortable/SQLite, pinned Python requirements, Actions releases, container
+images and CI tools against upstream metadata. Keep Actions pinned to full commit
+SHAs with release-version comments, images pinned by digest, and package manifests
+at exact versions. A failed age check states when the release becomes eligible;
+rerun CI after that time. Semgrep's Python dependency resolver also excludes
+artifacts uploaded within the last 24 hours. Node publishes dates without times,
+so the gate conservatively counts from the end of the publication day.
+
+When changing Go or the browser renderer, update the worker, WASM, Go shim and
+service-worker cache versions together so existing browsers fetch the new build.
+
+For PostgreSQL, update patches within the deployed major. Changing major versions
+requires a separate data migration; replacing the Compose image alone does not
+upgrade an existing `pgdata` volume.
+
 ## How the code is arranged
 
 - **`internal/commands` is the only way to write.** REST handlers, browser

@@ -23,11 +23,11 @@
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
 <link rel="stylesheet" href="/static/css/workspace.css?v=59">
-<link rel="preload" href="/static/zzira-worker.wasm?v=9" as="fetch" crossorigin>
+<link rel="preload" href="/static/zzira-worker.wasm?v=11" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
-<script src="/static/htmx/htmx.min.js" defer></script>
-<script src="/static/wasm/wasm_exec.js" defer></script>
-<script src="/static/app.js?v=44" defer></script>
+<script src="/static/htmx/htmx.min.js?v=2.0.11" defer></script>
+<script src="/static/wasm/wasm_exec.js?go=1.27.2" defer></script>
+<script src="/static/app.js?v=47" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -50,7 +50,7 @@
       {{if .RecentProjects}}<nav aria-label="Recent projects"><h2 class="app-switcher-heading">Recent projects</h2>{{range .RecentProjects}}<a href="/projects/{{.Key}}">{{.Name}}</a>{{end}}</nav>{{end}}
     </div>
   </details>{{end}}{{end}}
-  <a class="logo" href="/" aria-label="{{(site $).Title}} home">{{with (site $).LogoURL}}<img class="logo-image" src="{{.}}" alt="" width="30" height="30">{{else}}<span class="logo-mark" aria-hidden="true">Z</span>{{end}}{{if (site $).ShowTitle}}<span{{with (site $).NavigationHighlight}} style="color:{{.}}"{{end}}>{{(site $).Title}}</span>{{end}}</a>
+  <a class="logo" href="/" aria-label="{{if not (site $).LogoURL}}Z {{end}}{{(site $).Title}} home">{{with (site $).LogoURL}}<img class="logo-image" src="{{.}}" alt="" width="30" height="30">{{else}}<span class="logo-mark" aria-hidden="true">Z</span>{{end}} {{if (site $).ShowTitle}}<span{{with (site $).NavigationHighlight}} style="color:{{.}}"{{end}}>{{(site $).Title}}</span>{{end}}</a>
   <form class="global-search" method="get" action="{{with .Navigation}}{{with .Current}}{{.WorkURL}}{{else}}/projects{{end}}{{else}}/projects{{end}}" role="search">
     <label class="sr-only" for="global-jql-query">Search issues with JQL</label>
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
@@ -65,7 +65,7 @@
           hx-swap="innerHTML" onclick="window.zzira.openModal(this)"><span aria-hidden="true">+</span> Create</button>
   {{if .User}}
   <details class="user-menu">
-    <summary aria-label="Account menu for {{.User.DisplayName}}" data-shauth-user="{{.User.Username}}">{{template "avatar" .User}}</summary>
+    <summary aria-label="{{initials .User.DisplayName}} · Account menu for {{.User.DisplayName}}" data-shauth-user="{{.User.Username}}">{{template "avatar" .User}}</summary>
     <div class="user-popover">
       <div class="user-popover-head">{{template "avatar" .User}}<span><strong>{{.User.DisplayName}}</strong><small>{{.User.Email}}</small></span></div>
       <nav aria-label="Account"><a href="/profile">Profile</a><a href="/people">People and teams</a></nav>
@@ -85,8 +85,8 @@
   {{with .Navigation}}{{with .Projects}}
   {{$current := $.Navigation.Current}}
   <details class="project-switcher">
-    <summary aria-label="Switch project. Current project: {{with $current}}{{.Project.Name}}{{else}}none{{end}}">
-      {{with $current}}<span class="workspace-avatar" aria-hidden="true">{{initials .Project.Name}}</span><span class="workspace-copy"><strong>{{.Project.Name}}</strong><small>{{.Project.Key}} · Switch project</small></span>{{end}}
+    <summary aria-label="{{with $current}}{{initials .Project.Name}} {{.Project.Name}} {{.Project.Key}} · Switch project{{else}}Switch project{{end}}">
+      {{with $current}}<span class="workspace-avatar" aria-hidden="true">{{initials .Project.Name}}</span> <span class="workspace-copy"><strong>{{.Project.Name}}</strong> <small>{{.Project.Key}} · Switch project</small></span>{{end}}
       <svg class="project-switcher-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
     </summary>
     <div class="project-switcher-panel">
@@ -208,14 +208,14 @@
       <span class="issue-type-glyph" aria-hidden="true">✓</span>
       <div class="issue-title-block"><span class="eyebrow">{{.Issue.Key}} · {{.Issue.IssueType.Name}}</span>
 {{if .CanEdit}}
-      <div class="summary-line"><h1 class="issue-summary" data-field="summary">{{.Issue.Summary}}</h1>{{if .Editable}}<details class="inline-summary-editor"><summary aria-label="Edit summary">✎</summary><form method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="summary"><label for="issue-summary-input">Summary</label><input id="issue-summary-input" class="issue-summary-input" name="value" value="{{.Issue.Summary}}" maxlength="255" required><button type="submit" class="btn btn-primary">Save</button></form></details>{{end}}</div>
+      <div class="summary-line"><h1 class="issue-summary" data-field="summary">{{.Issue.Summary}}</h1>{{if .Editable}}<details class="inline-summary-editor" data-issue-section="summary"><summary aria-label="Edit summary">✎</summary><form method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="summary"><label for="issue-summary-input">Summary</label><input id="issue-summary-input" class="issue-summary-input" name="value" value="{{.Issue.Summary}}" maxlength="255" required><button type="submit" class="btn btn-primary">Save</button></form></details>{{end}}</div>
 {{else}}<h1 class="issue-summary" data-field="summary">{{.Issue.Summary}}</h1>{{end}}
       </div>
     </div>
     <div class="issue-transitions" role="group" aria-label="Issue actions">
 {{range .Transitions}}
 {{if .ScreenFields}}{{$t := .}}
-      <details class="transition-screen"><summary class="btn btn-transition">{{.Name}}</summary><form method="post" action="/issues/{{$.Issue.Key}}/transition" hx-post="/issues/{{$.Issue.Key}}/transition" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="transition" value="{{.ID}}">{{if .ScreenMessage}}<p class="transition-reminder" role="note">{{.ScreenMessage}}</p>{{end}}{{range .ScreenFields}}{{$field := .}}{{if eq . "summary"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Summary</label><input id="transition-{{$.Issue.ID}}-{{.}}" name="field_summary" value="{{$.Issue.Summary}}" maxlength="255">{{else if eq . "description"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Description</label><textarea id="transition-{{$.Issue.ID}}-{{.}}" name="field_description" rows="3">{{adfToText $.Issue.Description}}</textarea>{{else if eq . "labels"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Labels</label><input id="transition-{{$.Issue.ID}}-{{.}}" name="field_labels" value="{{join $.Issue.Labels ", "}}" placeholder="release, verified">{{else if eq . "assignee"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Assignee</label><select id="transition-{{$.Issue.ID}}-{{.}}" name="field_assignee"><option value="">Unassigned</option>{{range $.Assignees}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}</select>{{else if eq . "priority"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Priority</label><select id="transition-{{$.Issue.ID}}-{{.}}" name="field_priority"><option value="">None</option>{{range $.Priorities}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>{{else if eq . "resolution"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Resolution</label><select id="transition-{{$.Issue.ID}}-{{.}}" name="field_resolution"><option value="">Unresolved</option>{{$chosen := ""}}{{if $.Issue.Resolution}}{{$chosen = $.Issue.Resolution.ID}}{{end}}{{range $.Resolutions}}<option value="{{.ID}}" {{if eq .ID $chosen}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{else}}{{$described := false}}{{range $t.ScreenCustomFields}}{{if eq .ID $field}}{{$described = true}}<label for="transition-{{$.Issue.ID}}-{{.ID}}">{{.Name}}</label>{{template "custom_field_control" (customFieldControl . (printf "transition-%s-" $.Issue.ID) (printf "field_%s" .ID))}}{{if .Description}}<small id="edit-help-{{.ID}}" class="muted">{{.Description}}</small>{{end}}{{end}}{{end}}{{if not $described}}<label for="transition-{{$.Issue.ID}}-{{$field}}">{{$field}}</label><input id="transition-{{$.Issue.ID}}-{{$field}}" name="field_{{$field}}">{{end}}{{end}}{{end}}<button type="submit" class="btn btn-primary">Complete {{.Name}}</button></form></details>
+      <details class="transition-screen" data-issue-section="transition-{{.ID}}"><summary class="btn btn-transition">{{.Name}}</summary><form method="post" action="/issues/{{$.Issue.Key}}/transition" hx-post="/issues/{{$.Issue.Key}}/transition" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="transition" value="{{.ID}}">{{if .ScreenMessage}}<p class="transition-reminder" role="note">{{.ScreenMessage}}</p>{{end}}{{range .ScreenFields}}{{$field := .}}{{if eq . "summary"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Summary</label><input id="transition-{{$.Issue.ID}}-{{.}}" name="field_summary" value="{{$.Issue.Summary}}" maxlength="255">{{else if eq . "description"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Description</label><textarea id="transition-{{$.Issue.ID}}-{{.}}" name="field_description" rows="3">{{adfToText $.Issue.Description}}</textarea>{{else if eq . "labels"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Labels</label><input id="transition-{{$.Issue.ID}}-{{.}}" name="field_labels" value="{{join $.Issue.Labels ", "}}" placeholder="release, verified">{{else if eq . "assignee"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Assignee</label><select id="transition-{{$.Issue.ID}}-{{.}}" name="field_assignee"><option value="">Unassigned</option>{{range $.Assignees}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}</select>{{else if eq . "priority"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Priority</label><select id="transition-{{$.Issue.ID}}-{{.}}" name="field_priority"><option value="">None</option>{{range $.Priorities}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>{{else if eq . "resolution"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Resolution</label><select id="transition-{{$.Issue.ID}}-{{.}}" name="field_resolution"><option value="">Unresolved</option>{{$chosen := ""}}{{if $.Issue.Resolution}}{{$chosen = $.Issue.Resolution.ID}}{{end}}{{range $.Resolutions}}<option value="{{.ID}}" {{if eq .ID $chosen}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{else}}{{$described := false}}{{range $t.ScreenCustomFields}}{{if eq .ID $field}}{{$described = true}}<label for="transition-{{$.Issue.ID}}-{{.ID}}">{{.Name}}</label>{{template "custom_field_control" (customFieldControl . (printf "transition-%s-" $.Issue.ID) (printf "field_%s" .ID))}}{{if .Description}}<small id="edit-help-{{.ID}}" class="muted">{{.Description}}</small>{{end}}{{end}}{{end}}{{if not $described}}<label for="transition-{{$.Issue.ID}}-{{$field}}">{{$field}}</label><input id="transition-{{$.Issue.ID}}-{{$field}}" name="field_{{$field}}">{{end}}{{end}}{{end}}<button type="submit" class="btn btn-primary">Complete {{.Name}}</button></form></details>
 {{else}}
       <form method="post" action="/issues/{{$.Issue.Key}}/transition" hx-post="/issues/{{$.Issue.Key}}/transition" hx-target="#issue-view-holder" hx-swap="innerHTML">
         <input type="hidden" name="transition" value="{{.ID}}">
@@ -253,7 +253,7 @@
 {{end}}
       <section class="issue-section linked-work" aria-labelledby="linked-work-title">
         <div class="section-heading"><h2 id="linked-work-title">Linked work <span class="section-count">{{len .Links}}</span></h2>
-        {{if and .CanLink .IssueLinkingEnabled}}<details class="link-create"><summary class="quiet-action">Link work item</summary>
+        {{if and .CanLink .IssueLinkingEnabled}}<details class="link-create" data-issue-section="links"><summary class="quiet-action">Link work item</summary>
           <form method="post" action="/issues/{{.Issue.Key}}/links" hx-post="/issues/{{.Issue.Key}}/links" hx-target="#issue-view-holder" hx-swap="innerHTML">
             <label for="link-type">Relationship</label><select id="link-type" name="type" required>{{range .LinkTypes}}<option value="{{.ID}}">{{.Outward}}</option>{{end}}</select>
             <label for="link-issue">Work item key</label><input id="link-issue" name="issue" placeholder="{{.ProjectKey}}-123" autocomplete="off" required>
@@ -269,7 +269,7 @@
       <section class="issue-section issue-forms" aria-labelledby="forms-title">
         <div class="section-heading"><h2 id="forms-title">Forms <span class="section-count">{{len .Forms}}</span></h2></div>
         {{if .Forms}}<ul class="linked-work-list" id="issue-forms-list">{{range .Forms}}<li><span class="link-relationship">{{if .Submitted}}Submitted{{else}}Open{{end}}</span><strong>{{.Name}}</strong><span class="muted">{{if .Internal}}Internal{{else}}Customer visible{{end}}</span>{{if $.CanEditForms}}<form method="post" action="/issues/{{$.Issue.Key}}/forms/{{.ID}}/action/{{if .Submitted}}reopen{{else}}submit{{end}}" hx-post="/issues/{{$.Issue.Key}}/forms/{{.ID}}/action/{{if .Submitted}}reopen{{else}}submit{{end}}" hx-target="#issue-view-holder" hx-swap="innerHTML"><button type="submit" class="btn">{{if .Submitted}}Reopen{{else}}Submit{{end}}</button></form><form method="post" action="/issues/{{$.Issue.Key}}/forms/{{.ID}}/action/delete" hx-post="/issues/{{$.Issue.Key}}/forms/{{.ID}}/action/delete" hx-target="#issue-view-holder" hx-swap="innerHTML" hx-confirm="Delete form {{.Name}}?"><button type="submit" class="icon-danger" aria-label="Delete form {{.Name}}">×</button></form>{{end}}</li>{{end}}</ul>{{else}}<p class="muted">No forms attached.</p>{{end}}
-        {{if .CanEditForms}}<details class="link-create"><summary class="quiet-action">Attach form</summary><form method="post" action="/issues/{{.Issue.Key}}/forms" hx-post="/issues/{{.Issue.Key}}/forms" hx-target="#issue-view-holder" hx-swap="innerHTML"><label for="form-template">Template ID</label><input id="form-template" name="template" maxlength="255" required placeholder="employee-onboarding"><label for="form-name">Form name</label><input id="form-name" name="name" maxlength="255" placeholder="Employee onboarding"><button type="submit" class="btn btn-primary">Attach form</button></form></details>{{end}}
+        {{if .CanEditForms}}<details class="link-create" data-issue-section="forms"><summary class="quiet-action">Attach form</summary><form method="post" action="/issues/{{.Issue.Key}}/forms" hx-post="/issues/{{.Issue.Key}}/forms" hx-target="#issue-view-holder" hx-swap="innerHTML"><label for="form-template">Template ID</label><input id="form-template" name="template" maxlength="255" required placeholder="employee-onboarding"><label for="form-name">Form name</label><input id="form-name" name="name" maxlength="255" placeholder="Employee onboarding"><button type="submit" class="btn btn-primary">Attach form</button></form></details>{{end}}
       </section>
 
       {{if not .CodeDisabled}}<section class="issue-section issue-development" aria-labelledby="development-title">
@@ -286,7 +286,7 @@
         <div class="section-heading"><h2 id="time-tracking-title">Time tracking</h2></div>
         <div class="time-tracking-bar" role="img" aria-label="{{.TimeTracking.Spent}} logged{{if .TimeTracking.Remaining}}, {{.TimeTracking.Remaining}} remaining{{end}}"><span class="time-tracking-spent" style="width: {{.TimeTracking.SpentPercent}}%"></span></div>
         <dl class="time-tracking-values"><div><dt>Logged</dt><dd>{{.TimeTracking.Spent}}</dd></div><div><dt>Remaining</dt><dd>{{if .TimeTracking.Remaining}}{{.TimeTracking.Remaining}}{{else}}Not estimated{{end}}</dd></div><div><dt>Original estimate</dt><dd>{{if .TimeTracking.Original}}{{.TimeTracking.Original}}{{else}}Not estimated{{end}}</dd></div></dl>
-        {{if and .CanEdit .Editable}}<details class="time-tracking-edit"><summary>Edit estimates</summary><form method="post" action="/issues/{{.Issue.Key}}/timetracking" hx-post="/issues/{{.Issue.Key}}/timetracking" hx-target="#issue-view-holder" hx-swap="innerHTML">
+        {{if and .CanEdit .Editable}}<details class="time-tracking-edit" data-issue-section="estimates"><summary>Edit estimates</summary><form method="post" action="/issues/{{.Issue.Key}}/timetracking" hx-post="/issues/{{.Issue.Key}}/timetracking" hx-target="#issue-view-holder" hx-swap="innerHTML">
           <label for="original-estimate">Original estimate</label><input id="original-estimate" name="originalEstimate" value="{{.TimeTracking.Original}}" placeholder="2w 4d 6h 45m">
           <label for="remaining-estimate">Remaining estimate</label><input id="remaining-estimate" name="remainingEstimate" value="{{.TimeTracking.Remaining}}" placeholder="3h">
           <p class="muted">Use weeks, days, hours and minutes. Leave a field empty to remove that estimate.</p><button type="submit" class="btn">Save estimates</button></form></details>{{end}}
@@ -308,12 +308,12 @@
           <button type="button" data-activity-filter="worklog" aria-pressed="false">Work log <span>{{len .Worklogs}}</span></button>
           <button type="button" data-activity-filter="history" aria-pressed="false">History <span>{{len .History}}</span></button>
           {{range .AppActivityTabs}}<button type="button" class="activity-app-tab" data-activity-filter="app-{{.ID}}" aria-pressed="false">{{.Title}}</button>{{end}}
-        </div><button type="button" class="activity-sort" data-activity-sort aria-label="Sort activity oldest first" aria-pressed="false">Newest first ↓</button></div>
+        </div><button type="button" class="activity-sort" data-activity-sort aria-label="Newest first. Sort activity oldest first" aria-pressed="false">Newest first ↓</button></div>
       </div>
 
       <section class="issue-section issue-activity" aria-labelledby="activity-title">
         <div data-native-activity-panel>
-        {{if or .CanComment .CanLogWork}}<details class="activity-composer" open><summary>Add an update</summary>
+        {{if or .CanComment .CanLogWork}}<details class="activity-composer" data-issue-section="activity" open><summary>Add an update</summary>
         {{if .CanComment}}<form class="comment-form" method="post" action="/issues/{{.Issue.Key}}/comments" hx-post="/issues/{{.Issue.Key}}/comments" hx-target="#issue-view-holder" hx-swap="innerHTML">
           <div class="editor-toolbar" role="group" aria-label="Comment formatting" data-editor-toolbar>
             <button type="button" data-cmd="bold" aria-label="Bold"><strong aria-hidden="true">B</strong></button>
@@ -363,7 +363,7 @@
         <dt>{{if and .CanSchedule .Editable}}<label for="field-duedate">Due date</label>{{else}}Due date{{end}}</dt><dd>{{if and .CanSchedule .Editable}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="duedate"><input id="field-duedate" name="value" type="date" value="{{.Issue.DueDate}}"><button class="field-save" type="submit">Save due date</button></form>{{else}}{{if .Issue.DueDate}}{{.Issue.DueDate}}{{else}}None{{end}}{{end}}</dd>
 {{if .SecurityLevels}}        <dt>{{if .CanSetSecurity}}<label for="field-security">Security</label>{{else}}Security{{end}}</dt><dd>{{if .CanSetSecurity}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="security"><select id="field-security" name="value"><option value="">Public</option>{{$security := .Issue.SecurityLevelID}}{{range .SecurityLevels}}<option value="{{.ID}}" {{if eq .ID $security}}selected{{end}}>{{.Name}}</option>{{end}}</select><button class="field-save" type="submit">Save security</button></form>{{else}}{{if .SecurityLevelName}}{{.SecurityLevelName}}{{else}}Public{{end}}{{end}}</dd>{{end}}
       </dl>
-{{if .CustomFields}}      <details class="more-fields"><summary>More fields <span>{{len .CustomFields}}</span></summary><dl>{{range .CustomFields}}{{if $.CanEdit}}<dt><label for="detail-field-{{.ID}}">{{.Name}}</label></dt><dd><form class="inline-field" method="post" action="/issues/{{$.Issue.Key}}/fields" hx-post="/issues/{{$.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="custom:{{.ID}}">{{template "custom_field_control" (customFieldControl . "detail-field-" "value")}}<button class="field-save" type="submit">Save {{.Name}}</button></form></dd>{{else}}<dt>{{.Name}}</dt><dd>{{if .Display}}{{.Display}}{{else if .Value}}{{.Value}}{{else}}None{{end}}</dd>{{end}}{{end}}</dl></details>{{end}}
+{{if .CustomFields}}      <details class="more-fields" data-issue-section="fields"><summary>More fields <span>{{len .CustomFields}}</span></summary><dl>{{range .CustomFields}}{{if $.CanEdit}}<dt><label for="detail-field-{{.ID}}">{{.Name}}</label></dt><dd><form class="inline-field" method="post" action="/issues/{{$.Issue.Key}}/fields" hx-post="/issues/{{$.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="custom:{{.ID}}">{{template "custom_field_control" (customFieldControl . "detail-field-" "value")}}<button class="field-save" type="submit">Save {{.Name}}</button></form></dd>{{else}}<dt>{{.Name}}</dt><dd>{{if .Display}}{{.Display}}{{else if .Value}}{{.Value}}{{else}}None{{end}}</dd>{{end}}{{end}}</dl></details>{{end}}
 {{- range .AppContexts}}      <details class="issue-context-panel" data-issue-context-key="{{$.CurrentUserID}}:{{.ID}}"><summary>{{if .IconURL}}<img src="{{.IconURL}}" alt="" referrerpolicy="no-referrer">{{end}}<span class="issue-context-copy"><strong>{{.Title}}</strong>{{if .ContextLabel}}<small>{{.ContextLabel}}</small>{{end}}</span>{{if eq .ContextStatusType "badge"}}<span class="issue-context-status-badge" aria-label="{{.ContextStatusAccessibleLabel}}"><span aria-hidden="true">{{.ContextStatusLabel}}</span></span>{{else if eq .ContextStatusType "lozenge"}}<span class="lozenge issue-context-status-lozenge {{.ContextStatusClass}}">{{.ContextStatusLabel}}</span>{{else if eq .ContextStatusType "icon"}}<img class="issue-context-status-icon" src="{{.ContextStatusIconURL}}" alt="" referrerpolicy="no-referrer">{{end}}</summary>{{if .RemoteURL}}<iframe class="app-context-frame" src="/app-modules/{{.ID}}/frame?issueKey={{$.Issue.Key}}&amp;issueId={{$.Issue.ID}}&amp;projectKey={{$.ProjectKey}}&amp;projectId={{$.Issue.ProjectID}}" title="{{.Title}}" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"></iframe>{{else}}<p>{{.Body}}</p>{{end}}</details>{{end}}
       <section class="watcher-summary" aria-labelledby="watchers-title"><h3 id="watchers-title">Watchers <span>{{len .Watchers}}</span></h3>{{if .Watchers}}<ul>{{range .Watchers}}<li>{{template "avatar" .}}<span>{{.DisplayName}}</span></li>{{end}}</ul>{{else}}<p>No one is watching yet.</p>{{end}}</section>
       <section class="watcher-summary" aria-labelledby="voters-title"><h3 id="voters-title">Voters <span>{{len .Voters}}</span></h3>{{if .Voters}}<ul>{{range .Voters}}<li>{{template "avatar" .}}<span>{{.DisplayName}}</span></li>{{end}}</ul>{{else}}<p>No votes yet.</p>{{end}}</section>
@@ -656,7 +656,7 @@
 <!doctype html>
 <html lang="en">
 <head><title>{{.Data.Board.Name}} · {{(site $).Title}}</title>{{template "head" .}}
-<script src="/static/sortable.min.js" defer></script>
+<script src="/static/sortable.min.js?v=1.15.7" defer></script>
 </head>
 <body class="page-board" data-board="{{.Data.Board.ID}}">
   <a class="skip-link" href="#main-content">Skip to content</a>
@@ -1214,7 +1214,7 @@
 <head><title>Log in · {{(site $).Title}}</title>{{template "head" .}}</head>
 <body class="login-body">
   <main class="login-shell">
-    <section class="login-story" aria-label="About ZZIRA"><a class="logo login-logo" href="/" aria-label="ZZIRA home"><span class="logo-mark" aria-hidden="true">Z</span><span>ZZIRA</span></a><div><span class="eyebrow">Local-first issue tracking</span><p class="login-display">Ship work,<br><em>not refreshes.</em></p><p>Your team’s work stays fast, available, and in sync—even when the network isn’t.</p></div><div class="login-proof"><span class="sync-dot" aria-hidden="true"></span><span><strong>Built for flow</strong><small>Jira-compatible API · Local replica</small></span></div></section>
+    <section class="login-story" aria-label="About ZZIRA"><a class="logo login-logo" href="/" aria-label="Z ZZIRA home"><span class="logo-mark" aria-hidden="true">Z</span> <span>ZZIRA</span></a><div><span class="eyebrow">Local-first issue tracking</span><p class="login-display">Ship work,<br><em>not refreshes.</em></p><p>Your team’s work stays fast, available, and in sync—even when the network isn’t.</p></div><div class="login-proof"><span class="sync-dot" aria-hidden="true"></span><span><strong>Built for flow</strong><small>Jira-compatible API · Local replica</small></span></div></section>
     <section class="login-card">
     <span class="eyebrow">Welcome back</span><h1>Log in to your workspace</h1><p class="login-intro">Continue to ZZIRA Software.</p>
     {{if .Providers}}

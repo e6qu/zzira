@@ -9,7 +9,7 @@
       <span class="issue-type-glyph" aria-hidden="true">✓</span>
       <div class="issue-title-block"><span class="eyebrow">ZZ-1 · Task</span>
 
-      <div class="summary-line"><h1 class="issue-summary" data-field="summary">Walking skeleton comes online</h1><details class="inline-summary-editor"><summary aria-label="Edit summary">✎</summary><form method="post" action="/issues/ZZ-1/fields" hx-post="/issues/ZZ-1/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="summary"><label for="issue-summary-input">Summary</label><input id="issue-summary-input" class="issue-summary-input" name="value" value="Walking skeleton comes online" maxlength="255" required><button type="submit" class="btn btn-primary">Save</button></form></details></div>
+      <div class="summary-line"><h1 class="issue-summary" data-field="summary">Walking skeleton comes online</h1><details class="inline-summary-editor" data-issue-section="summary"><summary aria-label="Edit summary">✎</summary><form method="post" action="/issues/ZZ-1/fields" hx-post="/issues/ZZ-1/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="summary"><label for="issue-summary-input">Summary</label><input id="issue-summary-input" class="issue-summary-input" name="value" value="Walking skeleton comes online" maxlength="255" required><button type="submit" class="btn btn-primary">Save</button></form></details></div>
 
       </div>
     </div>
@@ -44,7 +44,7 @@
 
       <section class="issue-section linked-work" aria-labelledby="linked-work-title">
         <div class="section-heading"><h2 id="linked-work-title">Linked work <span class="section-count">1</span></h2>
-        <details class="link-create"><summary class="quiet-action">Link work item</summary>
+        <details class="link-create" data-issue-section="links"><summary class="quiet-action">Link work item</summary>
           <form method="post" action="/issues/ZZ-1/links" hx-post="/issues/ZZ-1/links" hx-target="#issue-view-holder" hx-swap="innerHTML">
             <label for="link-type">Relationship</label><select id="link-type" name="type" required><option value="lt_blocks">blocks</option></select>
             <label for="link-issue">Work item key</label><input id="link-issue" name="issue" placeholder="ZZ-123" autocomplete="off" required>
@@ -60,7 +60,7 @@
       <section class="issue-section issue-forms" aria-labelledby="forms-title">
         <div class="section-heading"><h2 id="forms-title">Forms <span class="section-count">0</span></h2></div>
         <p class="muted">No forms attached.</p>
-        <details class="link-create"><summary class="quiet-action">Attach form</summary><form method="post" action="/issues/ZZ-1/forms" hx-post="/issues/ZZ-1/forms" hx-target="#issue-view-holder" hx-swap="innerHTML"><label for="form-template">Template ID</label><input id="form-template" name="template" maxlength="255" required placeholder="employee-onboarding"><label for="form-name">Form name</label><input id="form-name" name="name" maxlength="255" placeholder="Employee onboarding"><button type="submit" class="btn btn-primary">Attach form</button></form></details>
+        <details class="link-create" data-issue-section="forms"><summary class="quiet-action">Attach form</summary><form method="post" action="/issues/ZZ-1/forms" hx-post="/issues/ZZ-1/forms" hx-target="#issue-view-holder" hx-swap="innerHTML"><label for="form-template">Template ID</label><input id="form-template" name="template" maxlength="255" required placeholder="employee-onboarding"><label for="form-name">Form name</label><input id="form-name" name="name" maxlength="255" placeholder="Employee onboarding"><button type="submit" class="btn btn-primary">Attach form</button></form></details>
       </section>
 
       <section class="issue-section issue-development" aria-labelledby="development-title">
@@ -77,7 +77,7 @@
         <div class="section-heading"><h2 id="time-tracking-title">Time tracking</h2></div>
         <div class="time-tracking-bar" role="img" aria-label=" logged"><span class="time-tracking-spent" style="width: 0%"></span></div>
         <dl class="time-tracking-values"><div><dt>Logged</dt><dd></dd></div><div><dt>Remaining</dt><dd>Not estimated</dd></div><div><dt>Original estimate</dt><dd>Not estimated</dd></div></dl>
-        <details class="time-tracking-edit"><summary>Edit estimates</summary><form method="post" action="/issues/ZZ-1/timetracking" hx-post="/issues/ZZ-1/timetracking" hx-target="#issue-view-holder" hx-swap="innerHTML">
+        <details class="time-tracking-edit" data-issue-section="estimates"><summary>Edit estimates</summary><form method="post" action="/issues/ZZ-1/timetracking" hx-post="/issues/ZZ-1/timetracking" hx-target="#issue-view-holder" hx-swap="innerHTML">
           <label for="original-estimate">Original estimate</label><input id="original-estimate" name="originalEstimate" value="" placeholder="2w 4d 6h 45m">
           <label for="remaining-estimate">Remaining estimate</label><input id="remaining-estimate" name="remainingEstimate" value="" placeholder="3h">
           <p class="muted">Use weeks, days, hours and minutes. Leave a field empty to remove that estimate.</p><button type="submit" class="btn">Save estimates</button></form></details>
@@ -99,12 +99,12 @@
           <button type="button" data-activity-filter="worklog" aria-pressed="false">Work log <span>1</span></button>
           <button type="button" data-activity-filter="history" aria-pressed="false">History <span>0</span></button>
           <button type="button" class="activity-app-tab" data-activity-filter="app-712" aria-pressed="false">Deployments</button>
-        </div><button type="button" class="activity-sort" data-activity-sort aria-label="Sort activity oldest first" aria-pressed="false">Newest first ↓</button></div>
+        </div><button type="button" class="activity-sort" data-activity-sort aria-label="Newest first. Sort activity oldest first" aria-pressed="false">Newest first ↓</button></div>
       </div>
 
       <section class="issue-section issue-activity" aria-labelledby="activity-title">
         <div data-native-activity-panel>
-        <details class="activity-composer" open><summary>Add an update</summary>
+        <details class="activity-composer" data-issue-section="activity" open><summary>Add an update</summary>
         <form class="comment-form" method="post" action="/issues/ZZ-1/comments" hx-post="/issues/ZZ-1/comments" hx-target="#issue-view-holder" hx-swap="innerHTML">
           <div class="editor-toolbar" role="group" aria-label="Comment formatting" data-editor-toolbar>
             <button type="button" data-cmd="bold" aria-label="Bold"><strong aria-hidden="true">B</strong></button>
