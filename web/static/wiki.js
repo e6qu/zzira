@@ -428,8 +428,16 @@ const startLiveEditing = (status, text, form) => {
     for (let index = 0; index < localStorage.length; index += 1) {
       const key = localStorage.key(index);
       if (!account || !key || !key.startsWith(keptPrefix)) continue;
-      const entry = JSON.parse(localStorage.getItem(key) || 'null');
-      if (!entry || !Number.isFinite(entry.at) || !(entry.closed || Date.now() - entry.at > 10000)) continue;
+      let entry;
+      try {
+        entry = JSON.parse(localStorage.getItem(key) || 'null');
+      } catch {
+        // One damaged entry must not prevent recovering another editor's text.
+        continue;
+      }
+      if (!entry || typeof entry.synced !== 'string' || typeof entry.text !== 'string' ||
+          typeof entry.session !== 'string' || !Number.isInteger(entry.revision) ||
+          !Number.isFinite(entry.at) || !(entry.closed || Date.now() - entry.at > 10000)) continue;
       if (!kept || entry.at > kept.at) {
         kept = entry;
         keptFrom = key;
@@ -522,7 +530,7 @@ const startLiveEditing = (status, text, form) => {
       if (!stopped) keep();
     }
   };
-  if (kept && typeof kept.synced === 'string' && typeof kept.text === 'string' && typeof kept.session === 'string' && Number.isInteger(kept.revision)) {
+  if (kept) {
     try {
       localStorage.removeItem(keptFrom);
     } catch {
