@@ -4,19 +4,35 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 1
   - package-ecosystem: npm
     directory: /e2e
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 1
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 1
   - package-ecosystem: pip
     directory: /.github
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 1
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 1
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 1
