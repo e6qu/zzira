@@ -158,7 +158,7 @@
       setNavigationState(event.matches ? false : storageGet('localStorage', 'zzira-sidebar') !== 'collapsed');
     });
     document.addEventListener('keydown', (event) => {
-      if (event.defaultPrevented) return;
+      if (event.defaultPrevented || event.isComposing) return;
       const target = event.target;
       const typing = target && (target.matches('input, textarea, select') || target.closest('[contenteditable]'));
       if (modalIsOpen()) {
@@ -662,6 +662,7 @@
       backdrop.addEventListener('click', () => window.zzira.closeModal());
     });
     modal.addEventListener('keydown', (event) => {
+      if (event.isComposing) return;
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); window.zzira.closeModal(); return; }
       if (event.key !== 'Tab') return;
       const targets = modalFocusable(modal);
@@ -1370,6 +1371,7 @@
     editor.setAttribute('aria-controls', list.id);
     let matches = [];
     let active = 0;
+    let composing = false;
     const close = () => {
       list.hidden = true;
       editor.removeAttribute('aria-activedescendant');
@@ -1407,7 +1409,8 @@
       close();
       editor.dispatchEvent(new Event('input', { bubbles: true }));
     };
-    editor.addEventListener('input', () => {
+    const update = () => {
+      if (composing) { close(); return; }
       const query = caretQuery();
       if (query === null) { close(); return; }
       const needle = query.toLowerCase();
@@ -1426,9 +1429,16 @@
       }));
       list.hidden = false;
       highlight(0);
+    };
+    editor.addEventListener('input', event => {
+      if (event.isComposing) close();
+      else update();
     });
-    editor.addEventListener('blur', close);
+    editor.addEventListener('compositionstart', () => { composing = true; close(); });
+    editor.addEventListener('compositionend', () => { composing = false; update(); });
+    editor.addEventListener('blur', () => { composing = false; close(); });
     editor.addEventListener('keydown', (event) => {
+      if (composing || event.isComposing) { event.stopPropagation(); return; }
       if (list.hidden) return;
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
