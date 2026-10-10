@@ -410,6 +410,8 @@ const startLiveEditing = (status, text, form) => {
   const account = status.dataset.liveAccount;
   const keptPrefix = `zzira-live:v2:${encodeURIComponent(account)}:${status.dataset.liveUrl}#`;
   const keptKey = `${keptPrefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  let kept = null;
+  let keptFrom = '';
   const keep = (closed = false) => {
     if (!account) return;
     try {
@@ -418,12 +420,15 @@ const startLiveEditing = (status, text, form) => {
       const base = synced === null ? initial : synced;
       if (current !== base) localStorage.setItem(keptKey, JSON.stringify({ session, revision, synced: base, text: current, at: Date.now(), closed }));
       else localStorage.removeItem(keptKey);
+      // Retire the old editor's backup only after this one is safely kept.
+      if (keptFrom) {
+        localStorage.removeItem(keptFrom);
+        keptFrom = '';
+      }
     } catch {
       // Storage may be full or unavailable; live editing carries on without it.
     }
   };
-  let kept = null;
-  let keptFrom = '';
   try {
     for (let index = 0; index < localStorage.length; index += 1) {
       const key = localStorage.key(index);
@@ -531,11 +536,6 @@ const startLiveEditing = (status, text, form) => {
     }
   };
   if (kept) {
-    try {
-      localStorage.removeItem(keptFrom);
-    } catch {
-      // Nothing to forget.
-    }
     if (kept.text !== initial) {
       session = kept.session;
       revision = kept.revision;
@@ -543,6 +543,7 @@ const startLiveEditing = (status, text, form) => {
       text.set(kept.text);
       say('Your changes from before are back and merge when live editing connects.');
     }
+    keep();
   }
   let pending = 0;
   const soon = () => {

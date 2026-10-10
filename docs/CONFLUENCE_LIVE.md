@@ -94,6 +94,8 @@ document. The request body is:
     that the page already contains is discarded.
     Damaged JSON or incomplete draft entries are skipped individually, so a
     newer damaged entry cannot hide an older valid draft.
+    Recovery writes a replacement backup before removing the old entry. If
+    storage is full, the original stays until writes resume or the text syncs.
   - **Another editor's entry.** An editor takes over another editor's entry
     only if that editor closed or has not synced for 10 seconds.
 - **Carets.** Each sync sends the editor's `cursor`.
