@@ -215,7 +215,7 @@ func (h *Handler) FieldConfigurationMutation(w http.ResponseWriter, r *http.Requ
 				data.Error = fieldConfigMutationMessage(err)
 				h.writeWorkspacePageStatus(w, r, "page_field_configurations", user, workspaceID, data, "field-configurations", "", http.StatusBadRequest)
 			} else if errors.Is(err, store.ErrProjectPermission) {
-				http.Error(w, "Administrator privileges are required.", 403)
+				http.Error(w, "Administrator privileges are required.", http.StatusForbidden)
 			} else if errors.Is(err, store.ErrFieldConfigNotFound) {
 				http.NotFound(w, r)
 			} else {

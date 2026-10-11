@@ -37,12 +37,12 @@ test('an optional Reporter can stay empty through create refusal and retry', asy
     await expect(dialog.getByLabel('Reporter', { exact: true })).toHaveValue(me.accountId);
     await dialog.getByLabel('Reporter', { exact: true }).selectOption({ label: 'None' });
     const summary = `No Reporter ${stamp}`;
-    await dialog.getByLabel('Summary', { exact: true }).fill(summary);
+    await dialog.locator('#create-summary').fill(summary);
     await dialog.getByLabel('Labels', { exact: true }).fill('two words');
     await dialog.getByRole('button', { name: 'Create issue', exact: true }).click();
     await expect(dialog.getByRole('alert')).toContainText('labels must be');
     await expect(dialog.getByLabel('Reporter', { exact: true })).toHaveValue('');
-    await expect(dialog.getByLabel('Summary', { exact: true })).toHaveValue(summary);
+    await expect(dialog.locator('#create-summary')).toHaveValue(summary);
     await dialog.getByLabel('Labels', { exact: true }).fill('validated');
     await dialog.getByRole('button', { name: 'Create issue', exact: true }).click();
     await page.waitForURL(new RegExp(`/browse/${key}-\\d+$`), { timeout: 30_000 });
