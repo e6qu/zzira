@@ -78,6 +78,9 @@ and permission checks still apply; summary remains available on an empty screen.
 Custom multi-select controls save every selected option and explicitly clear when
 all options are deselected, in both the dialog and inline editors. Omitted custom
 fields remain unchanged; help text is associated with each editor’s own control.
+Unchanged Description and Environment retain their rich documents when a browser
+posts CRLF line endings. Inline Environment saves also retain unchanged formatting
+and require an explicit value to clear the field.
 Arrow keys, Home and End select tabs. Switching tabs retains the draft, and
 required fields on inactive tabs are revealed when they block submission.
 Legacy offline replicas retain their existing layout until screen metadata is

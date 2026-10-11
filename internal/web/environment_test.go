@@ -120,6 +120,8 @@ func TestEnvironmentPersistsAcrossScreensAPIAndBrowser(t *testing.T) {
 		switch {
 		case method == "GET" && strings.HasSuffix(path, "/edit"):
 			f.handler.EditDialog(w, r, created.Key)
+		case strings.HasSuffix(path, "/fields"):
+			f.handler.UpdateIssueField(w, r, created.Key)
 		case method == "GET":
 			f.handler.BrowseIssue(w, r, created.Key)
 		default:
@@ -143,6 +145,31 @@ func TestEnvironmentPersistsAcrossScreensAPIAndBrowser(t *testing.T) {
 	if !adf.Equal(read().Fields["environment"], json.RawMessage(source)) {
 		t.Fatal("unchanged browser Environment lost rich formatting")
 	}
+	multiline := `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"First paragraph","marks":[{"type":"strong"}]}]},{"type":"paragraph","content":[{"type":"text","text":"Second paragraph","marks":[{"type":"em"}]}]}]}`
+	call("PUT", "/rest/api/3/issue/"+created.Key, `{"fields":{"description":`+multiline+`,"environment":`+multiline+`}}`, 204)
+	posted := strings.ReplaceAll(adf.PlainText(json.RawMessage(multiline)), "\n", "\r\n")
+	web("POST", "/issues/"+created.Key+"/edit", url.Values{"summary": {"Environment journey"}, "description": {posted}, "environment": {posted}}, 200)
+	if !adf.Equal(read().Description, json.RawMessage(multiline)) || !adf.Equal(read().Fields["environment"], json.RawMessage(multiline)) {
+		t.Fatal("browser form line endings replaced unchanged rich documents")
+	}
+	web("POST", "/issues/"+created.Key+"/fields", url.Values{"field": {"environment"}, "value": {posted}}, 200)
+	if !adf.Equal(read().Fields["environment"], json.RawMessage(multiline)) {
+		t.Fatal("unchanged inline Environment lost formatting")
+	}
+	beforeRefusal := read().UpdatedSeq
+	web("POST", "/issues/"+created.Key+"/fields", url.Values{"field": {"environment"}}, 400)
+	if read().UpdatedSeq != beforeRefusal || !adf.Equal(read().Fields["environment"], json.RawMessage(multiline)) {
+		t.Fatal("missing inline value changed Environment")
+	}
+	web("POST", "/issues/"+created.Key+"/fields", url.Values{"field": {"environment"}, "value": {"Changed\r\ntext"}}, 200)
+	if adf.PlainText(read().Fields["environment"]) != "Changed\ntext" {
+		t.Fatal("changed inline Environment kept transport line endings")
+	}
+	web("POST", "/issues/"+created.Key+"/fields", url.Values{"field": {"environment"}, "value": {""}}, 200)
+	if len(read().Fields["environment"]) != 0 && string(read().Fields["environment"]) != "null" {
+		t.Fatal("explicit inline Environment clear was not persisted")
+	}
+	call("PUT", "/rest/api/3/issue/"+created.Key, `{"fields":{"description":`+descriptionSource+`,"environment":`+source+`}}`, 204)
 	web("POST", "/issues/"+created.Key+"/edit", url.Values{"summary": {"Environment journey"}, "description": {"Rich description"}, "environment": {"Staging Linux"}}, 200)
 	if adf.PlainText(read().Fields["environment"]) != "Staging Linux" {
 		t.Fatal("browser edit was not persisted")
