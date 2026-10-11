@@ -49,7 +49,7 @@ test('a signed-out reader discovers public projects and pages only public work',
     await reader.addScriptTag({ content: axe.source });
     expect(await reader.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations)).toEqual([]);
     await reader.evaluate(async () => {
-      await navigator.serviceWorker.register('/static/sw.js');
+      await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
     });
     expect((await reader.reload())?.headers()['cache-control']).toBe('private, no-store');
