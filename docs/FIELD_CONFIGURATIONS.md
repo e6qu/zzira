@@ -8,7 +8,7 @@ A field configuration decides how fields behave on work item forms: required, hi
 |---|---|
 | `GET/POST /rest/api/3/fieldconfiguration` | Pages configurations (filters `id`, `isDefault`, `query` over name and description), or creates one. |
 | `PUT/DELETE /rest/api/3/fieldconfiguration/{id}` | Changes name and description, or deletes an unused, non-default configuration. |
-| `GET/PUT /rest/api/3/fieldconfiguration/{id}/fields` | Pages the configuration's explicit field rules, or partially updates them. |
+| `GET/PUT /rest/api/3/fieldconfiguration/{id}/fields` | Pages the configuration's explicit field rules, or partially updates the supplied properties; omitted properties retain their values. |
 | `GET/POST /rest/api/3/fieldconfigurationscheme` | Pages schemes (filter `id`), or creates one. |
 | `PUT/DELETE /rest/api/3/fieldconfigurationscheme/{id}` | Changes name and description, or deletes an unassigned, non-default scheme. |
 | `GET /rest/api/3/fieldconfigurationscheme/mapping` | Pages work type → configuration mappings, filtered by scheme. |
@@ -28,6 +28,7 @@ Names are unique per site, ignoring case. Every change is written to the action 
 - `editmeta` applies the configuration for the work item's own work type.
 - Bulk edit offers only fields that every selected work item's form allows.
 - Commands enforce the rules for all clients. On create, a required field must be present and a hidden field must be absent. On edit and on a transition with field updates, a required field cannot be cleared and a hidden field cannot be set. An update that doesn't touch a governed field is never refused.
+- Hiding a field clears its required setting and help text. Unhiding starts from their default values.
 - A field cannot be both required and hidden. `summary` is always required and visible, and the context fields (project, work type) are exempt.
 - Workflow post functions that set fields bypass the configuration, as in Jira.
 - `overrideScreenSecurity` lets an app with *Administer Jira* set hidden fields ([ISSUE_SURFACE.md](ISSUE_SURFACE.md#writing-work-items)).

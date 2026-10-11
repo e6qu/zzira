@@ -201,21 +201,21 @@ func (h *Handler) fieldConfigurationItems(w http.ResponseWriter, r *http.Request
 	case http.MethodPut:
 		var request struct {
 			FieldConfigurationItems []struct {
-				ID          string `json:"id"`
-				IsRequired  bool   `json:"isRequired"`
-				IsHidden    bool   `json:"isHidden"`
-				Description string `json:"description"`
+				ID          string  `json:"id"`
+				IsRequired  *bool   `json:"isRequired"`
+				IsHidden    *bool   `json:"isHidden"`
+				Description *string `json:"description"`
 			} `json:"fieldConfigurationItems"`
 		}
 		if !decodeProjectRequest(w, r, &request) {
 			return
 		}
-		items := make([]models.FieldConfigurationItem, 0, len(request.FieldConfigurationItems))
+		items := make([]store.FieldConfigurationItemPatch, 0, len(request.FieldConfigurationItems))
 		for _, item := range request.FieldConfigurationItems {
-			items = append(items, models.FieldConfigurationItem{
+			items = append(items, store.FieldConfigurationItemPatch{
 				FieldID: item.ID, IsRequired: item.IsRequired, IsHidden: item.IsHidden, Description: item.Description})
 		}
-		if err := h.Store.SetFieldConfigurationItems(r.Context(), workspaceID, actorID, configurationID, items); err != nil {
+		if err := h.Store.PatchFieldConfigurationItems(r.Context(), workspaceID, actorID, configurationID, items); err != nil {
 			fieldConfigError(w, err)
 			return
 		}

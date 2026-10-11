@@ -60,11 +60,6 @@ A `mention` node in a description or comment notifies that person (in-app and em
 
 **Copy.** The settings page copies one, named "Copy of X" (then "Copy 2 of X"), carrying its configuration and nothing else: the copy is assigned to no project and is never the site default.
 
-## Gaps
-
-Tracked in [PLAN.md](../PLAN.md).
-
-
 ## Tests
 
 - `internal/api3/notification_schemes_test.go`: all nine operations, validation, filtering, assignment conflicts, delivery, email outbox, actions, deduplication, issue security suppression.

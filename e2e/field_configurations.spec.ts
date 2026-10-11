@@ -59,6 +59,14 @@ test('site administrators make a field required and the create form enforces it'
   await expect(configCard.locator('.field-config-row[data-field-id="priority"]')).toContainText('Required');
   await expect(configCard.locator('.field-config-row[data-field-id="labels"]')).toContainText('Hidden');
 
+  // Updating only help text through REST keeps the required setting the
+  // administrator saved in the UI; the create form must enforce both.
+  const patch = await page.request.put(`/rest/api/3/fieldconfiguration/${configID}/fields`, {
+    headers: { Authorization: apiAuthHeader() },
+    data: { fieldConfigurationItems: [{ id: 'priority', description: 'Updated release priority' }] },
+  });
+  expect(patch.status()).toBe(204);
+
   const createScheme = page.getByRole('region', { name: 'Create a field configuration scheme', exact: true });
   await createScheme.getByLabel('Scheme name').fill(schemeName);
   await createScheme.getByRole('button', { name: 'Create field configuration scheme' }).click();
@@ -87,7 +95,7 @@ test('site administrators make a field required and the create form enforces it'
   await expect(page.locator('#create-summary')).toBeFocused();
   await dialog.locator('.create-more summary').click();
   await expect(dialog.locator('#create-priority')).toHaveAttribute('required', '');
-  await expect(dialog.locator('#create-help-priority')).toHaveText('Pick the release priority');
+  await expect(dialog.locator('#create-help-priority')).toHaveText('Updated release priority');
   await expect(dialog.locator('#create-labels')).toHaveCount(0);
 
   // The command path enforces the rule, not just the form.
