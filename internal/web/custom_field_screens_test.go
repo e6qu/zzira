@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 	"github.com/e6qu/zzira/internal/workflow"
@@ -163,4 +164,24 @@ func TestCustomFieldViewsRespectScreensHiddenRulesAndWorkTypeContexts(t *testing
 			t.Fatalf("off-screen %s write: %d", name, response.Code)
 		}
 	}
+	stored, err := f.store.IssueByIDOrKey(ctx, ws, issue.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"View only", "Hidden", "Story only"} {
+		if string(stored.Fields[fields[name]]) != string(values[fields[name]]) {
+			t.Fatalf("refused write changed %s", name)
+		}
+	}
+	// Authorized app overrides may still update a field outside the edit screen.
+	overrideContext := commands.WithOverrides(ctx, commands.Overrides{ScreenSecurity: true})
+	if _, _, err := f.handler.Commands.UpdateIssue(overrideContext, commands.UpdateIssueInput{ActorID: f.ownerID, WorkspaceID: ws, IssueIDOrKey: issue.Key, Fields: map[string]json.RawMessage{fields["View only"]: json.RawMessage(`"Authorized answer"`)}}); err != nil {
+		t.Fatalf("authorized override: %v", err)
+	}
+	// A transition uses its own screen rather than the ordinary edit screen.
+	changed, _, err := f.handler.Commands.TransitionIssueWithUpdate(ctx, f.ownerID, ws, issue.Key, "21", store.IssueUpdate{Fields: map[string]json.RawMessage{fields["View only"]: json.RawMessage(`"Transition answer"`)}})
+	if err != nil || changed.Status.ID != "st_inprogress" || string(changed.Fields[fields["View only"]]) != `"Transition answer"` {
+		t.Fatalf("transition write: %#v, %v", changed, err)
+	}
+
 }

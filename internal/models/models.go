@@ -416,17 +416,18 @@ type WorkflowTransition struct {
 // EditDialogView drives the edit-issue dialog; rendered by both server and
 // wasm worker (offline editing). Members/levels/fields may be empty offline.
 type EditDialogView struct {
-	EnvironmentField       *CreateFieldMeta
-	CanAssign              bool
-	CanModifyReporter      bool
-	ReporterRequired       bool
-	Reporters              []User
-	CanSetSecurity         bool
-	Issue                  Issue
-	Assignees              []User
-	Members                []User
-	SecurityLevels         []WorkflowTransition // reuse shape: ID+Name pairs
-	CustomFields           []CustomFieldView
+	EnvironmentField  *CreateFieldMeta
+	CanAssign         bool
+	CanModifyReporter bool
+	ReporterRequired  bool
+	Reporters         []User
+	CanSetSecurity    bool
+	Issue             Issue
+	Assignees         []User
+	Members           []User
+	SecurityLevels    []WorkflowTransition // reuse shape: ID+Name pairs
+	CustomFields      []CustomFieldView
+	// ConfiguredCustomFields also supplies view and transition screens independently of editing.
 	ConfiguredCustomFields []CustomFieldView
 	Error                  string
 }
