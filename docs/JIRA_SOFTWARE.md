@@ -271,9 +271,11 @@ Errors use the module format, `[{"message": …}]`. Provider rate limits are des
 
 ## Gaps
 
-- Plans:
-  - Custom columns currently support
-    text, numbers, dates, URLs, selects and labels; other picker types remain.
+- Auto-scheduling estimated work still needs release constraints and flexible
+  release dates. Unestimated work uses explicit dates, then open sprint dates,
+  then live fixed release dates.
+- Custom columns support text, numbers, dates, URLs, selects and labels; other
+  picker types remain.
 - Scenarios cannot change parent, rank, release, status or custom fields, and cannot create work items.
 - Cross-project releases can be configured on the plan and read in the release
   hub. Creating member versions and using their dates in the auto-scheduler
