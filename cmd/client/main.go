@@ -461,7 +461,7 @@ func syncOnce() syncclient.SyncDisposition {
 		return syncclient.SyncRetry
 	}
 	if resp.StatusCode == http.StatusNotModified {
-		postSyncState(cp)
+		postSyncState(cp, cp)
 		return syncclient.SyncAccepted
 	}
 	if syncclient.DispositionForSyncStatus(resp.StatusCode) == syncclient.SyncRevoked {
@@ -511,7 +511,7 @@ func syncOnce() syncclient.SyncDisposition {
 	setKV("server_head", fmt.Sprintf("%d", delta.Head))
 	exec(`COMMIT`, nil)
 	committed = true
-	postSyncState(delta.To)
+	postSyncState(delta.To, delta.Head)
 	if currentView != "" && changedIssues[currentView] {
 		pushCurrentView()
 	}
@@ -964,10 +964,11 @@ func postOutboxState() {
 	post(outboxState())
 }
 
-func postSyncState(seq int64) {
+func postSyncState(seq, head int64) {
 	state := outboxState()
 	state["type"] = "synced"
 	state["seq"] = seq
+	state["caughtUp"] = seq == head
 	post(state)
 }
 

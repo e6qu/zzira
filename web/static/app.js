@@ -838,9 +838,12 @@
           mutationMinSeq = 0;
           pendingRootHtml = null;
         }
-        if (!outboxState.pending) {
+        if (!outboxState.pending && msg.caughtUp !== false) {
           announce('synced \u00b7 seq ' + msg.seq, 1500);
           setSyncRail('online', 'Synced', 'Sequence ' + msg.seq);
+        } else if (!outboxState.pending) {
+          announce('Syncing — receiving server updates', 0);
+          setSyncRail('syncing', 'Syncing', 'Receiving server updates');
         }
         showOutboxState();
         refreshBoardRegion();
