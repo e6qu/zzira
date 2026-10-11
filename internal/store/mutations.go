@@ -217,6 +217,9 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 		sets = append(sets, "due_date = "+arg(nilIfEmpty(*up.DueDate))+"::date")
 	}
 	if up.Fields != nil {
+		if value, provided := up.Fields["environment"]; provided && !adf.Equal(value, current.Fields["environment"]) {
+			diff["environment"] = diffItem("environment", "", adf.PlainText(current.Fields["environment"]), "", adf.PlainText(value))
+		}
 		for _, field := range []string{"fixVersions", "versions", "components"} {
 			if value, ok := up.Fields[field]; ok && string(value) != string(current.Fields[field]) {
 				diff[field] = versionChange(field, current.Fields[field], value)
@@ -767,7 +770,7 @@ func mergeFields(current map[string]json.RawMessage, updates map[string]json.Raw
 		out[k] = v
 	}
 	for k, v := range updates {
-		if !isCustomFieldKey(k) && k != "fixVersions" && k != "versions" && k != "components" {
+		if !isCustomFieldKey(k) && k != "fixVersions" && k != "versions" && k != "components" && k != "environment" {
 			return nil, fmt.Errorf("field key %q is not a custom field", k)
 		}
 		if len(v) == 0 || string(v) == "null" {

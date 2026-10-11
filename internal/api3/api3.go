@@ -965,7 +965,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 		return nil
 	}
 	supported := map[string]struct{}{
-		"project": {}, "summary": {}, "description": {}, "issuetype": {}, "priority": {},
+		"project": {}, "summary": {}, "description": {}, "environment": {}, "issuetype": {}, "priority": {},
 		"assignee": {}, "reporter": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "components": {}, "parent": {},
 		"timetracking": {}, "duedate": {},
 	}
@@ -1005,7 +1005,7 @@ func createIssueFieldError(err error) map[string]string {
 		return fields
 	}
 	message := err.Error()
-	for _, field := range []string{"summary", "project", "priority", "assignee", "reporter", "security", "resolution", "labels", "description", "components", "parent"} {
+	for _, field := range []string{"summary", "project", "priority", "assignee", "reporter", "security", "resolution", "labels", "description", "environment", "components", "parent"} {
 		if strings.Contains(message, field) {
 			return map[string]string{field: message}
 		}
@@ -1130,6 +1130,23 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		Fields map[string]json.RawMessage `json:"fields"`
 	}
 	_ = json.Unmarshal(body, &rawFields)
+	if operations, ok := req.Update["environment"]; ok {
+		delete(req.Update, "environment")
+		_, provided := rawFields.Fields["environment"]
+		if provided || len(operations) != 1 || len(operations[0]) != 1 {
+			jiraFieldError(w, 400, map[string]string{"environment": "Supply one set operation or one environment field."})
+			return
+		}
+		raw, valid := operations[0]["set"]
+		if !valid {
+			jiraFieldError(w, 400, map[string]string{"environment": "Environment supports only set."})
+			return
+		}
+		if fields == nil {
+			fields = map[string]json.RawMessage{}
+		}
+		fields["environment"] = raw
+	}
 	reporter, provided := rawFields.Fields["reporter"]
 	if operations, ok := req.Update["reporter"]; ok {
 		delete(req.Update, "reporter")
@@ -1434,6 +1451,7 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 	fields := map[string]any{
 		"summary":     i.Summary,
 		"description": i.Description,
+		"environment": nil,
 		"labels":      i.Labels,
 		"duedate":     nil,
 		"security":    nil,
@@ -1738,8 +1756,12 @@ func transitionFieldMetadata(field string, required bool) map[string]any {
 	switch field {
 	case "summary":
 		name = "Summary"
-	case "description":
-		name, schema = "Description", map[string]any{"type": "any", "system": "description"}
+	case "description", "environment":
+		name = "Description"
+		if field == "environment" {
+			name = "Environment"
+		}
+		schema = map[string]any{"type": "any", "system": field}
 	case "labels":
 		name, schema = "Labels", map[string]any{"type": "array", "items": "string", "system": "labels"}
 	case "duedate":
@@ -1768,6 +1790,11 @@ func transitionIssueUpdate(fields map[string]json.RawMessage) (store.IssueUpdate
 			} else {
 				update.Summary = &value
 			}
+		case "environment":
+			if update.Fields == nil {
+				update.Fields = map[string]json.RawMessage{}
+			}
+			update.Fields[field] = raw
 		case "description":
 			update.Description = raw
 		case "labels":

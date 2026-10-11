@@ -674,7 +674,7 @@ func (l *expressionLoader) issueRecord(issue *models.Issue) *jexpr.Record {
 		},
 	}
 	fields := map[string]jexpr.Value{
-		"id": float64(issue.JiraID), "key": issue.Key, "summary": issue.Summary, "description": richText(issue.Description),
+		"id": float64(issue.JiraID), "key": issue.Key, "summary": issue.Summary, "description": richText(issue.Description), "environment": richText(issue.Fields["environment"]),
 		"issueType": beanRecord("IssueType", h.issueTypeBean(issue.IssueType), map[string]string{
 			"id": "id", "name": "name", "description": "description", "iconUrl": "iconUrl", "isSubtask": "subtask", "hierarchyLevel": "hierarchyLevel",
 		}),

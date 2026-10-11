@@ -1,0 +1,80 @@
+import { expect, test } from '@playwright/test';
+import { apiAuthHeader } from './auth';
+import axe from 'axe-core';
+
+test('a contributor creates, recovers and edits Environment through an assigned screen', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill('demo@zzira.dev');
+  await page.getByLabel('Password').fill('demo1234');
+  await page.getByRole('button', { name: 'Log in' }).click();
+  const headers = { Authorization: apiAuthHeader() };
+  const stamp = Date.now();
+  const key = `ENV${stamp.toString().slice(-7)}`;
+  const me = await (await page.request.get('/rest/api/3/myself', { headers })).json();
+  const project = await page.request.post('/rest/api/3/project', { headers, data: { key, name: `Environment work ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' } });
+  expect(project.status()).toBe(201);
+  const projectID = String((await project.json()).id);
+  let screenID = '', schemeID = '', typeSchemeID = '';
+  try {
+    const screen = await page.request.post('/rest/api/3/screens', { headers, data: { name: `Environment form ${stamp}` } });
+    expect(screen.status()).toBe(201);
+    screenID = String((await screen.json()).id);
+    const tabs = await (await page.request.get(`/rest/api/3/screens/${screenID}/tabs`, { headers })).json();
+    for (const fieldId of ['summary', 'description', 'environment']) {
+      expect((await page.request.post(`/rest/api/3/screens/${screenID}/tabs/${tabs[0].id}/fields`, { headers, data: { fieldId } })).status()).toBe(201);
+    }
+    const scheme = await page.request.post('/rest/api/3/screenscheme', { headers, data: { name: `Environment scheme ${stamp}`, screens: { default: screenID } } });
+    expect(scheme.status()).toBe(201);
+    schemeID = String((await scheme.json()).id);
+    const types = await page.request.post('/rest/api/3/issuetypescreenscheme', { headers, data: { name: `Environment types ${stamp}`, issueTypeMappings: [{ issueTypeId: 'default', screenSchemeId: schemeID }] } });
+    expect(types.status()).toBe(201);
+    typeSchemeID = String((await types.json()).id);
+    expect((await page.request.put('/rest/api/3/issuetypescreenscheme/project', { headers, data: { issueTypeScreenSchemeId: typeSchemeID, projectId: projectID } })).status()).toBe(204);
+    await page.goto(`/projects/${key}`);
+    await page.locator('#global-create-issue').click();
+    const create = page.getByRole('dialog', { name: 'Create issue' });
+    await expect(create).toBeVisible();
+    await create.locator('.create-more summary').click();
+    await create.getByLabel('Environment', { exact: true }).fill('Production Linux');
+    await create.getByLabel('Summary', { exact: false }).fill(`Environment journey ${stamp}`);
+    await create.getByRole('button', { name: 'Create issue', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/browse/${key}-\\d+$`));
+    const issueKey = page.url().split('/').pop()!;
+    await expect(page.locator('.issue-environment .description-text')).toHaveText('Production Linux');
+    await page.reload();
+    await expect(page.locator('.issue-environment .description-text')).toHaveText('Production Linux');
+    await page.locator('#edit-issue-button').click();
+    const edit = page.getByRole('dialog', { name: 'Edit issue' });
+    await edit.getByLabel('Environment', { exact: true }).fill('Staging Linux');
+    await edit.getByLabel('Summary', { exact: true }).fill('   ');
+    await edit.getByRole('button', { name: 'Save changes' }).click();
+    await expect(edit.getByRole('alert')).toContainText('summary is required');
+    await expect(edit.getByLabel('Environment', { exact: true })).toHaveValue('Staging Linux');
+    const environment = async () => (await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=environment`, { headers })).json()).fields.environment;
+    expect(JSON.stringify(await environment())).toContain('Production Linux');
+    await edit.getByLabel('Summary', { exact: true }).fill(`Environment journey ${stamp}`);
+    await page.setViewportSize({ width: 320, height: 740 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.addScriptTag({ content: axe.source });
+    expect(await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations)).toEqual([]);
+    await edit.getByRole('button', { name: 'Save changes' }).click();
+    await expect(edit).toHaveCount(0);
+    await expect(page.locator('.issue-environment .description-text')).toHaveText('Staging Linux');
+    await page.reload();
+    expect(JSON.stringify(await environment())).toContain('Staging Linux');
+    const search = await page.request.get(`/rest/api/3/search?jql=${encodeURIComponent(`project = ${key} AND environment ~ "Staging"`)}&fields=environment`, { headers });
+    expect(search.status()).toBe(200);
+    expect((await search.json()).issues.map((issue: any) => issue.key)).toEqual([issueKey]);
+    await page.locator('#edit-issue-button').click();
+    await edit.getByLabel('Environment', { exact: true }).fill('');
+    await edit.getByRole('button', { name: 'Save changes' }).click();
+    await expect(edit).toHaveCount(0);
+    await expect(page.locator('.issue-environment .description-text')).toHaveText('None');
+    expect(await environment()).toBeNull();
+  } finally {
+    await page.request.delete(`/rest/api/3/project/${projectID}`, { headers, timeout: 10_000 });
+    if (typeSchemeID) await page.request.delete(`/rest/api/3/issuetypescreenscheme/${typeSchemeID}`, { headers, timeout: 10_000 });
+    if (schemeID) await page.request.delete(`/rest/api/3/screenscheme/${schemeID}`, { headers, timeout: 10_000 });
+    if (screenID) await page.request.delete(`/rest/api/3/screens/${screenID}`, { headers, timeout: 10_000 });
+  }
+});

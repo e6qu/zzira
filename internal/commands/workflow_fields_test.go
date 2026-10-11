@@ -7,6 +7,7 @@ import (
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 func TestChangedTransitionFieldsComparesStoredValues(t *testing.T) {
@@ -37,5 +38,31 @@ func TestChangedTransitionFieldsComparesStoredValues(t *testing.T) {
 		if !changed[field] {
 			t.Fatalf("%s was not reported changed: %v", field, changed)
 		}
+	}
+}
+
+func TestWorkflowEnvironmentReadsAndWritesRichText(t *testing.T) {
+	issue := &models.Issue{Summary: "Release", Fields: map[string]json.RawMessage{"environment": adf.ParagraphDoc("Production")}}
+	update := store.IssueUpdate{}
+	if err := applyWorkflowFieldUpdate(issue, &update, workflow.FieldUpdateEffect{Field: "environment", Mode: "append", Value: " Linux"}); err != nil {
+		t.Fatal(err)
+	}
+	if adf.PlainText(update.Fields["environment"]) != "Production Linux" {
+		t.Fatal("workflow did not append Environment text")
+	}
+	if err := applyWorkflowFieldCopy(issue, &update, "summary", "environment"); err != nil {
+		t.Fatal(err)
+	}
+	if adf.PlainText(update.Fields["environment"]) != "Release" {
+		t.Fatal("workflow did not copy into Environment")
+	}
+	if err := applyWorkflowFieldCopy(issue, &update, "environment", "description"); err != nil {
+		t.Fatal(err)
+	}
+	if adf.PlainText(update.Description) != "Release" {
+		t.Fatal("workflow did not copy Environment text")
+	}
+	if workflow.FieldValuePresent(adf.ParagraphDoc("")) || suppliedFieldValue(adf.ParagraphDoc("")) {
+		t.Fatal("empty rich Environment satisfies required validators")
 	}
 }

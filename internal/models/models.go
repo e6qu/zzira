@@ -304,11 +304,12 @@ type SyncResponse struct {
 // ---- View models (render-only) ----
 
 type IssueView struct {
-	Issue       Issue
-	ProjectKey  string
-	ProjectName string
-	BoardID     string
-	CanEdit     bool
+	EnvironmentVisible bool
+	Issue              Issue
+	ProjectKey         string
+	ProjectName        string
+	BoardID            string
+	CanEdit            bool
 	// Editable is false while the work item's status sets jira.issue.editable
 	// to false; its fields and estimates cannot then be changed.
 	Editable             bool
@@ -415,6 +416,7 @@ type WorkflowTransition struct {
 // EditDialogView drives the edit-issue dialog; rendered by both server and
 // wasm worker (offline editing). Members/levels/fields may be empty offline.
 type EditDialogView struct {
+	EnvironmentField  *CreateFieldMeta
 	CanAssign         bool
 	CanModifyReporter bool
 	ReporterRequired  bool

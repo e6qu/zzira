@@ -66,7 +66,7 @@ func (h *Handler) loadFieldConfigurationsPage(r *http.Request, workspaceID strin
 	if err != nil {
 		return data, err
 	}
-	rendererFields := map[string]bool{"description": true}
+	rendererFields := map[string]bool{"description": true, "environment": true}
 	customFields, err := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
 	if err != nil {
 		return data, err

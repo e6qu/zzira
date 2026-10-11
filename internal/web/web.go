@@ -555,6 +555,9 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
 			message, _, _ := t.ScreenReminder()
 			screenFields := t.ScreenFields()
+			if reporterBehaviour["environment"].IsHidden {
+				screenFields = slices.DeleteFunc(screenFields, func(field string) bool { return field == "environment" })
+			}
 			if reporterBehaviour["reporter"].IsHidden {
 				screenFields = slices.DeleteFunc(screenFields, func(field string) bool { return field == "reporter" })
 			}
@@ -755,7 +758,12 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		deletableAttachments[attachment.ID] = issue.ArchivedAt == "" && (permissions["DELETE_ALL_ATTACHMENTS"] || (attachment.AuthorID == user.ID && permissions["DELETE_OWN_ATTACHMENTS"]))
 	}
 	canEditForms := permissions["EDIT_ISSUES"]
+	viewFields, err := h.Store.ResolveScreenFields(r.Context(), wsID, issue.ProjectID, issue.IssueType.ID, "view")
+	if err != nil {
+		return nil, err
+	}
 	view := &models.IssueView{
+		EnvironmentVisible:   !reporterBehaviour["environment"].IsHidden && (len(viewFields) == 0 || slices.Contains(viewFields, "environment")),
 		Issue:                *issue,
 		ProjectKey:           project.Key,
 		ProjectName:          project.Name,
@@ -926,6 +934,9 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	issue.FieldRenderers = map[string]string{}
 	for field, rule := range behaviour {
 		issue.FieldRenderers[field] = rule.Renderer
+	}
+	if !behaviour["environment"].IsHidden && (len(reporterFields) == 0 || slices.Contains(reporterFields, "environment")) {
+		view.EnvironmentField = &models.CreateFieldMeta{ID: "environment", Name: "Environment", Type: "doc", Required: behaviour["environment"].IsRequired, Description: behaviour["environment"].Description}
 	}
 	view.CanModifyReporter = permissions["MODIFY_REPORTER"] && !behaviour["reporter"].IsHidden && (len(reporterFields) == 0 || slices.Contains(reporterFields, "reporter"))
 	view.ReporterRequired = behaviour["reporter"].IsRequired
@@ -1590,6 +1601,10 @@ func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID
 func createFieldsFromForm(fields []models.CreateFieldMeta, values map[string]string) (map[string]json.RawMessage, error) {
 	custom := map[string]json.RawMessage{}
 	for _, field := range fields {
+		if field.ID == "environment" && values[field.ID] != "" {
+			custom[field.ID] = adf.ParagraphDoc(values[field.ID])
+			continue
+		}
 		if (field.Type == "versions" || field.Type == "components") && values[field.ID] != "" {
 			refs := []map[string]string{}
 			for _, id := range strings.Split(values[field.ID], ",") {
@@ -2401,6 +2416,14 @@ func (h *Handler) TransitionIssue(w http.ResponseWriter, r *http.Request, key st
 		switch field {
 		case "summary":
 			update.Summary = &value
+		case "environment":
+			if update.Fields == nil {
+				update.Fields = map[string]json.RawMessage{}
+			}
+			update.Fields["environment"] = adf.ParagraphDoc(value)
+			if strings.TrimSpace(value) == "" {
+				update.Fields["environment"] = json.RawMessage("null")
+			}
 		case "description":
 			update.Description = adf.ParagraphDoc(value)
 		case "labels":
@@ -2675,6 +2698,11 @@ func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key s
 	case "summary":
 		value = strings.TrimSpace(value)
 		in.Summary = &value
+	case "environment":
+		in.Fields = map[string]json.RawMessage{"environment": adf.ParagraphDoc(value)}
+		if strings.TrimSpace(value) == "" {
+			in.Fields["environment"] = json.RawMessage("null")
+		}
 	case "priority":
 		in.PriorityID = &value
 	case "reporter":
@@ -2856,10 +2884,19 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 		return
 	}
 	summary := strings.TrimSpace(r.PostFormValue("summary"))
-	description := adf.ParagraphDoc(r.PostFormValue("description"))
+	var description json.RawMessage
+	if values, provided := r.PostForm["description"]; provided && len(values) > 0 && values[0] != adf.PlainText(issue.Description) {
+		description = adf.ParagraphDoc(values[0])
+	}
 	in := commands.UpdateIssueInput{
 		ActorID: user.ID, WorkspaceID: wsID, IssueIDOrKey: key,
 		Summary: &summary, Description: description,
+	}
+	if values, ok := r.PostForm["environment"]; ok && len(values) > 0 && values[0] != adf.PlainText(issue.Fields["environment"]) {
+		in.Fields = map[string]json.RawMessage{"environment": adf.ParagraphDoc(values[0])}
+		if strings.TrimSpace(values[0]) == "" {
+			in.Fields["environment"] = json.RawMessage("null")
+		}
 	}
 	if values, ok := r.PostForm["reporter"]; ok && len(values) > 0 {
 		in.ReporterID = &values[0]

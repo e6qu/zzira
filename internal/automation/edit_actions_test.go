@@ -10,7 +10,7 @@ import (
 	"github.com/e6qu/zzira/internal/store"
 )
 
-// Jira Automation edits a work item's description and logs work against it.
+// Jira Automation edits rich-text work item fields and logs work against it.
 func TestEditDescriptionAndLogWorkActions(t *testing.T) {
 	fx := newAutomationFixture(t)
 	projectID := store.NewID("prj")
@@ -23,8 +23,13 @@ func TestEditDescriptionAndLogWorkActions(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := fx.store.AddFieldToDefaultScreen(fx.ctx, fx.ws, fx.admin, "environment"); err != nil {
+		t.Fatal(err)
+	}
+
 	base := "/gateway/api/automation/public/jira/" + fx.cloudID + "/rest/v1/rule"
 	actions := []map[string]any{
+		{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "environment", "value": "Production {{rule.name}}"}},
 		{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "description", "value": "Handled by {{rule.name}}"}},
 		{"component": "ACTION", "type": "jira.issue.log-work", "value": map[string]string{"duration": "1h 30m", "comment": "automated sweep"}},
 	}
@@ -54,6 +59,14 @@ func TestEditDescriptionAndLogWorkActions(t *testing.T) {
 		t.Fatalf("description = %q, want the rendered smart value", text)
 	}
 
+	if text := adf.PlainText(updated.Fields["environment"]); text != "Production Edit and log" {
+		t.Fatalf("environment = %q", text)
+	}
+	var environmentActions int
+	if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_id=$2 AND payload->'diff' ? 'environment'`, fx.ws, issue.ID).Scan(&environmentActions); err != nil || environmentActions != 1 {
+		t.Fatalf("environment changes: %d %v", environmentActions, err)
+	}
+
 	// The duration is read with the site's own time tracking.
 	var seconds int
 	if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT COALESCE(SUM(time_spent_seconds),0) FROM worklogs WHERE issue_id=$1`, issue.ID).Scan(&seconds); err != nil {
@@ -73,6 +86,9 @@ func TestEditDescriptionAndLogWorkActions(t *testing.T) {
 	}
 	if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT COALESCE(SUM(time_spent_seconds),0) FROM worklogs WHERE issue_id=$1`, issue.ID).Scan(&seconds); err != nil {
 		t.Fatal(err)
+	}
+	if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_id=$2 AND payload->'diff' ? 'environment'`, fx.ws, issue.ID).Scan(&environmentActions); err != nil || environmentActions != 1 {
+		t.Fatalf("repeat automation changed Environment: %d %v", environmentActions, err)
 	}
 	if seconds != 10800 {
 		t.Fatalf("logged %d seconds after a second run, want 10800", seconds)

@@ -155,8 +155,8 @@ func TestCreateFieldMetadataUsesJiraShapes(t *testing.T) {
 }
 
 func TestCreateIssueRejectsUnsupportedAndMapsFieldErrors(t *testing.T) {
-	body := []byte(`{"fields":{"project":{"key":"ZZ"},"summary":"x","environment":"prod"}}`)
-	if errors := unsupportedCreateFields(body); errors["environment"] == "" {
+	body := []byte(`{"fields":{"project":{"key":"ZZ"},"summary":"x","unavailableField":"prod"}}`)
+	if errors := unsupportedCreateFields(body); errors["unavailableField"] == "" {
 		t.Fatalf("unsupportedCreateFields = %#v", errors)
 	}
 	if errors := createIssueFieldError(fmt.Errorf("custom field %q must be a number", "customfield_10000")); errors["customfield_10000"] == "" {

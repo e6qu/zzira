@@ -33,7 +33,7 @@ Screen names are unique per site, and tab names are unique per screen, both igno
 
 ## Field catalog
 
-A screen can only hold fields the forms can render. The system fields, in order: `summary`, `description`, `assignee`, `reporter`, `priority`, `labels`, `duedate`, `parent`, `components`, `fixVersions`, `versions`, `resolution`, `security` (Restrict to), `timetracking`, `issuetype` and `project` (`systemScreenFields`, `internal/store/screens.go`). After them come the site's custom fields. Adding any other field is refused. `issuetype` and `resolution` offer the site's catalogues, `priority` the priorities of the project's priority scheme, and `parent` the work items one level above ([ISSUE_METADATA.md](ISSUE_METADATA.md)).
+A screen can only hold fields the forms can render. The system fields, in order: `summary`, `description`, `environment`, `assignee`, `reporter`, `priority`, `labels`, `duedate`, `parent`, `components`, `fixVersions`, `versions`, `resolution`, `security` (Restrict to), `timetracking`, `issuetype` and `project` (`systemScreenFields`, `internal/store/screens.go`). After them come the site's custom fields. Adding any other field is refused. `issuetype` and `resolution` offer the site's catalogues, `priority` the priorities of the project's priority scheme, and `parent` the work items one level above ([ISSUE_METADATA.md](ISSUE_METADATA.md)).
 
 Reporter starts with the current user. With Modify reporter permission, the
 create form offers other site members and None for an optional field. The
@@ -47,6 +47,8 @@ Reporters can be cleared on edit or transition; required ones cannot. Changing
 Reporter keeps the creator and records the old/new account in the changelog.
 Former reporters who lose browse or security access receive a replica revocation
 in the same transaction.
+
+Environment is a system ADF field. Its create, edit and view controls follow the assigned screen and field configuration; transitions may collect it too. Unchanged textarea text preserves existing rich formatting. See [issue fields](ISSUE_FIELDS.md#environment).
 
 ## Default screen
 

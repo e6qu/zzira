@@ -26,7 +26,7 @@ func customFieldsFromBody(body []byte) map[string]json.RawMessage {
 	}
 	var out map[string]json.RawMessage
 	for k, v := range req.Fields {
-		if !customFieldIDPattern.MatchString(k) && !appCustomFieldKeyPattern.MatchString(k) && k != "fixVersions" && k != "versions" && k != "components" {
+		if !customFieldIDPattern.MatchString(k) && !appCustomFieldKeyPattern.MatchString(k) && k != "fixVersions" && k != "versions" && k != "components" && k != "environment" {
 			continue
 		}
 		if out == nil {

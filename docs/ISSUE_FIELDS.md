@@ -20,6 +20,18 @@ Field administration: listing, creating, searching, renaming, trashing and delet
 
 Everything except `GET /field` and `GET /projects/fields` needs *Administer Jira*. An unknown field is 404.
 
+## Environment
+
+Environment is a system rich-text field, stored as an ADF document or cleared with `null`. Add it to the project's create, edit or view screen through screen administration. Create and edit commands enforce those screen assignments; field configurations control required/hidden behavior and text/wiki rendering.
+
+`fields.environment` is accepted on issue create and update. Update also accepts one `update.environment` `set` operation; mixing both forms, list operations and non-ADF values is refused atomically. Work item reads, search projections, `renderedFields`, expressions (`issue.environment.plainText`), workflow field updates/copies and automation edit actions use the persisted value. Changes carry system-field changelog entries in the same action transaction.
+
+The create form, edit dialog and transition screen collect Environment as text and store it as ADF. Submitting unchanged Environment or Description text keeps the existing rich document. JQL `environment ~ "text"`, `environment is EMPTY` and `text ~ "text"` search Environment text without indexing its ADF structure. Hidden Environment is omitted from browser view and edit controls.
+
+The local replica receives the field value through the existing issue action payload. Offline Environment controls and offline screen/renderer configuration remain part of [local-first delivery](../PLAN.md#14-local-first-closure).
+
+Evidence: `internal/web/environment_test.go`, `internal/commands/workflow_fields_test.go` and `e2e/environment.spec.ts`.
+
 ## Trash
 
 - `trashed_at` marks a trashed field. Trashed fields leave forms, screens, `createmeta` and search. Values on work items are kept, so restoring a field brings its data back.

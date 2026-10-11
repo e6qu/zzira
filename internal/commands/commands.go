@@ -8,12 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
@@ -140,6 +142,15 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	issueType, err := s.Store.IssueTypeByIDOrName(ctx, in.WorkspaceID, in.IssueTypeID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("issue type %q not found", in.IssueTypeID)
+	}
+	if _, provided := in.Fields["environment"]; provided && !OverridesFromContext(ctx).ScreenSecurity {
+		screenFields, err := s.Store.ResolveScreenFields(ctx, in.WorkspaceID, project.ID, issueType.ID, "create")
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(screenFields) > 0 && !slices.Contains(screenFields, "environment") {
+			return nil, nil, fmt.Errorf("environment is not available on this work item's create screen")
+		}
 	}
 	configuration, err := s.jiraSiteConfiguration(ctx, in.WorkspaceID)
 	if err != nil {
@@ -465,6 +476,14 @@ func hasNonEmptyValue(values []string) bool {
 
 func suppliedFieldValue(raw json.RawMessage) bool {
 	value := strings.TrimSpace(string(raw))
+	if strings.HasPrefix(value, "{") {
+		var doc struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(raw, &doc) == nil && doc.Type == "doc" {
+			return strings.TrimSpace(adf.PlainText(raw)) != ""
+		}
+	}
 	switch value {
 	case "", "null", `""`, "[]", "{}":
 		return false

@@ -190,6 +190,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 			{ID: "issuetype", Name: "Issue type", Type: "issuetype", Required: true, Section: "context", Options: projectTypeOptions},
 			{ID: "summary", Name: "Summary", Type: "string", Required: true, Section: "primary"},
 			{ID: "description", Name: "Description", Type: "doc", Section: "primary"},
+			{ID: "environment", Name: "Environment", Type: "doc", Section: "details"},
 			{ID: "assignee", Name: "Assignee", Type: "user", Section: "details", Options: assigneeOptions},
 			{ID: "reporter", Name: "Reporter", Type: "user", Required: !canModifyReporter, Section: "details", Options: reporterOptions, Default: fmt.Sprintf("%q", userID)},
 			{ID: "priority", Name: "Priority", Type: "priority", Section: "details", Options: projectPriorityOptions},

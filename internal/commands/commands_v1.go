@@ -136,12 +136,16 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	if err != nil {
 		return nil, nil, err
 	}
-	if in.ReporterID != nil && !OverridesFromContext(ctx).ScreenSecurity {
+	_, environmentProvided := in.Fields["environment"]
+	if (in.ReporterID != nil || environmentProvided) && !OverridesFromContext(ctx).ScreenSecurity {
 		fields, err := s.Store.ResolveScreenFields(ctx, in.WorkspaceID, issue.ProjectID, issue.IssueType.ID, "edit")
 		if err != nil {
 			return nil, nil, err
 		}
-		if len(fields) > 0 && !slices.Contains(fields, "reporter") {
+		if environmentProvided && len(fields) > 0 && !slices.Contains(fields, "environment") {
+			return nil, nil, fmt.Errorf("environment is not available on this work item's edit screen")
+		}
+		if in.ReporterID != nil && len(fields) > 0 && !slices.Contains(fields, "reporter") {
 			return nil, nil, fmt.Errorf("reporter is not available on this work item's edit screen")
 		}
 	}
@@ -346,6 +350,22 @@ func (s *Service) validateCustomFields(ctx context.Context, projectID string, va
 		valid[field.ID] = field
 	}
 	for id, raw := range values {
+		if id == "environment" {
+			if len(raw) > 1<<20 {
+				return fmt.Errorf("environment must be at most 1 MiB")
+			}
+			if string(raw) != "null" {
+				var doc struct {
+					Type    string            `json:"type"`
+					Version int               `json:"version"`
+					Content []json.RawMessage `json:"content"`
+				}
+				if json.Unmarshal(raw, &doc) != nil || doc.Type != "doc" || doc.Version != 1 || doc.Content == nil {
+					return fmt.Errorf("environment must be an ADF document with type doc, version 1 and content, or null")
+				}
+			}
+			continue
+		}
 		if id == "fixVersions" || id == "versions" || id == "components" {
 			continue
 		} // Validated transactionally by the store.
@@ -856,6 +876,11 @@ func workflowFieldRaw(issue *models.Issue, update *store.IssueUpdate, field stri
 			return encode(*update.Summary)
 		}
 		return encode(issue.Summary)
+	case "environment":
+		if raw, provided := update.Fields[field]; provided {
+			return encode(adf.PlainText(raw))
+		}
+		return encode(adf.PlainText(issue.Fields[field]))
 	case "description":
 		if update.Description != nil {
 			return encode(adf.PlainText(update.Description))
@@ -927,7 +952,7 @@ func applyWorkflowFieldCopyFrom(sourceIssue *models.Issue, sourceUpdate, targetU
 		targetUpdate.Labels = &normalized
 		return nil
 	}
-	if target == "summary" || target == "description" || target == "priority" {
+	if target == "summary" || target == "description" || target == "environment" || target == "priority" {
 		var value string
 		if json.Unmarshal(raw, &value) != nil {
 			return fmt.Errorf("workflow field %q cannot be copied to %s", source, target)
@@ -937,6 +962,11 @@ func applyWorkflowFieldCopyFrom(sourceIssue *models.Issue, sourceUpdate, targetU
 			targetUpdate.Summary = &value
 		case "description":
 			targetUpdate.Description = adf.ParagraphDoc(value)
+		case "environment":
+			if targetUpdate.Fields == nil {
+				targetUpdate.Fields = map[string]json.RawMessage{}
+			}
+			targetUpdate.Fields[target] = adf.ParagraphDoc(value)
 		case "priority":
 			targetUpdate.PriorityID = &value
 		}
@@ -970,6 +1000,19 @@ func applyWorkflowFieldUpdate(issue *models.Issue, update *store.IssueUpdate, ef
 			current = adf.PlainText(update.Description)
 		}
 		update.Description = adf.ParagraphDoc(appendText(current))
+	case "environment":
+		current := issue.Fields["environment"]
+		if raw, provided := update.Fields["environment"]; provided {
+			current = raw
+		}
+		value := appendText(adf.PlainText(current))
+		if update.Fields == nil {
+			update.Fields = map[string]json.RawMessage{}
+		}
+		update.Fields["environment"] = adf.ParagraphDoc(value)
+		if strings.TrimSpace(value) == "" {
+			update.Fields["environment"] = json.RawMessage("null")
+		}
 	case "labels":
 		labels := append([]string(nil), issue.Labels...)
 		if update.Labels != nil {
