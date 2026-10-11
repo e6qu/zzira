@@ -1112,6 +1112,7 @@
     const path = form.getAttribute('data-outbox-path') || form.getAttribute('hx-post') || form.getAttribute('hx-delete');
     const kind = outboxKind(path || '');
     if (!kind) return false;
+    if (!form.reportValidity()) return false;
     const body = new URLSearchParams(new FormData(form)).toString();
     postWorker({ type: 'enqueue', method: 'POST', path, body, kind });
     return true;
@@ -1139,10 +1140,11 @@
       mutationMinSeq = Number.MAX_SAFE_INTEGER;
       return; // online: let htmx do its thing
     }
-    if (!queueOfflineForm(elt)) return; // reads fail naturally offline
+    const path = elt.getAttribute('data-outbox-path') || elt.getAttribute('hx-post') || elt.getAttribute('hx-delete');
+    if (!outboxKind(path || '')) return; // reads fail naturally offline
     evt.preventDefault();
     evt.stopPropagation();
-    if (elt.closest('[role="dialog"]')) window.zzira.closeModal();
+    if (queueOfflineForm(elt) && elt.closest('[role="dialog"]')) window.zzira.closeModal();
   }, true);
 
   window.addEventListener('online', () => {

@@ -32,6 +32,10 @@ test('two tabs own independent pools and both drain offline edits', async ({ pag
     await context.setOffline(true);
     for (let i = 0; i < pages.length; i++) {
       await pages[i].locator('#edit-issue-button').click();
+      await pages[i].locator('#edit-summary').fill('');
+      await pages[i].getByRole('button', { name: 'Save changes', exact: true }).click();
+      await expect(pages[i].getByRole('dialog', { name: 'Edit issue', exact: true })).toBeVisible();
+      expect(await pages[i].locator('#edit-summary').evaluate(input => (input as HTMLInputElement).validity.valueMissing)).toBe(true);
       await pages[i].locator('#edit-summary').fill(`Queued replica ${i} ${stamp}`);
       await pages[i].getByRole('button', { name: 'Save changes', exact: true }).click();
       await expect(pages[i].getByRole('dialog', { name: 'Edit issue', exact: true })).not.toBeVisible();
