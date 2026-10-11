@@ -755,13 +755,13 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	}
 	viewCustomFields := []models.CustomFieldView{}
 	for _, field := range editView.ConfiguredCustomFields {
-		if len(viewFields) == 0 || slices.Contains(viewFields, field.ID) {
+		if viewFields == nil || slices.Contains(viewFields, field.ID) {
 			viewCustomFields = append(viewCustomFields, field)
 		}
 	}
 	viewChoiceFields := []models.IssueChoiceFieldView{}
 	for _, field := range editView.ConfiguredChoiceFields {
-		if len(viewFields) == 0 || slices.Contains(viewFields, field.Field.ID) {
+		if viewFields == nil || slices.Contains(viewFields, field.Field.ID) {
 			viewChoiceFields = append(viewChoiceFields, field)
 		}
 	}
@@ -769,7 +769,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		ChoiceFields:         viewChoiceFields,
 		ViewFields:           issueScreenFields(viewFields, reporterBehaviour),
 		EditFields:           editView.EditFields,
-		EnvironmentVisible:   !reporterBehaviour["environment"].IsHidden && (len(viewFields) == 0 || slices.Contains(viewFields, "environment")),
+		EnvironmentVisible:   !reporterBehaviour["environment"].IsHidden && (viewFields == nil || slices.Contains(viewFields, "environment")),
 		Issue:                *issue,
 		ProjectKey:           project.Key,
 		ProjectName:          project.Name,
@@ -972,10 +972,10 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	for field, rule := range behaviour {
 		issue.FieldRenderers[field] = rule.Renderer
 	}
-	if !behaviour["environment"].IsHidden && (len(reporterFields) == 0 || slices.Contains(reporterFields, "environment")) {
+	if !behaviour["environment"].IsHidden && (reporterFields == nil || slices.Contains(reporterFields, "environment")) {
 		view.EnvironmentField = &models.CreateFieldMeta{ID: "environment", Name: "Environment", Type: "doc", Required: behaviour["environment"].IsRequired, Description: behaviour["environment"].Description}
 	}
-	view.CanModifyReporter = permissions["MODIFY_REPORTER"] && !behaviour["reporter"].IsHidden && (len(reporterFields) == 0 || slices.Contains(reporterFields, "reporter"))
+	view.CanModifyReporter = permissions["MODIFY_REPORTER"] && !behaviour["reporter"].IsHidden && (reporterFields == nil || slices.Contains(reporterFields, "reporter"))
 	view.ReporterRequired = behaviour["reporter"].IsRequired
 	foundReporter := false
 	for _, member := range members {
@@ -1041,7 +1041,7 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 			}
 			fieldView.Display = strings.Join(display, ", ")
 		}
-		fieldView.ReadOnly = len(reporterFields) > 0 && !slices.Contains(reporterFields, cf.ID)
+		fieldView.ReadOnly = reporterFields != nil && !slices.Contains(reporterFields, cf.ID)
 		view.ConfiguredCustomFields = append(view.ConfiguredCustomFields, fieldView)
 		if !fieldView.ReadOnly {
 			view.CustomFields = append(view.CustomFields, fieldView)
@@ -3101,7 +3101,7 @@ func (h *Handler) requireBulkChange(w http.ResponseWriter, r *http.Request) (*mo
 func issueScreenFields(screen []string, rules map[string]models.FieldBehaviour) map[string]bool {
 	fields := map[string]bool{}
 	for _, id := range []string{"summary", "description", "environment", "assignee", "reporter", "priority", "labels", "duedate", "parent", "resolution", "security", "components", "fixVersions", "versions", "timetracking"} {
-		fields[id] = !rules[id].IsHidden && (len(screen) == 0 || slices.Contains(screen, id))
+		fields[id] = !rules[id].IsHidden && (screen == nil || slices.Contains(screen, id))
 	}
 	return fields
 }

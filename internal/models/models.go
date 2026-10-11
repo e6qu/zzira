@@ -521,8 +521,8 @@ type CreateProjectMeta struct {
 	// can show a screen's tabs as tabs. Keyed by work type id.
 	ScreenTabs map[string][]FieldTab `json:"-"`
 	// ScreenFields holds the ordered field IDs the project's screen scheme
-	// exposes per work type, keyed by issue type ID. An absent or empty entry
-	// means no screen governs that form and every project field applies.
+	// exposes per work type, keyed by issue type ID. A nil entry means no
+	// screen governs the form. An empty non-nil entry hides optional fields.
 	ScreenFields map[string][]string `json:"-"`
 	// FieldBehaviour holds the project's field configuration rules per work
 	// type. A field without a rule is optional and visible.
@@ -608,7 +608,7 @@ func (m CreateProjectMeta) DetailTabsForIssueType(issueTypeID string, fields []C
 // summary, so a screen may not hide them.
 func (m CreateProjectMeta) FieldsForIssueType(issueTypeID string) []CreateFieldMeta {
 	screen := m.ScreenFields[issueTypeID]
-	if len(screen) == 0 {
+	if screen == nil {
 		return m.applyFieldBehaviour(issueTypeID, m.applyCustomFieldContexts(issueTypeID, m.Fields))
 	}
 	rank := make(map[string]int, len(screen))

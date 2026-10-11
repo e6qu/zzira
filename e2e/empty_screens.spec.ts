@@ -1,0 +1,59 @@
+import { apiAuthHeader } from './auth';
+import { expect, test } from '@playwright/test';
+
+test('an empty assigned screen hides optional fields and rejects forged edits', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill('demo@zzira.dev');
+  await page.getByLabel('Password').fill('demo1234');
+  await page.getByRole('button', { name: 'Log in' }).click();
+  const headers = { Authorization: apiAuthHeader() };
+  const stamp = Date.now();
+  const key = `EMP${stamp.toString().slice(-7)}`;
+  const me = await (await page.request.get('/rest/api/3/myself', { headers })).json();
+  const project = await page.request.post('/rest/api/3/project', { headers, data: { key, name: `Empty screens ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' } });
+  expect(project.status()).toBe(201);
+  const projectID = String((await project.json()).id);
+  let screenID = '', schemeID = '', typeSchemeID = '';
+  try {
+    const issue = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key }, issuetype: { name: 'Task' }, summary: 'Work behind an empty screen', labels: ['retained'] } } });
+    expect(issue.status()).toBe(201);
+    const issueKey = String((await issue.json()).key);
+    const screen = await page.request.post('/rest/api/3/screens', { headers, data: { name: `Empty ${stamp}` } });
+    expect(screen.status()).toBe(201);
+    screenID = String((await screen.json()).id);
+    const scheme = await page.request.post('/rest/api/3/screenscheme', { headers, data: { name: `Empty forms ${stamp}`, screens: { default: screenID } } });
+    expect(scheme.status()).toBe(201);
+    schemeID = String((await scheme.json()).id);
+    const types = await page.request.post('/rest/api/3/issuetypescreenscheme', { headers, data: { name: `Empty work types ${stamp}`, issueTypeMappings: [{ issueTypeId: 'default', screenSchemeId: schemeID }] } });
+    expect(types.status()).toBe(201);
+    typeSchemeID = String((await types.json()).id);
+    expect((await page.request.put('/rest/api/3/issuetypescreenscheme/project', { headers, data: { issueTypeScreenSchemeId: typeSchemeID, projectId: projectID } })).status()).toBe(204);
+    await page.goto(`/browse/${issueKey}`);
+    await expect(page.locator('#field-priority, #field-labels, #field-reporter, #field-components')).toHaveCount(0);
+    await page.locator('#edit-issue-button').click();
+    const edit = page.getByRole('dialog', { name: 'Edit issue', exact: true });
+    await expect(edit).toBeVisible();
+    await expect(edit.locator('#edit-priority, #edit-labels, #edit-reporter, #edit-components, #edit-description')).toHaveCount(0);
+    await edit.getByLabel('Summary', { exact: false }).fill('Summary survives an empty screen');
+    await edit.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await expect(edit).not.toBeVisible();
+    expect((await page.request.put(`/rest/api/3/issue/${issueKey}`, { headers, data: { fields: { summary: 'Refused summary', labels: [] } } })).status()).toBe(400);
+    const current = (await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=summary,labels`, { headers })).json()).fields;
+    expect(current).toMatchObject({ summary: 'Summary survives an empty screen', labels: ['retained'] });
+    await page.goto(`/projects/${key}`);
+    await page.locator('#global-create-issue').click();
+    const create = page.getByRole('dialog', { name: 'Create issue', exact: true });
+    await expect(create).toBeVisible();
+    await expect(create.getByLabel('Project', { exact: false })).toBeVisible();
+    await create.getByLabel('Issue type', { exact: false }).selectOption({ label: 'Task' });
+    await expect(create.locator('#create-priority, #create-labels, #create-assignee, #create-description')).toHaveCount(0);
+    await create.getByLabel('Summary', { exact: false }).fill(`Empty create screen ${stamp}`);
+    await create.getByRole('button', { name: 'Create issue', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/browse/${key}-\\d+$`));
+  } finally {
+    await page.request.delete(`/rest/api/3/project/${projectID}`, { headers, timeout: 10_000 });
+    if (typeSchemeID) await page.request.delete(`/rest/api/3/issuetypescreenscheme/${typeSchemeID}`, { headers, timeout: 10_000 });
+    if (schemeID) await page.request.delete(`/rest/api/3/screenscheme/${schemeID}`, { headers, timeout: 10_000 });
+    if (screenID) await page.request.delete(`/rest/api/3/screens/${screenID}`, { headers, timeout: 10_000 });
+  }
+});

@@ -35,7 +35,7 @@ Rules:
 - Every screen scheme has a `default` screen and every work type screen scheme has a `default` mapping, so resolution always finds a screen.
 - Anything still referenced cannot be removed: screens used by a screen scheme, screen schemes used by a mapping, work type screen schemes assigned to a project, and the two site defaults. Trying returns a conflict.
 - `project`, `issuetype` and `summary` always stay on a form, even if the screen leaves them out. Every other field is up to the screen.
-- Consumers: `createmeta` and the create dialog use `create`; `editmeta` uses `edit`; bulk edit offers only fields on every selected work item's screen. With no governing screen, a form keeps its full field set.
+- Consumers: `createmeta` and the create dialog use `create`; `editmeta` uses `edit`; bulk edit offers only fields on every selected work item's screen. With no governing screen, a form keeps its full field set. An assigned screen with no fields keeps only the required create context and summary; it does not restore optional fields. Edit and view screens retain the empty assignment, and off-screen edits are refused.
 
 ## Defaults
 

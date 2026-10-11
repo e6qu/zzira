@@ -148,7 +148,7 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 		if err != nil {
 			return nil, nil, err
 		}
-		if len(screenFields) > 0 && !slices.Contains(screenFields, "environment") {
+		if screenFields != nil && !slices.Contains(screenFields, "environment") {
 			return nil, nil, fmt.Errorf("environment is not available on this work item's create screen")
 		}
 	}

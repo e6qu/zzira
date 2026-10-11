@@ -27,7 +27,7 @@
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js?v=2.0.11" defer></script>
 <script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=41" defer></script>
-<script src="/static/app.js?v=77" defer></script>
+<script src="/static/app.js?v=78" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -167,11 +167,11 @@
       <label for="create-summary">Summary <span aria-hidden="true">*</span></label>
       <input id="create-summary" name="summary" value="{{.Values.summary}}" required autofocus maxlength="255" autocomplete="off" placeholder="What needs to be done?" aria-describedby="create-summary-help">
       <small id="create-summary-help">Use a short outcome the team can scan in a backlog.</small>
-      <label for="create-description">Description</label>
-      <textarea id="create-description" name="description" rows="6" maxlength="1048576" placeholder="Add context, acceptance criteria, or links…">{{.Values.description}}</textarea>
+      {{range .Selected.Fields}}{{if eq .ID "description"}}<label for="create-description">{{.Name}}{{if .Required}} <span aria-hidden="true">*</span>{{end}}</label>
+      <textarea id="create-description" name="description" rows="6" maxlength="1048576" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-description-help"{{end}} placeholder="Add context, acceptance criteria, or links…">{{$.Values.description}}</textarea>{{if .Description}}<small id="create-description-help">{{.Description}}</small>{{end}}{{end}}{{end}}
     </div>
 
-    <details class="create-more" {{if .Error}}open{{end}}>
+    {{$hasDetails := false}}{{range .Selected.Fields}}{{if eq .Section "details"}}{{$hasDetails = true}}{{end}}{{end}}{{if $hasDetails}}<details class="create-more" {{if .Error}}open{{end}}>
       <summary><span>More fields</span><small>Assignment, priority, labels, security, and project fields</small></summary>
       {{if .DetailTabs}}<div class="create-field-tabs">
         <div class="tablist" role="tablist" aria-label="Field tabs">{{range $index, $tab := .DetailTabs}}<button type="button" role="tab" id="create-tab-{{$index}}" aria-controls="create-tabpanel-{{$index}}" aria-selected="{{if eq $index 0}}true{{else}}false{{end}}" tabindex="{{if eq $index 0}}0{{else}}-1{{end}}" data-field-tab>{{$tab.Name}}</button>{{end}}</div>
@@ -179,7 +179,7 @@
       </div>{{else}}<div class="create-details-grid">
       {{range .Selected.Fields}}{{if eq .Section "details"}}{{template "create_detail_field" (detailField . $.Values $.SelectedIssueTypeSubtask)}}{{end}}{{end}}
       </div>{{end}}
-    </details>
+    </details>{{end}}
     {{if .Error}}<p class="error create-error" role="alert" aria-atomic="true">{{.Error}}</p>{{end}}
     </div>
     <div class="modal-actions create-actions">

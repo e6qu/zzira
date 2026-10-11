@@ -51,7 +51,7 @@ func (s *Service) BulkReporterField(ctx context.Context, workspaceID, actorID st
 			if err != nil {
 				return nil, err
 			}
-			config = configuration{available: !behaviour["reporter"].IsHidden && (len(screen) == 0 || slices.Contains(screen, "reporter")), required: behaviour["reporter"].IsRequired}
+			config = configuration{available: !behaviour["reporter"].IsHidden && (screen == nil || slices.Contains(screen, "reporter")), required: behaviour["reporter"].IsRequired}
 			configurations[key] = config
 		}
 		if !config.available {

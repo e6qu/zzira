@@ -159,14 +159,14 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		if err != nil {
 			return nil, nil, err
 		}
-		if environmentProvided && len(fields) > 0 && !slices.Contains(fields, "environment") {
+		if environmentProvided && fields != nil && !slices.Contains(fields, "environment") {
 			return nil, nil, fmt.Errorf("environment is not available on this work item's edit screen")
 		}
-		if in.ReporterID != nil && len(fields) > 0 && !slices.Contains(fields, "reporter") {
+		if in.ReporterID != nil && fields != nil && !slices.Contains(fields, "reporter") {
 			return nil, nil, fmt.Errorf("reporter is not available on this work item's edit screen")
 		}
 		for _, field := range screenFieldsProvided {
-			if len(fields) > 0 && !slices.Contains(fields, field) {
+			if fields != nil && !slices.Contains(fields, field) {
 				return nil, nil, fmt.Errorf("%s is not available on this work item's edit screen", field)
 			}
 		}
