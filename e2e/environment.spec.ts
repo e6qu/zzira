@@ -87,6 +87,26 @@ test('a contributor creates, recovers and edits Environment through an assigned 
     await expect(page.locator('.issue-environment .description-text')).toHaveText('Staging Linux');
     await page.reload();
     expect(JSON.stringify(await environment())).toContain('Staging Linux');
+    const rich = { type: 'doc', version: 1, content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Staging Linux', marks: [{ type: 'strong' }] }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Second paragraph', marks: [{ type: 'em' }] }] },
+    ] };
+    expect((await page.request.put(`/rest/api/3/issue/${issueKey}`, { headers, data: { fields: { description: rich, environment: rich } } })).status()).toBe(204);
+    await page.reload();
+    await page.locator('#edit-issue-button').click();
+    await edit.getByRole('button', { name: 'Save changes' }).click();
+    await expect(edit).toHaveCount(0);
+    await page.reload();
+    const preserved = await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=description,environment`, { headers })).json();
+    expect(preserved.fields.description).toEqual(rich);
+    expect(preserved.fields.environment).toEqual(rich);
+    const posted = 'Staging Linux\r\nSecond paragraph';
+    const inlineSave = await page.request.post(`/issues/${issueKey}/fields`, { form: { field: 'environment', value: posted } });
+    expect(inlineSave.status()).toBe(200);
+    expect(await environment()).toEqual(rich);
+    const missing = await page.request.post(`/issues/${issueKey}/fields`, { form: { field: 'environment' } });
+    expect(missing.status()).toBe(400);
+    expect(await environment()).toEqual(rich);
     const search = await page.request.get(`/rest/api/3/search?jql=${encodeURIComponent(`project = ${key} AND environment ~ "Staging"`)}&fields=environment`, { headers });
     expect(search.status()).toBe(200);
     expect((await search.json()).issues.map((issue: any) => issue.key)).toEqual([issueKey]);

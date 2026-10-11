@@ -2798,9 +2798,27 @@ func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key s
 		value = strings.TrimSpace(value)
 		in.Summary = &value
 	case "environment":
-		in.Fields = map[string]json.RawMessage{"environment": adf.ParagraphDoc(value)}
-		if strings.TrimSpace(value) == "" {
-			in.Fields["environment"] = json.RawMessage("null")
+		if _, provided := r.PostForm["value"]; !provided {
+			http.Error(w, "environment value is required", http.StatusBadRequest)
+			return
+		}
+		issue, err := h.issueForUser(r, user, wsID, key)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		value = strings.ReplaceAll(value, "\r\n", "\n")
+		original := issue.Fields["environment"]
+		if value == adf.PlainText(original) {
+			if len(original) == 0 {
+				original = json.RawMessage("null")
+			}
+			in.Fields = map[string]json.RawMessage{"environment": original}
+		} else {
+			in.Fields = map[string]json.RawMessage{"environment": adf.ParagraphDoc(value)}
+			if strings.TrimSpace(value) == "" {
+				in.Fields["environment"] = json.RawMessage("null")
+			}
 		}
 	case "components", "fixVersions", "versions":
 		in.Fields = map[string]json.RawMessage{field: issueChoiceRefs(r.PostForm["value"])}
@@ -2986,17 +3004,23 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 	}
 	summary := strings.TrimSpace(r.PostFormValue("summary"))
 	var description json.RawMessage
-	if values, provided := r.PostForm["description"]; provided && len(values) > 0 && values[0] != adf.PlainText(issue.Description) {
-		description = adf.ParagraphDoc(values[0])
+	if values, provided := r.PostForm["description"]; provided && len(values) > 0 {
+		value := strings.ReplaceAll(values[0], "\r\n", "\n")
+		if value != adf.PlainText(issue.Description) {
+			description = adf.ParagraphDoc(value)
+		}
 	}
 	in := commands.UpdateIssueInput{
 		ActorID: user.ID, WorkspaceID: wsID, IssueIDOrKey: key,
 		Summary: &summary, Description: description,
 	}
-	if values, ok := r.PostForm["environment"]; ok && len(values) > 0 && values[0] != adf.PlainText(issue.Fields["environment"]) {
-		in.Fields = map[string]json.RawMessage{"environment": adf.ParagraphDoc(values[0])}
-		if strings.TrimSpace(values[0]) == "" {
-			in.Fields["environment"] = json.RawMessage("null")
+	if values, ok := r.PostForm["environment"]; ok && len(values) > 0 {
+		value := strings.ReplaceAll(values[0], "\r\n", "\n")
+		if value != adf.PlainText(issue.Fields["environment"]) {
+			in.Fields = map[string]json.RawMessage{"environment": adf.ParagraphDoc(value)}
+			if strings.TrimSpace(value) == "" {
+				in.Fields["environment"] = json.RawMessage("null")
+			}
 		}
 	}
 	if values, ok := r.PostForm["priority"]; ok && len(values) > 0 {
