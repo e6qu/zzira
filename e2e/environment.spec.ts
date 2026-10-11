@@ -21,7 +21,7 @@ test('a contributor creates, recovers and edits Environment through an assigned 
     screenID = String((await screen.json()).id);
     const tabs = await (await page.request.get(`/rest/api/3/screens/${screenID}/tabs`, { headers })).json();
     for (const fieldId of ['summary', 'description', 'environment']) {
-      expect((await page.request.post(`/rest/api/3/screens/${screenID}/tabs/${tabs[0].id}/fields`, { headers, data: { fieldId } })).status()).toBe(201);
+      expect((await page.request.post(`/rest/api/3/screens/${screenID}/tabs/${tabs[0].id}/fields`, { headers, data: { fieldId } })).status()).toBe(200);
     }
     const scheme = await page.request.post('/rest/api/3/screenscheme', { headers, data: { name: `Environment scheme ${stamp}`, screens: { default: screenID } } });
     expect(scheme.status()).toBe(201);

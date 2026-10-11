@@ -52,7 +52,7 @@ test('an administrator changes field formatting without changing stored content'
     await page.goto(`/browse/${issueKey}`);
     await expect(page.locator('.issue-description .description-text')).toHaveText('Rich description');
     await expect(page.locator('.issue-description strong')).toHaveCount(0);
-    const notes = page.locator('.issue-context-panel').filter({ has: page.locator(`#detail-field-${fieldID}`) });
+    const notes = page.locator('details.more-fields').filter({ has: page.locator(`#detail-field-${fieldID}`) });
     await notes.locator('summary').first().click();
     await expect(notes.locator('strong').filter({ hasText: 'Bold notes' })).toHaveCount(1);
     const expanded = await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=description,${fieldID}&expand=renderedFields`, { headers })).json();

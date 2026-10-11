@@ -35,7 +35,7 @@ test('a signed-out reader sees only public work and loses access after revocatio
     await reader.addScriptTag({ content: axe.source });
     expect(await reader.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations)).toEqual([]);
     await reader.evaluate(async () => {
-      await navigator.serviceWorker.register('/static/sw.js');
+      await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
     });
     expect((await reader.reload())?.status()).toBe(200);
