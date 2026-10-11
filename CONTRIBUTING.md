@@ -71,7 +71,10 @@ service-worker cache versions together so existing browsers fetch the new build.
 
 For PostgreSQL, update patches within the deployed major. Changing major versions
 requires a separate data migration; replacing the Compose image alone does not
-upgrade an existing `pgdata` volume.
+upgrade an existing `pgdata` volume. Dependabot excludes Compose PostgreSQL major
+bumps for this reason. PostgreSQL 18 also changes the image's `PGDATA` and volume
+layout; consult the [official image documentation](https://hub.docker.com/_/postgres)
+when preparing a migration.
 
 ## How the code is arranged
 
