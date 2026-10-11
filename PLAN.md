@@ -67,8 +67,8 @@ backlogs remain epic-level, as Jira's do.
 - Work type alternatives must share workflow, field configuration and screen
   schemes; team-managed scoping, asynchronous priority-scheme updates and a
   larger avatar catalogue remain ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#gaps)).
-- Apply view-screen and hidden-field rules to the remaining built-in issue
-  details, and show transition screen tabs ([SCREEN_SCHEMES.md](docs/SCREEN_SCHEMES.md#gaps)).
+- Complete built-in field controls (components and versions), screen field
+  order and transition screen tabs ([SCREEN_SCHEMES.md](docs/SCREEN_SCHEMES.md#gaps)).
 - Add Attachment and Linked work items to the screen catalog.
 - App field options: `projects2` scope, `defaultValue`, property indexes for JQL.
 - Classification level on work items: field, REST value, UI control, JQL,

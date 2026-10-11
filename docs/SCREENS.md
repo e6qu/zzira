@@ -73,6 +73,10 @@ A screen with more than one tab is shown as tabs on the create form: one panel a
 ## Custom fields on work items
 
 Issue details use the view screen; the edit dialog uses the edit screen.
+Description, priority, resolution, assignee, Reporter, labels, due date, parent,
+security and time tracking follow view-screen and hidden-field rules. Existing
+edit controls also apply the edit screen. Omitting Description from the editor
+preserves its rich saved content.
 Both apply the work type's field configuration and custom-field context.
 A view-only field displays its saved value without an inline edit control.
 Transition screens resolve their own fields, including fields absent from the

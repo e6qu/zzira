@@ -304,6 +304,8 @@ type SyncResponse struct {
 // ---- View models (render-only) ----
 
 type IssueView struct {
+	ViewFields         map[string]bool
+	EditFields         map[string]bool
 	EnvironmentVisible bool
 	Issue              Issue
 	ProjectKey         string
@@ -416,6 +418,7 @@ type WorkflowTransition struct {
 // EditDialogView drives the edit-issue dialog; rendered by both server and
 // wasm worker (offline editing). Members/levels/fields may be empty offline.
 type EditDialogView struct {
+	EditFields        map[string]bool
 	EnvironmentField  *CreateFieldMeta
 	CanAssign         bool
 	CanModifyReporter bool
@@ -681,4 +684,11 @@ func (m CreateProjectMeta) FieldRules(issueTypeID string) map[string]FieldBehavi
 
 type IssueCreateMetadata struct {
 	Projects []CreateProjectMeta `json:"projects"`
+}
+
+// FieldOnView and FieldOnEdit preserve the unconfigured offline presentation.
+func (v IssueView) FieldOnView(field string) bool { return v.ViewFields == nil || v.ViewFields[field] }
+func (v IssueView) FieldOnEdit(field string) bool { return v.EditFields == nil || v.EditFields[field] }
+func (v EditDialogView) FieldOnEdit(field string) bool {
+	return v.EditFields == nil || v.EditFields[field]
 }

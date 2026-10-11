@@ -769,6 +769,8 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		}
 	}
 	view := &models.IssueView{
+		ViewFields:           issueScreenFields(viewFields, reporterBehaviour),
+		EditFields:           editView.EditFields,
 		EnvironmentVisible:   !reporterBehaviour["environment"].IsHidden && (len(viewFields) == 0 || slices.Contains(viewFields, "environment")),
 		Issue:                *issue,
 		ProjectKey:           project.Key,
@@ -937,6 +939,7 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	if err != nil {
 		return nil, err
 	}
+	view.EditFields = issueScreenFields(reporterFields, behaviour)
 	issue.FieldRenderers = map[string]string{}
 	for field, rule := range behaviour {
 		issue.FieldRenderers[field] = rule.Renderer
@@ -3031,4 +3034,13 @@ func (h *Handler) requireBulkChange(w http.ResponseWriter, r *http.Request) (*mo
 		return nil, "", false
 	}
 	return user, workspaceID, true
+}
+
+// issueScreenFields combines a resolved screen with work-type field rules.
+func issueScreenFields(screen []string, rules map[string]models.FieldBehaviour) map[string]bool {
+	fields := map[string]bool{}
+	for _, id := range []string{"summary", "description", "environment", "assignee", "reporter", "priority", "labels", "duedate", "parent", "resolution", "security", "components", "fixVersions", "versions", "timetracking"} {
+		fields[id] = !rules[id].IsHidden && (len(screen) == 0 || slices.Contains(screen, id))
+	}
+	return fields
 }
