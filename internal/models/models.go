@@ -4,6 +4,7 @@ package models
 
 import (
 	"encoding/json"
+	"slices"
 	"sort"
 )
 
@@ -430,6 +431,7 @@ type EditDialogView struct {
 	ChoiceFields           []IssueChoiceFieldView
 	ConfiguredChoiceFields []IssueChoiceFieldView
 	EditFields             map[string]bool
+	EditFieldOrder         []string
 	EnvironmentField       *CreateFieldMeta
 	CanAssign              bool
 	CanModifyReporter      bool
@@ -444,6 +446,39 @@ type EditDialogView struct {
 	// ConfiguredCustomFields also supplies view and transition screens independently of editing.
 	ConfiguredCustomFields []CustomFieldView
 	Error                  string
+}
+
+// EditDialogField keeps each configured field beside the dialog data its
+// control needs, so the server and local renderer share one ordered form.
+type EditDialogField struct {
+	ID   string
+	View *EditDialogView
+}
+
+func (v EditDialogView) OrderedEditFields() []EditDialogField {
+	ids := v.EditFieldOrder
+	if ids == nil {
+		ids = []string{"summary", "description", "priority", "labels", "duedate", "parent", "resolution", "timetracking", "environment", "assignee", "reporter", "security"}
+		for _, field := range v.ChoiceFields {
+			ids = append(ids, field.Field.ID)
+		}
+		for _, field := range v.CustomFields {
+			ids = append(ids, field.ID)
+		}
+	}
+	// Summary remains required even on an intentionally empty screen.
+	if !slices.Contains(ids, "summary") {
+		ids = append([]string{"summary"}, ids...)
+	}
+	fields := make([]EditDialogField, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			fields = append(fields, EditDialogField{ID: id, View: &v})
+			seen[id] = true
+		}
+	}
+	return fields
 }
 
 // IssueChoiceFieldView describes a project-scoped component or version picker.

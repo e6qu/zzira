@@ -939,6 +939,7 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	}
 	view.FieldRules = behaviour
 	view.EditFields = issueScreenFields(reporterFields, behaviour)
+	view.EditFieldOrder = reporterFields
 	view.CanResolve, view.CanSchedule = permissions["RESOLVE_ISSUES"], permissions["SCHEDULE_ISSUES"]
 	view.Priorities, err = h.Store.PrioritiesForProject(ctx, wsID, issue.ProjectID)
 	if err != nil {
