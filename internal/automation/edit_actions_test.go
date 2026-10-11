@@ -220,3 +220,62 @@ func TestEditActionSetsAssigneeResolutionAndEstimates(t *testing.T) {
 		t.Fatal("a rule naming a resolution the site does not have was treated as a success")
 	}
 }
+
+func TestEditReporterActionRespectsActorPermission(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID := store.NewID("prj")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,lead_account_id) VALUES($1,$2,'RERA','Reporter automation',$3)`, projectID, fx.ws, fx.admin); err != nil {
+		t.Fatal(err)
+	}
+	scheme, err := fx.store.CreatePermissionScheme(fx.ctx, fx.ws, fx.admin, "Reporter automation permissions", "", []store.PermissionGrantInput{{Permission: "BROWSE_PROJECTS", HolderType: "anyone"}, {Permission: "EDIT_ISSUES", HolderType: "anyone"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = fx.store.AssignPermissionScheme(fx.ctx, fx.ws, fx.admin, projectID, scheme.ID); err != nil {
+		t.Fatal(err)
+	}
+	issue, _, err := fx.store.CreateIssue(fx.ctx, fx.admin, projectID, "Reporter automation", adf.ParagraphDoc(""), "st_todo", "it_task", "pr_medium", "", nil, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	actions := []map[string]any{{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "reporter", "value": "ACTOR"}}}
+	base := "/gateway/api/automation/public/jira/" + fx.cloudID + "/rest/v1/rule"
+	created := fx.call(fx.admin, http.MethodPost, base, webhookRuleBody("Set reporter", fx.member, "ENABLED", true, actions), http.StatusCreated)
+	uuid := created["ruleUuid"].(string)
+	rule, err := fx.service.Rule(fx.ctx, fx.ws, uuid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func() error {
+		t.Helper()
+		if _, err := fx.service.TriggerWebhook(fx.ctx, rule.WebhookToken, "", json.RawMessage(`{"issues":["`+issue.Key+`"]}`)); err != nil {
+			t.Fatal(err)
+		}
+		return (&Runner{Service: fx.service}).DrainOnce(fx.ctx, fx.ws)
+	}
+	if err := run(); err == nil || !strings.Contains(err.Error(), "reporter") {
+		t.Fatalf("expected Reporter permission error, got %v", err)
+	}
+	unchanged, err := fx.store.IssueByIDOrKey(fx.ctx, fx.ws, issue.ID)
+	if err != nil || unchanged.Reporter == nil || unchanged.Reporter.ID != fx.admin {
+		t.Fatal("unprivileged rule changed Reporter")
+	}
+	runs, err := fx.service.Runs(fx.ctx, fx.ws, uuid, 5)
+	if err != nil || len(runs) != 1 || runs[0].State != "FAILED" {
+		t.Fatalf("refused Reporter rule: %+v %v", runs, err)
+	}
+	if _, err := fx.store.CreatePermissionGrant(fx.ctx, fx.ws, fx.admin, scheme.ID, store.PermissionGrantInput{Permission: "MODIFY_REPORTER", HolderType: "anyone"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := fx.store.IssueByIDOrKey(fx.ctx, fx.ws, issue.ID)
+	if err != nil || updated.Reporter == nil || updated.Reporter.ID != fx.member {
+		t.Fatalf("granted rule Reporter: %+v %v", updated, err)
+	}
+	runs, err = fx.service.Runs(fx.ctx, fx.ws, uuid, 5)
+	if err != nil || len(runs) != 2 || runs[0].State != "SUCCESS" {
+		t.Fatalf("granted Reporter rule: %+v %v", runs, err)
+	}
+}

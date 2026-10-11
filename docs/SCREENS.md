@@ -38,6 +38,13 @@ A screen can only hold fields the forms can render. The system fields, in order:
 Reporter defaults to the current user. The create form offers other site members
 only with the project's Modify reporter permission, and the command enforces
 that permission on submission. A refused create retains the chosen reporter.
+Edit dialogs and inline Reporter controls follow the edit screen, field
+configuration and Modify reporter permission. A transition screen can also
+collect Reporter; people without that permission see its current value. Optional
+Reporters can be cleared on edit or transition; required ones cannot. Changing
+Reporter keeps the creator and records the old/new account in the changelog.
+Former reporters who lose browse or security access receive a replica revocation
+in the same transaction.
 
 ## Default screen
 
@@ -70,4 +77,4 @@ A workflow transition can name a screen; the transition then asks for the fields
 Tracked in [PLAN.md](../PLAN.md).
 
 - Environment, Attachment and Linked issues are not in the field catalog.
-- Reporter controls on edit and transition forms.
+- Reporter bulk editing and explicitly clearing optional reporters on creation.

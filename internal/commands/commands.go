@@ -493,6 +493,7 @@ func issueWriteIntents(update store.IssueUpdate) map[string]fieldWriteIntent {
 		"summary":  stringWriteIntent(update.Summary),
 		"priority": stringWriteIntent(update.PriorityID),
 		"assignee": stringWriteIntent(update.AssigneeID, "-1"),
+		"reporter": stringWriteIntent(update.ReporterID),
 		"parent":   stringWriteIntent(update.ParentID),
 		"security": stringWriteIntent(update.SecurityLevelID),
 	}

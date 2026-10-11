@@ -1427,6 +1427,19 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 				return false, nil
 			}
 			input.PriorityID = &text
+		case "reporter":
+			accountID := text
+			if accountID == "ACTOR" {
+				accountID = run.ActorID
+			}
+			current := ""
+			if issue.Reporter != nil {
+				current = issue.Reporter.ID
+			}
+			if accountID == current {
+				return false, nil
+			}
+			input.ReporterID = &accountID
 		case "assignee":
 			// Jira's edit sets the assignee the way its assign action does,
 			// naming the person, the rule's actor or nobody.

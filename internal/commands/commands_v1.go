@@ -29,6 +29,7 @@ type UpdateIssueInput struct {
 	Summary           *string
 	Description       json.RawMessage // ADF; nil = unchanged
 	PriorityID        *string
+	ReporterID        *string
 	AssigneeID        *string
 	ParentIDOrKey     *string
 	StatusID          *string // transitions only
@@ -85,7 +86,7 @@ func (s *Service) requireUpdatePermissions(ctx context.Context, in UpdateIssueIn
 	_, fixVersionFields := in.Fields["fixVersions"]
 	_, fixVersionOperations := in.VersionOperations["fixVersions"]
 	securityChanged := in.SecurityLevelID != nil && *in.SecurityLevelID != issue.SecurityLevelID
-	edits := in.Summary != nil || in.Description != nil || in.PriorityID != nil || in.ParentIDOrKey != nil ||
+	edits := in.Summary != nil || in.Description != nil || in.PriorityID != nil || in.ParentIDOrKey != nil || in.ReporterID != nil ||
 		in.Labels != nil || in.DueDate != nil || len(in.Fields) > 0 || len(in.VersionOperations) > 0 ||
 		in.OriginalEstimate != nil || in.RemainingEstimate != nil || securityChanged || in.ResolutionID != nil
 	var permissions []string
@@ -95,6 +96,9 @@ func (s *Service) requireUpdatePermissions(ctx context.Context, in UpdateIssueIn
 	assigneeChanged := in.AssigneeID != nil && *in.AssigneeID != currentAssigneeID
 	if assigneeChanged {
 		permissions = append(permissions, "ASSIGN_ISSUES")
+	}
+	if in.ReporterID != nil && *in.ReporterID != reporterID(issue) {
+		permissions = append(permissions, "MODIFY_REPORTER")
 	}
 	if securityChanged {
 		permissions = append(permissions, "SET_ISSUE_SECURITY")
@@ -132,11 +136,23 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	if err != nil {
 		return nil, nil, err
 	}
+	if in.ReporterID != nil && !OverridesFromContext(ctx).ScreenSecurity {
+		fields, err := s.Store.ResolveScreenFields(ctx, in.WorkspaceID, issue.ProjectID, issue.IssueType.ID, "edit")
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(fields) > 0 && !slices.Contains(fields, "reporter") {
+			return nil, nil, fmt.Errorf("reporter is not available on this work item's edit screen")
+		}
+	}
 	if in.Summary != nil {
 		sum := *in.Summary
 		if len(sum) == 0 || len(sum) > 255 {
 			return nil, nil, fmt.Errorf("summary is required (max 255 chars)")
 		}
+	}
+	if err := s.validateReporterChange(ctx, in.WorkspaceID, in.ReporterID, issue); err != nil {
+		return nil, nil, err
 	}
 	if in.AssigneeID != nil && *in.AssigneeID != "" {
 		if _, err := s.Store.MemberByID(ctx, in.WorkspaceID, *in.AssigneeID); err != nil {
@@ -264,6 +280,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		Description:       in.Description,
 		PriorityID:        in.PriorityID,
 		AssigneeID:        in.AssigneeID,
+		ReporterID:        in.ReporterID,
 		ParentID:          parentID,
 		StatusID:          in.StatusID,
 		SecurityLevelID:   in.SecurityLevelID,
@@ -540,6 +557,14 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 			}
 		}
 	}
+	if update.ReporterID != nil && *update.ReporterID != reporterID(issue) {
+		if err := s.requirePermission(ctx, workspaceID, actorID, issue.ProjectID, issue.ID, "MODIFY_REPORTER"); err != nil {
+			return nil, nil, err
+		}
+	}
+	if err := s.validateReporterChange(ctx, workspaceID, update.ReporterID, issue); err != nil {
+		return nil, nil, err
+	}
 	if update.Summary != nil && (len(*update.Summary) == 0 || len(*update.Summary) > 255) {
 		return nil, nil, fmt.Errorf("summary is required (max 255 chars)")
 	}
@@ -608,7 +633,7 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	requestedFields := make(map[string]bool)
 	for field, changed := range map[string]bool{
 		"summary": update.Summary != nil, "description": update.Description != nil,
-		"priority": update.PriorityID != nil, "assignee": update.AssigneeID != nil,
+		"priority": update.PriorityID != nil, "assignee": update.AssigneeID != nil, "reporter": update.ReporterID != nil,
 		"labels": update.Labels != nil, "resolution": update.ResolutionID != nil,
 	} {
 		if changed {
@@ -636,6 +661,9 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	}
 	if update.PriorityID != nil {
 		context.FieldPresent["priority"] = *update.PriorityID != ""
+	}
+	if update.ReporterID != nil {
+		context.FieldPresent["reporter"] = *update.ReporterID != ""
 	}
 	if update.AssigneeID != nil {
 		context.FieldPresent["assignee"] = *update.AssigneeID != ""
@@ -786,6 +814,9 @@ func changedTransitionFields(issue *models.Issue, update store.IssueUpdate) map[
 	if update.AssigneeID != nil && *update.AssigneeID != assigneeID {
 		changed["assignee"] = true
 	}
+	if update.ReporterID != nil && *update.ReporterID != reporterID(issue) {
+		changed["reporter"] = true
+	}
 	if update.Labels != nil && !slices.Equal(*update.Labels, issue.Labels) {
 		changed["labels"] = true
 	}
@@ -848,6 +879,9 @@ func workflowFieldRaw(issue *models.Issue, update *store.IssueUpdate, field stri
 			return encode(issue.Assignee.ID)
 		}
 	case "reporter":
+		if update.ReporterID != nil {
+			return encode(*update.ReporterID)
+		}
 		if issue.Reporter != nil {
 			return encode(issue.Reporter.ID)
 		}
@@ -1075,4 +1109,21 @@ func (s *Service) hierarchyParent(ctx context.Context, actorID, workspaceID stri
 		return nil, ErrParentHierarchy
 	}
 	return parent, nil
+}
+
+func reporterID(issue *models.Issue) string {
+	if issue.Reporter != nil {
+		return issue.Reporter.ID
+	}
+	return ""
+}
+
+func (s *Service) validateReporterChange(ctx context.Context, workspaceID string, value *string, issue *models.Issue) error {
+	if value == nil || *value == "" || *value == reporterID(issue) {
+		return nil
+	}
+	if _, err := s.Store.MemberByID(ctx, workspaceID, *value); err != nil {
+		return fmt.Errorf("reporter is not an active workspace member")
+	}
+	return nil
 }
