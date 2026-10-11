@@ -41,8 +41,9 @@ test('a team is created in the directory and planned in a plan', async ({ page }
   const planID = await created.json();
   await page.goto(`/plans/${planID}`);
   await page.getByText('Add an existing team', { exact: true }).click();
-  await page.getByLabel('Team', { exact: true }).selectOption(teamID);
-  await page.getByRole('button', { name: 'Add team to plan' }).click();
+  const addTeam = page.locator('form').filter({ has: page.getByRole('button', { name: 'Add team to plan', exact: true }) });
+  await addTeam.getByLabel('Team', { exact: true }).selectOption(teamID);
+  await addTeam.getByRole('button', { name: 'Add team to plan', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Team added to the plan.');
   const row = page.getByRole('row').filter({ has: page.getByRole('rowheader', { name: `Platform ${suffix}`, exact: true }) });
   await row.locator('summary').filter({ hasText: /^Settings/ }).click();

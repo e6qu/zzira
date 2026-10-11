@@ -274,7 +274,10 @@ test('knowledge collaborator starts from an editable persisted template', async 
   const start = page.locator('.wiki-whiteboard-object-list article').filter({ has: page.locator('input[name="title"][value="Start"]') });
   await expect(start.locator('[name="body"]')).toHaveValue('What begins the process?');
   await start.locator('[name="body"]').fill('A customer requests a change');
+  const savedPage = page.waitForEvent('framenavigated', { predicate: frame => frame === page.mainFrame() });
   await start.getByRole('button', { name: 'Save Start', exact: true }).click();
+  await savedPage;
+  await page.waitForLoadState('domcontentloaded');
   await page.reload();
   await expect(page.locator('.wiki-canvas-object')).toHaveCount(5);
   await expect(page.locator('.wiki-connector-solid')).toHaveCount(3);
