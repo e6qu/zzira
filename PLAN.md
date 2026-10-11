@@ -78,9 +78,8 @@ backlogs remain epic-level, as Jira's do.
   project default, organization default; org admins only.
 
 **Platform odds and ends.**
-- Worklogs: `started`, real `updated`/`updateAuthor`, `issueId`, `self` with the
-  work item; list paging and `startedAfter`/`startedBefore`/`expand=properties`;
-  worklog visibility.
+- Worklog visibility restrictions to a group or project role (requests for
+  unsupported restrictions are currently refused).
 - Bounce handling for the project sender address (the address itself is the
   From header of the mail a project's work queues, once its domain is
   verified).

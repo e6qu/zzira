@@ -761,7 +761,7 @@ func (l *expressionLoader) issueRecord(issue *models.Issue) *jexpr.Record {
 				bean := h.worklogBean(worklog)
 				list.Items = append(list.Items, &jexpr.Record{Type: "Worklog", Fields: map[string]jexpr.Value{
 					"id": float64(worklog.JiraID), "author": l.userByID(worklog.AuthorID, worklog.AuthorName), "timeSpentSeconds": float64(worklog.TimeSpentSeconds),
-					"comment": richText(worklog.Comment), "created": jexpr.ParseDate(worklog.Created), "started": jexpr.ParseDate(worklog.Created),
+					"comment": richText(worklog.Comment), "created": jexpr.ParseDate(worklog.Created), "started": jexpr.ParseDate(worklog.Started),
 				}, Bean: func(*jexpr.Context) (any, error) { return bean, nil }})
 			}
 			return list, nil

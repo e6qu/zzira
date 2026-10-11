@@ -22,6 +22,11 @@ func (s *Store) UpdateWorklog(ctx context.Context, actorID, workspaceID, worklog
 // UpdateWorklogWithEstimate changes logged work and moves the remaining
 // estimate by the change in time, or as the adjustment says.
 func (s *Store) UpdateWorklogWithEstimate(ctx context.Context, actorID, workspaceID, worklogID string, comment json.RawMessage, seconds *int, estimate WorklogEstimate) (*models.Worklog, *models.Action, error) {
+	return s.UpdateWorklogAt(ctx, actorID, workspaceID, worklogID, comment, seconds, estimate, nil)
+}
+
+// UpdateWorklogAt keeps the original work-start time when it is omitted.
+func (s *Store) UpdateWorklogAt(ctx context.Context, actorID, workspaceID, worklogID string, comment json.RawMessage, seconds *int, estimate WorklogEstimate, started *time.Time) (*models.Worklog, *models.Action, error) {
 	if err := ValidateWorklogEstimate(estimate); err != nil {
 		return nil, nil, err
 	}
@@ -33,7 +38,7 @@ func (s *Store) UpdateWorklogWithEstimate(ctx context.Context, actorID, workspac
 		return nil, nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	current, err := scanWorklog(tx.QueryRow(ctx, worklogJoin+`WHERE w.id=$1 AND w.workspace_id=$2`, worklogID, workspaceID))
+	current, err := scanWorklog(tx.QueryRow(ctx, worklogJoin+`WHERE w.id=$1 AND w.workspace_id=$2 FOR UPDATE OF w`, worklogID, workspaceID))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -50,8 +55,8 @@ func (s *Store) UpdateWorklogWithEstimate(ctx context.Context, actorID, workspac
 			commentArg = nil
 		}
 	}
-	if _, err = tx.Exec(ctx, `UPDATE worklogs SET comment=$3,time_spent_seconds=$4,updated_at=now()
-		WHERE id=$1 AND workspace_id=$2`, worklogID, workspaceID, commentArg, spent); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE worklogs SET comment=$3,time_spent_seconds=$4,updated_at=now(),updated_by=$5,started_at=COALESCE($6::timestamptz,started_at)
+		WHERE id=$1 AND workspace_id=$2`, worklogID, workspaceID, commentArg, spent, actorID, started); err != nil {
 		return nil, nil, err
 	}
 	updated, err := scanWorklog(tx.QueryRow(ctx, worklogJoin+`WHERE w.id=$1`, worklogID))
@@ -82,14 +87,7 @@ func (s *Store) UpdateWorklogWithEstimate(ctx context.Context, actorID, workspac
 // WorklogsByIDs fetches worklogs by id for Jira's bulk list endpoint, which
 // returns only the ones on work items the caller may read.
 func (s *Store) WorklogsByIDs(ctx context.Context, workspaceID, userID string, ids []string) ([]*models.Worklog, error) {
-	query := `SELECT w.id, w.issue_id, w.author_id, COALESCE(u.display_name,''),
-		COALESCE(w.comment::text,''), w.time_spent_seconds,
-		to_char(w.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), w.jira_id
-		FROM worklogs w
-		JOIN issues i ON i.id = w.issue_id
-		LEFT JOIN users u ON u.id = w.author_id
-		WHERE w.workspace_id=$1 AND (w.id = ANY($3) OR w.jira_id::text = ANY($3)) AND ` + VisibleIssuePredicate("i", "$2") + `
-		ORDER BY w.created_at, w.id`
+	query := worklogJoin + `WHERE w.workspace_id=$1 AND (w.id = ANY($3) OR w.jira_id::text = ANY($3)) AND ` + VisibleIssuePredicate("i", "$2") + ` ORDER BY w.created_at, w.id`
 	rows, err := s.Pool.Query(ctx, query, workspaceID, userID, ids)
 	if err != nil {
 		return nil, err
@@ -166,8 +164,8 @@ func (s *Store) MoveWorklogs(ctx context.Context, actorID, workspaceID, sourceIs
 		return fmt.Errorf("%w: the destination must be a different work item", ErrWorklogValidation)
 	}
 	for _, id := range ids {
-		command, execErr := tx.Exec(ctx, `UPDATE worklogs SET issue_id=$3,updated_at=now()
-			WHERE id=$1 AND workspace_id=$2 AND issue_id=$4`, id, workspaceID, targetIssueID, sourceIssueID)
+		command, execErr := tx.Exec(ctx, `UPDATE worklogs SET issue_id=$3,updated_at=now(),updated_by=$5
+			WHERE id=$1 AND workspace_id=$2 AND issue_id=$4`, id, workspaceID, targetIssueID, sourceIssueID, actorID)
 		if execErr != nil {
 			return execErr
 		}
@@ -249,4 +247,69 @@ func (s *Store) DeleteWorklogProperty(ctx context.Context, worklogID, key string
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+// WorklogPageOptions bounds an issue's worklog collection before loading rows.
+type WorklogPageOptions struct {
+	StartAt, MaxResults         int
+	StartedAfter, StartedBefore *time.Time
+}
+
+func (s *Store) WorklogPage(ctx context.Context, issueID string, options WorklogPageOptions) ([]*models.Worklog, int, error) {
+	const filter = `WHERE w.issue_id=$1 AND ($2::timestamptz IS NULL OR w.started_at>$2) AND ($3::timestamptz IS NULL OR w.started_at<$3)`
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var total int
+	if err = tx.QueryRow(ctx, `SELECT count(*) FROM worklogs w `+filter, issueID, options.StartedAfter, options.StartedBefore).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := tx.Query(ctx, worklogJoin+filter+` ORDER BY w.created_at,w.id OFFSET $4 LIMIT $5`, issueID, options.StartedAfter, options.StartedBefore, options.StartAt, options.MaxResults)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := []*models.Worklog{}
+	for rows.Next() {
+		worklog, err := scanWorklog(rows)
+		if err != nil {
+			rows.Close()
+			return nil, 0, err
+		}
+		out = append(out, worklog)
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return out, total, tx.Commit(ctx)
+}
+
+// WorklogPropertyValue is Jira's expanded entity property representation.
+type WorklogPropertyValue struct {
+	Key   string          `json:"key"`
+	Value json.RawMessage `json:"value"`
+}
+
+// WorklogPropertiesByIDs reads properties only for previously authorized logs.
+func (s *Store) WorklogPropertiesByIDs(ctx context.Context, ids []string) (map[string][]WorklogPropertyValue, error) {
+	out := map[string][]WorklogPropertyValue{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT worklog_id,key,value FROM worklog_properties WHERE worklog_id=ANY($1::text[]) ORDER BY worklog_id,key`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var property WorklogPropertyValue
+		if err := rows.Scan(&id, &property.Key, &property.Value); err != nil {
+			return nil, err
+		}
+		out[id] = append(out[id], property)
+	}
+	return out, rows.Err()
 }

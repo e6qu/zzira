@@ -30,14 +30,15 @@ func (h *Handler) worklogBean(w *models.Worklog) map[string]any {
 	author := map[string]any{"accountId": w.AuthorID, "displayName": w.AuthorName, "active": true, "accountType": "atlassian"}
 	body := map[string]any{
 		"id":               strconv.FormatInt(w.JiraID, 10),
-		"self":             h.BaseURL + "/rest/api/3/issue/worklog/" + strconv.FormatInt(w.JiraID, 10),
+		"self":             h.BaseURL + "/rest/api/3/issue/" + strconv.FormatInt(w.IssueJiraID, 10) + "/worklog/" + strconv.FormatInt(w.JiraID, 10),
 		"author":           author,
-		"updateAuthor":     author,
-		"created":          w.Created,
-		"updated":          w.Created,
-		"timeSpent":        models.TimeSpentLabel(w.TimeSpentSeconds),
+		"updateAuthor":     map[string]any{"accountId": w.UpdateAuthorID, "displayName": w.UpdateAuthorName, "active": true, "accountType": "atlassian"},
+		"created":          worklogTimestamp(w.Created),
+		"updated":          worklogTimestamp(w.Updated),
+		"timeSpent":        strings.TrimSpace(models.TimeSpentLabel(w.TimeSpentSeconds)),
 		"timeSpentSeconds": w.TimeSpentSeconds,
-		"startsAt":         w.Created,
+		"started":          worklogTimestamp(w.Started),
+		"issueId":          strconv.FormatInt(w.IssueJiraID, 10),
 	}
 	if len(w.Comment) > 0 {
 		body["comment"] = w.Comment
@@ -67,26 +68,37 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 	}
 	switch {
 	case len(sub) == 0 && r.Method == http.MethodGet:
-		worklogs, err := h.Store.WorklogsByIssue(r.Context(), issue.ID)
+		page, ok := parseWorklogPage(w, r)
+		if !ok {
+			return
+		}
+		worklogs, total, err := h.Store.WorklogPage(r.Context(), issue.ID, page)
 		if err != nil {
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		beans := make([]map[string]any, 0, len(worklogs))
-		for _, wl := range worklogs {
-			beans = append(beans, h.worklogBean(wl))
+		beans, err := h.expandedWorklogs(r, worklogs)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"startAt": 0, "maxResults": 5000, "total": len(beans), "worklogs": beans,
+			"startAt": page.StartAt, "maxResults": page.MaxResults, "total": total, "worklogs": beans,
 		})
 	case len(sub) == 0 && r.Method == http.MethodPost:
 		var req struct {
 			TimeSpentSeconds int             `json:"timeSpentSeconds"`
 			TimeSpent        string          `json:"timeSpent"`
 			Comment          json.RawMessage `json:"comment"`
+			Started          json.RawMessage `json:"started"`
+			Visibility       json.RawMessage `json:"visibility"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"timeSpentSeconds": "A positive timeSpentSeconds is required."})
+			return
+		}
+		started, valid := worklogInput(w, req.Started, req.Visibility)
+		if !valid {
 			return
 		}
 		cfg, estimate, ok := h.worklogTimeTracking(w, r, wsID)
@@ -105,7 +117,7 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			jiraFieldError(w, http.StatusBadRequest, map[string]string{"timeSpentSeconds": "A positive timeSpentSeconds is required."})
 			return
 		}
-		wl, _, err := h.Commands.AddWorklogWithEstimate(ctx, userID, wsID, issue.ID, req.Comment, req.TimeSpentSeconds, estimate)
+		wl, _, err := h.Commands.AddWorklogAt(ctx, userID, wsID, issue.ID, req.Comment, req.TimeSpentSeconds, estimate, started)
 		if err != nil {
 			worklogCommandError(w, err)
 			return
@@ -117,7 +129,12 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			jiraError(w, http.StatusNotFound, "Worklog does not exist.")
 			return
 		}
-		writeJSON(w, http.StatusOK, h.worklogBean(wl))
+		beans, err := h.expandedWorklogs(r, []*models.Worklog{wl})
+		if err != nil {
+			jiraError(w, 500, "internal error")
+			return
+		}
+		writeJSON(w, http.StatusOK, beans[0])
 	case len(sub) == 1 && r.Method == http.MethodDelete:
 		wl, err := h.Store.WorklogByID(r.Context(), wsID, sub[0])
 		if err != nil || wl.IssueID != issue.ID {
@@ -143,9 +160,15 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			TimeSpentSeconds *int            `json:"timeSpentSeconds"`
 			TimeSpent        string          `json:"timeSpent"`
 			Comment          json.RawMessage `json:"comment"`
+			Started          json.RawMessage `json:"started"`
+			Visibility       json.RawMessage `json:"visibility"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&request); err != nil {
 			jiraError(w, http.StatusBadRequest, "Invalid request payload.")
+			return
+		}
+		started, valid := worklogInput(w, request.Started, request.Visibility)
+		if !valid {
 			return
 		}
 		cfg, estimate, ok := h.worklogTimeTracking(w, r, wsID)
@@ -161,7 +184,7 @@ func (h *Handler) issueWorklogRoute(w http.ResponseWriter, r *http.Request, idOr
 			spent := int(seconds)
 			request.TimeSpentSeconds = &spent
 		}
-		updated, _, err := h.Commands.UpdateWorklog(ctx, userID, wsID, wl.ID, request.Comment, request.TimeSpentSeconds, estimate)
+		updated, _, err := h.Commands.UpdateWorklogAt(ctx, userID, wsID, wl.ID, request.Comment, request.TimeSpentSeconds, estimate, started)
 		if err != nil {
 			if errors.Is(err, commands.ErrWorklogPermission) || errors.Is(err, commands.ErrIssueNotEditable) {
 				worklogCommandError(w, err)

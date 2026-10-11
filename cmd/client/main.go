@@ -260,7 +260,8 @@ CREATE TABLE IF NOT EXISTS worklogs (
   id TEXT PRIMARY KEY,
   issue_id TEXT NOT NULL,
   author_name TEXT, comment TEXT,
-  time_spent_seconds INTEGER, created TEXT
+  time_spent_seconds INTEGER, created TEXT, started TEXT, updated TEXT,
+  author_id TEXT, update_author_id TEXT, update_author_name TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_worklogs_issue ON worklogs (issue_id);
 CREATE TABLE IF NOT EXISTS watchers (
@@ -324,6 +325,10 @@ func initDB() error {
 	// column; it is ignored, and board_columns carries the board's columns.
 	ensureColumn("boards", "board_columns", "TEXT NOT NULL DEFAULT '[]'")
 	ensureColumn("notifications", "read_at", "TEXT")
+	for _, column := range []string{"started", "updated", "author_id", "update_author_id", "update_author_name"} {
+		ensureColumn("worklogs", column, "TEXT")
+	}
+	exec(`UPDATE worklogs SET started=created WHERE started IS NULL`, nil)
 	return nil
 }
 
@@ -760,13 +765,23 @@ func applyWorklog(a models.Action) ([]string, error) {
 		if w.ID == "" {
 			return nil, nil
 		}
+		previousIssue := ""
+		for _, row := range selectObjects(`SELECT issue_id FROM worklogs WHERE id=$1`, []any{w.ID}) {
+			previousIssue = str(row, "issue_id")
+		}
+		if w.Started == "" {
+			w.Started = w.Created
+		}
 		comment := ""
 		if len(w.Comment) > 0 {
 			comment = string(w.Comment)
 		}
-		exec(`INSERT OR REPLACE INTO worklogs (id, issue_id, author_name, comment, time_spent_seconds, created)
-		      VALUES ($1,$2,$3,$4,$5,$6)`,
-			[]any{w.ID, w.IssueID, w.AuthorName, comment, w.TimeSpentSeconds, w.Created})
+		exec(`INSERT OR REPLACE INTO worklogs (id, issue_id, author_name, comment, time_spent_seconds, created, started, updated, author_id, update_author_id, update_author_name)
+		      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+			[]any{w.ID, w.IssueID, w.AuthorName, comment, w.TimeSpentSeconds, w.Created, w.Started, w.Updated, w.AuthorID, w.UpdateAuthorID, w.UpdateAuthorName})
+		if previousIssue != "" && previousIssue != w.IssueID {
+			return []string{previousIssue, w.IssueID}, nil
+		}
 		return []string{w.IssueID}, nil
 	case models.OpDelete:
 		var p models.WorklogDeletePayload
@@ -1177,6 +1192,7 @@ func pushCurrentView() {
 			ID: str(r, "id"), IssueID: currentView,
 			AuthorName: str(r, "author_name"),
 			Created:    str(r, "created"),
+			Started:    str(r, "started"), Updated: str(r, "updated"), AuthorID: str(r, "author_id"), UpdateAuthorID: str(r, "update_author_id"), UpdateAuthorName: str(r, "update_author_name"),
 		}
 		if comment != "" {
 			wl.Comment = json.RawMessage(comment)
@@ -1222,7 +1238,7 @@ func pushCurrentView() {
 		if author == "" {
 			author = "Unknown"
 		}
-		activity = append(activity, models.IssueActivityItem{Kind: "worklog", ID: worklog.ID, AuthorName: author, Created: worklog.Created, Body: worklog.Comment, TimeSpentSeconds: worklog.TimeSpentSeconds})
+		activity = append(activity, models.IssueActivityItem{Kind: "worklog", ID: worklog.ID, AuthorName: author, Created: worklog.Created, Started: worklog.Started, Body: worklog.Comment, TimeSpentSeconds: worklog.TimeSpentSeconds})
 	}
 	for _, entry := range history {
 		activity = append(activity, models.IssueActivityItem{Kind: "history", ID: fmt.Sprintf("%d", entry.Seq), AuthorID: entry.AuthorID, AuthorName: "Unknown", Created: entry.Created, Items: entry.Items})

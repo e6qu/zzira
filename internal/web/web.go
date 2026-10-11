@@ -677,7 +677,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		}
 		activity = append(activity, models.IssueActivityItem{
 			Kind: "worklog", ID: worklog.ID, AuthorID: worklog.AuthorID, AuthorName: authorName,
-			Created: worklog.Created, Body: worklog.Comment, TimeSpentSeconds: worklog.TimeSpentSeconds,
+			Created: worklog.Created, Started: worklog.Started, Body: worklog.Comment, TimeSpentSeconds: worklog.TimeSpentSeconds,
 			CanDelete: permissions["DELETE_ALL_WORKLOGS"] || (worklog.AuthorID == user.ID && permissions["DELETE_OWN_WORKLOGS"]),
 		})
 	}
@@ -2473,6 +2473,33 @@ func (h *Handler) AddWorklog(w http.ResponseWriter, r *http.Request, key string)
 	if !parseForm(w, r) {
 		return
 	}
+	draft := models.WorklogDraft{TimeSpent: r.PostFormValue("timeSpent"), Started: r.PostFormValue("started"), Comment: r.PostFormValue("comment"), EstimateMode: r.PostFormValue("adjustEstimate"), NewEstimate: r.PostFormValue("newEstimate")}
+	refuse := func(message string, status int) {
+		view, err := h.buildIssueView(r, user, wsID, key)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		draft.Error = message
+		view.WorklogDraft = draft
+		if isHX(r) {
+			writeFragmentStatus(w, "issue_view", view, status)
+		} else {
+			h.writeWorkspacePageStatus(w, r, "page_issue", user, wsID, view, "issues", view.Issue.ProjectID, status)
+		}
+	}
+	var started *time.Time
+	if draft.Started != "" {
+		parsed, err := time.Parse("2006-01-02T15:04:05", draft.Started)
+		if err != nil {
+			parsed, err = time.Parse("2006-01-02T15:04", draft.Started)
+		}
+		if err != nil {
+			refuse("Enter a valid work-start date and time in UTC.", http.StatusBadRequest)
+			return
+		}
+		started = &parsed
+	}
 	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), wsID)
 	if err != nil {
 		http.Error(w, "Could not load time tracking settings.", http.StatusInternalServerError)
@@ -2480,7 +2507,7 @@ func (h *Handler) AddWorklog(w http.ResponseWriter, r *http.Request, key string)
 	}
 	spent, err := models.ParseJiraDuration(r.PostFormValue("timeSpent"), configuration.TimeTracking)
 	if err != nil || spent <= 0 {
-		http.Error(w, "Enter the time spent, such as 1h 30m.", http.StatusBadRequest)
+		refuse("Enter the time spent, such as 1h 30m.", http.StatusBadRequest)
 		return
 	}
 	// The remaining estimate moves by the time logged unless the person sets
@@ -2488,12 +2515,12 @@ func (h *Handler) AddWorklog(w http.ResponseWriter, r *http.Request, key string)
 	estimate := store.WorklogEstimate{Mode: r.PostFormValue("adjustEstimate"), Notify: true}
 	if estimate.Mode == "new" {
 		if estimate.NewSeconds, err = models.ParseJiraDuration(r.PostFormValue("newEstimate"), configuration.TimeTracking); err != nil {
-			http.Error(w, "Enter the new remaining estimate, such as 2h.", http.StatusBadRequest)
+			refuse("Enter the new remaining estimate, such as 2h.", http.StatusBadRequest)
 			return
 		}
 	}
-	if _, _, err := h.Commands.AddWorklogWithEstimate(r.Context(), user.ID, wsID, key, adf.ParagraphDoc(r.PostFormValue("comment")), int(spent), estimate); err != nil {
-		http.Error(w, err.Error(), commandErrorStatus(err))
+	if _, _, err := h.Commands.AddWorklogAt(r.Context(), user.ID, wsID, key, adf.ParagraphDoc(r.PostFormValue("comment")), int(spent), estimate, started); err != nil {
+		refuse(err.Error(), commandErrorStatus(err))
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)

@@ -60,7 +60,7 @@ func fixtureIssue() models.IssueView {
 		Worklogs:             []models.Worklog{{ID: "wl_1", AuthorID: "usr_1", AuthorName: "Demo User", TimeSpentSeconds: 3600, Created: "2026-08-28T12:00:00Z"}},
 		Links:                []models.IssueLinkView{{ID: "lnk_1", Relationship: "blocks", IssueKey: "ZZ-2", Summary: "Dependent work", Status: models.Status{Name: "To Do", Category: "new"}}},
 		Activity: []models.IssueActivityItem{
-			{Kind: "worklog", ID: "wl_1", AuthorID: "usr_1", AuthorName: "Demo User", Created: "2026-08-28T12:00:00Z", TimeSpentSeconds: 3600, CanDelete: true},
+			{Kind: "worklog", ID: "wl_1", AuthorID: "usr_1", AuthorName: "Demo User", Created: "2026-08-28T12:00:00Z", Started: "2026-08-27T09:00:00.000Z", TimeSpentSeconds: 3600, CanDelete: true},
 			{Kind: "comment", ID: "cmt_1", AuthorID: "usr_1", AuthorName: "Demo User", Created: "2026-08-28T11:00:00Z", Body: json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Ready for review."}]}]}`)},
 		},
 		AppActivityTabs: []models.AppModule{{ID: "712", AppName: "Delivery tools", Title: "Deployments", RemoteURL: "/deployments"}},
