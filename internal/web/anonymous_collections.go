@@ -1,11 +1,12 @@
 package web
 
 import (
-	"github.com/e6qu/zzira/internal/authn"
-	"github.com/e6qu/zzira/internal/models"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/e6qu/zzira/internal/authn"
+	"github.com/e6qu/zzira/internal/models"
 )
 
 type anonymousCollectionData struct {
