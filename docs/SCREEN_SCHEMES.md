@@ -55,5 +55,7 @@ Every site has a `Default Screen Scheme`, which points to the `Default Screen`. 
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- The `view` operation is stored and resolvable, but the work item view ignores it and uses its own layout.
-- Workflow transition screens do not use screens; they store their own field list (see [SCREENS.md](SCREENS.md#gaps)).
+- The view screen governs Environment and custom-field details. Other built-in
+  details still use the issue page layout rather than the view screen.
+- Workflow transition screens resolve named screens, but present their fields
+  as one list rather than using the screen's tabs ([WORKFLOW_RULES.md](WORKFLOW_RULES.md#gaps)).
