@@ -138,8 +138,6 @@ and the release hub reads it back; nothing plans with it yet.
 ## 5. JQL and filters
 
 - Fields: JSM's `Organizations`, which needs a request to be shared with one.
-- `fields.lastViewed` on a work item read, which needs the reader threaded
-  through the bean.
 - Historical `versionedRepresentations`.
 - Filters: a richer subscription schedule builder than two presets and a cron
   expression.

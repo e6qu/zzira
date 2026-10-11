@@ -1352,6 +1352,12 @@ func (h *Handler) getIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	if strings.EqualFold(q.Get("updateHistory"), "true") {
+		if err = h.Store.RecordIssueView(r.Context(), wsID, userID, issue.ID); err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+	}
 	definitions := searchFieldDefinitions(customFields)
 	beans, err := h.searchIssueBeans(r.Context(), wsID, userID, []*models.Issue{issue}, options, len(options.Fields) == 0, definitions)
 	if err != nil || len(beans) != 1 {
@@ -1369,12 +1375,6 @@ func (h *Handler) getIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 	}
 	if _, ok := bean["expand"]; !ok {
 		bean["expand"] = "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations"
-	}
-	if strings.EqualFold(q.Get("updateHistory"), "true") {
-		if err = h.Store.RecordIssueView(r.Context(), wsID, userID, issue.ID); err != nil {
-			jiraError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
 	}
 	writeJSON(w, http.StatusOK, bean)
 }
@@ -1396,6 +1396,7 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 		"labels":      i.Labels,
 		"duedate":     nil,
 		"security":    nil,
+		"lastViewed":  nil,
 		"fixVersions": []any{},
 		"versions":    []any{},
 		"created":     issueCreated(i),

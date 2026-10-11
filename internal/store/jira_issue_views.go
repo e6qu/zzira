@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"time"
 )
 
 // RecordIssueView remembers that a person viewed an issue, for the issue
@@ -28,4 +29,26 @@ func (s *Store) RecentlyViewedIssueIDs(ctx context.Context, workspaceID, userID 
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+// IssueViewTimes loads the current reader's history for an already authorized page.
+func (s *Store) IssueViewTimes(ctx context.Context, workspaceID, userID string, issueIDs []string) (map[string]time.Time, error) {
+	times := make(map[string]time.Time)
+	if len(issueIDs) == 0 {
+		return times, nil
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT issue_id,viewed_at FROM issue_views WHERE workspace_id=$1 AND user_id=$2 AND issue_id=ANY($3::text[])`, workspaceID, userID, issueIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var viewed time.Time
+		if err := rows.Scan(&id, &viewed); err != nil {
+			return nil, err
+		}
+		times[id] = viewed
+	}
+	return times, rows.Err()
 }

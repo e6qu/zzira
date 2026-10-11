@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/store"
@@ -399,6 +400,62 @@ func TestIssueSurfaceContract(t *testing.T) {
 			t.Fatalf("GET issue omits %s: %v", field, defaults.Fields)
 		}
 	}
+
+	// History belongs to the reader. Ordinary API reads and searches leave it unchanged.
+	if got := getIssue(admin, "ISS-1", "?fields=lastViewed").Fields["lastViewed"]; string(got) != "null" {
+		t.Fatalf("unviewed issue lastViewed=%s", got)
+	}
+	exec(`INSERT INTO issue_views(workspace_id,user_id,issue_id,viewed_at) VALUES($1,$2,$3,'2026-09-01T12:34:56Z')`, ws, admin, issueIDs["ISS-1"])
+	expectedView := `"2026-09-01T12:34:56.000+0000"`
+	if got := getIssue(admin, "ISS-1", "?fields=lastViewed").Fields["lastViewed"]; string(got) != expectedView {
+		t.Fatalf("reader history=%s", got)
+	}
+	if got := getIssue(member, "ISS-1", "?fields=lastViewed").Fields["lastViewed"]; string(got) != "null" {
+		t.Fatalf("another reader's history leaked: %s", got)
+	}
+	if _, found := getIssue(admin, "ISS-1", "?fields=*all,-lastViewed").Fields["lastViewed"]; found {
+		t.Fatal("excluded lastViewed returned")
+	}
+	var historySearch struct {
+		Issues        []issueBean
+		Names, Schema map[string]json.RawMessage
+	}
+	decode(call(admin, "GET", "/rest/api/3/search?jql="+url.QueryEscape("key = ISS-1")+"&fields=lastViewed&expand=names,schema", "", 200), &historySearch)
+	if len(historySearch.Issues) != 1 || string(historySearch.Issues[0].Fields["lastViewed"]) != expectedView || !strings.Contains(string(historySearch.Names["lastViewed"]), "Last Viewed") || !strings.Contains(string(historySearch.Schema["lastViewed"]), "datetime") {
+		t.Fatalf("search history=%+v", historySearch)
+	}
+	if got := getIssue(admin, "ISS-1", "?fields=lastViewed&updateHistory=false").Fields["lastViewed"]; string(got) != expectedView {
+		t.Fatalf("ordinary reads changed history: %s", got)
+	}
+	beforeView := time.Now().UTC().Add(-time.Second)
+	updatedHistory := getIssue(admin, "ISS-1", "?fields=lastViewed&updateHistory=true").Fields["lastViewed"]
+	var updatedView string
+	if err := json.Unmarshal(updatedHistory, &updatedView); err != nil {
+		t.Fatal(err)
+	}
+	viewedAt, err := time.Parse("2006-01-02T15:04:05.000-0700", updatedView)
+	if err != nil || viewedAt.Before(beforeView) {
+		t.Fatalf("history update not returned: %s err=%v", updatedHistory, err)
+	}
+	if got := getIssue(member, "ISS-1", "?fields=lastViewed").Fields["lastViewed"]; string(got) != "null" {
+		t.Fatalf("history update leaked to another reader: %s", got)
+	}
+	if scoped, err := st.IssueViewTimes(ctx, "ws_other", admin, []string{issueIDs["ISS-1"]}); err != nil || len(scoped) != 0 {
+		t.Fatalf("workspace history leaked: %v %v", scoped, err)
+	}
+
+	var historyBulk struct{ Issues []issueBean }
+	decode(call(admin, "POST", "/rest/api/3/issue/bulkfetch", `{"issueIdsOrKeys":["ISS-1","ISS-2"],"fields":["lastViewed"]}`, 200), &historyBulk)
+	if len(historyBulk.Issues) != 2 {
+		t.Fatalf("bulk history issues=%+v", historyBulk)
+	}
+	for _, issue := range historyBulk.Issues {
+		value, present := issue.Fields["lastViewed"]
+		if !present || (issue.Key == "ISS-1" && string(value) != string(updatedHistory)) || (issue.Key == "ISS-2" && string(value) != "null") {
+			t.Fatalf("bulk history=%+v", issue)
+		}
+	}
+	exec(`DELETE FROM issue_views WHERE workspace_id=$1 AND user_id=$2 AND issue_id=$3`, ws, admin, issueIDs["ISS-1"])
 
 	// Bulk fetch and bulk create.
 	var fetched struct {
