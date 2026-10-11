@@ -15,9 +15,10 @@ import (
 
 // Plan errors separate Jira's 400, 404 and 409 answers.
 var (
-	ErrPlanValidation = errors.New("invalid plan")
-	ErrPlanNotFound   = errors.New("plan not found")
-	ErrPlanNotActive  = errors.New("plan is not active")
+	ErrPlanValidation    = errors.New("invalid plan")
+	ErrPlanNotFound      = errors.New("plan not found")
+	ErrPlanNotActive     = errors.New("plan is not active")
+	ErrPlanStatusChanged = errors.New("the plan status changed; reload before trying again")
 )
 
 // ---- Atlassian teams ----
@@ -503,6 +504,19 @@ func (s *Store) Plans(ctx context.Context, workspaceID string, includeTrashed, i
 	if includeArchived {
 		statuses = append(statuses, "Archived")
 	}
+	return s.plansWithStatuses(ctx, workspaceID, statuses, after, limit)
+}
+
+// PlansByStatus pages one lifecycle collection without unrelated active plans
+// hiding archived or trashed entries.
+func (s *Store) PlansByStatus(ctx context.Context, workspaceID, status string, after int64, limit int) ([]Plan, int, error) {
+	if status != "Active" && status != "Archived" && status != "Trashed" {
+		return nil, 0, planInvalid("Choose active, archived or trashed plans.")
+	}
+	return s.plansWithStatuses(ctx, workspaceID, []string{status}, after, limit)
+}
+
+func (s *Store) plansWithStatuses(ctx context.Context, workspaceID string, statuses []string, after int64, limit int) ([]Plan, int, error) {
 	var total int
 	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM plans WHERE workspace_id=$1 AND status = ANY($2)`, workspaceID, statuses).Scan(&total); err != nil {
 		return nil, 0, err
@@ -577,17 +591,46 @@ func (s *Store) UpdatePlan(ctx context.Context, workspaceID string, plan Plan) e
 	return tx.Commit(ctx)
 }
 
-// SetPlanStatus archives or trashes an active plan.
-func (s *Store) SetPlanStatus(ctx context.Context, workspaceID string, planID int64, status string) error {
+// SetPlanStatus archives or trashes an active plan through the shared lifecycle.
+func (s *Store) SetPlanStatus(ctx context.Context, workspaceID, actorID string, planID int64, status string) error {
+	return s.ChangePlanStatus(ctx, workspaceID, actorID, planID, "Active", status)
+}
+
+// ChangePlanStatus locks the current state, checks administration again, and
+// records the change atomically. Expected state prevents stale controls from
+// overwriting a different lifecycle decision.
+func (s *Store) ChangePlanStatus(ctx context.Context, workspaceID, actorID string, planID int64, expected, status string) error {
+	valid := expected == "Active" && (status == "Archived" || status == "Trashed") ||
+		(expected == "Archived" || expected == "Trashed") && status == "Active"
+	if !valid {
+		return planInvalid("Choose archive, move to trash or restore.")
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if err := activePlanTx(ctx, tx, workspaceID, planID); err != nil {
+	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE plans SET status=$3,updated_at=now() WHERE workspace_id=$1 AND id=$2`, workspaceID, planID, status); err != nil {
+	var current, name string
+	err = tx.QueryRow(ctx, `SELECT status,name FROM plans WHERE workspace_id=$1 AND id=$2 FOR UPDATE`, workspaceID, planID).Scan(&current, &name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrPlanNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if current != expected {
+		if expected == "Active" {
+			return ErrPlanNotActive
+		}
+		return ErrPlanStatusChanged
+	}
+	if _, err = tx.Exec(ctx, `UPDATE plans SET status=$3,updated_at=now() WHERE workspace_id=$1 AND id=$2`, workspaceID, planID, status); err != nil {
+		return err
+	}
+	if err = siteConfigurationAudit(ctx, tx, workspaceID, actorID, "plan.status_changed", "plan:"+strconv.FormatInt(planID, 10), map[string]any{"planId": planID, "name": name, "from": current, "to": status}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -651,6 +694,9 @@ func (s *Store) DuplicatePlan(ctx context.Context, workspaceID, actorID string, 
 		return 0, err
 	}
 	if err = copyPlanScenariosTx(ctx, tx, planID, id, actorID, teamIDs); err != nil {
+		return 0, err
+	}
+	if err = siteConfigurationAudit(ctx, tx, workspaceID, actorID, "plan.duplicated", "plan:"+strconv.FormatInt(id, 10), map[string]any{"planId": id, "sourcePlanId": planID, "name": name}); err != nil {
 		return 0, err
 	}
 	return id, tx.Commit(ctx)

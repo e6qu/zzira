@@ -99,9 +99,15 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
 - **Permissions.** View or Edit, granted to groups or accounts.
 
 **Browser pages**
-- `/plans` lists the active plans the viewer can open, and, for site
+- `/plans` pages the active plans the viewer can open, and, for site
   administrators, creates one: a name, the boards, projects and filters it
   reads, and what it estimates in. The creator becomes the plan lead.
+- Site administrators archive or move plans to trash from the plan list,
+  and restore them from its **Archived** and **Trash** collections. Inactive
+  plans cannot be opened or edited. Restore retains their settings, sources,
+  teams, scenarios, drafts and capacities. Lifecycle changes check the current
+  status and record an audit event in the same transaction; stale forms return
+  a conflict. This follows [Atlassian's restoration journey](https://support.atlassian.com/jira-software-cloud/docs/delete-or-archive-your-plan/).
 - `/plans/{id}/settings` is the plan's setup, for anyone who may edit it: its
   name and lead, its scheduling (estimation unit and the fields its dates come
   from, including date-only and datetime custom fields), its issue sources, its exclusion rules (how long completed work stays
@@ -231,7 +237,7 @@ Errors use the module format, `[{"message": …}]`. Provider rate limits are des
 ## Gaps
 
 - Plans:
-  - No restoring an archived or trashed plan.
+  - Trashed plans are not automatically deleted after 60 days yet.
   - `inferredDates` and plan `customFields` are stored but not used.
   - A saved view keeps the grouping, the filter and whether the plan rolls up;
     the timeline's zoom and its columns are not part of it, and rolling up
@@ -250,4 +256,4 @@ Remaining work is tracked in [PLAN.md](../PLAN.md).
   - `internal/agile/software.go`, `internal/store/jira_software.go`
   - `internal/api3/plans.go`, `internal/store/plans.go`, `internal/store/plan_*.go`, `internal/web/plan_planning.go`
   - `internal/api3/software_providers.go`, `internal/api3/expressions.go`, `internal/jexpr`
-- Browser tests: `e2e/software.spec.ts`, `e2e/timeline.spec.ts`, `e2e/plans_view.spec.ts`, `e2e/plans_teams.spec.ts`, `e2e/plans_setup.spec.ts`, `e2e/plans_date_fields.spec.ts`, `e2e/plans_duplicate.spec.ts`
+- Browser tests: `e2e/software.spec.ts`, `e2e/timeline.spec.ts`, `e2e/plans_view.spec.ts`, `e2e/plans_teams.spec.ts`, `e2e/plans_setup.spec.ts`, `e2e/plans_date_fields.spec.ts`, `e2e/plans_duplicate.spec.ts`, `e2e/plans_lifecycle.spec.ts`

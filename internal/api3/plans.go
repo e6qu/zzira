@@ -19,7 +19,7 @@ func planError(w http.ResponseWriter, err error) {
 	message := "internal error"
 	switch {
 	case errors.Is(err, store.ErrProjectPermission):
-		status, message = http.StatusForbidden, "Administer Jira is required to duplicate a plan."
+		status, message = http.StatusForbidden, "Administer Jira is required to manage plans."
 	case errors.Is(err, store.ErrPlanValidation):
 		status, message = http.StatusBadRequest, strings.TrimPrefix(err.Error(), store.ErrPlanValidation.Error()+": ")
 	case errors.Is(err, store.ErrPlanNotFound):
@@ -217,7 +217,7 @@ func (h *Handler) plansRoute(w http.ResponseWriter, r *http.Request, path string
 		if parts[1] == "trash" {
 			status = "Trashed"
 		}
-		if err := h.Store.SetPlanStatus(r.Context(), workspaceID, planID, status); err != nil {
+		if err := h.Store.SetPlanStatus(r.Context(), workspaceID, userID, planID, status); err != nil {
 			planError(w, err)
 			return
 		}
