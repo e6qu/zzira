@@ -609,7 +609,7 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=57&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=58&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
@@ -672,6 +672,11 @@
     // task can run after the dialog is already visible and accepting input.
     if (window.htmx) window.htmx.process(modal);
     modal.dataset.ready = '1';
+    const createForm = modal.querySelector('.create-context')?.closest('form');
+    if (createForm) {
+      createForm.dataset.metadataProject = createForm.elements.namedItem('project').value;
+      createForm.dataset.metadataIssueType = createForm.elements.namedItem('issuetype').value;
+    }
     setBackgroundInert(true);
     root.querySelectorAll('[data-modal-backdrop]').forEach((backdrop) => {
       backdrop.addEventListener('click', () => window.zzira.closeModal());
@@ -1595,6 +1600,44 @@
       mutationAwaitingSync = false;
       mutationMinSeq = 0;
     }
+  });
+
+  // Context refreshes replace the complete create form. Pause input after
+  // HTMX collects the draft so typing cannot race with that replacement.
+  const createRefreshes = new WeakMap();
+  document.body.addEventListener('htmx:beforeRequest', (event) => {
+    const detail = event.detail;
+    const element = detail.elt;
+    if (!(element instanceof Element) || !element.matches('#create-project, #create-issuetype')) return;
+    const form = element.closest('form');
+    if (!form) return;
+    if (form.hasAttribute('data-create-refreshing')) { event.preventDefault(); return; }
+    const controls = Array.from(form.querySelectorAll('input, select, textarea, button')).filter(control => !control.disabled);
+    const status = document.createElement('p');
+    status.setAttribute('role', 'status');
+    status.dataset.createRefreshStatus = 'true';
+    status.textContent = 'Updating fields…';
+    form.querySelector('.create-form-body').append(status);
+    form.setAttribute('aria-busy', 'true');
+    form.setAttribute('data-create-refreshing', 'true');
+    controls.forEach(control => { control.disabled = true; });
+    createRefreshes.set(detail.xhr, { form, controls, status });
+  });
+  document.body.addEventListener('htmx:afterRequest', (event) => {
+    const detail = event.detail;
+    const refresh = createRefreshes.get(detail.xhr);
+    if (!refresh) return;
+    createRefreshes.delete(detail.xhr);
+    const { form, controls, status } = refresh;
+    controls.forEach(control => { control.disabled = false; });
+    status.remove();
+    form.removeAttribute('aria-busy');
+    form.removeAttribute('data-create-refreshing');
+    if (!form.isConnected || detail.successful) return;
+    // The retained form still describes the previous context. Restore its
+    // selection before allowing a retry or submission with those fields.
+    form.elements.namedItem('project').value = form.dataset.metadataProject;
+    form.elements.namedItem('issuetype').value = form.dataset.metadataIssueType;
   });
 
   // HTMX does not swap plain-text rejections or network errors. Keep the
