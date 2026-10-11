@@ -1699,7 +1699,7 @@ func encodeWebCustomField(fieldType, value string) (json.RawMessage, error) {
 		"option", models.CustomFieldSelect:
 		encoded, err := json.Marshal(value)
 		return encoded, err
-	case models.CustomFieldDate, models.CustomFieldURL, "user", models.CustomFieldUser, "group", models.CustomFieldGroup, models.CustomFieldProject, "projectpicker", models.CustomFieldVersion, models.CustomFieldAsset:
+	case models.CustomFieldDate, models.CustomFieldURL, "user", models.CustomFieldUser, "group", models.CustomFieldGroup, models.CustomFieldProject, "projectpicker", models.CustomFieldVersion, models.CustomFieldAsset, models.CustomFieldTeam:
 		return json.Marshal(value)
 	case models.CustomFieldCascadingSelect, "option-with-child":
 		parent, child, _ := strings.Cut(value, ":")
@@ -2461,6 +2461,20 @@ func (h *Handler) TransitionIssue(w http.ResponseWriter, r *http.Request, key st
 	if !parseForm(w, r) {
 		return
 	}
+	issue, err := h.issueForUser(r, user, wsID, key)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	customFields, err := h.Store.CustomFieldsForProject(r.Context(), issue.ProjectID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	customByID := map[string]*models.CustomField{}
+	for _, field := range customFields {
+		customByID[field.ID] = field
+	}
 	update := store.IssueUpdate{}
 	for name, values := range r.PostForm {
 		if !strings.HasPrefix(name, "field_") || len(values) == 0 {
@@ -2471,6 +2485,10 @@ func (h *Handler) TransitionIssue(w http.ResponseWriter, r *http.Request, key st
 		case "summary":
 			update.Summary = &value
 		case "environment":
+			value = strings.ReplaceAll(value, "\r\n", "\n")
+			if value == adf.PlainText(issue.Fields["environment"]) {
+				continue
+			}
 			if update.Fields == nil {
 				update.Fields = map[string]json.RawMessage{}
 			}
@@ -2479,7 +2497,10 @@ func (h *Handler) TransitionIssue(w http.ResponseWriter, r *http.Request, key st
 				update.Fields["environment"] = json.RawMessage("null")
 			}
 		case "description":
-			update.Description = adf.ParagraphDoc(value)
+			value = strings.ReplaceAll(value, "\r\n", "\n")
+			if value != adf.PlainText(issue.Description) {
+				update.Description = adf.ParagraphDoc(value)
+			}
 		case "labels":
 			labels := strings.Split(value, ",")
 			if strings.TrimSpace(value) == "" {
@@ -2496,10 +2517,31 @@ func (h *Handler) TransitionIssue(w http.ResponseWriter, r *http.Request, key st
 			update.ResolutionID = &value
 		default:
 			if strings.HasPrefix(field, "customfield_") {
+				definition, ok := customByID[field]
+				if !ok {
+					http.Error(w, "custom field is not available for this project", http.StatusBadRequest)
+					return
+				}
+				// Multiple selects post one value per option. The empty marker
+				// also makes deselecting every option an explicit clear.
+				selected := []string{}
+				for _, entry := range values {
+					if entry != "" {
+						selected = append(selected, entry)
+					}
+				}
+				encoded := json.RawMessage("null")
+				if len(selected) > 0 {
+					var encodeErr error
+					encoded, encodeErr = encodeWebCustomField(definition.Type, strings.Join(selected, ","))
+					if encodeErr != nil {
+						http.Error(w, definition.Name+" "+encodeErr.Error(), http.StatusBadRequest)
+						return
+					}
+				}
 				if update.Fields == nil {
 					update.Fields = make(map[string]json.RawMessage)
 				}
-				encoded, _ := json.Marshal(value)
 				update.Fields[field] = encoded
 			}
 		}

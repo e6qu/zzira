@@ -116,6 +116,13 @@ Arrow keys, Home and End select tabs, and a blank required Summary on an inactiv
 tab is revealed before focus moves to it. Refused submissions keep the draft.
 Assignee and Priority retain their saved selections. Whitespace-only summaries
 are refused by the shared edit and transition commands before any fields save.
+Transition forms encode custom values using their field types, including numbers,
+cascading selects and every selected option in multiple pickers. Deselecting all
+options explicitly clears that field; omitting a field keeps its saved value.
+Unchanged Description and Environment text keeps its original rich document.
+Invalid values refuse the whole transition before status or other fields save.
+Draft recovery retains all selected options and distinguishes actions sharing the
+same submission URL.
 Each transition has distinct control and help-text IDs, and refreshing the issue
 through another action retains the active tab and draft. Browser coverage:
 `e2e/transition_screens.spec.ts`; full CI validation remains in [PLAN.md](../PLAN.md).

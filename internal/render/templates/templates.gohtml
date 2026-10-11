@@ -23,11 +23,11 @@
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
 <link rel="stylesheet" href="/static/css/workspace.css?v=71">
-<link rel="preload" href="/static/zzira-worker.wasm?v=53" as="fetch" crossorigin>
+<link rel="preload" href="/static/zzira-worker.wasm?v=54" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js?v=2.0.11" defer></script>
-<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=53" defer></script>
-<script src="/static/app.js?v=92" defer></script>
+<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=54" defer></script>
+<script src="/static/app.js?v=93" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -1305,7 +1305,7 @@
 </html>
 {{end}}
 
-{{define "custom_field_control"}}{{$field := .Field}}{{$helpID := printf "edit-help-%s" $field.ID}}{{if .HelpID}}{{$helpID = .HelpID}}{{end}}{{$value := $field.Value}}{{$name := .Name}}{{if not $name}}{{$name = $field.ID}}{{end}}{{if and $field.Options (or (eq $field.Type "select") (eq $field.Type "cascadingselect") (eq $field.Type "userpicker") (eq $field.Type "grouppicker") (eq $field.Type "project") (eq $field.Type "version") (eq $field.Type "team"))}}<select id="{{.Prefix}}{{$field.ID}}" name="{{$name}}" {{if $field.Description}}aria-describedby="{{$helpID}}"{{end}}><option value="">None</option>{{range $field.Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{else if and $field.Options (or (eq $field.Type "multiselect") (eq $field.Type "multiuserpicker") (eq $field.Type "multigrouppicker") (eq $field.Type "multiversion"))}}<select id="{{.Prefix}}{{$field.ID}}" name="{{$name}}" multiple size="3" {{if $field.Description}}aria-describedby="{{$helpID}}"{{end}}>{{range $field.Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{else}}<input id="{{.Prefix}}{{$field.ID}}" name="{{$name}}" value="{{$value}}" placeholder="None" {{if eq $field.Type "number"}}type="number" step="any" inputmode="decimal"{{else if eq $field.Type "datetime"}}type="datetime-local"{{else if eq $field.Type "date"}}type="date"{{else if eq $field.Type "url"}}type="url"{{end}} {{if $field.Description}}aria-describedby="{{$helpID}}"{{end}}>{{end}}{{end}}
+{{define "custom_field_control"}}{{$field := .Field}}{{$helpID := printf "edit-help-%s" $field.ID}}{{if .HelpID}}{{$helpID = .HelpID}}{{end}}{{$value := $field.Value}}{{$name := .Name}}{{if not $name}}{{$name = $field.ID}}{{end}}{{if and $field.Options (or (eq $field.Type "select") (eq $field.Type "cascadingselect") (eq $field.Type "userpicker") (eq $field.Type "grouppicker") (eq $field.Type "project") (eq $field.Type "version") (eq $field.Type "team"))}}<select id="{{.Prefix}}{{$field.ID}}" name="{{$name}}" {{if $field.Description}}aria-describedby="{{$helpID}}"{{end}}><option value="">None</option>{{range $field.Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{else if and $field.Options (or (eq $field.Type "multiselect") (eq $field.Type "multiuserpicker") (eq $field.Type "multigrouppicker") (eq $field.Type "multiversion"))}}{{if .ClearMarker}}<input type="hidden" name="{{$name}}" value="">{{end}}<select id="{{.Prefix}}{{$field.ID}}" name="{{$name}}" multiple size="3" {{if $field.Description}}aria-describedby="{{$helpID}}"{{end}}>{{range $field.Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{else}}<input id="{{.Prefix}}{{$field.ID}}" name="{{$name}}" value="{{$value}}" placeholder="None" {{if eq $field.Type "number"}}type="number" step="any" inputmode="decimal"{{else if eq $field.Type "datetime"}}type="datetime-local"{{else if eq $field.Type "date"}}type="date"{{else if eq $field.Type "url"}}type="url"{{end}} {{if $field.Description}}aria-describedby="{{$helpID}}"{{end}}>{{end}}{{end}}
 
 {{define "create_detail_field"}}{{$ := .}}{{with .Field}}
         {{$value := index $.Values .ID}}
