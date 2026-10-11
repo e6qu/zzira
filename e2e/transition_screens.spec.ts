@@ -114,7 +114,7 @@ test('a transition collects the fields of the screen it names, and follows that 
   await page.keyboard.press('End');
   await expect(text).toBeFocused();
   await expect(again.getByLabel('Assignee')).toHaveValue(initial.assignee.accountId);
-  await expect(again.getByLabel('Priority')).toHaveValue(initial.priority.id);
+  await expect(again.getByLabel('Priority').locator('option:checked')).toHaveText(initial.priority.name);
   await again.getByLabel('Summary', { exact: true }).fill('');
   await text.focus();
   await page.keyboard.press('Home');
