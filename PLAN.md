@@ -90,8 +90,8 @@ backlogs remain epic-level, as Jira's do.
 
 Owning reference: [JIRA_SOFTWARE.md](docs/JIRA_SOFTWARE.md#plans).
 
-- Auto-scheduler: schedule against releases too, so a version's date bounds
-  what may go after it.
+- Auto-scheduler: apply release constraints to estimated work and model flexible
+  release dates. Unestimated work already falls back to live fixed release dates.
 - Scenario edits: parent, rank, release, status, custom fields, create work items.
 - Extend custom columns beyond text, numbers, dates, URLs, selects and labels.
 - Atlassian Teams REST API.

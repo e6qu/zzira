@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -167,5 +168,94 @@ func TestPlanAutoScheduleLeavesPlannedWorkAlone(t *testing.T) {
 	}
 	if !moved {
 		t.Fatalf("scheduling everything left the planned work where it was: %+v", again.Changes)
+	}
+}
+
+func TestPlanAutoScheduleUsesUnestimatedDatePrecedence(t *testing.T) {
+	from := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name, start, end, inferred, sprint string
+		all                                bool
+		wantStart, wantEnd                 string
+	}{
+		{name: "release without team", wantStart: "2026-03-02", wantEnd: "2026-03-20"},
+		{name: "sprint before release", sprint: "future", all: true, wantStart: "2026-02-02", wantEnd: "2026-02-13"},
+		{name: "explicit start before sprint", start: "2026-02-05", sprint: "future", all: true, wantEnd: "2026-02-13"},
+		{name: "release projection does not override sprint", start: "2026-03-02", end: "2026-03-20", inferred: "Release dates", sprint: "future", all: true, wantStart: "2026-02-02", wantEnd: "2026-02-13"},
+		{name: "closed sprint falls back to release", sprint: "closed", all: true, wantStart: "2026-03-02", wantEnd: "2026-03-20"},
+		{name: "partial release fills explicit start", start: "2026-03-05", all: true, wantEnd: "2026-03-20"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			issue := &models.Issue{ID: "unestimated", Key: "RE-1", ProjectID: "own", Fields: map[string]json.RawMessage{"fixVersions": json.RawMessage(`[{"id":"release"},{"id":"foreign"}]`)}}
+			item := &PlanItem{Issue: issue, SprintID: tc.sprint}
+			planning := PlanPlanning{Items: map[string]*PlanItem{issue.ID: item}, Work: PlanWork{Items: []models.TimelineItem{{Issue: issue, StartDate: tc.start, DueDate: tc.end, InferredStart: tc.inferred, InferredEnd: tc.inferred}}}, Sprints: []PlanSprint{{ID: "future", State: "future", Start: "2026-02-02", End: "2026-02-13"}, {ID: "closed", State: "closed", Start: "2026-01-05", End: "2026-01-16"}}, releaseDates: map[string]planReleaseDates{"own/release": {Start: "2026-03-02", End: "2026-03-20"}, "other/foreign": {Start: "2026-01-01", End: "2027-01-01"}}}
+			result := planAutoSchedule(planning, true, PlanScheduleRequest{From: from, All: tc.all})
+			if result.Scheduled != 1 || result.Unestimated != 1 || len(result.Skipped) != 0 {
+				t.Fatalf("not date scheduled: %+v", result)
+			}
+			dates := map[string]string{}
+			for _, c := range result.Changes {
+				if c.Field == "sprint" {
+					t.Fatal("fallback assigned a new sprint")
+				}
+				var v string
+				_ = json.Unmarshal(c.Value, &v)
+				dates[c.Field] = v
+			}
+			if dates["startDate"] != tc.wantStart || dates["endDate"] != tc.wantEnd {
+				t.Fatalf("draft dates %+v", dates)
+			}
+		})
+	}
+}
+
+func TestPlanAutoScheduleProtectsActiveSprintAndItsCapacity(t *testing.T) {
+	eight, three := 8.0, 3.0
+	active := &PlanItem{Issue: &models.Issue{ID: "active", Key: "AC-1"}, TeamID: 1, SprintID: "active", Estimate: &eight}
+	fresh := &PlanItem{Issue: &models.Issue{ID: "fresh", Key: "AC-2"}, TeamID: 1, Estimate: &three}
+	planning := PlanPlanning{Items: map[string]*PlanItem{"active": active, "fresh": fresh}, Work: PlanWork{Items: []models.TimelineItem{{Issue: active.Issue}, {Issue: fresh.Issue}}}, Sprints: []PlanSprint{{ID: "active", State: "active"}}, Capacity: []PlanTeamCapacity{{Team: PlanTeam{ID: 1}, Iterations: []PlanIteration{{Key: "active", Start: "2026-01-05", End: "2026-01-16", Capacity: 10, Planned: 8}, {Key: "future", Start: "2026-01-19", End: "2026-01-30", Capacity: 10}}}}}
+	result := planAutoSchedule(planning, true, PlanScheduleRequest{All: true})
+	if result.Scheduled != 1 || len(result.Skipped) != 1 || result.Skipped[0].Key != "AC-1" {
+		t.Fatalf("active sprint was not protected: %+v", result)
+	}
+	sprint := ""
+	for _, c := range result.Changes {
+		if c.IssueID == "active" {
+			t.Fatal("changed active sprint work")
+		}
+		if c.Field == "sprint" {
+			sprint = string(c.Value)
+		}
+	}
+	if sprint != `"future"` {
+		t.Fatalf("fresh work consumed protected capacity: %s", sprint)
+	}
+}
+
+func TestPlanAutoScheduleProtectsCommittedActiveWorkAfterScenarioReassignment(t *testing.T) {
+	eight, three := 8.0, 3.0
+	protected := &PlanItem{Issue: &models.Issue{ID: "protected", Key: "AC-3"}, TeamID: 1, SprintID: "future", Estimate: &eight, activeSprint: true}
+	fresh := &PlanItem{Issue: &models.Issue{ID: "fresh", Key: "AC-4"}, TeamID: 1, Estimate: &three}
+	planning := PlanPlanning{Items: map[string]*PlanItem{"protected": protected, "fresh": fresh}, Work: PlanWork{Items: []models.TimelineItem{{Issue: protected.Issue}, {Issue: fresh.Issue}}}, Sprints: []PlanSprint{{ID: "future", State: "future"}}, Capacity: []PlanTeamCapacity{{Team: PlanTeam{ID: 1}, Iterations: []PlanIteration{{Key: "future", Capacity: 10, Planned: 8}, {Key: "later", Capacity: 10}}}}}
+	result := planAutoSchedule(planning, true, PlanScheduleRequest{All: true})
+	if result.Scheduled != 1 || len(result.Skipped) != 1 {
+		t.Fatalf("committed active work was not protected: %+v", result)
+	}
+	for _, c := range result.Changes {
+		if c.IssueID == "protected" || c.Field == "sprint" && string(c.Value) != `"later"` {
+			t.Fatalf("overwrote active work or its reserved capacity: %+v", c)
+		}
+	}
+}
+
+func TestPlanAutoScheduleRefusesUnavailableOrInvalidReleaseSpans(t *testing.T) {
+	for _, bounds := range []planReleaseDates{{Start: "2025-01-01", End: "2025-01-20"}, {Start: "2026-03-20", End: "2026-03-02"}, {Start: "invalid", End: "2026-02-30"}, {}} {
+		issue := &models.Issue{ID: "release", Key: "RE-2", ProjectID: "own", Fields: map[string]json.RawMessage{"fixVersions": json.RawMessage(`[{"id":"version"}]`)}}
+		item := &PlanItem{Issue: issue}
+		planning := PlanPlanning{Items: map[string]*PlanItem{issue.ID: item}, Work: PlanWork{Items: []models.TimelineItem{{Issue: issue}}}, releaseDates: map[string]planReleaseDates{"own/version": bounds}}
+		result := planAutoSchedule(planning, true, PlanScheduleRequest{From: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)})
+		if result.Scheduled != 0 || len(result.Changes) != 0 || len(result.Skipped) != 1 {
+			t.Fatalf("invalid release span scheduled: %+v => %+v", bounds, result)
+		}
 	}
 }

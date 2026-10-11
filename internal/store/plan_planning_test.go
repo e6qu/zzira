@@ -240,4 +240,26 @@ func TestPlanPlanningCapacityDependenciesAndScenarios(t *testing.T) {
 	if _, err := NormalizePlanChangeValue("priority", "High"); !errors.Is(err, ErrPlanValidation) {
 		t.Fatalf("unknown field error = %v", err)
 	}
+	// A later write failure must restore earlier draft edits, including removals.
+	before, err := st.PlanChanges(ctx, workspaceID, planID, stretch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejected := []PlanScheduleChange{
+		{IssueID: api.ID, IssueKey: api.Key, Field: "endDate", Value: json.RawMessage(`"2026-10-09"`), Current: json.RawMessage(`"2026-10-09"`)},
+		{IssueID: "missing-work", IssueKey: "Missing", Field: "startDate", Value: json.RawMessage(`"2026-10-12"`), Current: json.RawMessage(`null`)},
+	}
+	if err := st.applyPlanSchedule(ctx, workspaceID, leadID, planID, stretch, rejected); err == nil {
+		t.Fatal("invalid second write was accepted")
+	}
+	after, err := st.PlanChanges(ctx, workspaceID, planID, stretch)
+	left, _ := json.Marshal(before)
+	right, _ := json.Marshal(after)
+	if err != nil || string(left) != string(right) {
+		t.Fatalf("partial scheduler drafts persisted: before %s after %s error %v", left, right, err)
+	}
+	if err := st.applyPlanSchedule(ctx, workspaceID, "missing-member", planID, stretch, rejected[:1]); !errors.Is(err, ErrProjectPermission) {
+		t.Fatalf("scheduler edit permission: %v", err)
+	}
+
 }
