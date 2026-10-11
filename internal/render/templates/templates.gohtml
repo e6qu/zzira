@@ -23,11 +23,11 @@
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
 <link rel="stylesheet" href="/static/css/workspace.css?v=60">
-<link rel="preload" href="/static/zzira-worker.wasm?v=17" as="fetch" crossorigin>
+<link rel="preload" href="/static/zzira-worker.wasm?v=18" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js?v=2.0.11" defer></script>
-<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=17" defer></script>
-<script src="/static/app.js?v=53" defer></script>
+<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=18" defer></script>
+<script src="/static/app.js?v=54" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -1322,7 +1322,7 @@
         <div class="create-field {{if .Custom}}create-field-custom{{end}}">
           <label for="create-{{.ID}}">{{.Name}}{{if .Required}} <span aria-hidden="true">*</span>{{end}}</label>
           {{if eq .Type "user"}}
-          <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}}><option value="">{{if eq .ID "reporter"}}Current user{{else}}Unassigned{{end}}</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+          <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}}><option value="">{{if eq .ID "reporter"}}{{if .Required}}Choose a reporter{{else}}None{{end}}{{else}}Unassigned{{end}}</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
           {{else if eq .Type "priority"}}
           <select id="create-{{.ID}}" name="{{.ID}}" {{if .Required}}required{{end}}><option value="">None</option>{{range .Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>
           {{else if eq .Type "securitylevel"}}

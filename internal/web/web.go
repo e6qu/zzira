@@ -1422,10 +1422,12 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		}
 		originalEstimate = &seconds
 	}
+	_, reporterProvided := r.PostForm["reporter"]
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
 		OriginalEstimate: originalEstimate,
 		ActorID:          user.ID,
 		ReporterID:       values["reporter"],
+		ReporterProvided: reporterProvided,
 		WorkspaceID:      wsID,
 		ProjectIDOrKey:   values["project"],
 		Summary:          values["summary"],
@@ -1537,6 +1539,11 @@ func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID
 	for _, field := range selected.Fields {
 		if field.Default == "" || values[field.ID] != "" {
 			continue
+		}
+		if field.ID == "reporter" {
+			if _, provided := requested[field.ID]; provided {
+				continue
+			}
 		}
 		var text string
 		if err := json.Unmarshal([]byte(field.Default), &text); err == nil {

@@ -842,12 +842,14 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reporterID := ""
-	if _, provided := rawRequest.Fields["reporter"]; provided {
-		if req.Fields.Reporter == nil || strings.TrimSpace(req.Fields.Reporter.AccountID) == "" {
-			jiraFieldError(w, http.StatusBadRequest, map[string]string{"reporter": "Reporter must identify an active account."})
+	reporter, reporterProvided := rawRequest.Fields["reporter"]
+	if reporterProvided {
+		var err error
+		reporterID, err = reporterAccountID(reporter)
+		if err != nil {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"reporter": err.Error()})
 			return
 		}
-		reporterID = req.Fields.Reporter.AccountID
 	}
 	_, assigneeProvided := rawRequest.Fields["assignee"]
 	if req.Fields.Assignee != nil {
@@ -912,6 +914,7 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		PriorityID:                priorityID,
 		AssigneeID:                assigneeID,
 		ReporterID:                reporterID,
+		ReporterProvided:          reporterProvided,
 		UseProjectDefaultAssignee: !assigneeProvided || assigneeID == "-1",
 		SecurityLevelID: func() string {
 			if req.Fields.Security == nil {

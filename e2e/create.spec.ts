@@ -76,7 +76,7 @@ test('create journey and createmeta share every supported field', async ({ page,
   expect(fieldMetaBody.fields.map((field: any) => field.fieldId)).toEqual(expect.arrayContaining([
 		'project', 'issuetype', 'summary', 'description', 'assignee', 'reporter', 'priority', 'labels', 'parent', 'security', customFieldID,
   ]));
-  expect(fieldMetaBody.fields.find((field: any) => field.fieldId === 'reporter')).toMatchObject({ required: true, defaultValue: { accountId: demoID }, allowedValues: expect.arrayContaining([expect.objectContaining({ accountId: reporterID })]) });
+  expect(fieldMetaBody.fields.find((field: any) => field.fieldId === 'reporter')).toMatchObject({ required: false, defaultValue: { accountId: demoID }, allowedValues: expect.arrayContaining([expect.objectContaining({ accountId: reporterID })]) });
 	const customMeta = fieldMetaBody.fields.find((field: any) => field.fieldId === customFieldID);
   expect(customMeta.schema).toMatchObject({ type: 'number', customId: Number(customFieldID.replace('customfield_', '')) });
 	const subtaskMeta = await (await request.get('/rest/api/3/issue/createmeta/ZZ/issuetypes/10003?maxResults=100', auth)).json();

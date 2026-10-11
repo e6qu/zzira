@@ -191,7 +191,7 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 			{ID: "summary", Name: "Summary", Type: "string", Required: true, Section: "primary"},
 			{ID: "description", Name: "Description", Type: "doc", Section: "primary"},
 			{ID: "assignee", Name: "Assignee", Type: "user", Section: "details", Options: assigneeOptions},
-			{ID: "reporter", Name: "Reporter", Type: "user", Required: true, Section: "details", Options: reporterOptions, Default: fmt.Sprintf("%q", userID)},
+			{ID: "reporter", Name: "Reporter", Type: "user", Required: !canModifyReporter, Section: "details", Options: reporterOptions, Default: fmt.Sprintf("%q", userID)},
 			{ID: "priority", Name: "Priority", Type: "priority", Section: "details", Options: projectPriorityOptions},
 			{ID: "labels", Name: "Labels", Type: "array", Description: "Separate labels with commas. Spaces are not allowed inside a label.", Section: "details"},
 			{ID: "duedate", Name: "Due date", Type: "date", Section: "details"},

@@ -35,9 +35,11 @@ Screen names are unique per site, and tab names are unique per screen, both igno
 
 A screen can only hold fields the forms can render. The system fields, in order: `summary`, `description`, `assignee`, `reporter`, `priority`, `labels`, `duedate`, `parent`, `components`, `fixVersions`, `versions`, `resolution`, `security` (Restrict to), `timetracking`, `issuetype` and `project` (`systemScreenFields`, `internal/store/screens.go`). After them come the site's custom fields. Adding any other field is refused. `issuetype` and `resolution` offer the site's catalogues, `priority` the priorities of the project's priority scheme, and `parent` the work items one level above ([ISSUE_METADATA.md](ISSUE_METADATA.md)).
 
-Reporter defaults to the current user. The create form offers other site members
-only with the project's Modify reporter permission, and the command enforces
-that permission on submission. A refused create retains the chosen reporter.
+Reporter starts with the current user. With Modify reporter permission, the
+create form offers other site members and None for an optional field. The
+command checks that permission on submission and a refused create retains the
+choice. Omitting Reporter defaults it to the creator; explicitly clearing it
+requires a visible optional field.
 Edit dialogs and inline Reporter controls follow the edit screen, field
 configuration and Modify reporter permission. A transition screen can also
 collect Reporter; people without that permission see its current value. Optional
@@ -77,4 +79,3 @@ A workflow transition can name a screen; the transition then asks for the fields
 Tracked in [PLAN.md](../PLAN.md).
 
 - Environment, Attachment and Linked issues are not in the field catalog.
-- Explicitly clearing optional reporters on creation.
