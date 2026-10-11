@@ -83,11 +83,15 @@ test('legacy migration preserves an outbox after a failed pool install', async (
             const original = FileSystemFileHandle.prototype.createSyncAccessHandle;
             let calls = 0;
             FileSystemFileHandle.prototype.createSyncAccessHandle = function(...args) {
-              if (++calls === 3) return Promise.reject(new Error('injected pool handle failure'));
-              return original.apply(this,args);
+              const call = ++calls;
+              if (call === 3) return Promise.reject(new Error('injected pool handle failure'));
+              const acquired = original.apply(this,args);
+              // Keep successful acquisitions pending after the injected
+              // rejection, so cleanup must wait for all native handles.
+              return call > 1 ? acquired.then(handle => new Promise(resolve => setTimeout(() => resolve(handle),25))) : acquired;
             };
             let refused = false;
-            try { await sqlite3.installOpfsSAHPoolVfs({name:'legacy-failure-test',directory:'.opfs-sahpool'}); } catch (_) { refused = true; }
+            try { await sqlite3.installOpfsSAHPoolVfs({name:'legacy-failure-test',directory:'.opfs-sahpool'}); } catch (error) { refused = String(error).includes('injected pool handle failure'); }
             FileSystemFileHandle.prototype.createSyncAccessHandle = original;
             const check = await sqlite3.installOpfsSAHPoolVfs({name:'legacy-failure-test',directory:'.opfs-sahpool',forceReinitIfPreviouslyFailed:true});
             const retained = check.getFileNames().includes(filename);
