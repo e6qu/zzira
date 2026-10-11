@@ -65,7 +65,7 @@ a specific client behavior.
 | Live collaboration | Polled presence and body merge, carets, account-scoped offline recovery from the first keystroke ([CONFLUENCE_LIVE.md](CONFLUENCE_LIVE.md)) | [Plan 12](../PLAN.md#12-live-collaboration) |
 | Development integrations | Dev info, builds, deployments, feature flags, remote links, operations, security, deployment gating, rate limits ([JIRA_SOFTWARE.md](JIRA_SOFTWARE.md#development-and-devops-data)) | [Plan 13](../PLAN.md#13-apps): async processing, issue view panels |
 | Apps | Connect and native descriptors, signed lifecycle, JWT, scopes, storage, 20 Connect module families, dynamic modules, JQL functions, webhooks ([APPS.md](APPS.md)) | [Plan 13](../PLAN.md#13-apps) |
-| Local-first | Work item replicas with separate tab pools, retained legacy migration and failed-install recovery; outbox, offline edits, convergence, revocation purge | [Plan 14](../PLAN.md#14-local-first-closure) |
+| Local-first | Work item replicas with separate tab pools, retained legacy migration and failed-install recovery; atomic outbox/display updates with save acknowledgement, offline edits, convergence, revocation purge | [Plan 14](../PLAN.md#14-local-first-closure) |
 | Accessibility | Light and dark themes, keyboard, reflow, axe checks ([ACCESSIBILITY.md](ACCESSIBILITY.md)) | [Plan 15](../PLAN.md#15-certification): the same coverage for every journey, browser and locale |
 
 ## References

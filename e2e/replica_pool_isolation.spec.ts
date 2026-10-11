@@ -17,6 +17,29 @@ async function create(page: import('@playwright/test').Page, summary: string) {
 }
 
 test('two tabs own independent pools and both drain offline edits', async ({ page, context }) => {
+  await context.addInitScript(() => {
+    const NativeWorker = window.Worker;
+    (window as any).__refuseOfflineQueue = true;
+    (window as any).__offlineAckDelayed = false;
+    (window as any).Worker = class extends NativeWorker {
+      postMessage(message: any, ...rest: any[]) {
+        if (message?.type === 'enqueue' && message.requestId && (window as any).__refuseOfflineQueue) {
+          (window as any).__refuseOfflineQueue = false;
+          queueMicrotask(() => this.dispatchEvent(new MessageEvent('message', { data: { type: 'queue-error', requestId: message.requestId, message: 'Injected queue refusal' } })));
+          return;
+        }
+        super.postMessage(message, ...rest);
+      }
+      set onmessage(handler: any) {
+        super.onmessage = event => {
+          if (event.data?.type === 'queued' && event.data.requestId) {
+            (window as any).__offlineAckDelayed = true;
+            setTimeout(() => { (window as any).__offlineAckDelayed = false; handler.call(this, event); }, 600);
+          } else handler.call(this, event);
+        };
+      }
+    };
+  });
   await login(page);
   const stamp = Date.now();
   const keys = [await create(page, `First replica ${stamp}`), await create(page, `Second replica ${stamp}`)];
@@ -37,7 +60,17 @@ test('two tabs own independent pools and both drain offline edits', async ({ pag
       await expect(pages[i].getByRole('dialog', { name: 'Edit issue', exact: true })).toBeVisible();
       expect(await pages[i].locator('#edit-summary').evaluate(input => (input as HTMLInputElement).validity.valueMissing)).toBe(true);
       await pages[i].locator('#edit-summary').fill(`Queued replica ${i} ${stamp}`);
-      await pages[i].getByRole('button', { name: 'Save changes', exact: true }).click();
+      const save = pages[i].getByRole('button', { name: 'Save changes', exact: true });
+      await save.click();
+      await expect(pages[i].locator('[data-offline-save-error]')).toHaveText('Injected queue refusal');
+      await expect(pages[i].locator('#edit-summary')).toHaveValue(`Queued replica ${i} ${stamp}`);
+      await expect(save).toBeEnabled();
+      await save.click();
+      await expect.poll(() => pages[i].evaluate(() => (window as any).__offlineAckDelayed)).toBe(true);
+      await expect(pages[i].getByRole('dialog', { name: 'Edit issue', exact: true })).toBeVisible();
+      await expect(save).toBeDisabled();
+      await pages[i].keyboard.press('Escape');
+      await expect(pages[i].getByRole('dialog', { name: 'Edit issue', exact: true })).toBeVisible();
       await expect(pages[i].getByRole('dialog', { name: 'Edit issue', exact: true })).not.toBeVisible();
       await pages[i].reload();
       await expect(pages[i].locator('#sync-banner')).toContainText('offline', { timeout: 20_000 });
