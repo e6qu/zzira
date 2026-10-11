@@ -26,6 +26,15 @@ Everything except `GET /field` and `GET /projects/fields` needs *Administer Jira
 - `DELETE` refuses a field that is not in the trash.
 - `DELETE` answers `303` with a `Location` task that is already `COMPLETE`, because the removal finishes before the response.
 
+## Translations
+
+`translatedName` and `translatedDescription` are what the caller's own
+language calls the field: their chosen locale, or the one their client asked
+for in `Accept-Language`. `name` stays what the site calls it. An
+administrator writes the translations on the custom fields page; a locale
+with a region falls back to the language alone, so a `pt-BR` reader sees a
+`pt` name when nobody wrote a Brazilian one.
+
 ## Type keys
 
 `POST /field` and the `type` filter accept Jira's canonical key (for example `com.atlassian.jira.plugin.system.customfieldtypes:textfield`) or the short internal type name. The field keeps the key it was created with and reports it as `schema.custom`.
@@ -66,14 +75,3 @@ Short keys in the table are under `com.atlassian.jira.plugin.system.customfieldt
 ## Code
 
 `internal/api3/fields.go`, `internal/api3/api3_v5.go` (list and create), `internal/store/fields.go`, `migrations/143_custom_field_trash.sql`; tests in `internal/api3/fields_test.go`, `field_searchers_test.go`, `custom_field_types_test.go`.
-
-## Gaps
-
-Tracked in [PLAN.md](../PLAN.md).
-
-- `translatedName` and `translatedDescription` are what the caller's own
-  language calls the field: their chosen locale, or the one their client asked
-  for in `Accept-Language`. `name` stays what the site calls it. An
-  administrator writes the translations on the custom fields page; a locale
-  with a region falls back to the language alone, so a `pt-BR` reader sees a
-  `pt` name when nobody wrote a Brazilian one.

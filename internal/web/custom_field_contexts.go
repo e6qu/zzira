@@ -305,8 +305,7 @@ func (h *Handler) CustomFieldContextMutation(w http.ResponseWriter, r *http.Requ
 					data.Fields[i].Draft = draft
 				}
 			}
-			w.WriteHeader(http.StatusBadRequest)
-			h.writeWorkspacePage(w, r, "page_custom_fields", user, workspaceID, data, "custom-fields", "")
+			h.writeWorkspacePageStatus(w, r, "page_custom_fields", user, workspaceID, data, "custom-fields", "", http.StatusBadRequest)
 			return
 		}
 		redirectLocal(w, r, target+"?error="+url.QueryEscape(fieldContextMutationMessage(err)))

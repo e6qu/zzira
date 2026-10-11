@@ -49,7 +49,7 @@ func customFieldExistsTx(ctx context.Context, tx pgx.Tx, workspaceID, fieldID st
 func lockCustomFieldContextsTx(ctx context.Context, tx pgx.Tx, workspaceID, fieldID string) error {
 	var id string
 	err := tx.QueryRow(ctx, `SELECT id FROM custom_fields
-		WHERE id=$1 AND (workspace_id IS NULL OR workspace_id=$2) FOR UPDATE`, fieldID, workspaceID).Scan(&id)
+		WHERE id=$1 AND (workspace_id IS NULL OR workspace_id=$2) FOR NO KEY UPDATE`, fieldID, workspaceID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrFieldContextNotFound
 	}
@@ -385,6 +385,16 @@ func (s *Store) DeleteCustomFieldContext(ctx context.Context, workspaceID, actor
 }
 
 func (s *Store) ChangeCustomFieldContextScope(ctx context.Context, workspaceID, actorID, fieldID, contextID string, projectIDs, issueTypeIDs []string, remove bool) error {
+	return s.changeCustomFieldContextScope(ctx, workspaceID, actorID, fieldID, contextID, projectIDs, issueTypeIDs, remove, true)
+}
+
+// AssignCustomFieldContextProjects follows the Cloud REST restriction: project
+// assignments may extend a scoped context but cannot convert a global one.
+func (s *Store) AssignCustomFieldContextProjects(ctx context.Context, workspaceID, actorID, fieldID, contextID string, projectIDs []string) error {
+	return s.changeCustomFieldContextScope(ctx, workspaceID, actorID, fieldID, contextID, projectIDs, nil, false, false)
+}
+
+func (s *Store) changeCustomFieldContextScope(ctx context.Context, workspaceID, actorID, fieldID, contextID string, projectIDs, issueTypeIDs []string, remove, allowGlobalProjects bool) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -399,6 +409,9 @@ func (s *Store) ChangeCustomFieldContextScope(ctx context.Context, workspaceID, 
 	found, err := customFieldContextTx(ctx, tx, fieldID, contextID)
 	if err != nil {
 		return err
+	}
+	if !allowGlobalProjects && found.AllProjects && len(projectIDs) > 0 {
+		return fmt.Errorf("%w: projects cannot be assigned to a global context", ErrFieldContextValidation)
 	}
 	if remove {
 		for _, projectID := range projectIDs {

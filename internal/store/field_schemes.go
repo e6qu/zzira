@@ -565,7 +565,7 @@ func (s *Store) AssociateFieldsWithProjects(ctx context.Context, workspaceID, ac
 		// Stable ordering prevents two multi-field associations from deadlocking.
 		rows, lockErr := tx.Query(ctx, `SELECT id FROM custom_fields
 			WHERE id=ANY($1) AND (workspace_id IS NULL OR workspace_id=$2)
-			ORDER BY id FOR UPDATE`, fieldIDs, workspaceID)
+			ORDER BY id FOR NO KEY UPDATE`, fieldIDs, workspaceID)
 		if lockErr != nil {
 			return lockErr
 		}

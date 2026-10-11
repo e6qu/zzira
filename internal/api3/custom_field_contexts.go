@@ -245,7 +245,12 @@ func (h *Handler) changeFieldContextScope(w http.ResponseWriter, r *http.Request
 		fieldContextError(w, store.ErrFieldContextValidation)
 		return
 	}
-	if err := h.Store.ChangeCustomFieldContextScope(r.Context(), workspaceID, actorID, fieldID, contextID, projectIDs, issueTypeIDs, remove); err != nil {
+	if kind == "project" && !remove {
+		err = h.Store.AssignCustomFieldContextProjects(r.Context(), workspaceID, actorID, fieldID, contextID, projectIDs)
+	} else {
+		err = h.Store.ChangeCustomFieldContextScope(r.Context(), workspaceID, actorID, fieldID, contextID, projectIDs, issueTypeIDs, remove)
+	}
+	if err != nil {
 		fieldContextError(w, err)
 		return
 	}

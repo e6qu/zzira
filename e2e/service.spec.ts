@@ -1,3 +1,4 @@
+import { scopeFixtureField } from './field_contexts';
 import { apiAuthHeader } from './auth';
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
@@ -304,8 +305,7 @@ test('admin creates a service project with Jira Service Management request types
     expect(created.status()).toBe(201);
     const id = (await created.json()).id as string;
     const contexts = await (await page.request.get(`/rest/api/3/field/${id}/context`, { headers: auth })).json();
-    const contextID = String(contexts.values[0].id);
-    expect((await page.request.put(`/rest/api/3/field/${id}/context/${contextID}/project`, { headers: auth, data: { projectIds: [String(serviceProject.id)] } })).status()).toBe(204);
+    const contextID = await scopeFixtureField(page.request, id, String(contexts.values[0].id), String(serviceProject.id), auth);
     if (values.length) expect((await page.request.post(`/rest/api/3/field/${id}/context/${contextID}/option`, { headers: auth, data: { options: values.map(value => ({ value })) } })).status()).toBe(200);
   };
   const choiceStamp = Date.now();
