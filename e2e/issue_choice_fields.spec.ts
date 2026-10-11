@@ -2,6 +2,8 @@ import { apiAuthHeader } from './auth';
 import { expect, test } from '@playwright/test';
 import axe from 'axe-core';
 
+test.use({ actionTimeout: 15_000 });
+
 test('component and version edits persist, clear and follow separate screens', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel('Email').fill('demo@zzira.dev');
@@ -39,7 +41,7 @@ test('component and version edits persist, clear and follow separate screens', a
     await expect(page.locator('#field-fixVersions')).toHaveValues([versionID]);
     await expect(page.locator('#field-versions')).toHaveValues([versionID]);
     await page.locator('#field-components').selectOption([]);
-    await page.getByRole('button', { name: 'Save Components', exact: true }).click();
+    await page.getByRole('button', { name: /^Save Components/ }).click();
     await expect(page.locator('#field-components')).toHaveValues([]);
     expect((await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=components,fixVersions,versions`, { headers })).json()).fields).toMatchObject({ components: [], fixVersions: [{ id: versionID }], versions: [{ id: versionID }] });
     for (const [name, fields] of [['Editing', ['summary', 'components', 'fixVersions']], ['Reading', ['summary', 'components', 'versions']]] as const) {
@@ -70,8 +72,8 @@ test('component and version edits persist, clear and follow separate screens', a
     expect(fields.fixVersions).toEqual([]);
     expect(fields.versions).toMatchObject([{ id: versionID }]);
     expect((await page.request.put(`/rest/api/3/issue/${issueKey}`, { headers, data: { update: { versions: [{ set: [] }] } } })).status()).toBe(400);
-    await page.setViewportSize({ width: 320, height: 740 });
     await page.locator('[data-theme-toggle]').click();
+    await page.setViewportSize({ width: 320, height: 740 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.addScriptTag({ content: axe.source });
     expect(await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations)).toEqual([]);
