@@ -115,6 +115,7 @@ type projectIssuesData struct {
 	// BulkPriorities are the priorities a bulk edit can set, which are the
 	// project's own. BulkComponents and BulkVersions are the same for the
 	// two list fields a project owns.
+	BulkReporter   *models.CreateFieldMeta
 	BulkPriorities []models.Priority
 	BulkComponents []*models.ProjectComponent
 	BulkVersions   []*models.Version
@@ -1809,6 +1810,10 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		if data.BulkReporter, err = h.Commands.BulkReporterField(r.Context(), wsID, user.ID, data.Issues); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 		if data.BulkPriorities, err = h.Store.PrioritiesForProject(r.Context(), wsID, project.ID); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -2124,7 +2129,7 @@ func bulkEditOperations(r *http.Request, customFields []bulkCustomField) ([]stor
 	operations := []store.BulkIssueEditOperation{}
 	for _, field := range r.Form["field"] {
 		value := strings.TrimSpace(r.FormValue(map[string]string{
-			"assignee": "valueAssignee", "priority": "valuePriority",
+			"assignee": "valueAssignee", "reporter": "valueReporter", "priority": "valuePriority",
 			"duedate": "valueDueDate", "summary": "valueSummary",
 		}[field]))
 		switch field {
@@ -2132,6 +2137,8 @@ func bulkEditOperations(r *http.Request, customFields []bulkCustomField) ([]stor
 			// The command sets the assignee from an account id, and an empty
 			// one unassigns, as the single-item edit does.
 			operations = append(operations, store.BulkIssueEditOperation{FieldID: "assignee", Action: "SET", Value: encode(value)})
+		case "reporter":
+			operations = append(operations, store.BulkIssueEditOperation{FieldID: "reporter", Action: "SET", Value: encode(value)})
 		case "priority":
 			if value == "" {
 				return nil, fmt.Errorf("choose a priority")

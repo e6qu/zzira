@@ -103,7 +103,7 @@ operation, so the submitter also needs, per item and per project:
 | Delete | Delete issues |
 | Move | Move issues on the source item, and Create issues in the destination project |
 | Transition | Transition issues, plus whatever the transition itself needs |
-| Edit | Edit issues, and the permission each edited field needs (Assign issues, Schedule issues, Resolve issues, Set issue security) |
+| Edit | Edit issues, and the permission each edited field needs (Assign issues, Schedule issues, Resolve issues, Set issue security, Modify reporter) |
 
 Jira Service Management's queue actions are a different surface: they act on
 one desk's requests, need agent access rather than Bulk change, and are
@@ -115,26 +115,31 @@ The issue navigator (`/issues/{projectKey}`) shows its selection checkboxes and
 bulk forms only to people holding Bulk change. They select rows on the current
 page and bulk delete, move (project, type, parent) or transition them, choosing
 whether to notify watchers. "Edit selected" ticks the fields to change and
-changes every ticked one in a single task: the assignee, the priority, the due
-date, labels, components and fix versions. A list field replaces what is
+changes every ticked one in a single task: the assignee, the reporter, the
+priority, the due date, labels, components and fix versions. A list field replaces what is
 there, adds to it or takes values out of it; an empty box clears the field,
-except for a priority, which Jira has no unset value for. Watching and unwatching the selection ask only to
-be able to see the work items, as watching one does, so they are offered
+except for a priority, which Jira has no unset value for. Watching and
+unwatching the selection ask only to be able to see the work items, as watching one does, so they are offered
 without Bulk change. Progress is shown at
 `/issues/{projectKey}/bulk/{taskId}` to the submitter and administrators.
 
-## Gaps
+Reporter uses `singleSelectClearableUserPickerFields` with `fieldId: "reporter"`
+and a `user.accountId`, or `user: null` to clear an optional value. Its discovery
+uses edit screens and item-level Edit issues / Modify reporter grants across
+the entire selection, rather than the create default. Hidden, off-screen and
+non-editable items remove it from the offer. A field required on any selected
+item is marked required. The worker rechecks permissions and configuration,
+records changes, preserves the creator and revokes lost reporter access through
+the same command as a single-item edit.
 
-See [PLAN.md](../PLAN.md).
-
-- The navigator's bulk edit offers the six built-in fields above and the
-  custom fields every work type in the project shares: text, a number, a date,
-  a date and time, a URL, a single or multiple select, a cascading select, a
-  person, a group, a team, a project, one or several versions, a list of
-  values, and an Assets object field -- one object, or several where its
-  context holds several, chosen from the inventories of the desks the person
-  agents. Work type and status stay REST-only, because the navigator changes
-  them through bulk move and bulk transition instead.
+The navigator's bulk edit offers the seven built-in fields above and the
+custom fields every work type in the project shares: text, a number, a date,
+a date and time, a URL, a single or multiple select, a cascading select, a
+person, a group, a team, a project, one or several versions, a list of
+values, and an Assets object field -- one object, or several where its
+context holds several, chosen from the inventories of the desks the person
+agents. Work type and status stay REST-only, because the navigator changes
+them through bulk move and bulk transition instead.
 
 ## In the navigator
 

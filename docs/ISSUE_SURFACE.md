@@ -115,8 +115,8 @@ reporters must be active site members. Explicit `null` clears an optional
 Reporter; a required field configuration refuses it. Transition updates accept
 the same user/null values only when their transition screen includes Reporter.
 These paths preserve the creator and emit an audited Reporter change and any
-access revocation atomically. Bulk Reporter updates and explicit empty Reporter
-creation remain gaps.
+access revocation atomically. Bulk updates use the same command and permission
+checks; explicit empty Reporter creation remains a gap.
 
 ## Writing work items
 
