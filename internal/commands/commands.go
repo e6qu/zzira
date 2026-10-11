@@ -29,6 +29,7 @@ type Service struct {
 type CreateIssueInput struct {
 	ActorID                   string
 	ReporterID                string
+	ReporterProvided          bool // distinguishes an explicit empty Reporter from its actor default
 	WorkspaceID               string
 	ProjectIDOrKey            string
 	Summary                   string
@@ -323,7 +324,7 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	}
 	issue, action, err := s.Store.CreateEstimatedIssueForReporter(ctx, in.ActorID, in.ReporterID, project.ID, in.Summary,
 		description, wf.InitialStatus(), issueType.ID, priorityID, in.AssigneeID, labels, in.Fields, in.SecurityLevelID, parentID,
-		store.NewIssueDetails{Original: in.OriginalEstimate, Remaining: in.RemainingEstimate, DueDate: dueDate, CustomerReporter: in.customerRequest})
+		store.NewIssueDetails{Original: in.OriginalEstimate, Remaining: in.RemainingEstimate, DueDate: dueDate, CustomerReporter: in.customerRequest, ClearReporter: in.ReporterProvided && in.ReporterID == ""})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -352,7 +353,7 @@ func (s *Service) requireCreatePermissions(ctx context.Context, in CreateIssueIn
 	if in.AssigneeID != "" && in.AssigneeID != "-1" && !in.UseProjectDefaultAssignee {
 		permissions = append(permissions, "ASSIGN_ISSUES")
 	}
-	if in.ReporterID != "" && in.ReporterID != in.ActorID {
+	if (in.ReporterProvided || in.ReporterID != "") && in.ReporterID != in.ActorID {
 		permissions = append(permissions, "MODIFY_REPORTER")
 	}
 	if in.SecurityLevelID != "" {
@@ -422,7 +423,7 @@ func (s *Service) enforceFieldConfiguration(ctx context.Context, in CreateIssueI
 		"assignee":    in.AssigneeID != "" && in.AssigneeID != "-1",
 		// A service request derives its reporter from the customer, rather
 		// than submitting the Reporter screen field.
-		"reporter": in.ReporterID != "" && !in.customerRequest,
+		"reporter": (in.ReporterProvided || in.ReporterID != "") && !in.customerRequest,
 		"priority": in.PriorityID != "",
 		"parent":   strings.TrimSpace(in.ParentIDOrKey) != "",
 		"security": in.SecurityLevelID != "",
@@ -439,7 +440,11 @@ func (s *Service) enforceFieldConfiguration(ctx context.Context, in CreateIssueI
 		if field == "summary" {
 			continue
 		}
-		if rule.IsRequired && !supplied[field] && !(field == "reporter" && in.ActorID != "") {
+		present := supplied[field]
+		if field == "reporter" {
+			present = in.ReporterID != "" || (!in.ReporterProvided && in.ActorID != "")
+		}
+		if rule.IsRequired && !present {
 			return fmt.Errorf("%s is required by the field configuration for this work type", field)
 		}
 		if rule.IsHidden && supplied[field] {
@@ -954,10 +959,12 @@ func (s *Service) runInitialTransition(ctx context.Context, in CreateIssueInput,
 		draft.Assignee = &models.User{ID: in.AssigneeID}
 	}
 	reporterID := in.ReporterID
-	if reporterID == "" {
+	if reporterID == "" && !in.ReporterProvided {
 		reporterID = in.ActorID
 	}
-	draft.Reporter = &models.User{ID: reporterID}
+	if reporterID != "" {
+		draft.Reporter = &models.User{ID: reporterID}
+	}
 	if priorityID != "" {
 		draft.Priority = &models.Priority{ID: priorityID}
 	}

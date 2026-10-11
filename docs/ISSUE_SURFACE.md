@@ -103,9 +103,11 @@ Unknown or hidden work items are left out.
 
 The browser create form exposes Reporter when its screen includes the field.
 It starts with the signed-in user and offers other members only with Modify
-reporter permission. Required and hidden field configuration applies as well. REST creation accepts
-`reporter: {"accountId": "…"}` with the same permission check. Omitted reporters
-default to the creator; empty, null and unknown accounts are refused.
+reporter permission. Required and hidden field configuration applies as well.
+REST creation accepts `reporter: {"accountId": "…"}` with the same permission check. Omitted reporters
+default to the creator. Explicit `null` keeps an optional Reporter empty and
+requires Modify reporter; a required or hidden configuration refuses it. Empty
+account objects and unknown accounts are refused.
 
 Single-item updates accept `fields.reporter: {"accountId": "…"}` or one
 `update.reporter` `set` operation. Edits require Edit issues and a Reporter field
@@ -116,7 +118,9 @@ Reporter; a required field configuration refuses it. Transition updates accept
 the same user/null values only when their transition screen includes Reporter.
 These paths preserve the creator and emit an audited Reporter change and any
 access revocation atomically. Bulk updates use the same command and permission
-checks; explicit empty Reporter creation remains a gap.
+checks. The browser offers None for an optional Reporter and retains that
+choice after a refused create. Initial workflow validators see the explicit
+empty value rather than the actor default.
 
 ## Writing work items
 
