@@ -2,6 +2,7 @@ package api3
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -481,12 +482,11 @@ func (h *Handler) bulkEditableFields(w http.ResponseWriter, r *http.Request) {
 		bulkOperationError(w, http.StatusBadRequest, selectionErr.Error())
 		return
 	}
-	metadata, err := h.Store.IssueCreateMetadata(r.Context(), workspaceID, userID)
+	fields, err := h.bulkEditFields(r.Context(), workspaceID, userID, issues)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not read bulk editable fields.")
 		return
 	}
-	fields := commonBulkEditableFields(metadata, issues, h.BaseURL)
 	search := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("searchText")))
 	if search != "" {
 		filtered := fields[:0]
@@ -516,6 +516,29 @@ func (h *Handler) bulkEditableFields(w http.ResponseWriter, r *http.Request) {
 		response["startingAfter"] = encodeBulkFieldCursor(pageQuery, end)
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+// bulkEditFields uses creation metadata for existing field families and the
+// shared edit contract for Reporter, whose create default is irrelevant here.
+func (h *Handler) bulkEditFields(ctx context.Context, workspaceID, actorID string, issues []*models.Issue) ([]bulkEditableField, error) {
+	metadata, err := h.Store.IssueCreateMetadata(ctx, workspaceID, actorID)
+	if err != nil {
+		return nil, err
+	}
+	fields := commonBulkEditableFields(metadata, issues, h.BaseURL)
+	reporter, err := h.Commands.BulkReporterField(ctx, workspaceID, actorID, issues)
+	if err != nil {
+		return nil, err
+	}
+	if reporter != nil {
+		field := bulkEditableField{ID: reporter.ID, Name: reporter.Name, Type: "reporter", IsRequired: reporter.Required}
+		for _, option := range reporter.Options {
+			field.FieldOptions = append(field.FieldOptions, bulkFieldOption(field.Type, option))
+		}
+		fields = append(fields, field)
+		sort.SliceStable(fields, func(i, j int) bool { return strings.ToLower(fields[i].Name) < strings.ToLower(fields[j].Name) })
+	}
+	return fields, nil
 }
 
 func splitBulkIssueQuery(values []string) []string {
@@ -604,6 +627,10 @@ func commonBulkEditableFields(metadata *models.IssueCreateMetadata, issues []*mo
 		sort.Strings(issueTypeIDs)
 		for _, issueTypeID := range issueTypeIDs {
 			for _, source := range bulkEditableSources(project.FieldsForIssueType(issueTypeID)) {
+				// Reporter uses edit screens and per-item permissions below.
+				if source.ID == "reporter" {
+					continue
+				}
 				fieldType := bulkEditableFieldType(source)
 				if fieldType == "" {
 					continue
@@ -663,9 +690,9 @@ func commonBulkEditableFields(metadata *models.IssueCreateMetadata, issues []*mo
 }
 
 func bulkEditableFieldType(field models.CreateFieldMeta) string {
-	// Reporter creation has no shared update command yet.
+	// Reporter has a distinct wire type despite sharing user-picker input.
 	if field.ID == "reporter" {
-		return ""
+		return "reporter"
 	}
 	switch field.Type {
 	case "user":
@@ -713,7 +740,7 @@ func bulkEditableFieldType(field models.CreateFieldMeta) string {
 
 func bulkFieldOption(fieldType string, option models.CreateFieldOption) map[string]any {
 	switch fieldType {
-	case "assignee":
+	case "assignee", "reporter":
 		return map[string]any{"accountId": option.ID, "displayName": option.Name}
 	case "priority":
 		return map[string]any{"id": option.ID, "priority": option.Name}

@@ -77,4 +77,4 @@ A workflow transition can name a screen; the transition then asks for the fields
 Tracked in [PLAN.md](../PLAN.md).
 
 - Environment, Attachment and Linked issues are not in the field catalog.
-- Reporter bulk editing and explicitly clearing optional reporters on creation.
+- Explicitly clearing optional reporters on creation.

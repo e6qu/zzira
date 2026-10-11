@@ -635,6 +635,12 @@ func bulkIssueUpdate(issue *models.Issue, actorID string, operations []store.Bul
 				return update, fmt.Errorf("assignee: %w", err)
 			}
 			update.AssigneeID = &value
+		case "reporter":
+			value, err := bulkStringValue(operation.Value)
+			if err != nil {
+				return update, fmt.Errorf("reporter: %w", err)
+			}
+			update.ReporterID = &value
 		case "security":
 			value, err := bulkStringValue(operation.Value)
 			if err != nil {

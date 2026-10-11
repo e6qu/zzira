@@ -8,8 +8,8 @@ import (
 func TestReporterCreateMetadataUsesAccountIDs(t *testing.T) {
 	h := &Handler{}
 	field := models.CreateFieldMeta{ID: "reporter", Name: "Reporter", Type: "user", Required: true, Default: `"usr_current"`, Options: []models.CreateFieldOption{{ID: "usr_current", Name: "Current user"}, {ID: "usr_colleague", Name: "Colleague"}}}
-	if bulkEditableFieldType(field) != "" {
-		t.Fatal("create-only reporter advertised for bulk editing")
+	if bulkEditableFieldType(field) != "reporter" {
+		t.Fatal("Reporter bulk metadata needs its own wire type")
 	}
 	for _, bean := range []map[string]any{h.createFieldBean(field), h.legacyCreateFieldBean(field)} {
 		value, ok := bean["defaultValue"].(map[string]any)

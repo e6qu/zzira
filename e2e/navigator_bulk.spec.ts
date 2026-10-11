@@ -54,15 +54,17 @@ test('navigator edits, watches and unwatches a selection', async ({ page, reques
     await page.locator('tr').filter({ hasText: key }).getByRole('checkbox').check();
   }
 
-  // Six fields, across the selection, in one task.
+  const colleague = await (await request.get('/rest/api/3/myself', { headers: { Authorization: apiAuthHeader('ana@zzira.dev') } })).json();
+  // Seven fields, across the selection, in one task.
   await page.locator('summary').filter({ hasText: 'Edit selected' }).click();
   const editor = page.locator('.bulk-edit-picker');
-  for (const field of ['assignee', 'priority', 'duedate', 'labels', 'components', 'fixVersions']) {
+  for (const field of ['assignee', 'reporter', 'priority', 'duedate', 'labels', 'components', 'fixVersions']) {
     await editor.locator(`input[name="field"][value="${field}"]`).check();
   }
   // The project lead is assignable in their own project; the point is that
   // the assignee changes at all, which it never did through this form.
   await editor.locator('select[name="valueAssignee"]').selectOption({ label: me.displayName });
+  await editor.getByLabel('New reporter', { exact: true }).selectOption(colleague.accountId);
   const priority = editor.locator('select[name="valuePriority"]');
   await priority.selectOption({ index: 1 });
   const priorityName = (await priority.locator('option').nth(1).textContent())!.trim();
@@ -83,6 +85,8 @@ test('navigator edits, watches and unwatches a selection', async ({ page, reques
       const issue = await (await request.get(`/rest/api/3/issue/${key}`, { headers: auth })).json();
       expect(issue.fields.labels).toContain(`bulk-${stamp}`);
       expect(issue.fields.assignee?.displayName).toBe(me.displayName);
+      expect(issue.fields.reporter?.accountId).toBe(colleague.accountId);
+      expect(issue.fields.creator?.accountId).toBe(me.accountId);
       expect(issue.fields.priority?.name).toBe(priorityName);
       expect(issue.fields.duedate).toBe('2027-02-03');
       expect((issue.fields.components ?? []).map((c: any) => c.name)).toContain(componentName);

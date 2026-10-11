@@ -29,7 +29,7 @@ type parsedBulkEditOperation struct {
 }
 
 func (h *Handler) submitBulkEdit(w http.ResponseWriter, r *http.Request) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	workspaceID, actorID, authErr := h.authBulkChange(r)
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
@@ -57,13 +57,13 @@ func (h *Handler) submitBulkEdit(w http.ResponseWriter, r *http.Request) {
 		bulkOperationError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	metadata, err := h.Store.IssueCreateMetadata(r.Context(), workspaceID, actorID)
+	fields, err := h.bulkEditFields(r.Context(), workspaceID, actorID, issues)
 	if err != nil {
 		jiraError(w, http.StatusInternalServerError, "Could not validate bulk editable fields.")
 		return
 	}
 	available := map[string]string{}
-	for _, field := range commonBulkEditableFields(metadata, issues, h.BaseURL) {
+	for _, field := range fields {
 		available[field.ID] = field.Type
 	}
 	operations, validationErr := validateBulkEditActions(request.SelectedActions, parsed, available)
@@ -261,7 +261,11 @@ func parseBulkEditOperations(input map[string]json.RawMessage) ([]parsedBulkEdit
 					return nil, fmt.Errorf("singleSelectClearableUserPickerFields %s requires user.accountId", field.FieldID)
 				}
 			}
-			if err := appendOperation(field.FieldID, "SET", "assignee", accountID); err != nil {
+			fieldType := "assignee"
+			if field.FieldID == "reporter" {
+				fieldType = "reporter"
+			}
+			if err := appendOperation(field.FieldID, "SET", fieldType, accountID); err != nil {
 				return nil, err
 			}
 		}
