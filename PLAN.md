@@ -113,7 +113,8 @@ Owning reference: [RELEASES.md](docs/RELEASES.md).
 
 ## 5. JQL and filters
 
-- Historical `versionedRepresentations`.
+- Additional documented field formats in `versionedRepresentations`; current
+  values use format version `1`. Change history belongs to the changelog.
 - Filters: a richer subscription schedule builder than two presets and a cron
   expression.
 
