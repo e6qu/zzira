@@ -113,6 +113,19 @@ test('a transition collects the fields of the screen it names, and follows that 
   }
   expect((await page.request.post(`/rest/api/3/screens/${screenID}/tabs`, { headers, data: { name: 'Unused' } })).status()).toBe(200);
 
+  const configuration = await page.request.post('/rest/api/3/fieldconfiguration', { headers, data: { name: `Required transition environment ${stamp}` } });
+  expect(configuration.status()).toBe(201);
+  const configurationID = String((await configuration.json()).id);
+  const requireEnvironment = async (isRequired: boolean) => {
+    expect((await page.request.put(`/rest/api/3/fieldconfiguration/${configurationID}/fields`, { headers, data: { fieldConfigurationItems: [{ id: 'environment', isRequired }] } })).status()).toBe(204);
+  };
+  await requireEnvironment(true);
+  const configurationScheme = await page.request.post('/rest/api/3/fieldconfigurationscheme', { headers, data: { name: `Required transition types ${stamp}` } });
+  expect(configurationScheme.status()).toBe(201);
+  const configurationSchemeID = String((await configurationScheme.json()).id);
+  expect((await page.request.put(`/rest/api/3/fieldconfigurationscheme/${configurationSchemeID}/mapping`, { headers, data: { mappings: [{ issueTypeId: 'default', fieldConfigurationId: configurationID }] } })).status()).toBe(204);
+  expect((await page.request.put('/rest/api/3/fieldconfigurationscheme/project', { headers, data: { fieldConfigurationSchemeId: configurationSchemeID, projectId: projectID } })).status()).toBe(204);
+
   await page.goto(`/browse/${issueKey}`);
   const again = page.locator('details.transition-screen').filter({ has: page.locator('summary').filter({ hasText: /^Finish$/ }) });
   await again.locator('summary').click();
@@ -134,6 +147,16 @@ test('a transition collects the fields of the screen it names, and follows that 
   await expect(again.getByLabel('Priority').locator('option:checked')).toHaveText(initial.priority.name);
   await again.getByLabel(`number transition ${stamp}`, { exact: true }).fill('12.5');
   await again.getByLabel(`multiselect transition ${stamp}`, { exact: true }).selectOption(optionIDs);
+  await expect(again.getByLabel('Environment', { exact: true })).toHaveAttribute('required', '');
+  await expect(again.getByLabel('Labels')).not.toHaveAttribute('required', '');
+  await again.getByLabel('Environment', { exact: true }).fill('');
+  await details.click();
+  await again.getByRole('button', { name: 'Complete Finish', exact: true }).click();
+  await expect(again.getByLabel('Environment', { exact: true })).toBeFocused();
+  await expect(text).toHaveAttribute('aria-selected', 'true');
+  await expect(again.getByLabel('Labels')).toHaveValue('screened');
+  expect((await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=status,environment`, { headers })).json()).fields).toMatchObject({ status: { name: 'To Do' }, environment: rich });
+  await again.getByLabel('Environment', { exact: true }).fill('Retained rich transition');
   await again.getByLabel('Summary', { exact: true }).fill('');
   await text.focus();
   await page.keyboard.press('Home');
@@ -210,6 +233,7 @@ test('a transition collects the fields of the screen it names, and follows that 
   expect(saved[fieldIDs.number]).toBe(12.5);
   expect(saved[fieldIDs.multiselect]).toEqual(optionIDs);
 
+  await requireEnvironment(false);
   // Deselecting all options is a clear; omitted fields were covered at the web edge.
   const clearIssue = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key }, summary: 'Clear transition values', issuetype: { name: 'Task' }, description: rich, environment: rich, [fieldIDs.number]: 2, [fieldIDs.multiselect]: optionIDs } } });
   expect(clearIssue.status()).toBe(201);

@@ -569,12 +569,15 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 			asked := []models.CustomFieldView{}
 			required := t.RequiredFields()
 			for _, id := range screenFields {
+				required[id] = required[id] || reporterBehaviour[id].IsRequired
+			}
+			for _, id := range screenFields {
 				if field, ok := customByID[id]; ok {
 					field.Required = field.Required || required[id]
 					asked = append(asked, field)
 				}
 			}
-			transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: screenFields, ScreenTabs: t.ScreenTabs, ScreenCustomFields: asked, ScreenMessage: message, ReporterRequired: t.RequiredFields()["reporter"] || reporterBehaviour["reporter"].IsRequired})
+			transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: screenFields, ScreenTabs: t.ScreenTabs, ScreenRequiredFields: required, ScreenCustomFields: asked, ScreenMessage: message, ReporterRequired: required["reporter"]})
 		}
 	}
 	// Resolution is offered to people who may resolve work, as Jira ties the

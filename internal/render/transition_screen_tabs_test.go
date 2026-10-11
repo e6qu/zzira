@@ -80,3 +80,21 @@ func TestTransitionTabsKeepValuesAndScopeControlsToTheirAction(t *testing.T) {
 		t.Fatal("one usable transition tab should remain a plain form")
 	}
 }
+
+func TestNativeTransitionControlsUseConfiguredRequiredness(t *testing.T) {
+	view := fixtureIssue()
+	for _, field := range []string{"description", "environment", "labels", "assignee", "reporter", "priority", "resolution"} {
+		t.Run(field, func(t *testing.T) {
+			for _, required := range []bool{false, true} {
+				transition := models.WorkflowTransition{ID: "31", ScreenRequiredFields: map[string]bool{field: required}}
+				var output bytes.Buffer
+				if err := Fragment(&output, "transition_screen_field", map[string]any{"ID": field, "Transition": transition, "View": view}); err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(output.String(), " required") != required {
+					t.Fatalf("required=%v: %s", required, output.String())
+				}
+			}
+		})
+	}
+}
