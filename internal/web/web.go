@@ -573,17 +573,11 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	}
 	// Resolution is offered to people who may resolve work, as Jira ties the
 	// field to the Resolve issues permission.
-	resolutions, err := h.Store.ResolutionsForWorkspace(r.Context(), wsID)
-	if err != nil {
-		return nil, err
-	}
+	resolutions := editView.Resolutions
 	resolutionValues := resolutions
 	canResolve := permissions["RESOLVE_ISSUES"]
 	// The priority field offers what the project's priority scheme holds.
-	priorities, err := h.Store.PrioritiesForProject(r.Context(), wsID, issue.ProjectID)
-	if err != nil {
-		return nil, err
-	}
+	priorities := editView.Priorities
 	watcherIDs, err := h.Store.WatchersByIssue(r.Context(), issue.ID)
 	if err != nil {
 		return nil, err
@@ -650,10 +644,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	}
 	// The work item's parent comes from one level above its own work type, in
 	// its own project.
-	parentOptions, err := h.Store.ParentOptions(r.Context(), wsID, issue.ProjectID, user.ID, issue.IssueType.HierarchyLevel)
-	if err != nil {
-		return nil, err
-	}
+	parentOptions := editView.ParentOptions
 	linkViews := make([]models.IssueLinkView, 0, len(links))
 	for _, link := range links {
 		otherID, relationship := link.OutwardID, link.Inward
@@ -946,7 +937,27 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	if err != nil {
 		return nil, err
 	}
+	view.FieldRules = behaviour
 	view.EditFields = issueScreenFields(reporterFields, behaviour)
+	view.CanResolve, view.CanSchedule = permissions["RESOLVE_ISSUES"], permissions["SCHEDULE_ISSUES"]
+	view.Priorities, err = h.Store.PrioritiesForProject(ctx, wsID, issue.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	view.Resolutions, err = h.Store.ResolutionsForWorkspace(ctx, wsID)
+	if err != nil {
+		return nil, err
+	}
+	view.ParentOptions, err = h.Store.ParentOptions(ctx, wsID, issue.ProjectID, reader, issue.IssueType.HierarchyLevel)
+	if err != nil {
+		return nil, err
+	}
+	configuration, err := h.Store.JiraSiteConfiguration(ctx, wsID)
+	if err != nil {
+		return nil, err
+	}
+	view.TimeTrackingEnabled = configuration.TimeTrackingEnabled
+	view.TimeTracking = models.NewTimeTrackingView(*issue, configuration.TimeTracking)
 	choiceFields, err := h.issueChoiceFields(ctx, wsID, issue, behaviour, view.EditFields, permissions)
 	if err != nil {
 		return nil, err
@@ -2936,6 +2947,29 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 		if strings.TrimSpace(values[0]) == "" {
 			in.Fields["environment"] = json.RawMessage("null")
 		}
+	}
+	if values, ok := r.PostForm["priority"]; ok && len(values) > 0 {
+		in.PriorityID = &values[0]
+	}
+	if values, ok := r.PostForm["resolution"]; ok && len(values) > 0 {
+		in.ResolutionID = &values[0]
+	}
+	if values, ok := r.PostForm["duedate"]; ok && len(values) > 0 {
+		in.DueDate = &values[0]
+	}
+	if values, ok := r.PostForm["parent"]; ok && len(values) > 0 && values[0] != "__keep_parent__" {
+		in.ParentIDOrKey = &values[0]
+	}
+	if values, ok := r.PostForm["labels"]; ok && len(values) > 0 {
+		labels := []string{}
+		if strings.TrimSpace(values[0]) != "" {
+			labels = strings.Split(values[0], ",")
+		}
+		in.Labels = &labels
+	}
+	if err := h.editDialogEstimates(r, wsID, &in); err != nil {
+		http.Error(w, err.Error(), commandErrorStatus(err))
+		return
 	}
 	if values, ok := r.PostForm["reporter"]; ok && len(values) > 0 {
 		in.ReporterID = &values[0]

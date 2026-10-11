@@ -419,6 +419,14 @@ type WorkflowTransition struct {
 // EditDialogView drives the edit-issue dialog; rendered by both server and
 // wasm worker (offline editing). Members/levels/fields may be empty offline.
 type EditDialogView struct {
+	FieldRules             map[string]FieldBehaviour
+	CanResolve             bool
+	CanSchedule            bool
+	Priorities             []Priority
+	Resolutions            []Resolution
+	ParentOptions          []CreateFieldOption
+	TimeTrackingEnabled    bool
+	TimeTracking           TimeTrackingView
 	ChoiceFields           []IssueChoiceFieldView
 	ConfiguredChoiceFields []IssueChoiceFieldView
 	EditFields             map[string]bool
@@ -703,3 +711,6 @@ func (v IssueView) FieldOnEdit(field string) bool { return v.EditFields == nil |
 func (v EditDialogView) FieldOnEdit(field string) bool {
 	return v.EditFields == nil || v.EditFields[field]
 }
+
+// FieldRequired describes the configured edit form; legacy replicas have no rules.
+func (v EditDialogView) FieldRequired(field string) bool { return v.FieldRules[field].IsRequired }

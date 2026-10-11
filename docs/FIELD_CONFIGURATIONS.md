@@ -29,6 +29,9 @@ Names are unique per site, ignoring case. Every change is written to the action 
 - Bulk edit offers only fields that every selected work item's form allows.
 - Issue details, edit dialogs and transition custom-field controls drop hidden fields and fields outside the work type context. Separate view and edit screens govern display and editing ([SCREENS.md](SCREENS.md#custom-fields-on-work-items)).
 - Commands enforce the rules for all clients. On create, a required field must be present and a hidden field must be absent. On edit and on a transition with field updates, a required field cannot be cleared and a hidden field cannot be set. An update that doesn't touch a governed field is never refused.
+- Time tracking rules govern original and remaining estimates together. Hidden
+  estimates cannot be set; a required time-tracking field must retain at least
+  one estimate after an edit. Clearing only one estimate may keep the other.
 - Hiding a field clears its required setting and help text. Unhiding starts from their default values.
 - A field cannot be both required and hidden. `summary` is always required and visible, and the context fields (project, work type) are exempt.
 - Workflow post functions that set fields bypass the configuration, as in Jira.

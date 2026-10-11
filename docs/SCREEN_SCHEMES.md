@@ -59,6 +59,14 @@ controls, hidden fields disappear, and version links follow the view screen.
 Both direct version values and add/remove/set operations follow edit-screen
 checks. Offline configuration metadata remains tracked in [PLAN.md](../PLAN.md#14-local-first).
 
+The edit dialog also exposes configured Priority, Labels, Due date, Parent,
+Resolution and estimate fields, including fields absent from the view screen.
+Due dates require Schedule issues; Resolution requires Resolve issues. The
+parent picker defaults to keeping its current relationship. Omitted fields
+stay unchanged, invalid durations refuse the entire edit, and clearing one
+estimate retains its unsubmitted counterpart. These additional controls wait
+for server field metadata; legacy offline editors keep their existing fields.
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
@@ -67,8 +75,5 @@ Tracked in [PLAN.md](../PLAN.md).
   fields. Fields outside the edit screen show saved values without edit
   controls. The page uses its own layout rather than reproducing screen tabs
   and field order.
-- The edit dialog still needs Priority, Labels, Due date, Parent, Resolution
-  and estimate controls. Their existing inline controls cannot edit a field
-  that appears only on the edit screen.
 - Workflow transition screens resolve named screens, but present their fields
   as one list rather than using the screen's tabs ([WORKFLOW_RULES.md](WORKFLOW_RULES.md#gaps)).

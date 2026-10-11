@@ -552,6 +552,22 @@ func (s *Service) enforceFieldConfigurationWrite(ctx context.Context, workspaceI
 	if len(rules) == 0 {
 		return nil
 	}
+	if update.OriginalEstimate != nil || update.RemainingEstimate != nil {
+		rule := rules["timetracking"]
+		setsEstimate := (update.OriginalEstimate != nil && *update.OriginalEstimate >= 0) || (update.RemainingEstimate != nil && *update.RemainingEstimate >= 0)
+		if rule.IsHidden && setsEstimate && !OverridesFromContext(ctx).ScreenSecurity {
+			return fmt.Errorf("timetracking is hidden by the field configuration for this work type")
+		}
+		hasEstimate := func(current, supplied *int64) bool {
+			if supplied != nil {
+				return *supplied >= 0
+			}
+			return current != nil
+		}
+		if rule.IsRequired && !hasEstimate(issue.OriginalEstimateSeconds, update.OriginalEstimate) && !hasEstimate(issue.RemainingEstimateSeconds, update.RemainingEstimate) {
+			return fmt.Errorf("timetracking is required by the field configuration for this work type")
+		}
+	}
 	intents := issueWriteIntents(update)
 	for field, rule := range rules {
 		// Summary is required by the command path itself, which already
