@@ -780,10 +780,10 @@
         location.replace('/signed-out');
         break;
       case 'html':
-        // Skip the worker's redundant initial render: the server already
-        // SSR-rendered this view. Offline reloads have an empty root (cached
-        // shell) and MUST apply.
-        if (!sawSync && document.querySelector('.issue-view#issue-root')) break;
+        // Keep the online server view until the first sync. An offline
+        // cached page can contain an older server root: the local replica
+        // must replace it so queued edits remain visible after a reload.
+        if (!sawSync && !offlineMode && navigator.onLine && document.querySelector('.issue-view#issue-root')) break;
         if (msg.issueId && msg.issueId === currentIssueId()) {
           if (!offlineMode && navigator.onLine) {
             const key = currentIssueKey();
