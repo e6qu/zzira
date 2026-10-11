@@ -532,6 +532,7 @@ func main() {
 	mux.HandleFunc("POST /plans/{id}/auto-schedule", webHandler.PlanAutoSchedule)
 	mux.HandleFunc("POST /plans/{id}/views", webHandler.PlanViewSave)
 	mux.HandleFunc("POST /plans/{id}/teams", webHandler.PlanTeamSettings)
+	mux.HandleFunc("POST /plans/{id}/teams/membership", webHandler.PlanTeamMembership)
 	mux.HandleFunc("GET /plans/{id}/review", webHandler.PlanReview)
 	mux.HandleFunc("POST /plans/{id}/review", webHandler.PlanReview)
 	mux.HandleFunc("GET /teams", webHandler.TeamsPage)

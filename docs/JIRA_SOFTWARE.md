@@ -150,6 +150,10 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
 
 **Teams**
 - **Atlassian teams** are managed at `/teams` and `/teams/{id}`. **Plan-only teams** exist only inside one plan.
+- Plan editors add a directory team or create a plan-only team with a name,
+  members, planning style and capacity on `/plans/{id}`. Refused creation keeps
+  those answers for retry. Removing a team clears its plan membership and
+  capacity without deleting a directory team or its members.
 - Every site has Jira's **Team** field.
 - Each team plans as Scrum or Kanban:
   - **Scrum:** capacity is compared with estimates per sprint of the team's board. A team nobody has typed a number for takes what it has been taking: the mean of the work completed in its board's last closed sprints, and the plan says the capacity came from velocity. A board with no closed sprint falls back to 30 points per sprint.
@@ -220,8 +224,6 @@ Errors use the module format, `[{"message": …}]`. Provider rate limits are des
 ## Gaps
 
 - Plans:
-  - Adding a team to a plan, and removing one, are REST-only; how a team of
-    the plan plans is on the plan page.
   - No restoring an archived or trashed plan.
   - `inferredDates` and plan `customFields` are stored but not used.
   - A saved view keeps the grouping, the filter and whether the plan rolls up;

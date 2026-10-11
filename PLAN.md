@@ -108,9 +108,7 @@ capacity and dependencies into the scenario a planner then reviews
 - Auto-scheduler: schedule against releases too, so a version's date bounds
   what may go after it.
 - Plan setup in the browser: a date custom field as a plan's date, plan custom
-  fields, and adding or removing a team (create, scheduling, sources,
-  exclusions, permissions, how each team plans, and cross-project releases are
-  there).
+  fields.
 - Restore archived and trashed plans; duplicate copies scenarios.
 - Scenario edits: parent, rank, release, status, create work items.
 - Views: a saved zoom or column set. Work is grouped by team, sprint, project,
