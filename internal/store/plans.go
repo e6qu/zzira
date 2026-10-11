@@ -564,7 +564,7 @@ func activePlanTx(ctx context.Context, tx pgx.Tx, workspaceID string, planID int
 	return nil
 }
 
-func (s *Store) UpdatePlan(ctx context.Context, workspaceID string, plan Plan) error {
+func (s *Store) UpdatePlan(ctx context.Context, workspaceID, actorID string, plan Plan) error {
 	NormalizePlan(&plan)
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -572,6 +572,9 @@ func (s *Store) UpdatePlan(ctx context.Context, workspaceID string, plan Plan) e
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if err := activePlanTx(ctx, tx, workspaceID, plan.ID); err != nil {
+		return err
+	}
+	if err := planEditorTx(ctx, tx, workspaceID, actorID, plan.ID); err != nil {
 		return err
 	}
 	if err := validatePlanTx(ctx, tx, workspaceID, &plan); err != nil {
@@ -588,7 +591,38 @@ func (s *Store) UpdatePlan(ctx context.Context, workspaceID string, plan Plan) e
 	if err := writePlanSourcesTx(ctx, tx, plan.ID, plan.IssueSources); err != nil {
 		return err
 	}
+	if err := siteConfigurationAudit(ctx, tx, workspaceID, actorID, "plan.updated", "plan:"+strconv.FormatInt(plan.ID, 10), map[string]any{"planId": plan.ID, "name": plan.Name, "leadAccountId": plan.LeadAccountID, "scheduling": plan.Scheduling, "issueSources": plan.IssueSources, "exclusionRules": plan.ExclusionRules, "customFields": plan.CustomFields, "crossProjectReleases": plan.CrossProjectReleases, "permissions": plan.Permissions}); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
+}
+
+// planEditorTx rechecks the stored plan's grants after acquiring its row lock.
+func planEditorTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID string, planID int64) error {
+	var member bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.workspace_id=$1 AND m.user_id=$2 AND u.active)`, workspaceID, actorID).Scan(&member); err != nil {
+		return err
+	}
+	if !member {
+		return ErrProjectPermission
+	}
+	if err := projectAdmin(ctx, tx, workspaceID, actorID); err == nil {
+		return nil
+	} else if !errors.Is(err, ErrProjectPermission) {
+		return err
+	}
+	var allowed bool
+	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM plans p WHERE p.workspace_id=$1 AND p.id=$3 AND
+	 (p.lead_account_id=$2 OR EXISTS(SELECT 1 FROM jsonb_array_elements(p.permissions) permission
+	 WHERE permission->>'type'='Edit' AND ((permission->>'holderType'='AccountId' AND permission->>'holder'=$2) OR
+	 (permission->>'holderType'='Group' AND EXISTS(SELECT 1 FROM groups g JOIN group_members gm ON gm.group_id=g.id JOIN directories d ON d.id=g.directory_id JOIN sites si ON si.organization_id=d.organization_id WHERE si.workspace_id=$1 AND d.active AND gm.user_id=$2 AND g.id::text=permission->>'holder'))))))`, workspaceID, actorID, planID).Scan(&allowed)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return ErrProjectPermission
+	}
+	return nil
 }
 
 // SetPlanStatus archives or trashes an active plan through the shared lifecycle.

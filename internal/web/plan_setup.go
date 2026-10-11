@@ -55,6 +55,7 @@ type planSettingsData struct {
 	StartDateValue, EndDateValue string
 	CanDuplicate                 bool
 	DuplicateName                string
+	CustomFields                 []planCustomFieldChoice
 	Plan                         store.Plan
 	Lead                         string
 	Sources                      []planSourceChoice
@@ -301,6 +302,7 @@ func (h *Handler) writePlanSettings(w http.ResponseWriter, r *http.Request, user
 		http.Error(w, "Could not load the plan's date fields.", http.StatusInternalServerError)
 		return
 	}
+	data.CustomFields = planCustomFieldChoices(fields, plan, r)
 	for _, field := range fields {
 		if field.Type != models.CustomFieldDate && field.Type != models.CustomFieldDatetime {
 			continue
@@ -422,6 +424,31 @@ func (h *Handler) PlanSettingsSave(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		notice = "Scheduling saved."
+	case "custom-fields":
+		fields, err := planCustomFieldsFromForm(r)
+		if err != nil {
+			h.writePlanSettings(w, r, user, workspaceID, plan, err.Error(), http.StatusBadRequest)
+			return
+		}
+		catalog, err := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
+		if err != nil {
+			http.Error(w, "Could not load custom fields.", http.StatusInternalServerError)
+			return
+		}
+		allowed := map[int64]*models.CustomField{}
+		for _, field := range catalog {
+			number, _ := strconv.ParseInt(strings.TrimPrefix(field.ID, "customfield_"), 10, 64)
+			allowed[number] = field
+		}
+		for _, selected := range fields {
+			field := allowed[selected.CustomFieldID]
+			if field == nil || !planCustomFieldSupported(field.Type) || selected.Filter && !planCustomFieldFilterable(field.Type) {
+				h.writePlanSettings(w, r, user, workspaceID, plan, "Choose available fields and supported filters from the list.", http.StatusBadRequest)
+				return
+			}
+		}
+		plan.CustomFields = fields
+		notice = "Custom fields saved."
 	case "sources":
 		sources, err := planSources(r.Form["source"])
 		if err != nil {
@@ -508,9 +535,13 @@ func (h *Handler) PlanSettingsSave(w http.ResponseWriter, r *http.Request) {
 		planSettingsBack(w, r, plan, "error", "That is not something this page changes.")
 		return
 	}
-	if err := h.Store.UpdatePlan(r.Context(), workspaceID, plan); err != nil {
+	if err := h.Store.UpdatePlan(r.Context(), workspaceID, user.ID, plan); err != nil {
+		if errors.Is(err, store.ErrProjectPermission) {
+			http.Error(w, "You can no longer edit this plan.", http.StatusForbidden)
+			return
+		}
 		if message := planErrorMessage(err); message != "" {
-			if r.PostFormValue("action") == "scheduling" {
+			if r.PostFormValue("action") == "scheduling" || r.PostFormValue("action") == "custom-fields" {
 				h.writePlanSettings(w, r, user, workspaceID, plan, message, http.StatusBadRequest)
 				return
 			}

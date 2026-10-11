@@ -115,6 +115,13 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
   releases, and who else may view or edit it. Refused scheduling saves retain
   the chosen date sources for correction; removing a configured date field
   shows an unavailable choice rather than silently selecting another source.
+  **Custom fields** selects text, numbers, dates, URLs, single/multiple selects
+  and labels for additional work-table columns. Selected selects and labels
+  can also filter the table; multi-value fields match any selected value.
+  Hidden fields and fields outside the work item's project/type context show
+  as unavailable and supply no filter choices. Refused saves keep selections.
+  Settings writes recheck the stored edit grants and commit their audit event
+  atomically.
 - Site administrators can duplicate an active plan from its settings, choosing
   a copy name. Scenarios keep their names, colors, draft authors and timestamps;
   their team references and capacities use the copied memberships. Edits in a
@@ -238,11 +245,12 @@ Errors use the module format, `[{"message": …}]`. Provider rate limits are des
 
 - Plans:
   - Trashed plans are not automatically deleted after 60 days yet.
-  - `inferredDates` and plan `customFields` are stored but not used.
+  - `inferredDates` is stored but not used. Custom columns currently support
+    text, numbers, dates, URLs, selects and labels; other picker types remain.
   - A saved view keeps the grouping, the filter and whether the plan rolls up;
-    the timeline's zoom and its columns are not part of it, and rolling up
+    custom-field filters, the timeline's zoom and its columns are not part of it, and rolling up
     covers dates and estimates.
-- Scenarios cannot change parent, rank, release or status, and cannot create work items.
+- Scenarios cannot change parent, rank, release, status or custom fields, and cannot create work items.
 - Cross-project releases can be configured on the plan and read in the release
   hub. Creating member versions and using their dates in the auto-scheduler
   remain; see [RELEASES.md](RELEASES.md).
@@ -256,4 +264,4 @@ Remaining work is tracked in [PLAN.md](../PLAN.md).
   - `internal/agile/software.go`, `internal/store/jira_software.go`
   - `internal/api3/plans.go`, `internal/store/plans.go`, `internal/store/plan_*.go`, `internal/web/plan_planning.go`
   - `internal/api3/software_providers.go`, `internal/api3/expressions.go`, `internal/jexpr`
-- Browser tests: `e2e/software.spec.ts`, `e2e/timeline.spec.ts`, `e2e/plans_view.spec.ts`, `e2e/plans_teams.spec.ts`, `e2e/plans_setup.spec.ts`, `e2e/plans_date_fields.spec.ts`, `e2e/plans_duplicate.spec.ts`, `e2e/plans_lifecycle.spec.ts`
+- Browser tests: `e2e/software.spec.ts`, `e2e/timeline.spec.ts`, `e2e/plans_view.spec.ts`, `e2e/plans_teams.spec.ts`, `e2e/plans_setup.spec.ts`, `e2e/plans_date_fields.spec.ts`, `e2e/plans_duplicate.spec.ts`, `e2e/plans_lifecycle.spec.ts`, `e2e/plans_custom_fields.spec.ts`

@@ -48,12 +48,16 @@ type planPageData struct {
 	// whatever it is grouped by, or one unnamed group holding the plan's own
 	// order. Views are the saved ways of reading this plan, and View the one
 	// the page is showing, if any.
-	Groups    []planGroup
-	GroupBy   string
-	Query     string
-	Groupings []string
-	Views     []store.PlanView
-	View      *store.PlanView
+	CustomColumns   []planCustomFieldChoice
+	CustomCells     map[string]map[string]planCustomFieldCell
+	CustomFilters   []planCustomFieldFilter
+	WorkColumnCount int
+	Groups          []planGroup
+	GroupBy         string
+	Query           string
+	Groupings       []string
+	Views           []store.PlanView
+	View            *store.PlanView
 	// RollUp says the page is adding the work under each parent onto it.
 	// RolledEstimate is what each item's work adds up to, and OwnDates the
 	// dates the item itself carries, which is what its form edits.
@@ -341,7 +345,19 @@ func (h *Handler) renderPlanPage(w http.ResponseWriter, r *http.Request, message
 		data.RolledEstimate = totals
 		data.Timeline = newTimelineData(nil, models.ProjectTimeline{Epics: rolledTimeline(planning.Work.Items, spans)}, now, h.siteLook(r, workspaceID).DateDay)
 	}
-	data.Groups = planGroups(data.Timeline.Rows, planning.Items, data.GroupBy, data.Query)
+	if err := h.loadPlanCustomFields(r, workspaceID, &data); err != nil {
+		if errors.Is(err, store.ErrPlanValidation) {
+			http.Error(w, planErrorMessage(err), http.StatusBadRequest)
+		} else {
+			http.Error(w, "Could not load custom fields.", http.StatusInternalServerError)
+		}
+		return
+	}
+	data.WorkColumnCount = 8 + len(data.CustomColumns)
+	if data.Edit {
+		data.WorkColumnCount++
+	}
+	data.Groups = planGroups(planCustomFieldRows(&data), planning.Items, data.GroupBy, data.Query)
 	h.writeWorkspacePageStatus(w, r, "page_plan", user, workspaceID, data, "plans", "", status)
 }
 
@@ -655,7 +671,7 @@ func (h *Handler) PlanSchedulingChange(w http.ResponseWriter, r *http.Request) {
 	if !parseForm(w, r) {
 		return
 	}
-	_, workspaceID, plan, edit, _, scenario, ok := h.planContext(w, r)
+	user, workspaceID, plan, edit, _, scenario, ok := h.planContext(w, r)
 	if !ok {
 		return
 	}
@@ -667,7 +683,11 @@ func (h *Handler) PlanSchedulingChange(w http.ResponseWriter, r *http.Request) {
 	if r.PostFormValue("concurrent") == "true" {
 		plan.Scheduling.Dependencies = "Concurrent"
 	}
-	if err := h.Store.UpdatePlan(r.Context(), workspaceID, plan); err != nil {
+	if err := h.Store.UpdatePlan(r.Context(), workspaceID, user.ID, plan); err != nil {
+		if errors.Is(err, store.ErrProjectPermission) {
+			http.Error(w, "You can no longer edit this plan.", http.StatusForbidden)
+			return
+		}
 		if message := planErrorMessage(err); message != "" {
 			planBack(w, r, plan, scenario.ID, "", "error", message)
 			return

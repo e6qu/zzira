@@ -92,11 +92,11 @@ Owning reference: [JIRA_SOFTWARE.md](docs/JIRA_SOFTWARE.md#plans).
 
 - Auto-scheduler: schedule against releases too, so a version's date bounds
   what may go after it.
-- Plan setup in the browser: choose the plan's custom fields.
 - Automatically delete trashed plans after 60 days; archived plans stay restorable.
-- Scenario edits: parent, rank, release, status, create work items.
-- Views: saved zoom and columns.
-- Make `inferredDates` and plan `customFields` take effect.
+- Scenario edits: parent, rank, release, status, custom fields, create work items.
+- Views: saved zoom, columns and custom-field filters.
+- Make `inferredDates` take effect; extend custom columns beyond text, numbers,
+  dates, URLs, selects and labels.
 - Atlassian Teams REST API.
 
 ## 3. Cross-project releases
