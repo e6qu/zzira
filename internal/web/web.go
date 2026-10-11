@@ -540,7 +540,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	// options for this work item, so a transition screen names the same ones
 	// rather than loading them again.
 	customByID := map[string]models.CustomFieldView{}
-	for _, field := range editView.CustomFields {
+	for _, field := range editView.ConfiguredCustomFields {
 		customByID[field.ID] = field
 	}
 	// A transition is offered only to someone who may move the work, as the
@@ -762,6 +762,12 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	viewCustomFields := []models.CustomFieldView{}
+	for _, field := range editView.ConfiguredCustomFields {
+		if len(viewFields) == 0 || slices.Contains(viewFields, field.ID) {
+			viewCustomFields = append(viewCustomFields, field)
+		}
+	}
 	view := &models.IssueView{
 		EnvironmentVisible:   !reporterBehaviour["environment"].IsHidden && (len(viewFields) == 0 || slices.Contains(viewFields, "environment")),
 		Issue:                *issue,
@@ -804,7 +810,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		CanResolve:           canResolve,
 		SecurityLevels:       editView.SecurityLevels,
 		SecurityLevelName:    h.Store.SecurityLevelName(r.Context(), issue.ProjectID, issue.SecurityLevelID),
-		CustomFields:         editView.CustomFields,
+		CustomFields:         viewCustomFields,
 		Watchers:             watchers,
 		IsWatching:           isWatching,
 		Voters:               voters,
@@ -896,7 +902,7 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	if err != nil {
 		return nil, err
 	}
-	customFields, err := h.Store.CustomFieldsForProject(ctx, issue.ProjectID)
+	customFields, err := h.Store.CustomFieldsForIssue(ctx, wsID, issue.ProjectID, issue.IssueType.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -960,6 +966,9 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 		return nil, err
 	}
 	for _, cf := range customFields {
+		if behaviour[cf.ID].IsHidden {
+			continue
+		}
 		value := ""
 		if raw, ok := issue.Fields[cf.ID]; ok && string(raw) != "null" {
 			var text string
@@ -1001,7 +1010,11 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 			}
 			fieldView.Display = strings.Join(display, ", ")
 		}
-		view.CustomFields = append(view.CustomFields, fieldView)
+		fieldView.ReadOnly = len(reporterFields) > 0 && !slices.Contains(reporterFields, cf.ID)
+		view.ConfiguredCustomFields = append(view.ConfiguredCustomFields, fieldView)
+		if !fieldView.ReadOnly {
+			view.CustomFields = append(view.CustomFields, fieldView)
+		}
 	}
 	return view, nil
 }
