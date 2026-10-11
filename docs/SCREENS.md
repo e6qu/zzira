@@ -47,6 +47,10 @@ Every site has a `Default Screen` with one `Field Tab`. It holds every system fi
 
 `internal/api3/screens.go`, `internal/store/screens.go`, `internal/web/screens.go`, `migrations/133_screens.sql`; tests in `internal/api3/screens_test.go` and `e2e/screens.spec.ts`.
 
+Tab-field reads accept the same `projectKey` scope as tab reads: project
+administrators can read fields on screens their project uses. Field mutations
+remain restricted to site administrators.
+
 ## Tabs on forms
 
 A screen with more than one tab is shown as tabs on the create form: one panel at a time, with the arrow keys moving between them. A screen with one tab is shown as a plain list, as a single tab is just a form.
@@ -61,5 +65,4 @@ A workflow transition can name a screen; the transition then asks for the fields
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- `GET .../tabs/{tabId}/fields` ignores `projectKey`, so project administrators cannot read tab fields.
 - Reporter, Environment, Attachment and Linked issues are not in the field catalog.

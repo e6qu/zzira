@@ -407,7 +407,13 @@ func (h *Handler) moveScreenTab(w http.ResponseWriter, r *http.Request, screenID
 }
 
 func (h *Handler) screenTabFieldCollection(w http.ResponseWriter, r *http.Request, screenID, tabID string) {
-	workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
+	var workspaceID, actorID string
+	var authErr *jerr
+	if r.Method == http.MethodGet {
+		workspaceID, authErr = h.screenTabReader(r, screenID)
+	} else {
+		workspaceID, actorID, authErr = h.authWorkspaceAdmin(r)
+	}
 	if authErr != nil {
 		writeJerr(w, authErr)
 		return
