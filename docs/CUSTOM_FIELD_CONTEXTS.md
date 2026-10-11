@@ -10,7 +10,7 @@ All operations need *Administer Jira*.
 |---|---|
 | `GET/POST /rest/api/3/field/{fieldId}/context` | Pages a field's contexts (filters `contextId`, `isAnyIssueType`, `isGlobalContext`), or creates one scoped to projects and work types. |
 | `PUT/DELETE /rest/api/3/field/{fieldId}/context/{contextId}` | Changes name and description, or deletes. |
-| `PUT /rest/api/3/field/{fieldId}/context/{contextId}/project` | Adds projects. |
+| `PUT /rest/api/3/field/{fieldId}/context/{contextId}/project` | Adds projects to a project-scoped context; a global context returns 400. |
 | `POST /rest/api/3/field/{fieldId}/context/{contextId}/project/remove` | Removes projects. |
 | `PUT /rest/api/3/field/{fieldId}/context/{contextId}/issuetype` | Adds work types. |
 | `POST /rest/api/3/field/{fieldId}/context/{contextId}/issuetype/remove` | Removes work types. |
@@ -26,7 +26,7 @@ Context names are unique per field, ignoring case. Every change is written to th
 ## Behavior
 
 - A context with no projects applies to every project; one with no work types applies to every work type. Removing the last project or work type returns the context to "all".
-- No two contexts of a field may cover the same project and work type. A create or widen that would overlap is 409 (`assertNoContextOverlapTx`, `internal/store/custom_field_contexts.go`). A global context therefore blocks any other context on that field.
+- A field may have one global fallback and project-specific overrides. A project may belong to only one explicit context, even when contexts name different work types. A second global context or duplicate project assignment returns 409. Scope changes and deletion checks lock the field so concurrent writes cannot bypass these rules.
 - A custom field always keeps at least one context. A new custom field gets a global context from a database trigger.
 - The SQL function `jira_custom_field_context(field, project, work type)` returns the governing context, preferring one that names the project, then one that names the work type. Everything below uses it:
   - `createmeta` and the create dialog leave out a field whose context does not reach the project and work type.
@@ -35,16 +35,13 @@ Context names are unique per field, ignoring case. Every change is written to th
   - Commands refuse a create, edit or transition that sets a field outside its context, so REST clients cannot bypass the scope.
   - Bulk edit offers only fields in context for every selected work item.
 
+The project-assignment API follows the April 2026 Cloud restriction: it cannot convert a global context to project scope. Create a scoped context and remove the unused global context instead. Browser scope editing remains supported.
+
+
 ## UI
 
-`/settings/custom-fields`: per field, create and delete contexts; add or remove projects and work types; set the default value; manage options; for Assets fields, choose whether a context holds one object or several.
+`/settings/custom-fields`: per field, create and delete contexts; add or remove projects and work types; set the default value; manage options; for Assets fields, choose whether a context holds one object or several. A refused context creation preserves its name, description, projects and work types for correction.
 
 ## Code
 
 `internal/api3/custom_field_contexts.go`, `internal/store/custom_field_contexts.go`, `internal/web/custom_field_contexts.go`, `migrations/136_custom_field_contexts.sql`; tests in `internal/api3/custom_field_contexts_test.go` and `e2e/custom_field_contexts.spec.ts`.
-
-## Gaps
-
-Tracked in [PLAN.md](../PLAN.md).
-
-- The overlap rule differs from Jira. Jira allows one global context alongside project-scoped contexts, which take precedence, and forbids only one project being in two contexts.

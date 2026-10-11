@@ -174,6 +174,7 @@ func main() {
 	// instance's configuration, the way a Jira site's administrator decides
 	// whether the anonymous user exists at all, and the default keeps it.
 	anonymousAccess := envOr("ZZIRA_ANONYMOUS_ACCESS", "on") != "off"
+	webHandler.AnonymousAccess = anonymousAccess
 	if !anonymousAccess {
 		log.Printf("anonymous access is off: a caller without credentials is refused, downloads included")
 	}
@@ -227,6 +228,7 @@ func main() {
 	go (&store.WikiNotificationEmailRunner{Store: st, BaseURL: baseURL}).Run(ctx)
 	go (&store.APITaskRunner{Store: st, BulkIssueExecutor: cmdSvc, Blobs: blobs}).Run(ctx, workspaceID)
 	go (&store.ProjectTrashRunner{Store: st}).Run(ctx, workspaceID)
+	go (&store.PlanTrashRunner{Store: st}).Run(ctx)
 	go (&store.ServiceSLARunner{Store: st}).Run(ctx, workspaceID)
 	go (&store.ServiceIncidentEscalationRunner{Store: st}).Run(ctx, workspaceID)
 	go (&commands.AttachmentBlobDeletionRunner{Service: cmdSvc}).Run(ctx)
@@ -525,6 +527,8 @@ func main() {
 	mux.HandleFunc("GET /plans/{id}", webHandler.PlanPage)
 	mux.HandleFunc("GET /plans/{id}/settings", webHandler.PlanSettingsPage)
 	mux.HandleFunc("POST /plans/{id}/settings", webHandler.PlanSettingsSave)
+	mux.HandleFunc("POST /plans/{id}/duplicate", webHandler.DuplicatePlan)
+	mux.HandleFunc("POST /plans/{id}/lifecycle", webHandler.PlanLifecycle)
 	mux.HandleFunc("POST /plans/{id}/work", webHandler.PlanWorkChange)
 	mux.HandleFunc("POST /plans/{id}/scenarios", webHandler.PlanScenarioChange)
 	mux.HandleFunc("POST /plans/{id}/capacity", webHandler.PlanCapacityChange)

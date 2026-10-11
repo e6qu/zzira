@@ -86,6 +86,12 @@ func TestCustomFieldOptionsAreKeptFromTheSettingsPage(t *testing.T) {
 		h.CustomFieldContextMutation(response, request)
 		return response
 	}
+	// Refusing a second global context keeps the administrator's answers on
+	// the rendered page instead of redirecting to an empty form.
+	refused := post(url.Values{"action": {"create"}, "name": {"Another global"}, "description": {"Keep this explanation"}, "issueType": {"it_task"}})
+	if refused.Code != http.StatusBadRequest || !strings.Contains(refused.Body.String(), `value="Another global"`) || !strings.Contains(refused.Body.String(), "Keep this explanation") || !strings.Contains(refused.Body.String(), `value="it_task" selected`) {
+		t.Fatalf("refused context lost its answers: status=%d body=%s", refused.Code, refused.Body.String())
+	}
 	values := func() []string {
 		t.Helper()
 		options, optionErr := st.CustomFieldOptions(ctx, workspaceID, field.ID, contextID)

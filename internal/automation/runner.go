@@ -1410,6 +1410,14 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 				return false, nil
 			}
 			input.Labels = &wanted
+		case "environment":
+			if strings.TrimSpace(adf.PlainText(issue.Fields["environment"])) == text {
+				return false, nil
+			}
+			input.Fields = map[string]json.RawMessage{"environment": adf.ParagraphDoc(text)}
+			if text == "" {
+				input.Fields["environment"] = json.RawMessage("null")
+			}
 		case "description":
 			// The work item already reads as the rule would leave it.
 			if strings.TrimSpace(adf.PlainText(issue.Description)) == text {
@@ -1427,6 +1435,19 @@ func (r *Runner) apply(ctx context.Context, run *claimedRun, issue *models.Issue
 				return false, nil
 			}
 			input.PriorityID = &text
+		case "reporter":
+			accountID := text
+			if accountID == "ACTOR" {
+				accountID = run.ActorID
+			}
+			current := ""
+			if issue.Reporter != nil {
+				current = issue.Reporter.ID
+			}
+			if accountID == current {
+				return false, nil
+			}
+			input.ReporterID = &accountID
 		case "assignee":
 			// Jira's edit sets the assignee the way its assign action does,
 			// naming the person, the rule's actor or nobody.

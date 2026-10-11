@@ -10,9 +10,10 @@ import (
 )
 
 type fieldConfigurationCard struct {
-	Configuration *models.FieldConfiguration
-	Items         []models.FieldConfigurationItem
-	Available     []models.ScreenField
+	Configuration  *models.FieldConfiguration
+	Items          []models.FieldConfigurationItem
+	Available      []models.ScreenField
+	RendererFields map[string]bool
 }
 
 type fieldConfigSchemeMappingView struct {
@@ -65,12 +66,29 @@ func (h *Handler) loadFieldConfigurationsPage(r *http.Request, workspaceID strin
 	if err != nil {
 		return data, err
 	}
+	rendererFields := map[string]bool{"description": true, "environment": true}
+	customFields, err := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		return data, err
+	}
+	for _, field := range customFields {
+		if field.Type == models.CustomFieldText {
+			rendererFields[field.ID] = true
+		}
+	}
 	names := map[string]string{}
 	for _, configuration := range configurations {
 		names[configuration.ID] = configuration.Name
 		items, itemErr := h.Store.FieldConfigurationItems(r.Context(), workspaceID, configuration.ID)
 		if itemErr != nil {
 			return data, itemErr
+		}
+		if r.Method == http.MethodPost && r.PostFormValue("action") == "set-renderer" && r.PathValue("id") == configuration.ID {
+			for i := range items {
+				if items[i].FieldID == r.PostFormValue("fieldId") {
+					items[i].Renderer = r.PostFormValue("renderer")
+				}
+			}
 		}
 		governed := map[string]bool{}
 		for _, item := range items {
@@ -83,7 +101,7 @@ func (h *Handler) loadFieldConfigurationsPage(r *http.Request, workspaceID strin
 			}
 		}
 		data.Configurations = append(data.Configurations, fieldConfigurationCard{
-			Configuration: configuration, Items: items, Available: available})
+			Configuration: configuration, Items: items, Available: available, RendererFields: rendererFields})
 	}
 	typeNames := map[string]string{store.DefaultIssueTypeMapping: "Every other work type"}
 	for _, issueType := range data.IssueTypes {
@@ -183,6 +201,28 @@ func (h *Handler) FieldConfigurationMutation(w http.ResponseWriter, r *http.Requ
 	case "delete":
 		err = h.Store.DeleteFieldConfiguration(r.Context(), workspaceID, user.ID, id)
 		notice = "Field configuration deleted."
+	case "set-renderer":
+		renderer := r.PostFormValue("renderer")
+		err = h.Store.PatchFieldConfigurationItems(r.Context(), workspaceID, user.ID, id, []store.FieldConfigurationItemPatch{{FieldID: r.PostFormValue("fieldId"), Renderer: &renderer}})
+		notice = "Field renderer saved."
+		if err != nil {
+			if errors.Is(err, store.ErrFieldConfigValidation) {
+				data, loadErr := h.loadFieldConfigurationsPage(r, workspaceID)
+				if loadErr != nil {
+					http.Error(w, "Could not load field configurations.", 500)
+					return
+				}
+				data.Error = fieldConfigMutationMessage(err)
+				h.writeWorkspacePageStatus(w, r, "page_field_configurations", user, workspaceID, data, "field-configurations", "", http.StatusBadRequest)
+			} else if errors.Is(err, store.ErrProjectPermission) {
+				http.Error(w, "Administrator privileges are required.", http.StatusForbidden)
+			} else if errors.Is(err, store.ErrFieldConfigNotFound) {
+				http.NotFound(w, r)
+			} else {
+				http.Error(w, "Could not save the renderer.", 500)
+			}
+			return
+		}
 	case "set-field":
 		behaviour := r.PostFormValue("behaviour")
 		err = h.Store.SetFieldConfigurationItems(r.Context(), workspaceID, user.ID, id,

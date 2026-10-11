@@ -352,7 +352,7 @@ func (s *Store) replaceWorklogComment(ctx context.Context, workspaceID, actorID,
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE worklogs SET comment=$3 WHERE workspace_id=$1 AND id=$2`, workspaceID, worklogID, []byte(comment)); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE worklogs SET comment=$3,updated_at=now(),updated_by=$4 WHERE workspace_id=$1 AND id=$2`, workspaceID, worklogID, []byte(comment), actorID); err != nil {
 		return err
 	}
 	worklog, err := scanWorklog(tx.QueryRow(ctx, worklogJoin+`WHERE w.id=$1`, worklogID))

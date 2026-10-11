@@ -87,7 +87,7 @@ func (s *Store) FieldConfigurationItems(ctx context.Context, workspaceID, config
 	if err != nil {
 		return nil, err
 	}
-	rows, err := tx.Query(ctx, `SELECT field_id,is_required,is_hidden,description
+	rows, err := tx.Query(ctx, `SELECT field_id,is_required,is_hidden,description,renderer
 		FROM field_configuration_items WHERE workspace_id=$1 AND configuration_id=$2 ORDER BY field_id`,
 		workspaceID, configuration.ID)
 	if err != nil {
@@ -97,7 +97,7 @@ func (s *Store) FieldConfigurationItems(ctx context.Context, workspaceID, config
 	items := []models.FieldConfigurationItem{}
 	for rows.Next() {
 		var item models.FieldConfigurationItem
-		if err = rows.Scan(&item.FieldID, &item.IsRequired, &item.IsHidden, &item.Description); err != nil {
+		if err = rows.Scan(&item.FieldID, &item.IsRequired, &item.IsHidden, &item.Description, &item.Renderer); err != nil {
 			return nil, err
 		}
 		if known, ok := catalog[item.FieldID]; ok {
@@ -186,6 +186,26 @@ func (s *Store) UpdateFieldConfiguration(ctx context.Context, workspaceID, actor
 // SetFieldConfigurationItems applies Jira's partial item update: only the
 // supplied fields change, and a field cannot be required and hidden at once.
 func (s *Store) SetFieldConfigurationItems(ctx context.Context, workspaceID, actorID, configurationID string, items []models.FieldConfigurationItem) error {
+	patches := make([]FieldConfigurationItemPatch, 0, len(items))
+	for _, item := range items {
+		patch := FieldConfigurationItemPatch{FieldID: item.FieldID, IsRequired: &item.IsRequired, IsHidden: &item.IsHidden, Description: &item.Description}
+		if item.Renderer != "" {
+			patch.Renderer = &item.Renderer
+		}
+		patches = append(patches, patch)
+	}
+	return s.PatchFieldConfigurationItems(ctx, workspaceID, actorID, configurationID, patches)
+}
+
+// FieldConfigurationItemPatch changes only the properties explicitly supplied.
+type FieldConfigurationItemPatch struct {
+	FieldID              string
+	IsRequired, IsHidden *bool
+	Description          *string
+	Renderer             *string
+}
+
+func (s *Store) PatchFieldConfigurationItems(ctx context.Context, workspaceID, actorID, configurationID string, patches []FieldConfigurationItemPatch) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -198,14 +218,52 @@ func (s *Store) SetFieldConfigurationItems(ctx context.Context, workspaceID, act
 	if err != nil {
 		return err
 	}
+	// Serialize read-modify-write patches, including fields without a row.
+	var lockedID string
+	if err = tx.QueryRow(ctx, `SELECT id::text FROM field_configurations
+		WHERE workspace_id=$1 AND id=$2 FOR NO KEY UPDATE`, workspaceID, configuration.ID).Scan(&lockedID); err != nil {
+		return err
+	}
 	catalog, err := screenFieldCatalogTx(ctx, tx, workspaceID)
 	if err != nil {
 		return err
 	}
-	for _, item := range items {
-		fieldID := strings.TrimSpace(item.FieldID)
+	items := make([]models.FieldConfigurationItem, 0, len(patches))
+	for _, patch := range patches {
+		fieldID := strings.TrimSpace(patch.FieldID)
 		if _, known := catalog[fieldID]; !known {
 			return fmt.Errorf("%w: field %q does not exist", ErrFieldConfigValidation, fieldID)
+		}
+		item := models.FieldConfigurationItem{FieldID: fieldID, IsRequired: fieldID == "summary"}
+		readErr := tx.QueryRow(ctx, `SELECT is_required,is_hidden,description,renderer FROM field_configuration_items
+			WHERE workspace_id=$1 AND configuration_id=$2 AND field_id=$3`, workspaceID, configuration.ID, fieldID).Scan(&item.IsRequired, &item.IsHidden, &item.Description, &item.Renderer)
+		if readErr != nil && !errors.Is(readErr, pgx.ErrNoRows) {
+			return readErr
+		}
+		if patch.IsRequired != nil {
+			item.IsRequired = *patch.IsRequired
+		}
+		if patch.IsHidden != nil {
+			item.IsHidden = *patch.IsHidden
+		}
+		if patch.Renderer != nil {
+			renderer, valid := NormalizeFieldRenderer(*patch.Renderer)
+			if !valid {
+				return fmt.Errorf("%w: choose the text or wiki renderer", ErrFieldConfigValidation)
+			}
+			item.Renderer = renderer
+		}
+		if patch.Description != nil {
+			item.Description = *patch.Description
+		}
+		if patch.IsHidden != nil && *patch.IsHidden {
+			if patch.IsRequired != nil && *patch.IsRequired {
+				return fmt.Errorf("%w: field %q cannot be required and hidden", ErrFieldConfigValidation, fieldID)
+			}
+			// Cloud hiding discards the other rule properties; unhiding starts
+			// from their baseline instead of reviving old required/help values.
+			item.IsRequired = false
+			item.Description = ""
 		}
 		if item.IsRequired && item.IsHidden {
 			return fmt.Errorf("%w: field %q cannot be required and hidden", ErrFieldConfigValidation, fieldID)
@@ -216,12 +274,13 @@ func (s *Store) SetFieldConfigurationItems(ctx context.Context, workspaceID, act
 		if len(item.Description) > 255 {
 			return fmt.Errorf("%w: field description accepts at most 255 characters", ErrFieldConfigValidation)
 		}
-		if _, err = tx.Exec(ctx, `INSERT INTO field_configuration_items(workspace_id,configuration_id,field_id,is_required,is_hidden,description)
-			VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT (configuration_id,field_id)
-			DO UPDATE SET is_required=EXCLUDED.is_required,is_hidden=EXCLUDED.is_hidden,description=EXCLUDED.description`,
-			workspaceID, configuration.ID, fieldID, item.IsRequired, item.IsHidden, item.Description); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO field_configuration_items(workspace_id,configuration_id,field_id,is_required,is_hidden,description,renderer)
+			VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (configuration_id,field_id)
+			DO UPDATE SET is_required=EXCLUDED.is_required,is_hidden=EXCLUDED.is_hidden,description=EXCLUDED.description,renderer=EXCLUDED.renderer`,
+			workspaceID, configuration.ID, fieldID, item.IsRequired, item.IsHidden, item.Description, item.Renderer); err != nil {
 			return err
 		}
+		items = append(items, item)
 	}
 	if err = appendProjectGovernanceAction(ctx, tx, workspaceID, actorID, "field_configuration_item", configuration.ID, models.OpUpsert,
 		map[string]any{"fieldConfigurationId": configuration.ID, "items": items}); err != nil {

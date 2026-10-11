@@ -18,6 +18,8 @@ func planError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	message := "internal error"
 	switch {
+	case errors.Is(err, store.ErrProjectPermission):
+		status, message = http.StatusForbidden, "Administer Jira is required to manage plans."
 	case errors.Is(err, store.ErrPlanValidation):
 		status, message = http.StatusBadRequest, strings.TrimPrefix(err.Error(), store.ErrPlanValidation.Error()+": ")
 	case errors.Is(err, store.ErrPlanNotFound):
@@ -209,13 +211,13 @@ func (h *Handler) plansRoute(w http.ResponseWriter, r *http.Request, path string
 		}
 		writeJSON(w, http.StatusOK, h.planDocument(r, workspaceID, plan, useGroupID))
 	case len(parts) == 1 && r.Method == http.MethodPut:
-		h.patchPlan(w, r, workspaceID, planID, useGroupID)
+		h.patchPlan(w, r, workspaceID, userID, planID, useGroupID)
 	case len(parts) == 2 && (parts[1] == "archive" || parts[1] == "trash") && r.Method == http.MethodPut:
 		status := "Archived"
 		if parts[1] == "trash" {
 			status = "Trashed"
 		}
-		if err := h.Store.SetPlanStatus(r.Context(), workspaceID, planID, status); err != nil {
+		if err := h.Store.SetPlanStatus(r.Context(), workspaceID, userID, planID, status); err != nil {
 			planError(w, err)
 			return
 		}
@@ -299,7 +301,7 @@ func (h *Handler) createPlan(w http.ResponseWriter, r *http.Request, workspaceID
 
 // patchPlan applies a JSON Patch to the plan's document and saves the result
 // as a whole, so every patched value is validated like a new plan.
-func (h *Handler) patchPlan(w http.ResponseWriter, r *http.Request, workspaceID string, planID int64, useGroupID bool) {
+func (h *Handler) patchPlan(w http.ResponseWriter, r *http.Request, workspaceID, userID string, planID int64, useGroupID bool) {
 	current, err := h.Store.Plan(r.Context(), workspaceID, planID)
 	if err != nil {
 		planError(w, err)
@@ -335,7 +337,7 @@ func (h *Handler) patchPlan(w http.ResponseWriter, r *http.Request, workspaceID 
 		return
 	}
 	plan.ID = planID
-	if err := h.Store.UpdatePlan(r.Context(), workspaceID, plan); err != nil {
+	if err := h.Store.UpdatePlan(r.Context(), workspaceID, userID, plan); err != nil {
 		planError(w, err)
 		return
 	}

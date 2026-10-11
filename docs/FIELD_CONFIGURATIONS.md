@@ -8,7 +8,7 @@ A field configuration decides how fields behave on work item forms: required, hi
 |---|---|
 | `GET/POST /rest/api/3/fieldconfiguration` | Pages configurations (filters `id`, `isDefault`, `query` over name and description), or creates one. |
 | `PUT/DELETE /rest/api/3/fieldconfiguration/{id}` | Changes name and description, or deletes an unused, non-default configuration. |
-| `GET/PUT /rest/api/3/fieldconfiguration/{id}/fields` | Pages the configuration's explicit field rules, or partially updates them. |
+| `GET/PUT /rest/api/3/fieldconfiguration/{id}/fields` | Pages the configuration's explicit field rules, or partially updates the supplied properties; omitted properties retain their values. |
 | `GET/POST /rest/api/3/fieldconfigurationscheme` | Pages schemes (filter `id`), or creates one. |
 | `PUT/DELETE /rest/api/3/fieldconfigurationscheme/{id}` | Changes name and description, or deletes an unassigned, non-default scheme. |
 | `GET /rest/api/3/fieldconfigurationscheme/mapping` | Pages work type → configuration mappings, filtered by scheme. |
@@ -28,6 +28,7 @@ Names are unique per site, ignoring case. Every change is written to the action 
 - `editmeta` applies the configuration for the work item's own work type.
 - Bulk edit offers only fields that every selected work item's form allows.
 - Commands enforce the rules for all clients. On create, a required field must be present and a hidden field must be absent. On edit and on a transition with field updates, a required field cannot be cleared and a hidden field cannot be set. An update that doesn't touch a governed field is never refused.
+- Hiding a field clears its required setting and help text. Unhiding starts from their default values.
 - A field cannot be both required and hidden. `summary` is always required and visible, and the context fields (project, work type) are exempt.
 - Workflow post functions that set fields bypass the configuration, as in Jira.
 - `overrideScreenSecurity` lets an app with *Administer Jira* set hidden fields ([ISSUE_SURFACE.md](ISSUE_SURFACE.md#writing-work-items)).
@@ -50,8 +51,15 @@ Names are unique per site, ignoring case. Every change is written to the action 
 
 **Copy.** The settings page copies a configuration, named "Copy of X" (then "Copy 2 of X"), carrying its configuration and nothing else: the copy is assigned to no project and is never the site default.
 
-## Gaps
 
-Tracked in [PLAN.md](../PLAN.md).
+## Renderers
 
-- A field configuration item's `renderer` (wiki or plain text) is not stored; each field type renders one way.
+ Legacy `renderer` and field-scheme `rendererType` share the same
+rule. Wiki and plain text choices survive partial updates, work-type overrides
+and copies. Legacy `wiki-renderer` / `text-renderer` aliases normalize to
+`atlassian-wiki-renderer` / `jira-text-renderer`; unknown plugins are refused.
+An explicit empty renderer restores the existing default presentation. The
+settings page offers a renderer control for description and text custom fields.
+Issue pages, previews and REST rendered fields apply it without changing the
+stored content. Rich output is sanitized; plain output is escaped. The
+`field_renderers` browser journey covers saving, reload and refused-input retry.

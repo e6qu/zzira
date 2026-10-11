@@ -225,7 +225,7 @@ func (s *Store) CopyFieldConfiguration(ctx context.Context, workspaceID, actorID
 	}
 	changes := make([]models.FieldConfigurationItem, 0, len(items))
 	for _, item := range items {
-		if !item.IsHidden && !item.IsRequired && strings.TrimSpace(item.Description) == "" {
+		if !item.IsHidden && !item.IsRequired && strings.TrimSpace(item.Description) == "" && item.Renderer == "" {
 			continue
 		}
 		changes = append(changes, item)

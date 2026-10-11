@@ -50,15 +50,19 @@ type planReleaseRow struct {
 }
 
 type planSettingsData struct {
-	Estimations []string
-	DateFields  []struct{ Value, Label string }
-	Plan        store.Plan
-	Lead        string
-	Sources     []planSourceChoice
-	IssueTypes  []models.IssueType
-	Statuses    []models.Status
-	Permissions []planPermissionRow
-	Releases    []planReleaseRow
+	Estimations                  []string
+	DateFields                   []struct{ Value, Label string }
+	StartDateValue, EndDateValue string
+	CanDuplicate                 bool
+	DuplicateName                string
+	CustomFields                 []planCustomFieldChoice
+	Plan                         store.Plan
+	Lead                         string
+	Sources                      []planSourceChoice
+	IssueTypes                   []models.IssueType
+	Statuses                     []models.Status
+	Permissions                  []planPermissionRow
+	Releases                     []planReleaseRow
 	// Versions are every version the plan's projects have, offered to a new
 	// cross-project release.
 	Versions []planVersionChoice
@@ -153,9 +157,23 @@ func planScheduling(r *http.Request, plan *store.Plan) error {
 		return errors.New("estimates are counted in story points, days or hours")
 	}
 	plan.Scheduling.Estimation = estimation
+	if inferred := r.PostFormValue("inferredDates"); inferred != "" {
+		plan.Scheduling.InferredDates = inferred
+		if !slices.Contains([]string{"None", "SprintDates", "ReleaseDates"}, inferred) {
+			return errors.New("choose no inferred dates, assigned sprint dates or assigned release dates")
+		}
+	}
 	for name, field := range map[string]*store.PlanDateField{"startField": &plan.Scheduling.StartDate, "endField": &plan.Scheduling.EndDate} {
 		value := r.PostFormValue(name)
 		if value == "" {
+			continue
+		}
+		if number, custom := strings.CutPrefix(value, "DateCustomField:"); custom {
+			id, err := strconv.ParseInt(number, 10, 64)
+			if err != nil || id <= 0 {
+				return errors.New("choose a valid date custom field")
+			}
+			field.Type, field.DateCustomFieldID = "DateCustomField", &id
 			continue
 		}
 		known := false
@@ -163,7 +181,7 @@ func planScheduling(r *http.Request, plan *store.Plan) error {
 			known = known || choice.Value == value
 		}
 		if !known {
-			return errors.New("a plan reads its dates from Target start, Target end or the due date")
+			return errors.New("choose Target start, Target end, Due date or a date custom field")
 		}
 		field.Type, field.DateCustomFieldID = value, nil
 	}
@@ -255,11 +273,71 @@ func (h *Handler) PlanSettingsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "You cannot edit this plan.", http.StatusForbidden)
 		return
 	}
+	h.writePlanSettings(w, r, user, workspaceID, plan, "", http.StatusOK)
+}
+
+func planDateFieldValue(field store.PlanDateField) string {
+	if field.Type == "DateCustomField" && field.DateCustomFieldID != nil {
+		return "DateCustomField:" + strconv.FormatInt(*field.DateCustomFieldID, 10)
+	}
+	return field.Type
+}
+
+func (h *Handler) writePlanSettings(w http.ResponseWriter, r *http.Request, user *models.User, workspaceID string, plan store.Plan, message string, status int) {
 	data := planSettingsData{
-		Plan: plan, Excluded: map[int64]bool{}, Estimations: planEstimations, DateFields: planDateFields,
+		Plan: plan, Excluded: map[int64]bool{}, Estimations: planEstimations,
 		Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error"),
 	}
 	var err error
+	if data.CanDuplicate, err = h.Store.IsAdmin(r.Context(), workspaceID, user.ID); err != nil {
+		http.Error(w, "Could not load plan permissions.", http.StatusInternalServerError)
+		return
+	}
+	copyName := []rune("Copy of " + plan.Name)
+	if len(copyName) > 255 {
+		copyName = copyName[:255]
+	}
+	data.DuplicateName = string(copyName)
+	if r.PostFormValue("action") == "duplicate" {
+		data.DuplicateName = r.PostFormValue("name")
+	}
+	data.StartDateValue, data.EndDateValue = planDateFieldValue(plan.Scheduling.StartDate), planDateFieldValue(plan.Scheduling.EndDate)
+	data.DateFields = slices.Clone(planDateFields)
+	fields, err := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "Could not load the plan's date fields.", http.StatusInternalServerError)
+		return
+	}
+	data.CustomFields = planCustomFieldChoices(fields, plan, r)
+	for _, field := range fields {
+		if field.Type != models.CustomFieldDate && field.Type != models.CustomFieldDatetime {
+			continue
+		}
+		id, err := strconv.ParseInt(strings.TrimPrefix(field.ID, "customfield_"), 10, 64)
+		if err != nil || id <= 0 {
+			continue
+		}
+		data.DateFields = append(data.DateFields, struct{ Value, Label string }{"DateCustomField:" + strconv.FormatInt(id, 10), field.Name + " (custom field)"})
+	}
+	if message != "" {
+		data.Error = message
+		if value := r.PostFormValue("startField"); value != "" {
+			data.StartDateValue = value
+		}
+		if value := r.PostFormValue("endField"); value != "" {
+			data.EndDateValue = value
+		}
+	}
+	// Keep a selected field visible if it was removed from the active catalog.
+	// It can be corrected without silently changing the plan's date source.
+	for _, value := range []string{data.StartDateValue, data.EndDateValue} {
+		if !strings.HasPrefix(value, "DateCustomField:") {
+			continue
+		}
+		if !slices.ContainsFunc(data.DateFields, func(choice struct{ Value, Label string }) bool { return choice.Value == value }) {
+			data.DateFields = append(data.DateFields, struct{ Value, Label string }{value, "Unavailable date custom field (" + strings.TrimPrefix(value, "DateCustomField:") + ")"})
+		}
+	}
 	if data.Sources, err = h.planSourceChoices(r, workspaceID, user.ID, plan); err != nil {
 		http.Error(w, "Could not load what a plan can read.", http.StatusInternalServerError)
 		return
@@ -324,13 +402,13 @@ func (h *Handler) PlanSettingsPage(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Permissions = append(data.Permissions, planPermissionRow{Index: index, Type: permission.Type, Holder: permission.HolderType, Name: name})
 	}
-	h.writeWorkspacePage(w, r, "page_plan_settings", user, workspaceID, data, "plans", "")
+	h.writeWorkspacePageStatus(w, r, "page_plan_settings", user, workspaceID, data, "plans", "", status)
 }
 
 // PlanSettingsSave applies one section of the settings page. Each section
 // says what it changed, or why it could not.
 func (h *Handler) PlanSettingsSave(w http.ResponseWriter, r *http.Request) {
-	_, workspaceID, plan, edit, _, _, ok := h.planContext(w, r)
+	user, workspaceID, plan, edit, _, _, ok := h.planContext(w, r)
 	if !ok || !parseForm(w, r) {
 		return
 	}
@@ -348,10 +426,35 @@ func (h *Handler) PlanSettingsSave(w http.ResponseWriter, r *http.Request) {
 		notice = "Plan details saved."
 	case "scheduling":
 		if err := planScheduling(r, &plan); err != nil {
-			planSettingsBack(w, r, plan, "error", err.Error())
+			h.writePlanSettings(w, r, user, workspaceID, plan, err.Error(), http.StatusBadRequest)
 			return
 		}
 		notice = "Scheduling saved."
+	case "custom-fields":
+		fields, err := planCustomFieldsFromForm(r)
+		if err != nil {
+			h.writePlanSettings(w, r, user, workspaceID, plan, err.Error(), http.StatusBadRequest)
+			return
+		}
+		catalog, err := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
+		if err != nil {
+			http.Error(w, "Could not load custom fields.", http.StatusInternalServerError)
+			return
+		}
+		allowed := map[int64]*models.CustomField{}
+		for _, field := range catalog {
+			number, _ := strconv.ParseInt(strings.TrimPrefix(field.ID, "customfield_"), 10, 64)
+			allowed[number] = field
+		}
+		for _, selected := range fields {
+			field := allowed[selected.CustomFieldID]
+			if field == nil || !planCustomFieldSupported(field.Type) || selected.Filter && !planCustomFieldFilterable(field.Type) {
+				h.writePlanSettings(w, r, user, workspaceID, plan, "Choose available fields and supported filters from the list.", http.StatusBadRequest)
+				return
+			}
+		}
+		plan.CustomFields = fields
+		notice = "Custom fields saved."
 	case "sources":
 		sources, err := planSources(r.Form["source"])
 		if err != nil {
@@ -438,8 +541,16 @@ func (h *Handler) PlanSettingsSave(w http.ResponseWriter, r *http.Request) {
 		planSettingsBack(w, r, plan, "error", "That is not something this page changes.")
 		return
 	}
-	if err := h.Store.UpdatePlan(r.Context(), workspaceID, plan); err != nil {
+	if err := h.Store.UpdatePlan(r.Context(), workspaceID, user.ID, plan); err != nil {
+		if errors.Is(err, store.ErrProjectPermission) {
+			http.Error(w, "You can no longer edit this plan.", http.StatusForbidden)
+			return
+		}
 		if message := planErrorMessage(err); message != "" {
+			if r.PostFormValue("action") == "scheduling" || r.PostFormValue("action") == "custom-fields" {
+				h.writePlanSettings(w, r, user, workspaceID, plan, message, http.StatusBadRequest)
+				return
+			}
 			planSettingsBack(w, r, plan, "error", message)
 			return
 		}
@@ -464,4 +575,49 @@ func planExcludedIDs(values []string) ([]int64, error) {
 
 func planSettingsBack(w http.ResponseWriter, r *http.Request, plan store.Plan, key, message string) {
 	redirectLocal(w, r, "/plans/"+strconv.FormatInt(plan.ID, 10)+"/settings?"+key+"="+url.QueryEscape(message))
+}
+
+// DuplicatePlan copies an active plan through the same store operation as REST.
+func (h *Handler) DuplicatePlan(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	planID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	plan, err := h.Store.Plan(r.Context(), workspaceID, planID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if plan.Status != "Active" {
+		http.Error(w, "The plan is no longer active.", http.StatusConflict)
+		return
+	}
+	id, err := h.Store.DuplicatePlan(r.Context(), workspaceID, user.ID, planID, r.PostFormValue("name"))
+	if err != nil {
+		if errors.Is(err, store.ErrProjectPermission) {
+			http.Error(w, "Administer Jira is required to duplicate a plan.", http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, store.ErrPlanNotActive) {
+			http.Error(w, "The plan is no longer active.", http.StatusConflict)
+			return
+		}
+		if errors.Is(err, store.ErrPlanNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		if message := planErrorMessage(err); message != "" {
+			r.PostForm.Set("action", "duplicate")
+			h.writePlanSettings(w, r, user, workspaceID, plan, message, http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "Could not duplicate the plan.", http.StatusInternalServerError)
+		return
+	}
+	redirectLocal(w, r, "/plans/"+strconv.FormatInt(id, 10))
 }

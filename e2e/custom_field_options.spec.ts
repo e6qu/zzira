@@ -1,3 +1,4 @@
+import { scopeFixtureField } from './field_contexts';
 import { apiAuthHeader } from './auth';
 import { expect, test } from '@playwright/test';
 
@@ -34,11 +35,7 @@ test('site administrators give a select field options and the create form offers
 
   // Keep the field to this project so other specs' forms are untouched.
   const contexts = await (await page.request.get(`/rest/api/3/field/${fieldID}/context`, { headers: auth })).json();
-  const contextID = String(contexts.values[0].id);
-  const scoped = await page.request.put(`/rest/api/3/field/${fieldID}/context/${contextID}/project`, {
-    headers: auth, data: { projectIds: [projectID] },
-  });
-  expect(scoped.status()).toBe(204);
+  const contextID = await scopeFixtureField(page.request, fieldID, String(contexts.values[0].id), projectID, auth);
 
   await page.goto('/settings/custom-fields');
   const card = page.locator(`.custom-field-card[data-field-id="${fieldID}"]`);
@@ -144,8 +141,7 @@ test('a multi-select field keeps every chosen option', async ({ page }) => {
   expect(field.status()).toBe(201);
   const fieldID = (await field.json()).id;
   const contexts = await (await page.request.get(`/rest/api/3/field/${fieldID}/context`, { headers: auth })).json();
-  const contextID = String(contexts.values[0].id);
-  expect((await page.request.put(`/rest/api/3/field/${fieldID}/context/${contextID}/project`, { headers: auth, data: { projectIds: [projectID] } })).status()).toBe(204);
+  const contextID = await scopeFixtureField(page.request, fieldID, String(contexts.values[0].id), projectID, auth);
   const options = await page.request.post(`/rest/api/3/field/${fieldID}/context/${contextID}/option`, {
     headers: auth, data: { options: [{ value: 'iOS' }, { value: 'Android' }, { value: 'Web' }] },
   });
@@ -197,8 +193,7 @@ test('the create form offers Jira field types and keeps their values', async ({ 
     expect(response.status()).toBe(201);
     const id = (await response.json()).id;
     const contexts = await (await page.request.get(`/rest/api/3/field/${id}/context`, { headers: auth })).json();
-    const contextID = String(contexts.values[0].id);
-    expect((await page.request.put(`/rest/api/3/field/${id}/context/${contextID}/project`, { headers: auth, data: { projectIds: [projectID] } })).status()).toBe(204);
+    const contextID = await scopeFixtureField(page.request, id, String(contexts.values[0].id), projectID, auth);
     return { id, contextID };
   };
   const owner = await field('Owner', 'userpicker');
@@ -266,8 +261,7 @@ test('the issue page edits custom field pickers', async ({ page }) => {
     expect(response.status()).toBe(201);
     const id = (await response.json()).id;
     const contexts = await (await page.request.get(`/rest/api/3/field/${id}/context`, { headers: auth })).json();
-    const contextID = String(contexts.values[0].id);
-    expect((await page.request.put(`/rest/api/3/field/${id}/context/${contextID}/project`, { headers: auth, data: { projectIds: [projectID] } })).status()).toBe(204);
+    const contextID = await scopeFixtureField(page.request, id, String(contexts.values[0].id), projectID, auth);
     return { id, contextID, name: `${name} ${stamp}` };
   };
   const owner = await field('Owner', 'userpicker');

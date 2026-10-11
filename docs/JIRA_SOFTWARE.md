@@ -87,7 +87,7 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
 | `POST` | Creates a plan. |
 | `GET/PUT …/{planId}` | Reads a plan. `PUT` applies a JSON Patch, then validates the whole plan again. |
 | `PUT …/{planId}/archive`, `…/trash` | Changes the status of an active plan. |
-| `POST …/{planId}/duplicate` | Copies the plan's sources and teams. Scenarios are not copied. |
+| `POST …/{planId}/duplicate` | Copies settings, sources, teams, scenarios, draft edits and iteration capacities with independent team references. |
 | `GET …/{planId}/team` | Lists the plan's teams. |
 | `POST …/team/atlassian`, `…/team/planonly` | Adds a team. |
 | `GET/PUT/DELETE …/team/{atlassian or planonly}/{teamId}` | Reads, updates or removes one team. |
@@ -98,15 +98,49 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
 - **Scheduling.** The start and end fields: Due date, Target start, Target end, or any date custom field. Every site gets Target start and Target end fields. Also the estimation unit (StoryPoints, Days or Hours) and whether dependencies are Sequential or Concurrent.
 - **Permissions.** View or Edit, granted to groups or accounts.
 
+Missing dates can be inferred from assigned sprint dates (for Scrum work) or
+live fixed release dates. Explicit stored or scenario dates take precedence.
+The table labels inferred dates, and edit forms keep their underlying fields
+empty. Inference does not create drafts or write dates back to work items;
+manual scheduling and auto-scheduling remain explicit draft changes. Archived
+or unavailable releases contribute no dates. This follows Atlassian's
+[sprint](https://support.atlassian.com/jira-software-cloud/docs/schedule-issues-in-advanced-roadmaps-according-to-sprints/)
+and [release](https://support.atlassian.com/jira-software-cloud/docs/schedule-issues-in-advanced-roadmaps-according-to-releases/)
+scheduling behavior.
+
 **Browser pages**
-- `/plans` lists the active plans the viewer can open, and, for site
+- `/plans` pages the active plans the viewer can open, and, for site
   administrators, creates one: a name, the boards, projects and filters it
   reads, and what it estimates in. The creator becomes the plan lead.
+- Site administrators archive or move plans to trash from the plan list,
+  and restore them from its **Archived** and **Trash** collections. Inactive
+  plans cannot be opened or edited. Restore retains their settings, sources,
+  teams, scenarios, drafts and capacities. Lifecycle changes check the current
+  status and record an audit event in the same transaction; stale forms return
+  a conflict. Trash can be restored for 60 days. A database-backed worker runs
+  at startup and hourly, deleting expired plans and their drafts, teams and
+  saved views in bounded transactions with system audit events. Committed work
+  items remain intact; archived plans have no expiry. The deadline is based on
+  entering trash, so later metadata changes do not extend recovery. This follows [Atlassian's restoration journey](https://support.atlassian.com/jira-software-cloud/docs/delete-or-archive-your-plan/).
 - `/plans/{id}/settings` is the plan's setup, for anyone who may edit it: its
   name and lead, its scheduling (estimation unit and the fields its dates come
-  from), its issue sources, its exclusion rules (how long completed work stays
+  from, including date-only and datetime custom fields), its issue sources, its exclusion rules (how long completed work stays
   visible, and the work types and statuses to leave out), its cross-project
-  releases, and who else may view or edit it.
+  releases, and who else may view or edit it. Refused scheduling saves retain
+  the chosen date sources for correction; removing a configured date field
+  shows an unavailable choice rather than silently selecting another source.
+  **Custom fields** selects text, numbers, dates, URLs, single/multiple selects
+  and labels for additional work-table columns. Selected selects and labels
+  can also filter the table; multi-value fields match any selected value.
+  Hidden fields and fields outside the work item's project/type context show
+  as unavailable and supply no filter choices. Refused saves keep selections.
+  Settings writes recheck the stored edit grants and commit their audit event
+  atomically.
+- Site administrators can duplicate an active plan from its settings, choosing
+  a copy name. Scenarios keep their names, colors, draft authors and timestamps;
+  their team references and capacities use the copied memberships. Edits in a
+  duplicate stay independent of the source plan. A refused name stays in the
+  form for correction.
 - **Cross-project releases** group the versions that ship together across the
   projects a plan reads: create one with a name and the versions it groups,
   change or remove it later. The plan shows each one with its member versions,
@@ -146,6 +180,14 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
 **Scenarios**
 - Each plan has a Default scenario. You can add more scenarios, blank or copied from another, and rename, recolor or delete them. Switch with `?scenario=`.
 - In a scenario you can edit a work item's summary, start date, end date, team, sprint and estimate. These edits stay in the scenario and are not saved to the work item.
+- Saved views retain enabled custom filters, optional columns and timeline
+  zoom with grouping, keyword filtering and rollup. **Columns** chooses the
+  optional cells while work and its timeline stay visible; **Timeline zoom**
+  changes the month scale between compact, standard and detailed. Refused saves keep the name and selected filters. If a saved
+  filter is no longer enabled, associated or visible, the view shows no work
+  and asks the reader to choose replacement filters; it does not reveal the
+  unavailable value or silently widen the results. Saving and deleting views
+  recheck edit permission and record an audit event atomically.
 - **Review changes** (`/plans/{id}/review`) saves the chosen edits to Jira through the normal edit path, or discards them.
 
 **Teams**
@@ -224,12 +266,9 @@ Errors use the module format, `[{"message": …}]`. Provider rate limits are des
 ## Gaps
 
 - Plans:
-  - No restoring an archived or trashed plan.
-  - `inferredDates` and plan `customFields` are stored but not used.
-  - A saved view keeps the grouping, the filter and whether the plan rolls up;
-    the timeline's zoom and its columns are not part of it, and rolling up
-    covers dates and estimates.
-- Scenarios cannot change parent, rank, release or status, and cannot create work items.
+  - Custom columns currently support
+    text, numbers, dates, URLs, selects and labels; other picker types remain.
+- Scenarios cannot change parent, rank, release, status or custom fields, and cannot create work items.
 - Cross-project releases can be configured on the plan and read in the release
   hub. Creating member versions and using their dates in the auto-scheduler
   remain; see [RELEASES.md](RELEASES.md).
@@ -243,4 +282,4 @@ Remaining work is tracked in [PLAN.md](../PLAN.md).
   - `internal/agile/software.go`, `internal/store/jira_software.go`
   - `internal/api3/plans.go`, `internal/store/plans.go`, `internal/store/plan_*.go`, `internal/web/plan_planning.go`
   - `internal/api3/software_providers.go`, `internal/api3/expressions.go`, `internal/jexpr`
-- Browser tests: `e2e/software.spec.ts`, `e2e/timeline.spec.ts`, `e2e/plans_view.spec.ts`, `e2e/plans_teams.spec.ts`, `e2e/plans_setup.spec.ts`
+- Browser tests: `e2e/software.spec.ts`, `e2e/timeline.spec.ts`, `e2e/plans_view.spec.ts`, `e2e/plans_teams.spec.ts`, `e2e/plans_setup.spec.ts`, `e2e/plans_date_fields.spec.ts`, `e2e/plans_duplicate.spec.ts`, `e2e/plans_lifecycle.spec.ts`, `e2e/plans_custom_fields.spec.ts`

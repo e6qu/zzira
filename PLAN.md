@@ -67,24 +67,19 @@ backlogs remain epic-level, as Jira's do.
 - Work type alternatives must share workflow, field configuration and screen
   schemes; team-managed scoping, asynchronous priority-scheme updates and a
   larger avatar catalogue remain ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#gaps)).
-- Add Environment, Attachment and Linked work items to the screen catalog.
-- Reporter controls on edit and transition forms, and REST updates.
-- Custom field contexts: a global context coexists with project contexts that
-  override it.
-- Custom field options: delete, replace on work items, reorder anywhere.
+- Add Attachment and Linked work items to the screen catalog.
 - App field options: `projects2` scope, `defaultValue`, property indexes for JQL.
-- Store `renderer` / `rendererType` on field configuration items.
 - Classification level on work items: field, REST value, UI control, JQL,
   project default, organization default; org admins only.
 
 **Platform odds and ends.**
-- Worklogs: `started`, real `updated`/`updateAuthor`, `issueId`, `self` with the
-  work item; list paging and `startedAfter`/`startedBefore`/`expand=properties`;
-  worklog visibility.
+- Worklog visibility restrictions to a group or project role (requests for
+  unsupported restrictions are currently refused).
 - Bounce handling for the project sender address (the address itself is the
   From header of the mail a project's work queues, once its domain is
   verified).
-- Anonymous browsing in the UI (`/browse/{key}`), not only REST.
+- Anonymous browser collections and custom-field, worklog and history panels
+  beyond public work item pages ([anonymous access](docs/ANONYMOUS_ACCESS.md)).
 - `atlassian-addons-project-access` role for installed apps.
 - Project templates: inline `REF` objects and team-managed projects.
 - Development triggers beyond branch created: commits, pull requests, reviews,
@@ -97,11 +92,8 @@ Owning reference: [JIRA_SOFTWARE.md](docs/JIRA_SOFTWARE.md#plans).
 
 - Auto-scheduler: schedule against releases too, so a version's date bounds
   what may go after it.
-- Plan setup in the browser: date custom fields and plan custom fields.
-- Restore archived and trashed plans; duplicate copies scenarios.
-- Scenario edits: parent, rank, release, status, create work items.
-- Views: saved zoom and columns.
-- Make `inferredDates` and plan `customFields` take effect.
+- Scenario edits: parent, rank, release, status, custom fields, create work items.
+- Extend custom columns beyond text, numbers, dates, URLs, selects and labels.
 - Atlassian Teams REST API.
 
 ## 3. Cross-project releases

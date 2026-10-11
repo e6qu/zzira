@@ -151,6 +151,7 @@ func (h *Handler) fieldConfigurationResource(w http.ResponseWriter, r *http.Requ
 		var request struct {
 			Name        *string `json:"name"`
 			Description *string `json:"description"`
+			Renderer    *string `json:"renderer"`
 		}
 		if !decodeProjectRequest(w, r, &request) {
 			return
@@ -194,28 +195,29 @@ func (h *Handler) fieldConfigurationItems(w http.ResponseWriter, r *http.Request
 		for _, item := range page {
 			values = append(values, map[string]any{
 				"id": item.FieldID, "isRequired": item.IsRequired,
-				"isHidden": item.IsHidden, "description": item.Description,
+				"isHidden": item.IsHidden, "description": item.Description, "renderer": item.Renderer,
 			})
 		}
 		writeJSON(w, http.StatusOK, h.securityPageBean(r, values, len(items), startAt, maxResults))
 	case http.MethodPut:
 		var request struct {
 			FieldConfigurationItems []struct {
-				ID          string `json:"id"`
-				IsRequired  bool   `json:"isRequired"`
-				IsHidden    bool   `json:"isHidden"`
-				Description string `json:"description"`
+				ID          string  `json:"id"`
+				IsRequired  *bool   `json:"isRequired"`
+				IsHidden    *bool   `json:"isHidden"`
+				Description *string `json:"description"`
+				Renderer    *string `json:"renderer"`
 			} `json:"fieldConfigurationItems"`
 		}
 		if !decodeProjectRequest(w, r, &request) {
 			return
 		}
-		items := make([]models.FieldConfigurationItem, 0, len(request.FieldConfigurationItems))
+		items := make([]store.FieldConfigurationItemPatch, 0, len(request.FieldConfigurationItems))
 		for _, item := range request.FieldConfigurationItems {
-			items = append(items, models.FieldConfigurationItem{
-				FieldID: item.ID, IsRequired: item.IsRequired, IsHidden: item.IsHidden, Description: item.Description})
+			items = append(items, store.FieldConfigurationItemPatch{
+				FieldID: item.ID, IsRequired: item.IsRequired, IsHidden: item.IsHidden, Description: item.Description, Renderer: item.Renderer})
 		}
-		if err := h.Store.SetFieldConfigurationItems(r.Context(), workspaceID, actorID, configurationID, items); err != nil {
+		if err := h.Store.PatchFieldConfigurationItems(r.Context(), workspaceID, actorID, configurationID, items); err != nil {
 			fieldConfigError(w, err)
 			return
 		}
@@ -279,6 +281,7 @@ func (h *Handler) fieldConfigurationSchemeResource(w http.ResponseWriter, r *htt
 		var request struct {
 			Name        *string `json:"name"`
 			Description *string `json:"description"`
+			Renderer    *string `json:"renderer"`
 		}
 		if !decodeProjectRequest(w, r, &request) {
 			return

@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -235,8 +236,9 @@ func (h *Handler) ScheduleTimelineItem(w http.ResponseWriter, r *http.Request) {
 }
 
 type planListRow struct {
-	Plan store.Plan
-	Edit bool
+	Plan    store.Plan
+	Edit    bool
+	Expired bool
 }
 
 type plansPageData struct {
@@ -248,42 +250,111 @@ type plansPageData struct {
 	Estimations []string
 	CanCreate   bool
 	Error       string
+	Notice      string
+	Status      string
+	Next        string
 }
 
-// PlansPage lists the active plans the user can view.
+// PlansPage lists visible active plans and administrator lifecycle collections.
 func (h *Handler) PlansPage(w http.ResponseWriter, r *http.Request) {
 	user, workspaceID, ok := h.pageContext(w, r)
 	if !ok {
 		return
 	}
-	plans, _, err := h.Store.Plans(r.Context(), workspaceID, false, false, 0, 100)
-	if err != nil {
-		http.Error(w, "Could not load plans.", http.StatusInternalServerError)
+	data := plansPageData{Error: r.URL.Query().Get("error"), Notice: r.URL.Query().Get("notice"), Estimations: planEstimations, Status: r.URL.Query().Get("status")}
+	if data.Status == "" {
+		data.Status = "Active"
+	}
+	if data.Status != "Active" && data.Status != "Archived" && data.Status != "Trashed" {
+		http.Error(w, "Choose active, archived or trashed plans.", http.StatusBadRequest)
 		return
 	}
-	data := plansPageData{Error: r.URL.Query().Get("error"), Estimations: planEstimations}
+	var err error
 	if data.CanCreate, err = h.Store.IsAdmin(r.Context(), workspaceID, user.ID); err != nil {
 		http.Error(w, "Could not load plans.", http.StatusInternalServerError)
 		return
 	}
-	if data.CanCreate {
+	if data.Status != "Active" && !data.CanCreate {
+		http.Error(w, "Administer Jira is required to view archived or trashed plans.", http.StatusForbidden)
+		return
+	}
+	var after int64
+	if cursor := r.URL.Query().Get("after"); cursor != "" {
+		after, err = strconv.ParseInt(cursor, 10, 64)
+		if err != nil || after < 0 {
+			http.Error(w, "Invalid plan page.", http.StatusBadRequest)
+			return
+		}
+	}
+	plans, _, err := h.Store.PlansByStatus(r.Context(), workspaceID, data.Status, after, 101)
+	if err != nil {
+		http.Error(w, "Could not load plans.", http.StatusInternalServerError)
+		return
+	}
+	if len(plans) > 100 {
+		plans = plans[:100]
+		data.Next = "/plans?" + url.Values{"status": {data.Status}, "after": {strconv.FormatInt(plans[99].ID, 10)}}.Encode()
+	}
+	if data.CanCreate && data.Status == "Active" {
 		if data.Sources, err = h.planSourceChoices(r, workspaceID, user.ID, store.Plan{}); err != nil {
 			http.Error(w, "Could not load what a plan can read.", http.StatusInternalServerError)
 			return
 		}
 	}
 	for _, plan := range plans {
-		if plan.Status != "" && plan.Status != "Active" {
-			continue
-		}
 		view, edit, err := h.Store.PlanAccess(r.Context(), workspaceID, user.ID, plan)
 		if err != nil {
 			http.Error(w, "Could not load plans.", http.StatusInternalServerError)
 			return
 		}
 		if view {
-			data.Plans = append(data.Plans, planListRow{Plan: plan, Edit: edit})
+			data.Plans = append(data.Plans, planListRow{Plan: plan, Edit: edit, Expired: plan.TrashExpired})
 		}
 	}
 	h.writeWorkspacePage(w, r, "page_plans", user, workspaceID, data, "plans", "")
+}
+
+// PlanLifecycle changes or restores a plan using the same locked store command
+// as REST archive/trash, without discarding its scenarios or memberships.
+func (h *Handler) PlanLifecycle(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	expected, status, message := "Active", "", ""
+	switch r.PostFormValue("action") {
+	case "archive":
+		status, message = "Archived", "Plan archived."
+	case "trash":
+		status, message = "Trashed", "Plan moved to trash."
+	case "restore":
+		expected, status, message = r.PostFormValue("status"), "Active", "Plan restored."
+	default:
+		http.Error(w, "Choose archive, move to trash or restore.", http.StatusBadRequest)
+		return
+	}
+	err = h.Store.ChangePlanStatus(r.Context(), workspaceID, user.ID, id, expected, status)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrProjectPermission):
+			http.Error(w, "Administer Jira is required to manage plans.", http.StatusForbidden)
+		case errors.Is(err, store.ErrPlanNotFound):
+			http.NotFound(w, r)
+		case errors.Is(err, store.ErrPlanTrashExpired):
+			http.Error(w, "The plan's 60-day trash recovery period has expired.", http.StatusConflict)
+		case errors.Is(err, store.ErrPlanNotActive), errors.Is(err, store.ErrPlanStatusChanged):
+			http.Error(w, "The plan status changed. Reload the plan list before trying again.", http.StatusConflict)
+		case errors.Is(err, store.ErrPlanValidation):
+			http.Error(w, planErrorMessage(err), http.StatusBadRequest)
+		default:
+			http.Error(w, "Could not change the plan status.", http.StatusInternalServerError)
+		}
+		return
+	}
+	redirectLocal(w, r, "/plans?"+url.Values{"status": {status}, "notice": {message}}.Encode())
 }

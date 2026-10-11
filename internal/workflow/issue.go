@@ -65,6 +65,14 @@ func jsonValuePresent(value json.RawMessage) bool {
 	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) || bytes.Equal(trimmed, []byte(`""`)) || bytes.Equal(trimmed, []byte("[]")) || bytes.Equal(trimmed, []byte("{}")) {
 		return false
 	}
+	if bytes.HasPrefix(trimmed, []byte("{")) {
+		var doc struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(value, &doc) == nil && doc.Type == "doc" {
+			return strings.TrimSpace(adf.PlainText(value)) != ""
+		}
+	}
 	return true
 }
 

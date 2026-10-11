@@ -207,7 +207,7 @@ func TestPlanPlanningCapacityDependenciesAndScenarios(t *testing.T) {
 
 	// Dependent work may share an iteration when the plan allows it.
 	plan.Scheduling.Dependencies = "Concurrent"
-	if err := st.UpdatePlan(ctx, workspaceID, plan); err != nil {
+	if err := st.UpdatePlan(ctx, workspaceID, leadID, plan); err != nil {
 		t.Fatal(err)
 	}
 	if concurrent, err := st.PlanPlanning(ctx, workspaceID, leadID, plan, plan.ScenarioID, now); err != nil || concurrent.Dependencies[0].OffTrack {

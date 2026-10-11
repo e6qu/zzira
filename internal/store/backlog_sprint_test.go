@@ -128,10 +128,18 @@ func TestBacklogSprintLifecycleAndExclusivePlanningMembership(t *testing.T) {
 
 	start := time.Now().UTC().Truncate(time.Second)
 	end := start.Add(14 * 24 * time.Hour)
-	if _, _, err := st.UpdateSprint(ctx, actorID, workspaceID, sprintOne.ID, SprintUpdate{
+	updated, action, err := st.UpdateSprint(ctx, actorID, workspaceID, sprintOne.ID, SprintUpdate{
 		Name: sprintOne.Name, Goal: sprintOne.Goal, State: "active", StartDate: &start, EndDate: &end,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("start first sprint: %v", err)
+	}
+	if updated.JiraID != sprintOne.JiraID || updated.BoardJiraID != board.JiraID || updated.JiraID == 0 {
+		t.Fatalf("updated sprint lost public identifiers: %#v", updated)
+	}
+	var payload models.SprintUpsertPayload
+	if err := json.Unmarshal(action.Payload, &payload); err != nil || payload.Sprint.ID != updated.ID || payload.Sprint.BoardID != updated.BoardID || payload.Sprint.StartDate != updated.StartDate {
+		t.Fatalf("sprint action lost identity or dates: %#v, err=%v", payload, err)
 	}
 	if _, _, err := st.UpdateSprint(ctx, actorID, workspaceID, sprintTwo.ID, SprintUpdate{
 		Name: sprintTwo.Name, Goal: sprintTwo.Goal, State: "active", StartDate: &start, EndDate: &end,

@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/e6qu/zzira/internal/authn"
 	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/jexpr"
@@ -672,12 +674,12 @@ func (l *expressionLoader) issueRecord(issue *models.Issue) *jexpr.Record {
 		},
 	}
 	fields := map[string]jexpr.Value{
-		"id": float64(issue.JiraID), "key": issue.Key, "summary": issue.Summary, "description": richText(issue.Description),
+		"id": float64(issue.JiraID), "key": issue.Key, "summary": issue.Summary, "description": richText(issue.Description), "environment": richText(issue.Fields["environment"]),
 		"issueType": beanRecord("IssueType", h.issueTypeBean(issue.IssueType), map[string]string{
 			"id": "id", "name": "name", "description": "description", "iconUrl": "iconUrl", "isSubtask": "subtask", "hierarchyLevel": "hierarchyLevel",
 		}),
 		"status": status, "priority": nil, "resolution": nil,
-		"assignee": l.userRecord(issue.Assignee), "reporter": l.userRecord(issue.Reporter), "creator": l.userRecord(issue.Reporter),
+		"assignee": l.userRecord(issue.Assignee), "reporter": l.userRecord(issue.Reporter),
 		"created": jexpr.ParseDate(issue.CreatedAt), "updated": jexpr.ParseDate(issue.UpdatedAt), "resolutionDate": jexpr.ParseDate(issue.ResolvedAt),
 		"isEpic": issue.IssueType.HierarchyLevel == 1,
 	}
@@ -761,7 +763,7 @@ func (l *expressionLoader) issueRecord(issue *models.Issue) *jexpr.Record {
 				bean := h.worklogBean(worklog)
 				list.Items = append(list.Items, &jexpr.Record{Type: "Worklog", Fields: map[string]jexpr.Value{
 					"id": float64(worklog.JiraID), "author": l.userByID(worklog.AuthorID, worklog.AuthorName), "timeSpentSeconds": float64(worklog.TimeSpentSeconds),
-					"comment": richText(worklog.Comment), "created": jexpr.ParseDate(worklog.Created), "started": jexpr.ParseDate(worklog.Created),
+					"comment": richText(worklog.Comment), "created": jexpr.ParseDate(worklog.Created), "started": jexpr.ParseDate(worklog.Started),
 				}, Bean: func(*jexpr.Context) (any, error) { return bean, nil }})
 			}
 			return list, nil
@@ -920,6 +922,16 @@ func (l *expressionLoader) issueRecord(issue *models.Issue) *jexpr.Record {
 		Fields: fields,
 		Lazy:   lazy,
 		Deferred: map[string]func(*jexpr.Context) (jexpr.Value, error){
+			"creator": func(*jexpr.Context) (jexpr.Value, error) {
+				creatorID, err := h.Store.IssueCreatorID(ctx, l.workspaceID, issue.ID)
+				if errors.Is(err, pgx.ErrNoRows) {
+					return nil, nil
+				}
+				if err != nil {
+					return nil, err
+				}
+				return l.userByID(creatorID, ""), nil
+			},
 			"project": func(*jexpr.Context) (jexpr.Value, error) {
 				project, err := h.Store.ProjectByIDOrKey(ctx, l.workspaceID, issue.ProjectID)
 				if err != nil {

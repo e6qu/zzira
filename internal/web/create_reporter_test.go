@@ -10,13 +10,14 @@ import (
 	"github.com/e6qu/zzira/internal/commands"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
+	"github.com/e6qu/zzira/internal/workflow"
 )
 
 func TestCreateReporterChoicesPersistenceAndPermissions(t *testing.T) {
 	f := newAPITokenFixture(t)
 	ctx, ws := context.Background(), f.handler.WorkspaceSlug
 	t.Cleanup(func() {
-		for _, query := range []string{`DELETE FROM issues WHERE workspace_id=$1`, `DELETE FROM projects WHERE workspace_id=$1`} {
+		for _, query := range []string{`DELETE FROM issues WHERE workspace_id=$1`, `DELETE FROM projects WHERE workspace_id=$1`, `DELETE FROM workflow_schemes WHERE workspace_id=$1`, `DELETE FROM workflows WHERE workspace_id=$1`} {
 			if _, err := f.store.Pool.Exec(ctx, query, ws); err != nil {
 				t.Error(err)
 			}
@@ -79,7 +80,11 @@ func TestCreateReporterChoicesPersistenceAndPermissions(t *testing.T) {
 	assertChoices(f.otherID, 1)
 	submit := func(user, reporter, summary string) string {
 		t.Helper()
-		response := f.post(t, f.handler.CreateIssue, user, "/issues", "", url.Values{"project": {"REP"}, "issuetype": {"it_task"}, "summary": {summary}, "reporter": {reporter}})
+		form := url.Values{"project": {"REP"}, "issuetype": {"it_task"}, "summary": {summary}}
+		if reporter != "" {
+			form.Set("reporter", reporter)
+		}
+		response := f.post(t, f.handler.CreateIssue, user, "/issues", "", form)
 		if response.Code != http.StatusNoContent {
 			t.Fatalf("create=%d %s", response.Code, response.Body.String())
 		}
@@ -88,6 +93,30 @@ func TestCreateReporterChoicesPersistenceAndPermissions(t *testing.T) {
 	refusedSummary := f.post(t, f.handler.CreateIssue, f.ownerID, "/issues", "", url.Values{"project": {"REP"}, "issuetype": {"it_task"}, "summary": {""}, "reporter": {f.otherID}})
 	if refusedSummary.Code != http.StatusOK || !strings.Contains(refusedSummary.Body.String(), `value="`+f.otherID+`" selected`) {
 		t.Fatal("refused create discarded the selected reporter")
+	}
+	optional, err := f.handler.buildCreateDialogData(ctx, ws, f.ownerID, map[string]string{"project": "REP", "reporter": ""})
+	if err != nil || optional.Values["reporter"] != "" {
+		t.Fatalf("empty Reporter replaced by its default: %+v %v", optional, err)
+	}
+	emptyDraft := f.post(t, f.handler.CreateIssue, f.ownerID, "/issues", "", url.Values{"project": {"REP"}, "issuetype": {"it_task"}, "summary": {""}, "reporter": {""}})
+	if emptyDraft.Code != http.StatusOK || !strings.Contains(emptyDraft.Body.String(), "summary is required") || strings.Contains(emptyDraft.Body.String(), `value="`+f.ownerID+`" selected`) {
+		t.Fatal("refused create lost the explicitly empty Reporter")
+	}
+	empty := f.post(t, f.handler.CreateIssue, f.ownerID, "/issues", "", url.Values{"project": {"REP"}, "issuetype": {"it_task"}, "summary": {"Optional Reporter empty"}, "reporter": {""}})
+	if empty.Code != http.StatusNoContent {
+		t.Fatal(empty.Code, empty.Body.String())
+	}
+	emptyKey := strings.TrimPrefix(empty.Header().Get("HX-Redirect"), "/browse/")
+	emptyIssue, err := f.store.IssueByIDOrKey(ctx, ws, emptyKey)
+	if err != nil || emptyIssue.Reporter != nil {
+		t.Fatalf("explicitly empty Reporter: %+v %v", emptyIssue, err)
+	}
+	if creator, err := f.store.IssueCreatorID(ctx, ws, emptyIssue.ID); err != nil || creator != f.ownerID {
+		t.Fatalf("creator of empty Reporter issue: %q %v", creator, err)
+	}
+	unauthorizedEmpty := f.post(t, f.handler.CreateIssue, f.otherID, "/issues", "", url.Values{"project": {"REP"}, "issuetype": {"it_task"}, "summary": {"Empty Reporter refused"}, "reporter": {""}})
+	if unauthorizedEmpty.Code != http.StatusOK || !strings.Contains(unauthorizedEmpty.Body.String(), "permission to change the reporter") {
+		t.Fatal("empty Reporter bypassed Modify reporter", unauthorizedEmpty.Body.String())
 	}
 	key := submit(f.ownerID, f.otherID, "Reported for a colleague")
 	issue, err := f.store.IssueByIDOrKey(ctx, ws, key)
@@ -125,6 +154,10 @@ func TestCreateReporterChoicesPersistenceAndPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	submit(f.otherID, "", "Required reporter defaults to the creator")
+	requiredEmpty := f.post(t, f.handler.CreateIssue, f.ownerID, "/issues", "", url.Values{"project": {"REP"}, "issuetype": {"it_task"}, "summary": {"Required Reporter refused"}, "reporter": {""}})
+	if !strings.Contains(requiredEmpty.Body.String(), "reporter is required") || strings.Contains(requiredEmpty.Body.String(), `value="`+f.ownerID+`" selected`) {
+		t.Fatal("required Reporter accepted or replaced an empty value", requiredEmpty.Body.String())
+	}
 	if err := f.store.SetFieldConfigurationItems(ctx, ws, f.ownerID, configurationID, []models.FieldConfigurationItem{{FieldID: "reporter", IsHidden: true}}); err != nil {
 		t.Fatal(err)
 	}
@@ -139,8 +172,29 @@ func TestCreateReporterChoicesPersistenceAndPermissions(t *testing.T) {
 	}
 	submit(f.otherID, "", "Hidden reporter defaults to the creator")
 	refusedHidden := f.post(t, f.handler.CreateIssue, f.ownerID, "/issues", "", url.Values{"project": {"REP"}, "issuetype": {"it_task"}, "summary": {"Hidden reporter override"}, "reporter": {f.otherID}})
+	hiddenEmpty := f.post(t, f.handler.CreateIssue, f.ownerID, "/issues", "", url.Values{"project": {"REP"}, "issuetype": {"it_task"}, "summary": {"Hidden empty Reporter refused"}, "reporter": {""}})
+	if !strings.Contains(hiddenEmpty.Body.String(), "reporter is hidden") {
+		t.Fatal("empty value bypassed the hidden Reporter configuration")
+	}
 	if !strings.Contains(refusedHidden.Body.String(), "reporter is hidden") {
 		t.Fatal("hidden reporter override accepted")
+	}
+
+	if err := f.store.SetFieldConfigurationItems(ctx, ws, f.ownerID, configurationID, []models.FieldConfigurationItem{{FieldID: "reporter"}}); err != nil {
+		t.Fatal(err)
+	}
+	wf := workflow.Workflow{ID: store.NewID("wf"), Name: "Required create Reporter", Transitions: []workflow.Transition{{ID: "1", Name: "Create", Type: workflow.TransitionInitial, To: "st_todo", Validators: []workflow.Rule{{ID: "required-reporter", RuleKey: workflow.RuleValidateFieldValue, Parameters: map[string]string{"ruleType": "fieldRequired", "fieldsRequired": "reporter"}}}}}}
+	if err := f.store.CreateWorkflow(ctx, ws, wf); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.AssignWorkflowToProject(ctx, ws, project.ID, wf.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.handler.Commands.CreateIssue(ctx, commands.CreateIssueInput{ActorID: f.ownerID, WorkspaceID: ws, ProjectIDOrKey: project.ID, Summary: "Workflow requires Reporter", IssueTypeID: "it_task", ReporterProvided: true}); err == nil {
+		t.Fatal("empty Reporter bypassed the initial workflow validator")
+	}
+	if _, _, err := f.handler.Commands.CreateIssue(ctx, commands.CreateIssueInput{ActorID: f.ownerID, WorkspaceID: ws, ProjectIDOrKey: project.ID, Summary: "Workflow sees implicit Reporter", IssueTypeID: "it_task"}); err != nil {
+		t.Fatal("workflow did not see the actor default", err)
 	}
 
 }

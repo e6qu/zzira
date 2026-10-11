@@ -380,13 +380,17 @@ func TestIssueSurfaceContract(t *testing.T) {
 	call(admin, "PUT", "/rest/api/3/issue/ISS-1/assignee", `{"accountId":"-1"}`, 204)
 
 	// Reporter is writable on create through the shared command and permission gate.
-	for _, reporter := range []string{"null", "{}", `{"accountId":""}`, `{"accountId":"usr_missing"}`} {
+	for _, reporter := range []string{"{}", `{"accountId":""}`, `{"accountId":"usr_missing"}`} {
 		refused := call(admin, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"ISS"},"summary":"Invalid reporter","issuetype":{"name":"Task"},"reporter":`+reporter+`}}`, 400)
 		if !strings.Contains(string(refused), "reporter") {
 			t.Fatalf("reporter error=%s", refused)
 		}
 	}
 	var reporterCreated struct{ Key string }
+	decode(call(admin, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"ISS"},"summary":"Optional Reporter empty","issuetype":{"name":"Task"},"reporter":null}}`, 201), &reporterCreated)
+	if got := getIssue(admin, reporterCreated.Key, "?fields=reporter,creator"); string(got.Fields["reporter"]) != "null" || !strings.Contains(string(got.Fields["creator"]), admin) {
+		t.Fatalf("empty Reporter/creator=%+v", got.Fields)
+	}
 	decode(call(admin, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"ISS"},"summary":"Reported for a colleague","issuetype":{"name":"Task"},"reporter":{"accountId":"`+member+`"}}}`, 201), &reporterCreated)
 	if got := getIssue(admin, reporterCreated.Key, "?fields=reporter,creator"); !strings.Contains(string(got.Fields["reporter"]), member) || !strings.Contains(string(got.Fields["creator"]), admin) {
 		t.Fatalf("reporter/creator=%+v", got.Fields)
@@ -394,8 +398,8 @@ func TestIssueSurfaceContract(t *testing.T) {
 
 	var reporterEdit struct{ Fields map[string]json.RawMessage }
 	decode(call(admin, "GET", "/rest/api/3/issue/"+reporterCreated.Key+"/editmeta", "", 200), &reporterEdit)
-	if _, present := reporterEdit.Fields["reporter"]; present {
-		t.Fatal("create-only reporter advertised for editing")
+	if _, present := reporterEdit.Fields["reporter"]; !present {
+		t.Fatal("editable reporter absent from metadata")
 	}
 
 	// The issue projection: named fields, details, creator, names and properties.

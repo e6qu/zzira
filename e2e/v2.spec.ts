@@ -171,7 +171,7 @@ test('V2: custom field created via API is fillable in the UI and filterable', as
 
   await login(page);
   await page.goto(`/browse/${key}`);
-  await page.click('text=Edit');
+  await page.locator('#edit-issue-button').click();
   await expect(page.locator(`input[name="${cf}"]`)).toBeVisible();
   await page.fill(`input[name="${cf}"]`, '42');
   await page.click('.modal button[type=submit]');

@@ -33,7 +33,7 @@ test('a create form shows the tabs of the screen it uses', async ({ page }) => {
   await addTab.getByRole('button', { name: 'Add tab' }).click();
   await expect(page.getByRole('status')).toContainText('Tab added');
   screenCard = page.locator(`.screen-card[data-screen-id="${screenID}"]`);
-  const planningTab = screenCard.locator('.screen-tab-card').filter({ hasText: 'Planning' });
+  const planningTab = screenCard.locator('.screen-tab-card').filter({ has: page.getByRole('heading', { name: 'Planning', exact: true }) });
   await planningTab.getByLabel(/Add a field/).selectOption('duedate');
   await planningTab.getByRole('button', { name: 'Add field' }).click();
   await expect(page.getByRole('status')).toContainText('Field added');
@@ -88,7 +88,7 @@ test('a create form shows the tabs of the screen it uses', async ({ page }) => {
   await expect(dialog.getByLabel('Priority')).toBeHidden();
 
   // What a tab collects is on the work item.
-  await dialog.getByLabel('Summary').fill(`Tabbed work ${stamp}`);
+  await dialog.locator('#create-summary').fill(`Tabbed work ${stamp}`);
   await dialog.getByLabel('Due date').fill('2030-03-04');
   await dialog.getByRole('button', { name: 'Create issue' }).click();
   await expect.poll(async () => {

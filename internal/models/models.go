@@ -257,6 +257,8 @@ type Issue struct {
 
 	UpdatedSeq int64  `json:"-"`
 	UpdatedAt  string `json:"updated"`
+	// FieldRenderers belongs to the read view and is never stored in snapshots.
+	FieldRenderers map[string]string `json:"-"`
 }
 
 // Action is one immutable ordered record of a change.
@@ -302,15 +304,20 @@ type SyncResponse struct {
 // ---- View models (render-only) ----
 
 type IssueView struct {
-	Issue       Issue
-	ProjectKey  string
-	ProjectName string
-	BoardID     string
-	CanEdit     bool
+	EnvironmentVisible bool
+	Issue              Issue
+	ProjectKey         string
+	ProjectName        string
+	BoardID            string
+	CanEdit            bool
 	// Editable is false while the work item's status sets jira.issue.editable
 	// to false; its fields and estimates cannot then be changed.
 	Editable             bool
 	CanAssign            bool
+	CanModifyReporter    bool
+	CanEditReporter      bool
+	ReporterRequired     bool
+	Reporters            []User
 	CanSchedule          bool
 	CanSetSecurity       bool
 	CanDelete            bool
@@ -332,6 +339,7 @@ type IssueView struct {
 	Transitions       []WorkflowTransition
 	History           []ChangelogEntry
 	Attachments       []Attachment
+	WorklogDraft      WorklogDraft
 	Worklogs          []Worklog
 	Activity          []IssueActivityItem
 	Assignees         []User
@@ -362,12 +370,18 @@ type IssueView struct {
 	AppIssueContent                   []AppIssueContent
 }
 
+// WorklogDraft retains refused inputs from the issue's work logging form.
+type WorklogDraft struct {
+	TimeSpent, Started, Comment, EstimateMode, NewEstimate, Error string
+}
+
 // IssueActivityItem is one entry in the issue's chronological activity ledger.
 type IssueActivityItem struct {
 	Kind             string
 	ID               string
 	AuthorID         string
 	AuthorName       string
+	Started          string
 	Created          string
 	Body             json.RawMessage
 	TimeSpentSeconds int
@@ -395,24 +409,30 @@ type WorkflowTransition struct {
 	// offered.
 	ScreenCustomFields []CustomFieldView
 	// ScreenMessage is the prompt a remind-people-to-update-fields screen shows.
-	ScreenMessage string
+	ScreenMessage    string
+	ReporterRequired bool
 }
 
 // EditDialogView drives the edit-issue dialog; rendered by both server and
 // wasm worker (offline editing). Members/levels/fields may be empty offline.
 type EditDialogView struct {
-	CanAssign      bool
-	CanSetSecurity bool
-	Issue          Issue
-	Assignees      []User
-	Members        []User
-	SecurityLevels []WorkflowTransition // reuse shape: ID+Name pairs
-	CustomFields   []CustomFieldView
-	Error          string
+	EnvironmentField  *CreateFieldMeta
+	CanAssign         bool
+	CanModifyReporter bool
+	ReporterRequired  bool
+	Reporters         []User
+	CanSetSecurity    bool
+	Issue             Issue
+	Assignees         []User
+	Members           []User
+	SecurityLevels    []WorkflowTransition // reuse shape: ID+Name pairs
+	CustomFields      []CustomFieldView
+	Error             string
 }
 
 // CustomFieldView is a render-only custom field descriptor with the value.
 type CustomFieldView struct {
+	Renderer    string
 	ID          string
 	Name        string
 	Type        string

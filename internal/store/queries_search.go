@@ -398,29 +398,18 @@ func (s *Store) BootstrapSnapshot(ctx context.Context, workspaceID, userID strin
 		return nil, err
 	}
 
-	wlRows, err := tx.Query(ctx, `
-		SELECT w.id, w.issue_id, w.author_id, COALESCE(u.display_name,''),
-		       COALESCE(w.comment::text,''), w.time_spent_seconds,
-		       to_char(w.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-		FROM worklogs w
-		JOIN issues i ON i.id = w.issue_id AND i.workspace_id = w.workspace_id
-		LEFT JOIN users u ON u.id = w.author_id
-		WHERE w.workspace_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` ORDER BY w.created_at`, workspaceID, userID)
+	wlRows, err := tx.Query(ctx, worklogJoin+`WHERE w.workspace_id=$1 AND `+VisibleIssuePredicate("i", "$2")+` ORDER BY w.created_at`, workspaceID, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer wlRows.Close()
 	worklogs := []models.Worklog{}
 	for wlRows.Next() {
-		w := models.Worklog{}
-		var comment string
-		if err := wlRows.Scan(&w.ID, &w.IssueID, &w.AuthorID, &w.AuthorName, &comment, &w.TimeSpentSeconds, &w.Created); err != nil {
+		w, err := scanWorklog(wlRows)
+		if err != nil {
 			return nil, err
 		}
-		if comment != "" {
-			w.Comment = json.RawMessage(comment)
-		}
-		worklogs = append(worklogs, w)
+		worklogs = append(worklogs, *w)
 	}
 	if err := wlRows.Err(); err != nil {
 		return nil, err

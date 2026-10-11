@@ -691,13 +691,14 @@ func (s *Store) UpdateSprint(ctx context.Context, actorID, workspaceID, sprintID
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var boardID, currentState string
+	var sprintJiraID, boardJiraID int64
 	if err := tx.QueryRow(ctx, `
-		SELECT s.board_id, s.state
+		SELECT s.board_id, s.state, s.jira_id, b.jira_id
 		FROM sprints s
 		JOIN boards b ON b.id=s.board_id
 		JOIN projects p ON p.id=b.project_id
 		WHERE s.id=$1 AND p.workspace_id=$2
-		FOR UPDATE OF s, b`, sprintID, workspaceID).Scan(&boardID, &currentState); err != nil {
+		FOR UPDATE OF s, b`, sprintID, workspaceID).Scan(&boardID, &currentState, &sprintJiraID, &boardJiraID); err != nil {
 		return nil, nil, err
 	}
 	allowed := input.State == currentState ||
@@ -736,7 +737,7 @@ func (s *Store) UpdateSprint(ctx context.Context, actorID, workspaceID, sprintID
 		RETURNING activated_at, completed_at`, sprintID, input.Name, input.Goal, input.State, input.StartDate, input.EndDate).Scan(&activatedAt, &completedAt); err != nil {
 		return nil, nil, err
 	}
-	updated := &models.Sprint{ID: sprintID, BoardID: boardID, Name: input.Name, Goal: input.Goal, State: input.State}
+	updated := &models.Sprint{ID: sprintID, BoardID: boardID, JiraID: sprintJiraID, BoardJiraID: boardJiraID, Name: input.Name, Goal: input.Goal, State: input.State}
 	if activatedAt != nil {
 		updated.ActivatedDate = activatedAt.UTC().Format(time.RFC3339)
 	}

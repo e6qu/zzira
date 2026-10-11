@@ -44,6 +44,18 @@ func customFieldExistsTx(ctx context.Context, tx pgx.Tx, workspaceID, fieldID st
 	return nil
 }
 
+// lockCustomFieldContextsTx serializes scope and deletion checks for a field.
+// Locking the parent also works when the new context has no row to lock yet.
+func lockCustomFieldContextsTx(ctx context.Context, tx pgx.Tx, workspaceID, fieldID string) error {
+	var id string
+	err := tx.QueryRow(ctx, `SELECT id FROM custom_fields
+		WHERE id=$1 AND (workspace_id IS NULL OR workspace_id=$2) FOR NO KEY UPDATE`, fieldID, workspaceID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrFieldContextNotFound
+	}
+	return err
+}
+
 func customFieldContextTx(ctx context.Context, tx pgx.Tx, fieldID, contextID string) (*models.CustomFieldContext, error) {
 	id, err := strconv.ParseInt(contextID, 10, 64)
 	if err != nil {
@@ -187,38 +199,28 @@ func validateContextName(name string) error {
 	return nil
 }
 
-// assertNoContextOverlapTx keeps Jira's rule that at most one context governs a
-// given project and work type, so resolution is never ambiguous.
+// assertNoContextOverlapTx permits a global fallback and project overrides.
+// A field has at most one global context and one context per explicit project,
+// even when the contexts list different work types.
 func assertNoContextOverlapTx(ctx context.Context, tx pgx.Tx, fieldID, contextID string) error {
 	var overlapping bool
-	err := tx.QueryRow(ctx, `
-		WITH subject AS (
-			SELECT c.id, c.all_projects, c.all_issue_types,
-				COALESCE(array_agg(DISTINCT p.project_id) FILTER (WHERE p.project_id IS NOT NULL), '{}') AS projects,
-				COALESCE(array_agg(DISTINCT t.issue_type_id) FILTER (WHERE t.issue_type_id IS NOT NULL), '{}') AS issue_types
-			FROM custom_field_contexts c
-			LEFT JOIN custom_field_context_projects p ON p.context_id=c.id
-			LEFT JOIN custom_field_context_issue_types t ON t.context_id=c.id
-			WHERE c.id=$2 GROUP BY c.id
-		), others AS (
-			SELECT c.id, c.all_projects, c.all_issue_types,
-				COALESCE(array_agg(DISTINCT p.project_id) FILTER (WHERE p.project_id IS NOT NULL), '{}') AS projects,
-				COALESCE(array_agg(DISTINCT t.issue_type_id) FILTER (WHERE t.issue_type_id IS NOT NULL), '{}') AS issue_types
-			FROM custom_field_contexts c
-			LEFT JOIN custom_field_context_projects p ON p.context_id=c.id
-			LEFT JOIN custom_field_context_issue_types t ON t.context_id=c.id
-			WHERE c.field_id=$1 AND c.id<>$2 GROUP BY c.id
+	err := tx.QueryRow(ctx, `SELECT EXISTS(
+		SELECT 1 FROM custom_field_contexts subject
+		JOIN custom_field_contexts other ON other.field_id=subject.field_id AND other.id<>subject.id
+		WHERE subject.field_id=$1 AND subject.id=$2 AND (
+			(subject.all_projects AND other.all_projects) OR
+			(NOT subject.all_projects AND NOT other.all_projects AND EXISTS (
+				SELECT 1 FROM custom_field_context_projects p
+				JOIN custom_field_context_projects q ON q.project_id=p.project_id
+				WHERE p.context_id=subject.id AND q.context_id=other.id
+			))
 		)
-		SELECT EXISTS(
-			SELECT 1 FROM subject, others
-			WHERE (subject.all_projects OR others.all_projects OR subject.projects && others.projects)
-			  AND (subject.all_issue_types OR others.all_issue_types OR subject.issue_types && others.issue_types)
-		)`, fieldID, contextID).Scan(&overlapping)
+	)`, fieldID, contextID).Scan(&overlapping)
 	if err != nil {
 		return err
 	}
 	if overlapping {
-		return fmt.Errorf("%w: another context already covers these projects and work types", ErrFieldContextConflict)
+		return fmt.Errorf("%w: another global context exists or a project belongs to another context", ErrFieldContextConflict)
 	}
 	return nil
 }
@@ -238,7 +240,7 @@ func (s *Store) CreateCustomFieldContext(ctx context.Context, workspaceID, actor
 	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
 		return nil, err
 	}
-	if err = customFieldExistsTx(ctx, tx, workspaceID, fieldID); err != nil {
+	if err = lockCustomFieldContextsTx(ctx, tx, workspaceID, fieldID); err != nil {
 		return nil, err
 	}
 	found, err := scanCustomFieldContext(tx.QueryRow(ctx, `INSERT INTO custom_field_contexts(
@@ -359,6 +361,9 @@ func (s *Store) DeleteCustomFieldContext(ctx context.Context, workspaceID, actor
 	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
 		return err
 	}
+	if err = lockCustomFieldContextsTx(ctx, tx, workspaceID, fieldID); err != nil {
+		return err
+	}
 	found, err := customFieldContextTx(ctx, tx, fieldID, contextID)
 	if err != nil {
 		return err
@@ -380,6 +385,16 @@ func (s *Store) DeleteCustomFieldContext(ctx context.Context, workspaceID, actor
 }
 
 func (s *Store) ChangeCustomFieldContextScope(ctx context.Context, workspaceID, actorID, fieldID, contextID string, projectIDs, issueTypeIDs []string, remove bool) error {
+	return s.changeCustomFieldContextScope(ctx, workspaceID, actorID, fieldID, contextID, projectIDs, issueTypeIDs, remove, true)
+}
+
+// AssignCustomFieldContextProjects follows the Cloud REST restriction: project
+// assignments may extend a scoped context but cannot convert a global one.
+func (s *Store) AssignCustomFieldContextProjects(ctx context.Context, workspaceID, actorID, fieldID, contextID string, projectIDs []string) error {
+	return s.changeCustomFieldContextScope(ctx, workspaceID, actorID, fieldID, contextID, projectIDs, nil, false, false)
+}
+
+func (s *Store) changeCustomFieldContextScope(ctx context.Context, workspaceID, actorID, fieldID, contextID string, projectIDs, issueTypeIDs []string, remove, allowGlobalProjects bool) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -388,9 +403,15 @@ func (s *Store) ChangeCustomFieldContextScope(ctx context.Context, workspaceID, 
 	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
 		return err
 	}
+	if err = lockCustomFieldContextsTx(ctx, tx, workspaceID, fieldID); err != nil {
+		return err
+	}
 	found, err := customFieldContextTx(ctx, tx, fieldID, contextID)
 	if err != nil {
 		return err
+	}
+	if !allowGlobalProjects && found.AllProjects && len(projectIDs) > 0 {
+		return fmt.Errorf("%w: projects cannot be assigned to a global context", ErrFieldContextValidation)
 	}
 	if remove {
 		for _, projectID := range projectIDs {

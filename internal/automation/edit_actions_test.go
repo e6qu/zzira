@@ -10,7 +10,7 @@ import (
 	"github.com/e6qu/zzira/internal/store"
 )
 
-// Jira Automation edits a work item's description and logs work against it.
+// Jira Automation edits rich-text work item fields and logs work against it.
 func TestEditDescriptionAndLogWorkActions(t *testing.T) {
 	fx := newAutomationFixture(t)
 	projectID := store.NewID("prj")
@@ -23,8 +23,13 @@ func TestEditDescriptionAndLogWorkActions(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := fx.store.AddFieldToDefaultScreen(fx.ctx, fx.ws, fx.admin, "environment"); err != nil {
+		t.Fatal(err)
+	}
+
 	base := "/gateway/api/automation/public/jira/" + fx.cloudID + "/rest/v1/rule"
 	actions := []map[string]any{
+		{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "environment", "value": "Production {{rule.name}}"}},
 		{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "description", "value": "Handled by {{rule.name}}"}},
 		{"component": "ACTION", "type": "jira.issue.log-work", "value": map[string]string{"duration": "1h 30m", "comment": "automated sweep"}},
 	}
@@ -54,6 +59,14 @@ func TestEditDescriptionAndLogWorkActions(t *testing.T) {
 		t.Fatalf("description = %q, want the rendered smart value", text)
 	}
 
+	if text := adf.PlainText(updated.Fields["environment"]); text != "Production Edit and log" {
+		t.Fatalf("environment = %q", text)
+	}
+	var environmentActions int
+	if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_id=$2 AND payload->'diff' ? 'environment'`, fx.ws, issue.ID).Scan(&environmentActions); err != nil || environmentActions != 1 {
+		t.Fatalf("environment changes: %d %v", environmentActions, err)
+	}
+
 	// The duration is read with the site's own time tracking.
 	var seconds int
 	if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT COALESCE(SUM(time_spent_seconds),0) FROM worklogs WHERE issue_id=$1`, issue.ID).Scan(&seconds); err != nil {
@@ -73,6 +86,9 @@ func TestEditDescriptionAndLogWorkActions(t *testing.T) {
 	}
 	if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT COALESCE(SUM(time_spent_seconds),0) FROM worklogs WHERE issue_id=$1`, issue.ID).Scan(&seconds); err != nil {
 		t.Fatal(err)
+	}
+	if err := fx.store.Pool.QueryRow(fx.ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1 AND entity_id=$2 AND payload->'diff' ? 'environment'`, fx.ws, issue.ID).Scan(&environmentActions); err != nil || environmentActions != 1 {
+		t.Fatalf("repeat automation changed Environment: %d %v", environmentActions, err)
 	}
 	if seconds != 10800 {
 		t.Fatalf("logged %d seconds after a second run, want 10800", seconds)
@@ -218,5 +234,64 @@ func TestEditActionSetsAssigneeResolutionAndEstimates(t *testing.T) {
 	}
 	if err := runner.DrainOnce(fx.ctx, fx.ws); err == nil {
 		t.Fatal("a rule naming a resolution the site does not have was treated as a success")
+	}
+}
+
+func TestEditReporterActionRespectsActorPermission(t *testing.T) {
+	fx := newAutomationFixture(t)
+	projectID := store.NewID("prj")
+	if _, err := fx.store.Pool.Exec(fx.ctx, `INSERT INTO projects(id,workspace_id,key,name,lead_account_id) VALUES($1,$2,'RERA','Reporter automation',$3)`, projectID, fx.ws, fx.admin); err != nil {
+		t.Fatal(err)
+	}
+	scheme, err := fx.store.CreatePermissionScheme(fx.ctx, fx.ws, fx.admin, "Reporter automation permissions", "", []store.PermissionGrantInput{{Permission: "BROWSE_PROJECTS", HolderType: "anyone"}, {Permission: "EDIT_ISSUES", HolderType: "anyone"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = fx.store.AssignPermissionScheme(fx.ctx, fx.ws, fx.admin, projectID, scheme.ID); err != nil {
+		t.Fatal(err)
+	}
+	issue, _, err := fx.store.CreateIssue(fx.ctx, fx.admin, projectID, "Reporter automation", adf.ParagraphDoc(""), "st_todo", "it_task", "pr_medium", "", nil, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	actions := []map[string]any{{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "reporter", "value": "ACTOR"}}}
+	base := "/gateway/api/automation/public/jira/" + fx.cloudID + "/rest/v1/rule"
+	created := fx.call(fx.admin, http.MethodPost, base, webhookRuleBody("Set reporter", fx.member, "ENABLED", true, actions), http.StatusCreated)
+	uuid := created["ruleUuid"].(string)
+	rule, err := fx.service.Rule(fx.ctx, fx.ws, uuid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func() error {
+		t.Helper()
+		if _, err := fx.service.TriggerWebhook(fx.ctx, rule.WebhookToken, "", json.RawMessage(`{"issues":["`+issue.Key+`"]}`)); err != nil {
+			t.Fatal(err)
+		}
+		return (&Runner{Service: fx.service}).DrainOnce(fx.ctx, fx.ws)
+	}
+	if err := run(); err == nil || !strings.Contains(err.Error(), "reporter") {
+		t.Fatalf("expected Reporter permission error, got %v", err)
+	}
+	unchanged, err := fx.store.IssueByIDOrKey(fx.ctx, fx.ws, issue.ID)
+	if err != nil || unchanged.Reporter == nil || unchanged.Reporter.ID != fx.admin {
+		t.Fatal("unprivileged rule changed Reporter")
+	}
+	runs, err := fx.service.Runs(fx.ctx, fx.ws, uuid, 5)
+	if err != nil || len(runs) != 1 || runs[0].State != "FAILED" {
+		t.Fatalf("refused Reporter rule: %+v %v", runs, err)
+	}
+	if _, err := fx.store.CreatePermissionGrant(fx.ctx, fx.ws, fx.admin, scheme.ID, store.PermissionGrantInput{Permission: "MODIFY_REPORTER", HolderType: "anyone"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := fx.store.IssueByIDOrKey(fx.ctx, fx.ws, issue.ID)
+	if err != nil || updated.Reporter == nil || updated.Reporter.ID != fx.member {
+		t.Fatalf("granted rule Reporter: %+v %v", updated, err)
+	}
+	runs, err = fx.service.Runs(fx.ctx, fx.ws, uuid, 5)
+	if err != nil || len(runs) != 2 || runs[0].State != "SUCCESS" {
+		t.Fatalf("granted Reporter rule: %+v %v", runs, err)
 	}
 }

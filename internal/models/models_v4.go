@@ -38,6 +38,11 @@ type Worklog struct {
 	Comment          json.RawMessage `json:"comment,omitempty"`
 	TimeSpentSeconds int             `json:"timeSpentSeconds"`
 	Created          string          `json:"created"`
+	Started          string          `json:"started"`
+	Updated          string          `json:"updated"`
+	UpdateAuthorID   string          `json:"updateAuthorId"`
+	UpdateAuthorName string          `json:"updateAuthorName"`
+	IssueJiraID      int64           `json:"-"`
 	JiraID           int64           `json:"-"`
 }
 

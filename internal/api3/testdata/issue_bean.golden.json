@@ -30,6 +30,7 @@
       ]
     },
     "duedate": null,
+    "environment": null,
     "fixVersions": [],
     "issuetype": {
       "description": "",

@@ -3,6 +3,7 @@ package api3
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"os"
@@ -159,15 +160,175 @@ func TestPlansAndPlanTeams(t *testing.T) {
 		t.Fatal(atlassian)
 	}
 
+	// A duplicate keeps independent scenarios, including the renamed default,
+	// drafts, their authors/times, and capacities mapped to copied memberships.
+	sourcePlan, err := st.Plan(ctx, ws, planID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = st.UpdatePlanScenario(ctx, ws, planID, sourcePlan.ScenarioID, "Baseline", "orange"); err != nil {
+		t.Fatal(err)
+	}
+	alternative, err := st.CreatePlanScenario(ctx, ws, admin, planID, "Default", "purple", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issue := call(admin, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"`+key+`"},"summary":"Original duplication work","issuetype":{"name":"Task"}}}`, 201)
+	var issueID string
+	if err = st.Pool.QueryRow(ctx, `SELECT id FROM issues WHERE workspace_id=$1 AND key=$2`, ws, fmt.Sprint(issue["key"])).Scan(&issueID); err != nil {
+		t.Fatal(err)
+	}
+	sourceTeams, _, err := st.PlanTeams(ctx, ws, planID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mobileID, directoryMembership int64
+	for _, team := range sourceTeams {
+		if team.Name == "Mobile" {
+			mobileID = team.ID
+		}
+		if team.AtlassianTeamID == teamID {
+			directoryMembership = team.ID
+		}
+	}
+	if mobileID == 0 || directoryMembership == 0 {
+		t.Fatal("source memberships missing")
+	}
+	for _, draft := range []struct {
+		scenario             int64
+		field, value, author string
+	}{
+		{sourcePlan.ScenarioID, "summary", `"Baseline draft"`, admin}, {sourcePlan.ScenarioID, "team", strconv.FormatInt(mobileID, 10), admin},
+		{alternative, "summary", `"Alternative draft"`, member}, {alternative, "team", strconv.FormatInt(directoryMembership, 10), member}, {alternative, "estimate", `1.5`, member},
+	} {
+		exec(`INSERT INTO plan_scenario_changes(scenario_id,issue_id,field,value,changed_by,changed_at) VALUES($1,$2,$3,$4::jsonb,$5,'2026-10-01T12:34:56Z')`, draft.scenario, issueID, draft.field, draft.value, draft.author)
+	}
+	for _, capacity := range []struct {
+		scenario, team int64
+		value          float64
+	}{{sourcePlan.ScenarioID, mobileID, 17.5}, {alternative, directoryMembership, 23}} {
+		if err = st.SetPlanIterationCapacity(ctx, ws, admin, planID, capacity.scenario, capacity.team, "2026-11-02", &capacity.value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = st.DuplicatePlan(ctx, ws, member, planID, "Unauthorized copy"); !errors.Is(err, store.ErrProjectPermission) {
+		t.Fatalf("member copied a plan directly: %v", err)
+	}
+
 	// Duplicate, page, archive and trash.
 	copyID := int64(call(admin, "POST", planPath+"/duplicate", `{"name":"Roadmap copy"}`, 201)["value"].(float64))
 	copyPath := base + "/" + strconv.FormatInt(copyID, 10)
 	if copied := call(admin, "GET", copyPath+"/team", "", 200); copied["total"] != float64(2) {
 		t.Fatal(copied)
 	}
+	copiedPlan, err := st.Plan(ctx, ws, copyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copiedTeams, _, err := st.PlanTeams(ctx, ws, copyID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var copiedMobile, copiedDirectory int64
+	for _, team := range copiedTeams {
+		if team.Name == "Mobile" {
+			copiedMobile = team.ID
+		}
+		if team.AtlassianTeamID == teamID {
+			copiedDirectory = team.ID
+		}
+	}
+	if copiedMobile == 0 || copiedDirectory == 0 || copiedMobile == mobileID || copiedDirectory == directoryMembership {
+		t.Fatal("copied memberships reused source IDs")
+	}
+	scenarios, err := st.PlanScenarios(ctx, ws, copyID)
+	if err != nil || len(scenarios) != 2 {
+		t.Fatalf("copied scenarios: %+v err=%v", scenarios, err)
+	}
+	var copiedAlternative int64
+	for _, scenario := range scenarios {
+		if scenario.Default && (scenario.Name != "Baseline" || scenario.Color != "orange" || scenario.Changes != 2) {
+			t.Fatalf("copied default metadata: %+v", scenario)
+		}
+		if !scenario.Default {
+			if scenario.Name != "Default" || scenario.Color != "purple" || scenario.Changes != 3 || scenario.ID == alternative {
+				t.Fatalf("copied alternative: %+v", scenario)
+			}
+			copiedAlternative = scenario.ID
+		}
+	}
+	for _, scenario := range []struct {
+		id, team        int64
+		summary, author string
+		count           int
+		capacity        float64
+	}{
+		{copiedPlan.ScenarioID, copiedMobile, "Baseline draft", admin, 2, 17.5}, {copiedAlternative, copiedDirectory, "Alternative draft", member, 3, 23},
+	} {
+		changes, readErr := st.PlanChanges(ctx, ws, copyID, scenario.id)
+		if readErr != nil || len(changes) != scenario.count {
+			t.Fatalf("copied drafts: %+v err=%v", changes, readErr)
+		}
+		for _, change := range changes {
+			if change.ChangedBy != scenario.author || change.ChangedAt.UTC().Format(time.RFC3339) != "2026-10-01T12:34:56Z" {
+				t.Fatalf("draft authorship changed: %+v", change)
+			}
+			if change.Field == "team" && string(change.Value) != strconv.FormatInt(scenario.team, 10) {
+				t.Fatalf("draft still references a source membership: %s", change.Value)
+			}
+			if change.Field == "summary" && string(change.Value) != strconv.Quote(scenario.summary) {
+				t.Fatalf("draft summary: %s", change.Value)
+			}
+		}
+		capacities, readErr := st.PlanIterationCapacities(ctx, scenario.id)
+		if readErr != nil || len(capacities) != 1 || capacities[0].TeamID != scenario.team || capacities[0].Capacity != scenario.capacity || capacities[0].Iteration != "2026-11-02" {
+			t.Fatalf("copied capacities: %+v err=%v", capacities, readErr)
+		}
+	}
+	if err = st.SetPlanChange(ctx, ws, admin, copyID, copiedAlternative, issueID, "summary", json.RawMessage(`"Changed copy"`), json.RawMessage(`"Original duplication work"`)); err != nil {
+		t.Fatal(err)
+	}
+	sourceChanges, err := st.PlanChanges(ctx, ws, planID, alternative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range sourceChanges {
+		if change.Field == "summary" && string(change.Value) != `"Alternative draft"` {
+			t.Fatal("editing the copy changed the source scenario")
+		}
+	}
+	if original := call(admin, "GET", "/rest/api/3/issue/"+fmt.Sprint(issue["key"]), "", 200); original["fields"].(map[string]any)["summary"] != "Original duplication work" {
+		t.Fatal("duplication changed the committed work item")
+	}
+
+	changedCapacity := 31.0
+	if err = st.SetPlanIterationCapacity(ctx, ws, admin, copyID, copiedAlternative, copiedDirectory, "2026-11-02", &changedCapacity); err != nil {
+		t.Fatal(err)
+	}
+	originalCapacities, err := st.PlanIterationCapacities(ctx, alternative)
+	if err != nil || len(originalCapacities) != 1 || originalCapacities[0].Capacity != 23 {
+		t.Fatalf("editing copied capacity changed the source: %+v err=%v", originalCapacities, err)
+	}
+	// A failure after the plan and teams have been inserted rolls everything
+	// back. A damaged source default cannot leave a partial copy behind.
+	exec(`UPDATE plans SET scenario_id=999999999999 WHERE id=$1`, planID)
+	_, copyErr := st.DuplicatePlan(ctx, ws, admin, planID, "Refused partial copy")
+	exec(`UPDATE plans SET scenario_id=$2 WHERE id=$1`, planID, sourcePlan.ScenarioID)
+	if !errors.Is(copyErr, store.ErrPlanValidation) {
+		t.Fatalf("missing default scenario was copied: %v", copyErr)
+	}
+	var planCount int
+	if err = st.Pool.QueryRow(ctx, `SELECT count(*) FROM plans WHERE workspace_id=$1`, ws).Scan(&planCount); err != nil || planCount != 2 {
+		t.Fatalf("failed copy left a partial plan: %d err=%v", planCount, err)
+	}
+
 	call(admin, "DELETE", planPath+"/team/planonly/"+planOnlyID, "", 204)
 	call(admin, "GET", planPath+"/team/planonly/"+planOnlyID, "", 404)
 	call(admin, "DELETE", planPath+"/team/atlassian/"+teamID, "", 204)
+	remainingCapacity, err := st.PlanIterationCapacities(ctx, copiedPlan.ScenarioID)
+	if err != nil || len(remainingCapacity) != 1 || remainingCapacity[0].TeamID != copiedMobile {
+		t.Fatalf("deleting source teams damaged copied capacity: %+v err=%v", remainingCapacity, err)
+	}
 
 	first := call(admin, "GET", base+"?maxResults=1", "", 200)
 	if first["size"] != float64(1) || first["last"] != false || first["total"] != float64(2) || first["values"].([]any)[0].(map[string]any)["id"] != strconv.FormatInt(planID, 10) {

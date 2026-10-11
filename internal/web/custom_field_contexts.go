@@ -33,7 +33,13 @@ type optionView struct {
 	ParentValue string
 }
 
+type customFieldContextDraft struct {
+	Name, Description    string
+	Projects, IssueTypes map[string]bool
+}
+
 type customFieldCard struct {
+	Draft    *customFieldContextDraft
 	Field    *models.CustomField
 	Contexts []fieldContextView
 	// Translations are what this field is called in each language the site
@@ -280,6 +286,28 @@ func (h *Handler) CustomFieldContextMutation(w http.ResponseWriter, r *http.Requ
 	}
 	target := "/settings/custom-fields"
 	if err != nil {
+		if r.PostFormValue("action") == "create" {
+			data, loadErr := h.loadCustomFieldsPage(r, workspaceID)
+			if loadErr != nil {
+				http.Error(w, "Could not load custom fields.", http.StatusInternalServerError)
+				return
+			}
+			data.Error = fieldContextMutationMessage(err)
+			draft := &customFieldContextDraft{Name: r.PostFormValue("name"), Description: r.PostFormValue("description"), Projects: map[string]bool{}, IssueTypes: map[string]bool{}}
+			for _, id := range formValues(r, "project") {
+				draft.Projects[id] = true
+			}
+			for _, id := range formValues(r, "issueType") {
+				draft.IssueTypes[id] = true
+			}
+			for i := range data.Fields {
+				if data.Fields[i].Field.ID == fieldID {
+					data.Fields[i].Draft = draft
+				}
+			}
+			h.writeWorkspacePageStatus(w, r, "page_custom_fields", user, workspaceID, data, "custom-fields", "", http.StatusBadRequest)
+			return
+		}
 		redirectLocal(w, r, target+"?error="+url.QueryEscape(fieldContextMutationMessage(err)))
 		return
 	}

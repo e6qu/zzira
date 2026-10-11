@@ -52,3 +52,11 @@ func TestRollingUpAPlanReadsTheWorkUnderEachParent(t *testing.T) {
 		t.Fatalf("rolling up changed the work item itself: %s to %s", items[0].StartDate, items[0].DueDate)
 	}
 }
+
+func TestPlanZoomScalesCoordinatesAndDatesStayUnchanged(t *testing.T) {
+	data := timelineData{Width: 480, TodayX: 160, Months: []timelineMonth{{X: 0, Width: 160}, {X: 160, Width: 160}}, Rows: []timelineRow{{StartLabel: "3 Nov 2026", DueLabel: "18 Nov 2026", Bar: &timelineBar{X: 80, Width: 120}}}}
+	scalePlanTimeline(&data, "detailed")
+	if data.Width != 960 || data.TodayX != 320 || data.Months[1].X != 320 || data.Rows[0].Bar.X != 160 || data.Rows[0].Bar.Width != 240 || data.Rows[0].StartLabel != "3 Nov 2026" || data.Rows[0].DueLabel != "18 Nov 2026" {
+		t.Fatalf("zoom changed dates or misplaced work: %+v", data)
+	}
+}

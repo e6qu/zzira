@@ -203,6 +203,13 @@ func (s *Store) PlanPlanning(ctx context.Context, workspaceID, userID string, pl
 		}
 	}
 
+	releaseDates := map[string]planReleaseDates{}
+	if plan.Scheduling.InferredDates == "ReleaseDates" {
+		releaseDates, err = s.planReleaseDates(ctx, workspaceID, flat)
+		if err != nil {
+			return planning, err
+		}
+	}
 	for _, item := range flat {
 		issue := item.Issue
 		planned := &PlanItem{Issue: issue, Changed: map[string]bool{}}
@@ -272,6 +279,27 @@ func (s *Store) PlanPlanning(ctx context.Context, workspaceID, userID string, pl
 		}
 		if planned.SprintID != "" {
 			planned.SprintName = sprintNames[planned.SprintID].Name
+		}
+		switch plan.Scheduling.InferredDates {
+		case "ReleaseDates":
+			inferPlanReleaseDates(item, releaseDates)
+		case "SprintDates":
+			if team, hasTeam := teamsByID[planned.TeamID]; !hasTeam || team.PlanningStyle == "Scrum" {
+				sprint, found := sprintNames[planned.SprintID]
+				if !found && !planned.Changed["sprint"] {
+					// Completed work may have no active/future sprint. Use its most recent
+					// assignment without adding that closed sprint to editable choices.
+					assigned := sprintsByIssue[issue.ID]
+					if len(assigned) > 0 {
+						last := assigned[len(assigned)-1]
+						sprint = PlanSprint{Start: last.StartDate, End: last.EndDate}
+						found = true
+					}
+				}
+				if found {
+					fillPlanDates(item, sprint.Start, sprint.End, "Sprint dates")
+				}
+			}
 		}
 		planning.Items[issue.ID] = planned
 	}

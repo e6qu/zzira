@@ -929,6 +929,9 @@ type NewIssueDetails struct {
 	// CustomerReporter is set by service requests, whose customers need not
 	// hold a workspace membership.
 	CustomerReporter bool
+	// ClearReporter prevents an explicitly empty optional Reporter from
+	// defaulting to the actor.
+	ClearReporter bool
 }
 
 // CreateEstimatedIssueForReporter creates a work item with its time estimates.
@@ -965,10 +968,10 @@ func (s *Store) CreateEstimatedIssueForReporter(ctx context.Context, actorID, re
 	issueKey := fmt.Sprintf("%s-%d", projectKey, issueNum)
 
 	reporter := reporterID
-	if reporter == "" {
+	if reporter == "" && !estimates.ClearReporter {
 		reporter = actorID
 	}
-	if reporter != actorID {
+	if reporter != "" && reporter != actorID {
 		var reporterExists bool
 		query := `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND active)`
 		args := []any{reporter}
@@ -1009,7 +1012,7 @@ func (s *Store) CreateEstimatedIssueForReporter(ctx context.Context, actorID, re
 		                    original_estimate_seconds, remaining_estimate_seconds, due_date, classification_level)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,0,$16,$17,$18::date,
 		        (SELECT default_classification_level FROM projects WHERE id=$3))`,
-		issueID, wsID, projectID, issueKey, summary, description, fieldsJSON, labels, statusID, issueTypeID, nilIfEmpty(priorityID), nilIfEmpty(assigneeID), reporter, nilIfEmpty(securityLevelID), nilIfEmpty(parentID),
+		issueID, wsID, projectID, issueKey, summary, description, fieldsJSON, labels, statusID, issueTypeID, nilIfEmpty(priorityID), nilIfEmpty(assigneeID), nilIfEmpty(reporter), nilIfEmpty(securityLevelID), nilIfEmpty(parentID),
 		estimates.Original, estimates.Remaining, nilIfEmpty(estimates.DueDate))
 	if err != nil {
 		return nil, nil, err

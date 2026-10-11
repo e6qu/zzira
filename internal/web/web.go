@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,6 +36,7 @@ type Handler struct {
 	ProviderSecrets                   *secretbox.Box
 	IdentityExternalURL               string
 	WorkspaceSlug                     string
+	AnonymousAccess                   bool
 	BaseURL                           string
 	InvitationNotificationsConfigured bool
 	DomainTXTLookup                   func(context.Context, string) ([]string, error)
@@ -114,6 +116,7 @@ type projectIssuesData struct {
 	// BulkPriorities are the priorities a bulk edit can set, which are the
 	// project's own. BulkComponents and BulkVersions are the same for the
 	// two list fields a project owns.
+	BulkReporter   *models.CreateFieldMeta
 	BulkPriorities []models.Priority
 	BulkComponents []*models.ProjectComponent
 	BulkVersions   []*models.Version
@@ -543,18 +546,29 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	// A transition is offered only to someone who may move the work, as the
 	// REST resource offers them: a control the server would refuse is not a
 	// control.
+	reporterBehaviour, err := h.Store.ResolveFieldBehaviour(r.Context(), wsID, issue.ProjectID, issue.IssueType.ID)
+	if err != nil {
+		return nil, err
+	}
 	canTransition := permissions["TRANSITION_ISSUES"]
 	if canTransition && issue.ArchivedAt == "" {
 		for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
 			message, _, _ := t.ScreenReminder()
 			screenFields := t.ScreenFields()
+			if reporterBehaviour["environment"].IsHidden {
+				screenFields = slices.DeleteFunc(screenFields, func(field string) bool { return field == "environment" })
+			}
+			if reporterBehaviour["reporter"].IsHidden {
+				screenFields = slices.DeleteFunc(screenFields, func(field string) bool { return field == "reporter" })
+			}
+
 			asked := []models.CustomFieldView{}
 			for _, id := range screenFields {
 				if field, ok := customByID[id]; ok {
 					asked = append(asked, field)
 				}
 			}
-			transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: screenFields, ScreenCustomFields: asked, ScreenMessage: message})
+			transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: screenFields, ScreenCustomFields: asked, ScreenMessage: message, ReporterRequired: t.RequiredFields()["reporter"] || reporterBehaviour["reporter"].IsRequired})
 		}
 	}
 	// Resolution is offered to people who may resolve work, as Jira ties the
@@ -677,7 +691,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		}
 		activity = append(activity, models.IssueActivityItem{
 			Kind: "worklog", ID: worklog.ID, AuthorID: worklog.AuthorID, AuthorName: authorName,
-			Created: worklog.Created, Body: worklog.Comment, TimeSpentSeconds: worklog.TimeSpentSeconds,
+			Created: worklog.Created, Started: worklog.Started, Body: worklog.Comment, TimeSpentSeconds: worklog.TimeSpentSeconds,
 			CanDelete: permissions["DELETE_ALL_WORKLOGS"] || (worklog.AuthorID == user.ID && permissions["DELETE_OWN_WORKLOGS"]),
 		})
 	}
@@ -744,7 +758,12 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		deletableAttachments[attachment.ID] = issue.ArchivedAt == "" && (permissions["DELETE_ALL_ATTACHMENTS"] || (attachment.AuthorID == user.ID && permissions["DELETE_OWN_ATTACHMENTS"]))
 	}
 	canEditForms := permissions["EDIT_ISSUES"]
+	viewFields, err := h.Store.ResolveScreenFields(r.Context(), wsID, issue.ProjectID, issue.IssueType.ID, "view")
+	if err != nil {
+		return nil, err
+	}
 	view := &models.IssueView{
+		EnvironmentVisible:   !reporterBehaviour["environment"].IsHidden && (len(viewFields) == 0 || slices.Contains(viewFields, "environment")),
 		Issue:                *issue,
 		ProjectKey:           project.Key,
 		ProjectName:          project.Name,
@@ -752,6 +771,10 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		CanEdit:              permissions["EDIT_ISSUES"] && editable,
 		Editable:             editable,
 		CanAssign:            permissions["ASSIGN_ISSUES"] && editable,
+		CanModifyReporter:    permissions["MODIFY_REPORTER"] && editable,
+		CanEditReporter:      editView.CanModifyReporter && permissions["EDIT_ISSUES"] && editable,
+		ReporterRequired:     editView.ReporterRequired,
+		Reporters:            editView.Reporters,
 		CanSchedule:          permissions["EDIT_ISSUES"] && permissions["SCHEDULE_ISSUES"] && editable,
 		CanSetSecurity:       permissions["EDIT_ISSUES"] && permissions["SET_ISSUE_SECURITY"] && editable,
 		CanDelete:            permissions["DELETE_ISSUES"] && issue.ArchivedAt == "",
@@ -900,6 +923,33 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	if issue.Assignee != nil && !currentIncluded {
 		view.Assignees = append(view.Assignees, *issue.Assignee)
 	}
+	reporterFields, err := h.Store.ResolveScreenFields(ctx, wsID, issue.ProjectID, issue.IssueType.ID, "edit")
+	if err != nil {
+		return nil, err
+	}
+	behaviour, err := h.Store.ResolveFieldBehaviour(ctx, wsID, issue.ProjectID, issue.IssueType.ID)
+	if err != nil {
+		return nil, err
+	}
+	issue.FieldRenderers = map[string]string{}
+	for field, rule := range behaviour {
+		issue.FieldRenderers[field] = rule.Renderer
+	}
+	if !behaviour["environment"].IsHidden && (len(reporterFields) == 0 || slices.Contains(reporterFields, "environment")) {
+		view.EnvironmentField = &models.CreateFieldMeta{ID: "environment", Name: "Environment", Type: "doc", Required: behaviour["environment"].IsRequired, Description: behaviour["environment"].Description}
+	}
+	view.CanModifyReporter = permissions["MODIFY_REPORTER"] && !behaviour["reporter"].IsHidden && (len(reporterFields) == 0 || slices.Contains(reporterFields, "reporter"))
+	view.ReporterRequired = behaviour["reporter"].IsRequired
+	foundReporter := false
+	for _, member := range members {
+		view.Reporters = append(view.Reporters, *member)
+		if issue.Reporter != nil && member.ID == issue.Reporter.ID {
+			foundReporter = true
+		}
+	}
+	if issue.Reporter != nil && !foundReporter {
+		view.Reporters = append(view.Reporters, *issue.Reporter)
+	}
 	if scheme != nil {
 		for _, lvl := range scheme.Levels {
 			view.SecurityLevels = append(view.SecurityLevels, models.WorkflowTransition{ID: lvl.ID, Name: lvl.Name})
@@ -933,6 +983,9 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 			}
 		}
 		fieldView := models.CustomFieldView{ID: cf.ID, Name: cf.Name, Type: cf.Type, Description: cf.Description, Value: value, Display: value, Options: choices[cf.ID]}
+		if cf.Type == models.CustomFieldText {
+			fieldView.Renderer = behaviour[cf.ID].Renderer
+		}
 		if len(fieldView.Options) > 0 && value != "" {
 			names := map[string]string{}
 			for _, option := range fieldView.Options {
@@ -1388,10 +1441,12 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		}
 		originalEstimate = &seconds
 	}
+	_, reporterProvided := r.PostForm["reporter"]
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
 		OriginalEstimate: originalEstimate,
 		ActorID:          user.ID,
 		ReporterID:       values["reporter"],
+		ReporterProvided: reporterProvided,
 		WorkspaceID:      wsID,
 		ProjectIDOrKey:   values["project"],
 		Summary:          values["summary"],
@@ -1504,6 +1559,11 @@ func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID
 		if field.Default == "" || values[field.ID] != "" {
 			continue
 		}
+		if field.ID == "reporter" {
+			if _, provided := requested[field.ID]; provided {
+				continue
+			}
+		}
 		var text string
 		if err := json.Unmarshal([]byte(field.Default), &text); err == nil {
 			values[field.ID] = text
@@ -1541,6 +1601,10 @@ func (h *Handler) buildCreateDialogData(ctx context.Context, workspaceID, userID
 func createFieldsFromForm(fields []models.CreateFieldMeta, values map[string]string) (map[string]json.RawMessage, error) {
 	custom := map[string]json.RawMessage{}
 	for _, field := range fields {
+		if field.ID == "environment" && values[field.ID] != "" {
+			custom[field.ID] = adf.ParagraphDoc(values[field.ID])
+			continue
+		}
 		if (field.Type == "versions" || field.Type == "components") && values[field.ID] != "" {
 			refs := []map[string]string{}
 			for _, id := range strings.Split(values[field.ID], ",") {
@@ -1773,6 +1837,10 @@ func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key stri
 	if data.CanBulk && len(data.Issues) > 0 {
 		data.BulkTransitions, err = h.commonBulkTransitions(r.Context(), wsID, user.ID, data.Issues)
 		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if data.BulkReporter, err = h.Commands.BulkReporterField(r.Context(), wsID, user.ID, data.Issues); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
@@ -2091,7 +2159,7 @@ func bulkEditOperations(r *http.Request, customFields []bulkCustomField) ([]stor
 	operations := []store.BulkIssueEditOperation{}
 	for _, field := range r.Form["field"] {
 		value := strings.TrimSpace(r.FormValue(map[string]string{
-			"assignee": "valueAssignee", "priority": "valuePriority",
+			"assignee": "valueAssignee", "reporter": "valueReporter", "priority": "valuePriority",
 			"duedate": "valueDueDate", "summary": "valueSummary",
 		}[field]))
 		switch field {
@@ -2099,6 +2167,8 @@ func bulkEditOperations(r *http.Request, customFields []bulkCustomField) ([]stor
 			// The command sets the assignee from an account id, and an empty
 			// one unassigns, as the single-item edit does.
 			operations = append(operations, store.BulkIssueEditOperation{FieldID: "assignee", Action: "SET", Value: encode(value)})
+		case "reporter":
+			operations = append(operations, store.BulkIssueEditOperation{FieldID: "reporter", Action: "SET", Value: encode(value)})
 		case "priority":
 			if value == "" {
 				return nil, fmt.Errorf("choose a priority")
@@ -2290,6 +2360,15 @@ func (h *Handler) IssuePreview(w http.ResponseWriter, r *http.Request, issueKey 
 		http.NotFound(w, r)
 		return
 	}
+	behaviour, err := h.Store.ResolveFieldBehaviour(r.Context(), wsID, issue.ProjectID, issue.IssueType.ID)
+	if err != nil {
+		http.Error(w, "Could not load field rules.", http.StatusInternalServerError)
+		return
+	}
+	issue.FieldRenderers = map[string]string{}
+	for field, rule := range behaviour {
+		issue.FieldRenderers[field] = rule.Renderer
+	}
 	writeFragment(w, "issue_preview", issue)
 }
 
@@ -2297,6 +2376,10 @@ func (h *Handler) IssuePreview(w http.ResponseWriter, r *http.Request, issueKey 
 func (h *Handler) BrowseIssue(w http.ResponseWriter, r *http.Request, key string) {
 	user := h.currentUser(r)
 	if user == nil {
+		if h.AnonymousAccess && !authn.PresentsCredentials(r) {
+			h.serveAnonymousIssue(w, r, key)
+			return
+		}
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -2333,6 +2416,14 @@ func (h *Handler) TransitionIssue(w http.ResponseWriter, r *http.Request, key st
 		switch field {
 		case "summary":
 			update.Summary = &value
+		case "environment":
+			if update.Fields == nil {
+				update.Fields = map[string]json.RawMessage{}
+			}
+			update.Fields["environment"] = adf.ParagraphDoc(value)
+			if strings.TrimSpace(value) == "" {
+				update.Fields["environment"] = json.RawMessage("null")
+			}
 		case "description":
 			update.Description = adf.ParagraphDoc(value)
 		case "labels":
@@ -2341,6 +2432,8 @@ func (h *Handler) TransitionIssue(w http.ResponseWriter, r *http.Request, key st
 				labels = []string{}
 			}
 			update.Labels = &labels
+		case "reporter":
+			update.ReporterID = &value
 		case "assignee":
 			update.AssigneeID = &value
 		case "priority":
@@ -2473,6 +2566,33 @@ func (h *Handler) AddWorklog(w http.ResponseWriter, r *http.Request, key string)
 	if !parseForm(w, r) {
 		return
 	}
+	draft := models.WorklogDraft{TimeSpent: r.PostFormValue("timeSpent"), Started: r.PostFormValue("started"), Comment: r.PostFormValue("comment"), EstimateMode: r.PostFormValue("adjustEstimate"), NewEstimate: r.PostFormValue("newEstimate")}
+	refuse := func(message string, status int) {
+		view, err := h.buildIssueView(r, user, wsID, key)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		draft.Error = message
+		view.WorklogDraft = draft
+		if isHX(r) {
+			writeFragmentStatus(w, "issue_view", view, status)
+		} else {
+			h.writeWorkspacePageStatus(w, r, "page_issue", user, wsID, view, "issues", view.Issue.ProjectID, status)
+		}
+	}
+	var started *time.Time
+	if draft.Started != "" {
+		parsed, err := time.Parse("2006-01-02T15:04:05", draft.Started)
+		if err != nil {
+			parsed, err = time.Parse("2006-01-02T15:04", draft.Started)
+		}
+		if err != nil {
+			refuse("Enter a valid work-start date and time in UTC.", http.StatusBadRequest)
+			return
+		}
+		started = &parsed
+	}
 	configuration, err := h.Store.JiraSiteConfiguration(r.Context(), wsID)
 	if err != nil {
 		http.Error(w, "Could not load time tracking settings.", http.StatusInternalServerError)
@@ -2480,7 +2600,7 @@ func (h *Handler) AddWorklog(w http.ResponseWriter, r *http.Request, key string)
 	}
 	spent, err := models.ParseJiraDuration(r.PostFormValue("timeSpent"), configuration.TimeTracking)
 	if err != nil || spent <= 0 {
-		http.Error(w, "Enter the time spent, such as 1h 30m.", http.StatusBadRequest)
+		refuse("Enter the time spent, such as 1h 30m.", http.StatusBadRequest)
 		return
 	}
 	// The remaining estimate moves by the time logged unless the person sets
@@ -2488,12 +2608,12 @@ func (h *Handler) AddWorklog(w http.ResponseWriter, r *http.Request, key string)
 	estimate := store.WorklogEstimate{Mode: r.PostFormValue("adjustEstimate"), Notify: true}
 	if estimate.Mode == "new" {
 		if estimate.NewSeconds, err = models.ParseJiraDuration(r.PostFormValue("newEstimate"), configuration.TimeTracking); err != nil {
-			http.Error(w, "Enter the new remaining estimate, such as 2h.", http.StatusBadRequest)
+			refuse("Enter the new remaining estimate, such as 2h.", http.StatusBadRequest)
 			return
 		}
 	}
-	if _, _, err := h.Commands.AddWorklogWithEstimate(r.Context(), user.ID, wsID, key, adf.ParagraphDoc(r.PostFormValue("comment")), int(spent), estimate); err != nil {
-		http.Error(w, err.Error(), commandErrorStatus(err))
+	if _, _, err := h.Commands.AddWorklogAt(r.Context(), user.ID, wsID, key, adf.ParagraphDoc(r.PostFormValue("comment")), int(spent), estimate, started); err != nil {
+		refuse(err.Error(), commandErrorStatus(err))
 		return
 	}
 	h.serveIssue(w, r, user, wsID, key)
@@ -2578,8 +2698,15 @@ func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key s
 	case "summary":
 		value = strings.TrimSpace(value)
 		in.Summary = &value
+	case "environment":
+		in.Fields = map[string]json.RawMessage{"environment": adf.ParagraphDoc(value)}
+		if strings.TrimSpace(value) == "" {
+			in.Fields["environment"] = json.RawMessage("null")
+		}
 	case "priority":
 		in.PriorityID = &value
+	case "reporter":
+		in.ReporterID = &value
 	case "assignee":
 		in.AssigneeID = &value
 	case "parent":
@@ -2757,10 +2884,22 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 		return
 	}
 	summary := strings.TrimSpace(r.PostFormValue("summary"))
-	description := adf.ParagraphDoc(r.PostFormValue("description"))
+	var description json.RawMessage
+	if values, provided := r.PostForm["description"]; provided && len(values) > 0 && values[0] != adf.PlainText(issue.Description) {
+		description = adf.ParagraphDoc(values[0])
+	}
 	in := commands.UpdateIssueInput{
 		ActorID: user.ID, WorkspaceID: wsID, IssueIDOrKey: key,
 		Summary: &summary, Description: description,
+	}
+	if values, ok := r.PostForm["environment"]; ok && len(values) > 0 && values[0] != adf.PlainText(issue.Fields["environment"]) {
+		in.Fields = map[string]json.RawMessage{"environment": adf.ParagraphDoc(values[0])}
+		if strings.TrimSpace(values[0]) == "" {
+			in.Fields["environment"] = json.RawMessage("null")
+		}
+	}
+	if values, ok := r.PostForm["reporter"]; ok && len(values) > 0 {
+		in.ReporterID = &values[0]
 	}
 	if values, ok := r.PostForm["assignee"]; ok && len(values) > 0 {
 		in.AssigneeID = &values[0]

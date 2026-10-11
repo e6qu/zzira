@@ -1132,6 +1132,7 @@ func WithCustomFields(base FieldResolver, fields []*models.CustomField) FieldRes
 const CurrentUserPlaceholder = "{{currentUser}}"
 
 func DefaultResolver() FieldResolver {
+	const environmentText = `NULLIF((SELECT string_agg(environment_text #>> '{}',' ') FROM jsonb_path_query(COALESCE(i.fields->'environment','null'::jsonb),'$.**.text') environment_text),'')`
 	return FieldResolver{
 		// Every service desk has Jira's two built-in SLAs.
 		SLAFields: map[string]bool{"time to first response": true, "time to resolution": true},
@@ -1157,7 +1158,7 @@ func DefaultResolver() FieldResolver {
 			"resolutiondate":            "i.resolved_at",
 			"statuscategorychangeddate": "i.status_category_changed_at",
 			"due":                       `i.due_date::timestamptz`,
-			"environment":               `i.fields->>'environment'`,
+			"environment":               environmentText,
 			"component":                 `i.fields->>'component'`,
 			"sprint":                    `i.fields->>'sprint'`,
 			// Time tracking, in seconds; work ratio is time spent as a
@@ -1182,7 +1183,7 @@ func DefaultResolver() FieldResolver {
 			// only a request has at all.
 			"requesttype": "(SELECT request_type.name FROM service_requests service_request JOIN service_request_types request_type ON request_type.id=service_request.request_type_id WHERE service_request.issue_id=i.id)",
 		},
-		TextColumns: []string{"i.summary", "i.description::text"},
+		TextColumns: []string{"i.summary", "i.description::text", environmentText},
 		DefaultOrder: map[string]string{
 			"updated": "i.updated_at", "created": "i.created_at", "key": "i.key", "summary": "i.summary",
 			"status": "st.name", "priority": "COALESCE(pro.position, pr2.position)", "assignee": "a.display_name", "issuetype": "COALESCE(ito.name, it.name)",

@@ -80,11 +80,6 @@ Malformed ids, unknown expansions, invalid holders, duplicate grants or scheme n
 
 **Copy.** The settings page copies one, named "Copy of X" (then "Copy 2 of X"), carrying its configuration and nothing else: the copy is assigned to no project and is never the site default.
 
-## Gaps
-
-Tracked in [PLAN.md](../PLAN.md).
-
-
 ## Tests
 
 - `internal/api3/permission_schemes_test.go`: all 16 operations, validation, assignment conflicts, direct and group grants, delegated administration, visibility in work items, projects and search, discovery, paging, actions.

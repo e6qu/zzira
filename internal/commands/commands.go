@@ -8,12 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/attachments"
 	"github.com/e6qu/zzira/internal/authz"
 	"github.com/e6qu/zzira/internal/models"
@@ -29,6 +31,7 @@ type Service struct {
 type CreateIssueInput struct {
 	ActorID                   string
 	ReporterID                string
+	ReporterProvided          bool // distinguishes an explicit empty Reporter from its actor default
 	WorkspaceID               string
 	ProjectIDOrKey            string
 	Summary                   string
@@ -139,6 +142,15 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	issueType, err := s.Store.IssueTypeByIDOrName(ctx, in.WorkspaceID, in.IssueTypeID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("issue type %q not found", in.IssueTypeID)
+	}
+	if _, provided := in.Fields["environment"]; provided && !OverridesFromContext(ctx).ScreenSecurity {
+		screenFields, err := s.Store.ResolveScreenFields(ctx, in.WorkspaceID, project.ID, issueType.ID, "create")
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(screenFields) > 0 && !slices.Contains(screenFields, "environment") {
+			return nil, nil, fmt.Errorf("environment is not available on this work item's create screen")
+		}
 	}
 	configuration, err := s.jiraSiteConfiguration(ctx, in.WorkspaceID)
 	if err != nil {
@@ -323,7 +335,7 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	}
 	issue, action, err := s.Store.CreateEstimatedIssueForReporter(ctx, in.ActorID, in.ReporterID, project.ID, in.Summary,
 		description, wf.InitialStatus(), issueType.ID, priorityID, in.AssigneeID, labels, in.Fields, in.SecurityLevelID, parentID,
-		store.NewIssueDetails{Original: in.OriginalEstimate, Remaining: in.RemainingEstimate, DueDate: dueDate, CustomerReporter: in.customerRequest})
+		store.NewIssueDetails{Original: in.OriginalEstimate, Remaining: in.RemainingEstimate, DueDate: dueDate, CustomerReporter: in.customerRequest, ClearReporter: in.ReporterProvided && in.ReporterID == ""})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -352,7 +364,7 @@ func (s *Service) requireCreatePermissions(ctx context.Context, in CreateIssueIn
 	if in.AssigneeID != "" && in.AssigneeID != "-1" && !in.UseProjectDefaultAssignee {
 		permissions = append(permissions, "ASSIGN_ISSUES")
 	}
-	if in.ReporterID != "" && in.ReporterID != in.ActorID {
+	if (in.ReporterProvided || in.ReporterID != "") && in.ReporterID != in.ActorID {
 		permissions = append(permissions, "MODIFY_REPORTER")
 	}
 	if in.SecurityLevelID != "" {
@@ -422,7 +434,7 @@ func (s *Service) enforceFieldConfiguration(ctx context.Context, in CreateIssueI
 		"assignee":    in.AssigneeID != "" && in.AssigneeID != "-1",
 		// A service request derives its reporter from the customer, rather
 		// than submitting the Reporter screen field.
-		"reporter": in.ReporterID != "" && !in.customerRequest,
+		"reporter": (in.ReporterProvided || in.ReporterID != "") && !in.customerRequest,
 		"priority": in.PriorityID != "",
 		"parent":   strings.TrimSpace(in.ParentIDOrKey) != "",
 		"security": in.SecurityLevelID != "",
@@ -439,7 +451,11 @@ func (s *Service) enforceFieldConfiguration(ctx context.Context, in CreateIssueI
 		if field == "summary" {
 			continue
 		}
-		if rule.IsRequired && !supplied[field] && !(field == "reporter" && in.ActorID != "") {
+		present := supplied[field]
+		if field == "reporter" {
+			present = in.ReporterID != "" || (!in.ReporterProvided && in.ActorID != "")
+		}
+		if rule.IsRequired && !present {
 			return fmt.Errorf("%s is required by the field configuration for this work type", field)
 		}
 		if rule.IsHidden && supplied[field] {
@@ -460,6 +476,14 @@ func hasNonEmptyValue(values []string) bool {
 
 func suppliedFieldValue(raw json.RawMessage) bool {
 	value := strings.TrimSpace(string(raw))
+	if strings.HasPrefix(value, "{") {
+		var doc struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(raw, &doc) == nil && doc.Type == "doc" {
+			return strings.TrimSpace(adf.PlainText(raw)) != ""
+		}
+	}
 	switch value {
 	case "", "null", `""`, "[]", "{}":
 		return false
@@ -493,6 +517,7 @@ func issueWriteIntents(update store.IssueUpdate) map[string]fieldWriteIntent {
 		"summary":  stringWriteIntent(update.Summary),
 		"priority": stringWriteIntent(update.PriorityID),
 		"assignee": stringWriteIntent(update.AssigneeID, "-1"),
+		"reporter": stringWriteIntent(update.ReporterID),
 		"parent":   stringWriteIntent(update.ParentID),
 		"security": stringWriteIntent(update.SecurityLevelID),
 	}
@@ -953,10 +978,12 @@ func (s *Service) runInitialTransition(ctx context.Context, in CreateIssueInput,
 		draft.Assignee = &models.User{ID: in.AssigneeID}
 	}
 	reporterID := in.ReporterID
-	if reporterID == "" {
+	if reporterID == "" && !in.ReporterProvided {
 		reporterID = in.ActorID
 	}
-	draft.Reporter = &models.User{ID: reporterID}
+	if reporterID != "" {
+		draft.Reporter = &models.User{ID: reporterID}
+	}
 	if priorityID != "" {
 		draft.Priority = &models.Priority{ID: priorityID}
 	}

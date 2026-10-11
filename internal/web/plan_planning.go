@@ -48,12 +48,21 @@ type planPageData struct {
 	// whatever it is grouped by, or one unnamed group holding the plan's own
 	// order. Views are the saved ways of reading this plan, and View the one
 	// the page is showing, if any.
-	Groups    []planGroup
-	GroupBy   string
-	Query     string
-	Groupings []string
-	Views     []store.PlanView
-	View      *store.PlanView
+	CustomColumns         []planCustomFieldChoice
+	CustomCells           map[string]map[string]planCustomFieldCell
+	CustomFilters         []planCustomFieldFilter
+	WorkColumnCount       int
+	Zoom                  string
+	ColumnChoices         []planColumnChoice
+	VisibleColumns        map[string]bool
+	ViewDraftName         string
+	ViewFilterUnavailable bool
+	Groups                []planGroup
+	GroupBy               string
+	Query                 string
+	Groupings             []string
+	Views                 []store.PlanView
+	View                  *store.PlanView
 	// RollUp says the page is adding the work under each parent onto it.
 	// RolledEstimate is what each item's work adds up to, and OwnDates the
 	// dates the item itself carries, which is what its form edits.
@@ -257,8 +266,13 @@ func (h *Handler) renderPlanPage(w http.ResponseWriter, r *http.Request, message
 		data.Teams = append(data.Teams, planTeamOption{ID: capacity.Team.ID, Name: capacity.Name})
 	}
 	if message != "" {
+		if strings.HasSuffix(r.URL.Path, "/views") && r.PostFormValue("action") != "delete" {
+			data.ViewDraftName = r.PostFormValue("name")
+		}
 		data.Error = message
-		data.TeamDraft = readPlanTeamDraft(r)
+		if action := r.PostFormValue("action"); action == "add-atlassian" || action == "add-planonly" || action == "remove" {
+			data.TeamDraft = readPlanTeamDraft(r)
+		}
 	}
 	if edit {
 		teams, loadErr := h.Store.AtlassianTeams(r.Context(), workspaceID)
@@ -333,7 +347,14 @@ func (h *Handler) renderPlanPage(w http.ResponseWriter, r *http.Request, message
 		var own func(items []models.TimelineItem)
 		own = func(items []models.TimelineItem) {
 			for _, item := range items {
-				data.OwnDates[item.Issue.ID] = [2]string{item.StartDate, item.DueDate}
+				start, end := item.StartDate, item.DueDate
+				if item.InferredStart != "" {
+					start = ""
+				}
+				if item.InferredEnd != "" {
+					end = ""
+				}
+				data.OwnDates[item.Issue.ID] = [2]string{start, end}
 				own(item.Children)
 			}
 		}
@@ -341,15 +362,30 @@ func (h *Handler) renderPlanPage(w http.ResponseWriter, r *http.Request, message
 		data.RolledEstimate = totals
 		data.Timeline = newTimelineData(nil, models.ProjectTimeline{Epics: rolledTimeline(planning.Work.Items, spans)}, now, h.siteLook(r, workspaceID).DateDay)
 	}
-	data.Groups = planGroups(data.Timeline.Rows, planning.Items, data.GroupBy, data.Query)
+	if err := h.loadPlanCustomFields(r, workspaceID, &data); err != nil {
+		if errors.Is(err, store.ErrPlanValidation) {
+			http.Error(w, planErrorMessage(err), http.StatusBadRequest)
+		} else {
+			http.Error(w, "Could not load custom fields.", http.StatusInternalServerError)
+		}
+		return
+	}
+	if err := configurePlanLayout(r, &data); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	data.Groups = planGroups(planCustomFieldRows(&data), planning.Items, data.GroupBy, data.Query)
 	h.writeWorkspacePageStatus(w, r, "page_plan", user, workspaceID, data, "plans", "", status)
 }
 
 // PlanViewSave keeps the grouping and filter a planner is looking at under a
 // name, so the next person opens the plan the same way.
 func (h *Handler) PlanViewSave(w http.ResponseWriter, r *http.Request) {
+	if !parseForm(w, r) {
+		return
+	}
 	user, workspaceID, plan, edit, _, scenario, ok := h.planContext(w, r)
-	if !ok || !parseForm(w, r) {
+	if !ok {
 		return
 	}
 	if !edit {
@@ -360,7 +396,11 @@ func (h *Handler) PlanViewSave(w http.ResponseWriter, r *http.Request) {
 	if r.PostFormValue("action") == "delete" {
 		viewID, err := strconv.ParseInt(r.PostFormValue("view"), 10, 64)
 		if err == nil {
-			err = h.Store.DeletePlanView(r.Context(), workspaceID, plan.ID, viewID)
+			err = h.Store.DeletePlanView(r.Context(), workspaceID, user.ID, plan.ID, viewID)
+		}
+		if errors.Is(err, store.ErrProjectPermission) {
+			http.Error(w, "You can no longer edit this plan.", http.StatusForbidden)
+			return
 		}
 		if err != nil {
 			redirectLocal(w, r, back+"&error="+url.QueryEscape("That view is not in this plan."))
@@ -369,12 +409,49 @@ func (h *Handler) PlanViewSave(w http.ResponseWriter, r *http.Request) {
 		redirectLocal(w, r, back+"&notice="+url.QueryEscape("The view was deleted."))
 		return
 	}
-	view, err := h.Store.SavePlanView(r.Context(), workspaceID, user.ID, plan.ID, store.PlanView{
-		Name: r.PostFormValue("name"), GroupBy: r.PostFormValue("group"), Query: r.PostFormValue("q"),
-		RollUp: r.PostFormValue("rollup") == "true",
-	})
+	filters := map[string]string{}
+	for key, values := range r.PostForm {
+		if strings.HasPrefix(key, "cf_") && len(values) == 1 && values[0] != "" {
+			filters[strings.TrimPrefix(key, "cf_")] = values[0]
+		}
+	}
+	var columns []string
+	if r.PostFormValue("columnsProvided") == "1" {
+		columns = append([]string{}, r.PostForm["column"]...)
+	}
+	view, err := h.Store.SavePlanView(r.Context(), workspaceID, user.ID, plan.ID, store.PlanView{Name: r.PostFormValue("name"), GroupBy: r.PostFormValue("group"), Query: r.PostFormValue("q"), RollUp: r.PostFormValue("rollup") == "true", CustomFilters: filters, Columns: columns, Zoom: r.PostFormValue("zoom")})
 	if err != nil {
-		redirectLocal(w, r, back+"&error="+url.QueryEscape(err.Error()))
+		if errors.Is(err, store.ErrProjectPermission) {
+			http.Error(w, "You can no longer edit this plan.", http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, store.ErrPlanNotActive) {
+			http.Error(w, "The plan is no longer active.", http.StatusConflict)
+			return
+		}
+		if errors.Is(err, store.ErrPlanNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		if !errors.Is(err, store.ErrPlanValidation) {
+			http.Error(w, "Could not save the plan view.", http.StatusInternalServerError)
+			return
+		}
+		// Rebuild the same view from submitted controls and keep its refused
+		// name, rather than redirecting away from the planner's choices.
+		values := url.Values{"scenario": {strconv.FormatInt(scenario.ID, 10)}, "group": {r.PostFormValue("group")}, "q": {r.PostFormValue("q")}, "rollup": {r.PostFormValue("rollup")}}
+		values.Set("zoom", r.PostFormValue("zoom"))
+		if columns != nil {
+			values.Set("columnsProvided", "1")
+			values["column"] = columns
+		}
+		for id, value := range filters {
+			values.Set("cf_"+id, value)
+		}
+		copyURL := *r.URL
+		copyURL.RawQuery = values.Encode()
+		r.URL = &copyURL
+		h.renderPlanPage(w, r, planErrorMessage(err), http.StatusBadRequest)
 		return
 	}
 	redirectLocal(w, r, back+"&view="+strconv.FormatInt(view.ID, 10)+"&notice="+url.QueryEscape("Saved the view "+view.Name+"."))
@@ -388,11 +465,11 @@ func planCurrentValue(item *store.PlanItem, timeline *models.TimelineItem, field
 	case "summary":
 		value = item.Issue.Summary
 	case "startDate":
-		if timeline.StartDate != "" {
+		if timeline.StartDate != "" && timeline.InferredStart == "" {
 			value = timeline.StartDate
 		}
 	case "endDate":
-		if timeline.DueDate != "" {
+		if timeline.DueDate != "" && timeline.InferredEnd == "" {
 			value = timeline.DueDate
 		}
 	case "team":
@@ -655,7 +732,7 @@ func (h *Handler) PlanSchedulingChange(w http.ResponseWriter, r *http.Request) {
 	if !parseForm(w, r) {
 		return
 	}
-	_, workspaceID, plan, edit, _, scenario, ok := h.planContext(w, r)
+	user, workspaceID, plan, edit, _, scenario, ok := h.planContext(w, r)
 	if !ok {
 		return
 	}
@@ -667,7 +744,11 @@ func (h *Handler) PlanSchedulingChange(w http.ResponseWriter, r *http.Request) {
 	if r.PostFormValue("concurrent") == "true" {
 		plan.Scheduling.Dependencies = "Concurrent"
 	}
-	if err := h.Store.UpdatePlan(r.Context(), workspaceID, plan); err != nil {
+	if err := h.Store.UpdatePlan(r.Context(), workspaceID, user.ID, plan); err != nil {
+		if errors.Is(err, store.ErrProjectPermission) {
+			http.Error(w, "You can no longer edit this plan.", http.StatusForbidden)
+			return
+		}
 		if message := planErrorMessage(err); message != "" {
 			planBack(w, r, plan, scenario.ID, "", "error", message)
 			return
@@ -1089,6 +1170,12 @@ func rolledTimeline(items []models.TimelineItem, dates map[string][2]string) []m
 	rolled := make([]models.TimelineItem, 0, len(items))
 	for _, item := range items {
 		if span, ok := dates[item.Issue.ID]; ok {
+			if span[0] != item.StartDate {
+				item.InferredStart = ""
+			}
+			if span[1] != item.DueDate {
+				item.InferredEnd = ""
+			}
 			item.StartDate, item.DueDate = span[0], span[1]
 		}
 		item.Children = rolledTimeline(item.Children, dates)

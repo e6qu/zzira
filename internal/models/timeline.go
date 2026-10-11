@@ -6,7 +6,9 @@ type TimelineItem struct {
 	// StartDate and DueDate are yyyy-MM-dd days; empty means unscheduled.
 	StartDate string
 	DueDate   string
-	Children  []TimelineItem
+	// Inferred dates are display projections, never committed field values.
+	InferredStart, InferredEnd string
+	Children                   []TimelineItem
 }
 
 // ProjectTimeline is a project's epics in rank order with their child work.

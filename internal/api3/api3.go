@@ -842,12 +842,14 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reporterID := ""
-	if _, provided := rawRequest.Fields["reporter"]; provided {
-		if req.Fields.Reporter == nil || strings.TrimSpace(req.Fields.Reporter.AccountID) == "" {
-			jiraFieldError(w, http.StatusBadRequest, map[string]string{"reporter": "Reporter must identify an active account."})
+	reporter, reporterProvided := rawRequest.Fields["reporter"]
+	if reporterProvided {
+		var err error
+		reporterID, err = reporterAccountID(reporter)
+		if err != nil {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"reporter": err.Error()})
 			return
 		}
-		reporterID = req.Fields.Reporter.AccountID
 	}
 	_, assigneeProvided := rawRequest.Fields["assignee"]
 	if req.Fields.Assignee != nil {
@@ -912,6 +914,7 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		PriorityID:                priorityID,
 		AssigneeID:                assigneeID,
 		ReporterID:                reporterID,
+		ReporterProvided:          reporterProvided,
 		UseProjectDefaultAssignee: !assigneeProvided || assigneeID == "-1",
 		SecurityLevelID: func() string {
 			if req.Fields.Security == nil {
@@ -962,7 +965,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 		return nil
 	}
 	supported := map[string]struct{}{
-		"project": {}, "summary": {}, "description": {}, "issuetype": {}, "priority": {},
+		"project": {}, "summary": {}, "description": {}, "environment": {}, "issuetype": {}, "priority": {},
 		"assignee": {}, "reporter": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "components": {}, "parent": {},
 		"timetracking": {}, "duedate": {},
 	}
@@ -1002,7 +1005,7 @@ func createIssueFieldError(err error) map[string]string {
 		return fields
 	}
 	message := err.Error()
-	for _, field := range []string{"summary", "project", "priority", "assignee", "reporter", "security", "resolution", "labels", "description", "components", "parent"} {
+	for _, field := range []string{"summary", "project", "priority", "assignee", "reporter", "security", "resolution", "labels", "description", "environment", "components", "parent"} {
 		if strings.Contains(message, field) {
 			return map[string]string{field: message}
 		}
@@ -1127,6 +1130,46 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		Fields map[string]json.RawMessage `json:"fields"`
 	}
 	_ = json.Unmarshal(body, &rawFields)
+	if operations, ok := req.Update["environment"]; ok {
+		delete(req.Update, "environment")
+		_, provided := rawFields.Fields["environment"]
+		if provided || len(operations) != 1 || len(operations[0]) != 1 {
+			jiraFieldError(w, 400, map[string]string{"environment": "Supply one set operation or one environment field."})
+			return
+		}
+		raw, valid := operations[0]["set"]
+		if !valid {
+			jiraFieldError(w, 400, map[string]string{"environment": "Environment supports only set."})
+			return
+		}
+		if fields == nil {
+			fields = map[string]json.RawMessage{}
+		}
+		fields["environment"] = raw
+	}
+	reporter, provided := rawFields.Fields["reporter"]
+	if operations, ok := req.Update["reporter"]; ok {
+		delete(req.Update, "reporter")
+		if provided || len(operations) != 1 || len(operations[0]) != 1 {
+			jiraFieldError(w, 400, map[string]string{"reporter": "Supply one set operation or one reporter field."})
+			return
+		}
+		var valid bool
+		reporter, valid = operations[0]["set"]
+		if !valid {
+			jiraFieldError(w, 400, map[string]string{"reporter": "Reporter supports only set."})
+			return
+		}
+		provided = true
+	}
+	if provided {
+		value, err := reporterAccountID(reporter)
+		if err != nil {
+			jiraFieldError(w, 400, map[string]string{"reporter": err.Error()})
+			return
+		}
+		up.ReporterID = &value
+	}
 	var parentIDOrKey *string
 	if rawParent, provided := rawFields.Fields["parent"]; provided {
 		value := ""
@@ -1257,7 +1300,7 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 	if _, _, err := h.Commands.UpdateIssue(ctx, commands.UpdateIssueInput{
 		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: idOrKey, SuppressNotifications: suppressNotifications,
 		Summary: up.Summary, Description: up.Description,
-		PriorityID: up.PriorityID, AssigneeID: up.AssigneeID,
+		PriorityID: up.PriorityID, AssigneeID: up.AssigneeID, ReporterID: up.ReporterID,
 		ParentIDOrKey:   parentIDOrKey,
 		SecurityLevelID: securityID, ResolutionID: resolutionID, Labels: req.Fields.Labels, DueDate: dueDate, Fields: fields, VersionOperations: req.Update,
 		OriginalEstimate: originalEstimate, RemainingEstimate: remainingEstimate,
@@ -1271,6 +1314,9 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 			return
 		}
 		field := "fields"
+		if strings.Contains(err.Error(), "reporter") {
+			field = "reporter"
+		}
 		if strings.Contains(err.Error(), "parent") || strings.Contains(err.Error(), "sub-task") {
 			field = "parent"
 		}
@@ -1405,9 +1451,11 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 	fields := map[string]any{
 		"summary":     i.Summary,
 		"description": i.Description,
+		"environment": nil,
 		"labels":      i.Labels,
 		"duedate":     nil,
 		"security":    nil,
+		"reporter":    nil,
 		"lastViewed":  nil,
 		"fixVersions": []any{},
 		"versions":    []any{},
@@ -1593,8 +1641,42 @@ func (h *Handler) issueTransitionBeans(ctx context.Context, workspaceID, userID 
 		}
 		fields := map[string]any{}
 		required := transition.RequiredFields()
+		behaviour, err := h.Store.ResolveFieldBehaviour(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID)
+		if err != nil {
+			return nil, err
+		}
 		for _, field := range transition.ScreenFields() {
-			fields[field] = transitionFieldMetadata(field, required[field])
+			metadata := transitionFieldMetadata(field, required[field])
+			fields[field] = metadata
+			if field == "reporter" {
+				if behaviour[field].IsHidden {
+					delete(fields, field)
+					continue
+				}
+				metadata["required"] = required[field] || behaviour[field].IsRequired
+				allowed, err := h.hasProjectPermission(ctx, workspaceID, userID, issue.ProjectID, issue.ID, "MODIFY_REPORTER")
+				if err != nil {
+					return nil, err
+				}
+				values := []map[string]any{}
+				if allowed {
+					members, err := h.Store.MembersByWorkspace(ctx, workspaceID)
+					if err != nil {
+						return nil, err
+					}
+					for _, member := range members {
+						values = append(values, h.userBean(member))
+					}
+				}
+				if !allowed {
+					metadata["operations"] = []string{}
+					if issue.Reporter != nil {
+						values = append(values, h.userBean(issue.Reporter))
+					}
+				}
+				metadata["allowedValues"] = values
+			}
+
 		}
 		beans = append(beans, map[string]any{
 			"id": transition.ID, "name": transition.Name, "to": h.statusBean(status),
@@ -1674,12 +1756,18 @@ func transitionFieldMetadata(field string, required bool) map[string]any {
 	switch field {
 	case "summary":
 		name = "Summary"
-	case "description":
-		name, schema = "Description", map[string]any{"type": "any", "system": "description"}
+	case "description", "environment":
+		name = "Description"
+		if field == "environment" {
+			name = "Environment"
+		}
+		schema = map[string]any{"type": "any", "system": field}
 	case "labels":
 		name, schema = "Labels", map[string]any{"type": "array", "items": "string", "system": "labels"}
 	case "duedate":
 		name, schema = "Due date", map[string]any{"type": "date", "system": "duedate"}
+	case "reporter":
+		name, schema = "Reporter", map[string]any{"type": "user", "system": "reporter"}
 	case "assignee":
 		name, schema = "Assignee", map[string]any{"type": "user", "system": "assignee"}
 	case "priority":
@@ -1702,6 +1790,11 @@ func transitionIssueUpdate(fields map[string]json.RawMessage) (store.IssueUpdate
 			} else {
 				update.Summary = &value
 			}
+		case "environment":
+			if update.Fields == nil {
+				update.Fields = map[string]json.RawMessage{}
+			}
+			update.Fields[field] = raw
 		case "description":
 			update.Description = raw
 		case "labels":
@@ -1717,6 +1810,13 @@ func transitionIssueUpdate(fields map[string]json.RawMessage) (store.IssueUpdate
 				errors[field] = fieldErrors[field]
 			} else {
 				update.DueDate = &value
+			}
+		case "reporter":
+			value, err := reporterAccountID(raw)
+			if err != nil {
+				errors[field] = err.Error()
+			} else {
+				update.ReporterID = &value
 			}
 		case "assignee", "priority", "resolution":
 			value := ""
@@ -1909,10 +2009,36 @@ func (h *Handler) issueEditFields(ctx context.Context, workspaceID, userID strin
 		}
 		project.FieldBehaviour = map[string]map[string]models.FieldBehaviour{issue.IssueType.ID: behaviour}
 		for _, source := range project.FieldsForIssueType(issue.IssueType.ID) {
-			if source.ID == "project" || source.ID == "issuetype" || source.ID == "reporter" {
+			if source.ID == "project" || source.ID == "issuetype" {
 				continue
 			}
 			field := source
+			if field.ID == "reporter" {
+				allowed, err := h.hasProjectPermission(ctx, workspaceID, userID, issue.ProjectID, issue.ID, "MODIFY_REPORTER")
+				if err != nil {
+					return nil, err
+				}
+				if !allowed {
+					continue
+				}
+				field.Required = behaviour["reporter"].IsRequired
+				field.Default = ""
+				field.Options = nil
+				members, err := h.Store.MembersByWorkspace(ctx, workspaceID)
+				if err != nil {
+					return nil, err
+				}
+				found := false
+				for _, member := range members {
+					field.Options = append(field.Options, models.CreateFieldOption{ID: member.ID, Name: member.DisplayName})
+					if issue.Reporter != nil && member.ID == issue.Reporter.ID {
+						found = true
+					}
+				}
+				if issue.Reporter != nil && !found {
+					field.Options = append(field.Options, models.CreateFieldOption{ID: issue.Reporter.ID, Name: issue.Reporter.DisplayName})
+				}
+			}
 			if field.ID == "assignee" {
 				assignable, err := h.Store.AssignableUsersForProject(ctx, workspaceID, issue.ProjectID, issue.ID)
 				if err != nil {
@@ -1975,4 +2101,18 @@ func (h *Handler) IssueBeanForReader(ctx context.Context, readerID string, issue
 		return nil, err
 	}
 	return h.IssueBean(visible), nil
+}
+
+// reporterAccountID accepts Jira's explicit clear or an account-ID user object.
+func reporterAccountID(raw json.RawMessage) (string, error) {
+	if string(raw) == "null" {
+		return "", nil
+	}
+	var user struct {
+		AccountID string `json:"accountId"`
+	}
+	if err := json.Unmarshal(raw, &user); err != nil || strings.TrimSpace(user.AccountID) == "" {
+		return "", fmt.Errorf("Reporter requires an accountId or null.")
+	}
+	return user.AccountID, nil
 }

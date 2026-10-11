@@ -90,7 +90,7 @@ func siteConfigurationAudit(ctx context.Context, tx pgx.Tx, workspaceID, actorID
 	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)
-		SELECT organization_id,$2,$3,'jira_configuration',$4,$5::jsonb FROM sites WHERE workspace_id=$1`,
+		SELECT organization_id,NULLIF($2,''),$3,'jira_configuration',$4,$5::jsonb FROM sites WHERE workspace_id=$1`,
 		workspaceID, actorID, action, targetID, payload)
 	if err != nil {
 		return err

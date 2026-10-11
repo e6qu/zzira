@@ -26,9 +26,10 @@ type FieldScheme struct {
 
 // FieldSchemeParameters are the rules a scheme applies to one field.
 type FieldSchemeParameters struct {
-	IsRequired  bool
-	Description string
-	WorkTypeID  string
+	RendererType *string
+	IsRequired   bool
+	Description  string
+	WorkTypeID   string
 }
 
 // FieldSchemeField is a field's association with a scheme: the rules that apply
@@ -118,7 +119,7 @@ func (s *Store) FieldSchemeFields(ctx context.Context, workspaceID, schemeID str
 		return nil, err
 	}
 	rows, err := s.Pool.Query(ctx, `
-		SELECT item.field_id, mapping.issue_type_id, item.is_required, item.description
+		SELECT item.field_id, mapping.issue_type_id, item.is_required, item.description, item.renderer
 		FROM field_configuration_scheme_items mapping
 		JOIN field_configuration_items item ON item.configuration_id=mapping.configuration_id
 		WHERE mapping.workspace_id=$1 AND mapping.scheme_id=$2 AND NOT item.is_hidden
@@ -137,7 +138,7 @@ func (s *Store) FieldSchemeFields(ctx context.Context, workspaceID, schemeID str
 	for rows.Next() {
 		var fieldID, workTypeID string
 		var parameters FieldSchemeParameters
-		if err = rows.Scan(&fieldID, &workTypeID, &parameters.IsRequired, &parameters.Description); err != nil {
+		if err = rows.Scan(&fieldID, &workTypeID, &parameters.IsRequired, &parameters.Description, &parameters.RendererType); err != nil {
 			return nil, err
 		}
 		parameters.WorkTypeID = workTypeID
@@ -162,7 +163,7 @@ func (s *Store) FieldSchemeFields(ctx context.Context, workspaceID, schemeID str
 		// The scheme's fallback mapping carries the parameters that apply when
 		// a work type has no entry of its own.
 		if fallback, ok := found.byWorkType[DefaultIssueTypeMapping]; ok {
-			field.Parameters = FieldSchemeParameters{IsRequired: fallback.IsRequired, Description: fallback.Description}
+			field.Parameters = FieldSchemeParameters{IsRequired: fallback.IsRequired, Description: fallback.Description, RendererType: fallback.RendererType}
 		}
 
 		fallback, hasFallback := found.byWorkType[DefaultIssueTypeMapping]
@@ -173,7 +174,7 @@ func (s *Store) FieldSchemeFields(ctx context.Context, workspaceID, schemeID str
 			parameters := found.byWorkType[workTypeID]
 			// A work type whose rules match the fallback is not an override;
 			// reporting it as one would read as a difference that is not there.
-			if !hasFallback || parameters.IsRequired != fallback.IsRequired || parameters.Description != fallback.Description {
+			if !hasFallback || parameters.IsRequired != fallback.IsRequired || parameters.Description != fallback.Description || rendererValue(parameters.RendererType) != rendererValue(fallback.RendererType) {
 				field.WorkTypeParameters = append(field.WorkTypeParameters, parameters)
 			}
 			field.RestrictedToWorkTypes = append(field.RestrictedToWorkTypes, workTypeID)
@@ -249,8 +250,8 @@ func schemeOwnedConfiguration(ctx context.Context, tx pgx.Tx, workspaceID string
 		RETURNING id`, workspaceID, configurationID, schemeStamp(schemeID, workTypeID)).Scan(&clonedID); err != nil {
 		return 0, err
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO field_configuration_items(workspace_id,configuration_id,field_id,is_required,is_hidden,description)
-		SELECT $1,$2,field_id,is_required,is_hidden,description FROM field_configuration_items WHERE configuration_id=$3`,
+	if _, err = tx.Exec(ctx, `INSERT INTO field_configuration_items(workspace_id,configuration_id,field_id,is_required,is_hidden,description,renderer)
+		SELECT $1,$2,field_id,is_required,is_hidden,description,renderer FROM field_configuration_items WHERE configuration_id=$3`,
 		workspaceID, clonedID, configurationID); err != nil {
 		return 0, err
 	}
@@ -386,15 +387,26 @@ func applyFieldSchemeField(ctx context.Context, tx pgx.Tx, workspaceID, fieldID,
 		}
 		for _, override := range item.WorkTypeParameters {
 			if override.WorkTypeID == workTypeID {
+				inheritedRenderer := parameters.RendererType
 				parameters = override
+				if parameters.RendererType == nil {
+					parameters.RendererType = inheritedRenderer
+				}
 			}
 		}
+		if parameters.RendererType != nil {
+			normalized, valid := NormalizeFieldRenderer(*parameters.RendererType)
+			if !valid {
+				return fmt.Errorf("choose the text or wiki renderer")
+			}
+			parameters.RendererType = &normalized
+		}
 		hidden := !visible[workTypeID]
-		if _, err = tx.Exec(ctx, `INSERT INTO field_configuration_items(workspace_id,configuration_id,field_id,is_required,is_hidden,description)
-			VALUES($1,$2,$3,$4,$5,$6)
+		if _, err = tx.Exec(ctx, `INSERT INTO field_configuration_items(workspace_id,configuration_id,field_id,is_required,is_hidden,description,renderer)
+			VALUES($1,$2,$3,$4,$5,$6,COALESCE($7,''))
 			ON CONFLICT(configuration_id,field_id) DO UPDATE SET
-				is_required=EXCLUDED.is_required,is_hidden=EXCLUDED.is_hidden,description=EXCLUDED.description`,
-			workspaceID, configurationID, fieldID, parameters.IsRequired && !hidden, hidden, parameters.Description); err != nil {
+				is_required=EXCLUDED.is_required,is_hidden=EXCLUDED.is_hidden,description=EXCLUDED.description,renderer=CASE WHEN $7::text IS NULL THEN field_configuration_items.renderer ELSE EXCLUDED.renderer END`,
+			workspaceID, configurationID, fieldID, parameters.IsRequired && !hidden, hidden, parameters.Description, parameters.RendererType); err != nil {
 			return err
 		}
 	}
@@ -560,6 +572,28 @@ func (s *Store) AssociateFieldsWithProjects(ctx context.Context, workspaceID, ac
 	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
 		return err
 	}
+	if associate {
+		// Take all field locks before configuration writes and action sequences.
+		// Stable ordering prevents two multi-field associations from deadlocking.
+		rows, lockErr := tx.Query(ctx, `SELECT id FROM custom_fields
+			WHERE id=ANY($1) AND (workspace_id IS NULL OR workspace_id=$2)
+			ORDER BY id FOR NO KEY UPDATE`, fieldIDs, workspaceID)
+		if lockErr != nil {
+			return lockErr
+		}
+		for rows.Next() {
+			var id string
+			if lockErr = rows.Scan(&id); lockErr != nil {
+				rows.Close()
+				return lockErr
+			}
+		}
+		lockErr = rows.Err()
+		rows.Close()
+		if lockErr != nil {
+			return lockErr
+		}
+	}
 	for _, projectID := range projectIDs {
 		var schemeID int64
 		if err = tx.QueryRow(ctx, `SELECT scheme_id FROM project_field_configuration_schemes
@@ -592,19 +626,27 @@ func (s *Store) AssociateFieldsWithProjects(ctx context.Context, workspaceID, ac
 // project. A context that already covers every project reaches it, so there is
 // nothing to widen.
 func extendCustomFieldToProject(ctx context.Context, tx pgx.Tx, fieldID, projectID string) error {
+	var covered bool
+	if err := tx.QueryRow(ctx, `SELECT jira_custom_field_context($1,$2,NULL) IS NOT NULL`, fieldID, projectID).Scan(&covered); err != nil {
+		return err
+	}
+	if covered {
+		return nil
+	}
 	var contextID int64
-	var allProjects bool
-	err := tx.QueryRow(ctx, `SELECT id, all_projects FROM custom_field_contexts
-		WHERE field_id=$1 ORDER BY id LIMIT 1`, fieldID).Scan(&contextID, &allProjects)
-	if err == pgx.ErrNoRows || (err == nil && allProjects) {
+	err := tx.QueryRow(ctx, `SELECT id FROM custom_field_contexts
+		WHERE field_id=$1 ORDER BY id LIMIT 1`, fieldID).Scan(&contextID)
+	if err == pgx.ErrNoRows {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO custom_field_context_projects(context_id,project_id)
-		VALUES($1,$2) ON CONFLICT DO NOTHING`, contextID, projectID)
-	return err
+	if _, err = tx.Exec(ctx, `INSERT INTO custom_field_context_projects(context_id,project_id)
+		VALUES($1,$2) ON CONFLICT DO NOTHING`, contextID, projectID); err != nil {
+		return err
+	}
+	return assertNoContextOverlapTx(ctx, tx, fieldID, strconv.FormatInt(contextID, 10))
 }
 
 func sortedKeys[V any](m map[string]V) []string {

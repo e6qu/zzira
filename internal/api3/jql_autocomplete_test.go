@@ -100,7 +100,9 @@ func TestJQLAutocompleteFollowsJiraReferenceData(t *testing.T) {
 	if len(scopedContexts.Values) != 1 {
 		t.Fatalf("scoped field contexts = %+v", scopedContexts.Values)
 	}
-	call(http.MethodPut, fmt.Sprintf("/rest/api/3/field/%s/context/%v/project", scoped, scopedContexts.Values[0].ID), `{"projectIds":["`+projectID+`"]}`, http.StatusNoContent)
+	if err = st.ChangeCustomFieldContextScope(ctx, workspaceID, adminID, scoped, fmt.Sprint(scopedContexts.Values[0].ID), []string{projectID}, nil, false); err != nil {
+		t.Fatal(err)
+	}
 	addOption := func(fieldID, value string) {
 		t.Helper()
 		var contexts struct {
