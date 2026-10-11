@@ -54,6 +54,13 @@ func TestEditDialogCanChangeFieldsAbsentFromTheViewScreen(t *testing.T) {
 		return s.ID
 	}
 	editScreen := screen("Editing all fields", "priority", "labels", "duedate", "parent", "resolution", "timetracking")
+	writingTab, err := f.store.AddScreenTab(ctx, ws, f.ownerID, editScreen, "Writing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.AddScreenTabField(ctx, ws, f.ownerID, editScreen, writingTab.ID, "description"); err != nil {
+		t.Fatal(err)
+	}
 	viewScreen := screen("Reading only summary")
 	screens, err := f.store.CreateScreenScheme(ctx, ws, f.ownerID, "Editing field screens", "", map[string]string{"default": editScreen, "edit": editScreen, "view": viewScreen})
 	if err != nil {
@@ -75,6 +82,9 @@ func TestEditDialogCanChangeFieldsAbsentFromTheViewScreen(t *testing.T) {
 	edit, err := f.handler.buildEditDialogView(ctx, ws, f.ownerID, issue, map[string]bool{"RESOLVE_ISSUES": true, "SCHEDULE_ISSUES": true})
 	if err != nil || len(edit.Priorities) == 0 || len(edit.Resolutions) == 0 || len(edit.ParentOptions) != 1 || edit.ParentOptions[0].Key != parent.Key {
 		t.Fatalf("edit metadata: %+v %v", edit, err)
+	}
+	if tabs := edit.EditingTabs(); len(tabs) != 2 || tabs[1].Name != "Writing" || len(tabs[1].Fields) != 1 || tabs[1].Fields[0].ID != "description" {
+		t.Fatalf("edit screen tabs were not resolved: %+v", tabs)
 	}
 	values := url.Values{"summary": {issue.Summary}, "priority": {"pr_high"}, "labels": {"release, verified"}, "duedate": {"2026-12-01"}, "parent": {parent.Key}, "resolution": {"Done"}, "originalEstimate": {"3h"}, "remainingEstimate": {"1h"}}
 	w := httptest.NewRecorder()

@@ -51,3 +51,50 @@ func TestEditDialogRendersConfiguredFieldOrder(t *testing.T) {
 		t.Fatal("empty screen must retain summary without optional fields")
 	}
 }
+
+func TestEditDialogTabsHideUnusableGroupsAndRetainSummary(t *testing.T) {
+	view := models.EditDialogView{
+		Issue:          models.Issue{Key: "TAB-1", Summary: "Saved summary"},
+		EditFieldOrder: []string{"labels", "summary", "description", "resolution"},
+		EditFields:     map[string]bool{"labels": true, "description": true, "resolution": true},
+		EditScreenTabs: []models.FieldTab{
+			{Name: "Details", Fields: []string{"labels"}},
+			{Name: "Text", Fields: []string{"summary", "description"}},
+			{Name: "Restricted", Fields: []string{"resolution"}},
+			{Name: "Empty"},
+		},
+	}
+	var output bytes.Buffer
+	if err := Fragment(&output, "edit_dialog", view); err != nil {
+		t.Fatal(err)
+	}
+	html := output.String()
+	for _, marker := range []string{`aria-controls="edit-tabpanel-0"`, `aria-controls="edit-tabpanel-1"`, `aria-labelledby="edit-tab-1" hidden`, `value="Saved summary"`} {
+		if !strings.Contains(html, marker) {
+			t.Errorf("tabbed dialog is missing %q", marker)
+		}
+	}
+	for _, marker := range []string{">Restricted<", ">Empty<", `id="edit-resolution"`} {
+		if strings.Contains(html, marker) {
+			t.Errorf("tabbed dialog exposed an unusable group: %q", marker)
+		}
+	}
+	view.EditFieldOrder = []string{"labels", "description"}
+	view.EditScreenTabs[1].Fields = []string{"description"}
+	output.Reset()
+	if err := Fragment(&output, "edit_dialog", view); err != nil {
+		t.Fatal(err)
+	}
+	html = output.String()
+	if strings.Count(html, `id="edit-summary"`) != 1 || strings.Index(html, `id="edit-summary"`) > strings.Index(html, `id="edit-labels"`) {
+		t.Fatal("summary absent from the screen must remain in the first usable tab")
+	}
+	view.EditScreenTabs = view.EditScreenTabs[:1]
+	output.Reset()
+	if err := Fragment(&output, "edit_dialog", view); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), `role="tablist"`) {
+		t.Fatal("one usable tab should remain a plain ordered form")
+	}
+}
