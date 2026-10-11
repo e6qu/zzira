@@ -159,6 +159,10 @@ func planCustomFieldCellFor(field planCustomFieldChoice, raw json.RawMessage, op
 
 func (h *Handler) loadPlanCustomFields(r *http.Request, workspaceID string, data *planPageData) error {
 	if len(data.Plan.CustomFields) == 0 {
+		if data.View != nil && len(data.View.CustomFilters) > 0 {
+			data.ViewFilterUnavailable = true
+			data.Error = "A saved filter is no longer available. Choose replacement filters to show work."
+		}
 		return nil
 	}
 	catalog, err := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
@@ -169,6 +173,18 @@ func (h *Handler) loadPlanCustomFields(r *http.Request, workspaceID string, data
 	for _, choice := range choices {
 		if choice.Selected {
 			data.CustomColumns = append(data.CustomColumns, choice)
+		}
+	}
+	if data.View != nil {
+		enabled := map[string]bool{}
+		for _, column := range data.CustomColumns {
+			enabled[column.ID] = column.Filter && column.Filterable
+		}
+		for id := range data.View.CustomFilters {
+			if !enabled[id] {
+				data.ViewFilterUnavailable = true
+				data.Error = "A saved filter is no longer available. Choose replacement filters to show work."
+			}
 		}
 	}
 	contexts, err := h.Store.CustomFieldContextsByProject(r.Context(), workspaceID)
@@ -224,6 +240,9 @@ func (h *Handler) loadPlanCustomFields(r *http.Request, workspaceID string, data
 			continue
 		}
 		filter := planCustomFieldFilter{ID: column.ID, Name: column.Name, Value: r.URL.Query().Get("cf_" + column.ID)}
+		if data.View != nil {
+			filter.Value = data.View.CustomFilters[column.ID]
+		}
 		for value, name := range options[column.ID] {
 			filter.Options = append(filter.Options, models.CreateFieldOption{ID: value, Name: name})
 		}
@@ -232,7 +251,12 @@ func (h *Handler) loadPlanCustomFields(r *http.Request, workspaceID string, data
 		})
 		if filter.Value != "" {
 			if _, ok := options[column.ID][filter.Value]; !ok {
-				return fmt.Errorf("%w: Choose a value offered by the %s filter.", store.ErrPlanValidation, column.Name)
+				if data.View == nil {
+					return fmt.Errorf("%w: Choose a value offered by the %s filter.", store.ErrPlanValidation, column.Name)
+				}
+				data.ViewFilterUnavailable = true
+				data.Error = "A saved filter is no longer available. Choose replacement filters to show work."
+				filter.Value = ""
 			}
 		}
 		data.CustomFilters = append(data.CustomFilters, filter)
@@ -241,6 +265,9 @@ func (h *Handler) loadPlanCustomFields(r *http.Request, workspaceID string, data
 }
 
 func planCustomFieldRows(data *planPageData) []timelineRow {
+	if data.ViewFilterUnavailable {
+		return []timelineRow{}
+	}
 	rows := []timelineRow{}
 	for _, row := range data.Timeline.Rows {
 		matches := true

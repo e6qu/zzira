@@ -94,7 +94,7 @@ Owning reference: [JIRA_SOFTWARE.md](docs/JIRA_SOFTWARE.md#plans).
   what may go after it.
 - Automatically delete trashed plans after 60 days; archived plans stay restorable.
 - Scenario edits: parent, rank, release, status, custom fields, create work items.
-- Views: saved zoom, columns and custom-field filters.
+- Views: saved zoom and columns.
 - Make `inferredDates` take effect; extend custom columns beyond text, numbers,
   dates, URLs, selects and labels.
 - Atlassian Teams REST API.

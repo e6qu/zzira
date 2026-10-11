@@ -166,6 +166,12 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
 **Scenarios**
 - Each plan has a Default scenario. You can add more scenarios, blank or copied from another, and rename, recolor or delete them. Switch with `?scenario=`.
 - In a scenario you can edit a work item's summary, start date, end date, team, sprint and estimate. These edits stay in the scenario and are not saved to the work item.
+- Saved views retain enabled custom filters with grouping, keyword filtering
+  and rollup. Refused saves keep the name and selected filters. If a saved
+  filter is no longer enabled, associated or visible, the view shows no work
+  and asks the reader to choose replacement filters; it does not reveal the
+  unavailable value or silently widen the results. Saving and deleting views
+  recheck edit permission and record an audit event atomically.
 - **Review changes** (`/plans/{id}/review`) saves the chosen edits to Jira through the normal edit path, or discards them.
 
 **Teams**
@@ -248,7 +254,7 @@ Errors use the module format, `[{"message": …}]`. Provider rate limits are des
   - `inferredDates` is stored but not used. Custom columns currently support
     text, numbers, dates, URLs, selects and labels; other picker types remain.
   - A saved view keeps the grouping, the filter and whether the plan rolls up;
-    custom-field filters, the timeline's zoom and its columns are not part of it, and rolling up
+    the timeline's zoom and its columns are not part of it, and rolling up
     covers dates and estimates.
 - Scenarios cannot change parent, rank, release, status or custom fields, and cannot create work items.
 - Cross-project releases can be configured on the plan and read in the release

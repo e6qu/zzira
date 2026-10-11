@@ -48,16 +48,18 @@ type planPageData struct {
 	// whatever it is grouped by, or one unnamed group holding the plan's own
 	// order. Views are the saved ways of reading this plan, and View the one
 	// the page is showing, if any.
-	CustomColumns   []planCustomFieldChoice
-	CustomCells     map[string]map[string]planCustomFieldCell
-	CustomFilters   []planCustomFieldFilter
-	WorkColumnCount int
-	Groups          []planGroup
-	GroupBy         string
-	Query           string
-	Groupings       []string
-	Views           []store.PlanView
-	View            *store.PlanView
+	CustomColumns         []planCustomFieldChoice
+	CustomCells           map[string]map[string]planCustomFieldCell
+	CustomFilters         []planCustomFieldFilter
+	WorkColumnCount       int
+	ViewDraftName         string
+	ViewFilterUnavailable bool
+	Groups                []planGroup
+	GroupBy               string
+	Query                 string
+	Groupings             []string
+	Views                 []store.PlanView
+	View                  *store.PlanView
 	// RollUp says the page is adding the work under each parent onto it.
 	// RolledEstimate is what each item's work adds up to, and OwnDates the
 	// dates the item itself carries, which is what its form edits.
@@ -261,8 +263,13 @@ func (h *Handler) renderPlanPage(w http.ResponseWriter, r *http.Request, message
 		data.Teams = append(data.Teams, planTeamOption{ID: capacity.Team.ID, Name: capacity.Name})
 	}
 	if message != "" {
+		if strings.HasSuffix(r.URL.Path, "/views") && r.PostFormValue("action") != "delete" {
+			data.ViewDraftName = r.PostFormValue("name")
+		}
 		data.Error = message
-		data.TeamDraft = readPlanTeamDraft(r)
+		if action := r.PostFormValue("action"); action == "add-atlassian" || action == "add-planonly" || action == "remove" {
+			data.TeamDraft = readPlanTeamDraft(r)
+		}
 	}
 	if edit {
 		teams, loadErr := h.Store.AtlassianTeams(r.Context(), workspaceID)
@@ -364,8 +371,11 @@ func (h *Handler) renderPlanPage(w http.ResponseWriter, r *http.Request, message
 // PlanViewSave keeps the grouping and filter a planner is looking at under a
 // name, so the next person opens the plan the same way.
 func (h *Handler) PlanViewSave(w http.ResponseWriter, r *http.Request) {
+	if !parseForm(w, r) {
+		return
+	}
 	user, workspaceID, plan, edit, _, scenario, ok := h.planContext(w, r)
-	if !ok || !parseForm(w, r) {
+	if !ok {
 		return
 	}
 	if !edit {
@@ -376,7 +386,11 @@ func (h *Handler) PlanViewSave(w http.ResponseWriter, r *http.Request) {
 	if r.PostFormValue("action") == "delete" {
 		viewID, err := strconv.ParseInt(r.PostFormValue("view"), 10, 64)
 		if err == nil {
-			err = h.Store.DeletePlanView(r.Context(), workspaceID, plan.ID, viewID)
+			err = h.Store.DeletePlanView(r.Context(), workspaceID, user.ID, plan.ID, viewID)
+		}
+		if errors.Is(err, store.ErrProjectPermission) {
+			http.Error(w, "You can no longer edit this plan.", http.StatusForbidden)
+			return
 		}
 		if err != nil {
 			redirectLocal(w, r, back+"&error="+url.QueryEscape("That view is not in this plan."))
@@ -385,12 +399,40 @@ func (h *Handler) PlanViewSave(w http.ResponseWriter, r *http.Request) {
 		redirectLocal(w, r, back+"&notice="+url.QueryEscape("The view was deleted."))
 		return
 	}
-	view, err := h.Store.SavePlanView(r.Context(), workspaceID, user.ID, plan.ID, store.PlanView{
-		Name: r.PostFormValue("name"), GroupBy: r.PostFormValue("group"), Query: r.PostFormValue("q"),
-		RollUp: r.PostFormValue("rollup") == "true",
-	})
+	filters := map[string]string{}
+	for key, values := range r.PostForm {
+		if strings.HasPrefix(key, "cf_") && len(values) == 1 && values[0] != "" {
+			filters[strings.TrimPrefix(key, "cf_")] = values[0]
+		}
+	}
+	view, err := h.Store.SavePlanView(r.Context(), workspaceID, user.ID, plan.ID, store.PlanView{Name: r.PostFormValue("name"), GroupBy: r.PostFormValue("group"), Query: r.PostFormValue("q"), RollUp: r.PostFormValue("rollup") == "true", CustomFilters: filters})
 	if err != nil {
-		redirectLocal(w, r, back+"&error="+url.QueryEscape(err.Error()))
+		if errors.Is(err, store.ErrProjectPermission) {
+			http.Error(w, "You can no longer edit this plan.", http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, store.ErrPlanNotActive) {
+			http.Error(w, "The plan is no longer active.", http.StatusConflict)
+			return
+		}
+		if errors.Is(err, store.ErrPlanNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		if !errors.Is(err, store.ErrPlanValidation) {
+			http.Error(w, "Could not save the plan view.", http.StatusInternalServerError)
+			return
+		}
+		// Rebuild the same view from submitted controls and keep its refused
+		// name, rather than redirecting away from the planner's choices.
+		values := url.Values{"scenario": {strconv.FormatInt(scenario.ID, 10)}, "group": {r.PostFormValue("group")}, "q": {r.PostFormValue("q")}, "rollup": {r.PostFormValue("rollup")}}
+		for id, value := range filters {
+			values.Set("cf_"+id, value)
+		}
+		copyURL := *r.URL
+		copyURL.RawQuery = values.Encode()
+		r.URL = &copyURL
+		h.renderPlanPage(w, r, planErrorMessage(err), http.StatusBadRequest)
 		return
 	}
 	redirectLocal(w, r, back+"&view="+strconv.FormatInt(view.ID, 10)+"&notice="+url.QueryEscape("Saved the view "+view.Name+"."))

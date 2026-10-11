@@ -98,6 +98,28 @@ func TestPlanCustomFieldsPersistDisplayFilterAndRespectScope(t *testing.T) {
 	if !strings.Contains(blue, "Blue work") || strings.Contains(blue, "Red work") {
 		t.Fatal("label filter did not select matching work")
 	}
+	viewForm := url.Values{"name": {"   "}, "cf_" + labelID: {`"blue"`}}
+	request := httptest.NewRequest(http.MethodPost, path+"/views", strings.NewReader(viewForm.Encode()))
+	request.SetPathValue("id", strconv.FormatInt(planID, 10))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(&http.Cookie{Name: "zzira_session", Value: f.tokens[f.ownerID]})
+	refusedView := httptest.NewRecorder()
+	f.handler.PlanViewSave(refusedView, request)
+	if refusedView.Code != 400 || !strings.Contains(refusedView.Body.String(), `name="name" value="   "`) || !strings.Contains(refusedView.Body.String(), "Blue work") || strings.Contains(refusedView.Body.String(), "Red work") {
+		t.Fatal("refused view lost its name or selected filter")
+	}
+	savedView, err := f.store.SavePlanView(ctx, ws, f.ownerID, planID, store.PlanView{Name: "Blue view", CustomFilters: map[string]string{labelID: `"blue"`}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	viewPath := "?view=" + strconv.FormatInt(savedView.ID, 10)
+	viewPage := get(viewPath, 200).Body.String()
+	if !strings.Contains(viewPage, "Blue work") || strings.Contains(viewPage, "Red work") {
+		t.Fatal("saved view did not retain custom filter")
+	}
+	if _, err = f.store.SavePlanView(ctx, ws, f.otherID, planID, store.PlanView{Name: "Refused editor"}); !errors.Is(err, store.ErrProjectPermission) {
+		t.Fatalf("unprivileged view write: %v", err)
+	}
 	get("?"+url.Values{"cf_" + labelID: {`"forged"`}}.Encode(), 400)
 	if !strings.Contains(get("/settings", 200).Body.String(), `name="customFieldFilter" value="`+labelID+`" checked`) {
 		t.Fatal("enabled filter lost on reload")
@@ -141,6 +163,10 @@ func TestPlanCustomFieldsPersistDisplayFilterAndRespectScope(t *testing.T) {
 	filterBody, _, _ = strings.Cut(filterBody, `</select>`)
 	if strings.Contains(filterBody, "blue") || !strings.Contains(outOfScope, "Not available") {
 		t.Fatal("unassociated values leaked into plan filters")
+	}
+	privateView := get(viewPath, 200).Body.String()
+	if strings.Contains(privateView, "Blue work") || strings.Contains(privateView, "Red work") || strings.Contains(privateView, `value="&#34;blue&#34;"`) || !strings.Contains(privateView, "A saved filter is no longer available") {
+		t.Fatal("unavailable saved filter exposed its value or widened the view")
 	}
 	// Removing the configured fields removes their columns and filter controls.
 	post(f.ownerID, url.Values{"action": {"custom-fields"}}, 303)

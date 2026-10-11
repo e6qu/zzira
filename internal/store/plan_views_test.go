@@ -40,6 +40,7 @@ func TestASavedPlanViewKeepsHowThePlanIsRead(t *testing.T) {
 	t.Cleanup(func() {
 		exec(`DELETE FROM plans WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM projects WHERE workspace_id=$1`, workspaceID)
+		exec(`DELETE FROM actions WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM memberships WHERE workspace_id=$1`, workspaceID)
 		exec(`DELETE FROM workspaces WHERE id=$1`, workspaceID)
 		exec(`DELETE FROM users WHERE id=$1`, leadID)
@@ -91,10 +92,10 @@ func TestASavedPlanViewKeepsHowThePlanIsRead(t *testing.T) {
 		}
 	}
 
-	if err := st.DeletePlanView(ctx, workspaceID, planID, saved.ID); err != nil {
+	if err := st.DeletePlanView(ctx, workspaceID, leadID, planID, saved.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.DeletePlanView(ctx, workspaceID, planID, saved.ID); err == nil {
+	if err := st.DeletePlanView(ctx, workspaceID, leadID, planID, saved.ID); err == nil {
 		t.Fatal("deleting a view twice was allowed")
 	}
 	if views, err = st.PlanViews(ctx, workspaceID, planID); err != nil || len(views) != 0 {
