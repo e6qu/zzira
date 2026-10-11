@@ -227,6 +227,7 @@ func main() {
 	go (&store.WikiNotificationEmailRunner{Store: st, BaseURL: baseURL}).Run(ctx)
 	go (&store.APITaskRunner{Store: st, BulkIssueExecutor: cmdSvc, Blobs: blobs}).Run(ctx, workspaceID)
 	go (&store.ProjectTrashRunner{Store: st}).Run(ctx, workspaceID)
+	go (&store.PlanTrashRunner{Store: st}).Run(ctx)
 	go (&store.ServiceSLARunner{Store: st}).Run(ctx, workspaceID)
 	go (&store.ServiceIncidentEscalationRunner{Store: st}).Run(ctx, workspaceID)
 	go (&commands.AttachmentBlobDeletionRunner{Service: cmdSvc}).Run(ctx)

@@ -92,7 +92,6 @@ Owning reference: [JIRA_SOFTWARE.md](docs/JIRA_SOFTWARE.md#plans).
 
 - Auto-scheduler: schedule against releases too, so a version's date bounds
   what may go after it.
-- Automatically delete trashed plans after 60 days; archived plans stay restorable.
 - Scenario edits: parent, rank, release, status, custom fields, create work items.
 - Make `inferredDates` take effect; extend custom columns beyond text, numbers,
   dates, URLs, selects and labels.

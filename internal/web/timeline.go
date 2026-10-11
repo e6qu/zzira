@@ -236,8 +236,9 @@ func (h *Handler) ScheduleTimelineItem(w http.ResponseWriter, r *http.Request) {
 }
 
 type planListRow struct {
-	Plan store.Plan
-	Edit bool
+	Plan    store.Plan
+	Edit    bool
+	Expired bool
 }
 
 type plansPageData struct {
@@ -307,7 +308,7 @@ func (h *Handler) PlansPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if view {
-			data.Plans = append(data.Plans, planListRow{Plan: plan, Edit: edit})
+			data.Plans = append(data.Plans, planListRow{Plan: plan, Edit: edit, Expired: plan.TrashExpired})
 		}
 	}
 	h.writeWorkspacePage(w, r, "page_plans", user, workspaceID, data, "plans", "")
@@ -344,6 +345,8 @@ func (h *Handler) PlanLifecycle(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Administer Jira is required to manage plans.", http.StatusForbidden)
 		case errors.Is(err, store.ErrPlanNotFound):
 			http.NotFound(w, r)
+		case errors.Is(err, store.ErrPlanTrashExpired):
+			http.Error(w, "The plan's 60-day trash recovery period has expired.", http.StatusConflict)
 		case errors.Is(err, store.ErrPlanNotActive), errors.Is(err, store.ErrPlanStatusChanged):
 			http.Error(w, "The plan status changed. Reload the plan list before trying again.", http.StatusConflict)
 		case errors.Is(err, store.ErrPlanValidation):

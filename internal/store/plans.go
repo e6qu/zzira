@@ -18,6 +18,7 @@ var (
 	ErrPlanValidation    = errors.New("invalid plan")
 	ErrPlanNotFound      = errors.New("plan not found")
 	ErrPlanNotActive     = errors.New("plan is not active")
+	ErrPlanTrashExpired  = errors.New("the plan's 60-day trash recovery period has expired")
 	ErrPlanStatusChanged = errors.New("the plan status changed; reload before trying again")
 )
 
@@ -157,6 +158,8 @@ type Plan struct {
 	ID                          int64
 	Name, LeadAccountID, Status string
 	ScenarioID                  int64
+	TrashedAt                   *time.Time
+	TrashExpired                bool
 	Scheduling                  PlanScheduling
 	ExclusionRules              PlanExclusionRules
 	IssueSources                []PlanIssueSource
@@ -447,12 +450,12 @@ func (s *Store) CreatePlan(ctx context.Context, workspaceID, actorID string, pla
 	return id, tx.Commit(ctx)
 }
 
-const planColumns = `p.id,p.name,COALESCE(p.lead_account_id,''),p.status,p.scenario_id,p.scheduling,p.exclusion_rules,p.custom_fields,p.cross_project_releases,p.permissions,p.updated_at`
+const planColumns = `p.id,p.name,COALESCE(p.lead_account_id,''),p.status,p.scenario_id,p.scheduling,p.exclusion_rules,p.custom_fields,p.cross_project_releases,p.permissions,p.updated_at,p.trashed_at,COALESCE(p.trashed_at<=now()-interval '60 days',false)`
 
 func scanPlan(row pgx.Row) (Plan, error) {
 	var plan Plan
 	var scheduling, rules, fields, releases, permissions []byte
-	if err := row.Scan(&plan.ID, &plan.Name, &plan.LeadAccountID, &plan.Status, &plan.ScenarioID, &scheduling, &rules, &fields, &releases, &permissions, &plan.UpdatedAt); err != nil {
+	if err := row.Scan(&plan.ID, &plan.Name, &plan.LeadAccountID, &plan.Status, &plan.ScenarioID, &scheduling, &rules, &fields, &releases, &permissions, &plan.UpdatedAt, &plan.TrashedAt, &plan.TrashExpired); err != nil {
 		return Plan{}, err
 	}
 	for raw, target := range map[*[]byte]any{&scheduling: &plan.Scheduling, &rules: &plan.ExclusionRules, &fields: &plan.CustomFields, &releases: &plan.CrossProjectReleases, &permissions: &plan.Permissions} {
@@ -648,7 +651,8 @@ func (s *Store) ChangePlanStatus(ctx context.Context, workspaceID, actorID strin
 		return err
 	}
 	var current, name string
-	err = tx.QueryRow(ctx, `SELECT status,name FROM plans WHERE workspace_id=$1 AND id=$2 FOR UPDATE`, workspaceID, planID).Scan(&current, &name)
+	var expired bool
+	err = tx.QueryRow(ctx, `SELECT status,name,COALESCE(trashed_at<=now()-interval '60 days',false) FROM plans WHERE workspace_id=$1 AND id=$2 FOR UPDATE`, workspaceID, planID).Scan(&current, &name, &expired)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrPlanNotFound
 	}
@@ -660,6 +664,9 @@ func (s *Store) ChangePlanStatus(ctx context.Context, workspaceID, actorID strin
 			return ErrPlanNotActive
 		}
 		return ErrPlanStatusChanged
+	}
+	if current == "Trashed" && status == "Active" && expired {
+		return ErrPlanTrashExpired
 	}
 	if _, err = tx.Exec(ctx, `UPDATE plans SET status=$3,updated_at=now() WHERE workspace_id=$1 AND id=$2`, workspaceID, planID, status); err != nil {
 		return err

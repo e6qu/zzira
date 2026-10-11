@@ -107,7 +107,11 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
   plans cannot be opened or edited. Restore retains their settings, sources,
   teams, scenarios, drafts and capacities. Lifecycle changes check the current
   status and record an audit event in the same transaction; stale forms return
-  a conflict. This follows [Atlassian's restoration journey](https://support.atlassian.com/jira-software-cloud/docs/delete-or-archive-your-plan/).
+  a conflict. Trash can be restored for 60 days. A database-backed worker runs
+  at startup and hourly, deleting expired plans and their drafts, teams and
+  saved views in bounded transactions with system audit events. Committed work
+  items remain intact; archived plans have no expiry. The deadline is based on
+  entering trash, so later metadata changes do not extend recovery. This follows [Atlassian's restoration journey](https://support.atlassian.com/jira-software-cloud/docs/delete-or-archive-your-plan/).
 - `/plans/{id}/settings` is the plan's setup, for anyone who may edit it: its
   name and lead, its scheduling (estimation unit and the fields its dates come
   from, including date-only and datetime custom fields), its issue sources, its exclusion rules (how long completed work stays
@@ -252,7 +256,6 @@ Errors use the module format, `[{"message": …}]`. Provider rate limits are des
 ## Gaps
 
 - Plans:
-  - Trashed plans are not automatically deleted after 60 days yet.
   - `inferredDates` is stored but not used. Custom columns currently support
     text, numbers, dates, URLs, selects and labels; other picker types remain.
 - Scenarios cannot change parent, rank, release, status or custom fields, and cannot create work items.

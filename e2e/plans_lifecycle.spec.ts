@@ -59,6 +59,7 @@ test('an administrator archives, trashes and restores a plan without losing its 
     await planRow().getByRole('button', { name: `Archive ${name}`, exact: true }).click();
     await expect(page.getByRole('status')).toHaveText('Plan archived.');
     await showPlan('Archived');
+    await expect(page.getByText('Archived plans can be restored at any time.', { exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Archived', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(planRow().getByRole('link', { name, exact: true })).toHaveCount(0);
     await planRow().getByRole('button', { name: `Restore ${name}`, exact: true }).click();
@@ -68,6 +69,7 @@ test('an administrator archives, trashes and restores a plan without losing its 
     await planRow().getByRole('button', { name: `Move to trash ${name}`, exact: true }).click();
     await expect(page.getByRole('status')).toHaveText('Plan moved to trash.');
     await showPlan('Trashed');
+    await expect(page.getByText('Plans can be restored for 60 days after moving to trash.', { exact: false })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Trash', exact: true })).toHaveAttribute('aria-current', 'page');
     await page.setViewportSize({ width: 320, height: 740 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
