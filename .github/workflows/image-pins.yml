@@ -1,0 +1,27 @@
+name: image-pins
+
+# Every pinned image is a Docker Hub copy on public.ecr.aws or mirror.gcr.io.
+# This compares each pin with the digest Docker Hub serves for its tag, so a
+# stale pin shows up on pull requests and, through the daily run, on main.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image-pins:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Test image pin policy
+        run: python3 -m unittest discover -s scripts -p 'test_image_pins.py'
+      - name: Compare image pins with Docker Hub
+        run: python3 scripts/image-pins.py
