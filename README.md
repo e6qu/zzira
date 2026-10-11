@@ -39,6 +39,9 @@ Open <http://localhost:8080> and sign in as `demo@zzira.dev` / `demo1234`.
 For source setup, credential locations and persistent files, use the
 [getting-started guide](docs/GETTING_STARTED.md).
 
+Change light or dark mode with the header's theme button. On narrow screens,
+open your account menu to find the same control. The choice stays in your browser.
+
 Add the populated Northwind company with
 `docker compose exec zzira /zzira-server -mode=demo`. Its projects, teams,
 history and wiki content are declared in [demo/company.json](demo/company.json).
