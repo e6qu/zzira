@@ -27,6 +27,7 @@ Names are unique per site, ignoring case. Every change is written to the action 
 - `createmeta` and the create dialog mark required fields, drop hidden ones, and show the administrator's help text in place of the built-in text.
 - `editmeta` applies the configuration for the work item's own work type.
 - Bulk edit offers only fields that every selected work item's form allows.
+- Issue details, edit dialogs and transition custom-field controls drop hidden fields and fields outside the work type context. Separate view and edit screens govern display and editing ([SCREENS.md](SCREENS.md#custom-fields-on-work-items)).
 - Commands enforce the rules for all clients. On create, a required field must be present and a hidden field must be absent. On edit and on a transition with field updates, a required field cannot be cleared and a hidden field cannot be set. An update that doesn't touch a governed field is never refused.
 - Hiding a field clears its required setting and help text. Unhiding starts from their default values.
 - A field cannot be both required and hidden. `summary` is always required and visible, and the context fields (project, work type) are exempt.
@@ -51,10 +52,9 @@ Names are unique per site, ignoring case. Every change is written to the action 
 
 **Copy.** The settings page copies a configuration, named "Copy of X" (then "Copy 2 of X"), carrying its configuration and nothing else: the copy is assigned to no project and is never the site default.
 
-
 ## Renderers
 
- Legacy `renderer` and field-scheme `rendererType` share the same
+Legacy `renderer` and field-scheme `rendererType` share the same
 rule. Wiki and plain text choices survive partial updates, work-type overrides
 and copies. Legacy `wiki-renderer` / `text-renderer` aliases normalize to
 `atlassian-wiki-renderer` / `jira-text-renderer`; unknown plugins are refused.

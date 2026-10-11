@@ -70,6 +70,18 @@ remain restricted to site administrators.
 
 A screen with more than one tab is shown as tabs on the create form: one panel at a time, with the arrow keys moving between them. A screen with one tab is shown as a plain list, as a single tab is just a form.
 
+## Custom fields on work items
+
+Issue details use the view screen; the edit dialog uses the edit screen.
+Both apply the work type's field configuration and custom-field context.
+A view-only field displays its saved value without an inline edit control.
+Transition screens resolve their own fields, including fields absent from the
+edit screen. Ordinary custom-field edits outside that screen are refused;
+authorized screen-security overrides retain their existing behavior.
+
+Regression evidence: `internal/web/custom_field_screens_test.go` and
+`e2e/custom_field_screens.spec.ts`.
+
 ## Transition screens
 
 A workflow transition can name a screen; the transition then asks for the fields that screen holds, and adding or removing a field on the screen changes the transition with no workflow edit and no new version. The workflow editor offers the site's screens beside its own field list ([WORKFLOW_RULES.md](WORKFLOW_RULES.md)).
@@ -80,4 +92,4 @@ A workflow transition can name a screen; the transition then asks for the fields
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- Environment, Attachment and Linked issues are not in the field catalog.
+- Attachment and Linked work items are not in the field catalog.

@@ -143,6 +143,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 			customFieldsProvided = append(customFieldsProvided, field)
 		}
 	}
+	slices.Sort(customFieldsProvided)
 	if (in.ReporterID != nil || environmentProvided || len(customFieldsProvided) > 0) && !OverridesFromContext(ctx).ScreenSecurity {
 		fields, err := s.Store.ResolveScreenFields(ctx, in.WorkspaceID, issue.ProjectID, issue.IssueType.ID, "edit")
 		if err != nil {
