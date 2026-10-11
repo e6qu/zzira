@@ -68,8 +68,8 @@ backlogs remain epic-level, as Jira's do.
   schemes; team-managed scoping, asynchronous priority-scheme updates and a
   larger avatar catalogue remain ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#gaps)).
 - Add Environment, Attachment and Linked work items to the screen catalog.
-- Custom field contexts: a global context coexists with project contexts that
-  override it.
+- Custom field contexts: reject assigning projects to a global context through
+  REST, as required by the April 2026 Cloud contract; preserve browser editing.
 - Custom field options: delete, replace on work items, reorder anywhere.
 - App field options: `projects2` scope, `defaultValue`, property indexes for JQL.
 - Store `renderer` / `rendererType` on field configuration items.

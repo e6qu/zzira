@@ -3,6 +3,7 @@ package api3
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -174,6 +175,68 @@ func TestCustomFieldContextContract(t *testing.T) {
 	call(adminID, http.MethodPost, contextPath, `{"name":"Unknown project","projectIds":["9999"]}`, http.StatusBadRequest)
 	call(adminID, http.MethodPost, contextPath, `{"name":"Unknown type","issueTypeIds":["it_nope"]}`, http.StatusBadRequest)
 
+	// Project overrides coexist with the global fallback. Even disjoint work
+	// types cannot assign a project to two different explicit contexts.
+	override := decodeID(call(adminID, http.MethodPost, contextPath, `{"name":"Alpha override","projectIds":["`+projectA+`"],"issueTypeIds":["it_task"]}`, http.StatusCreated))
+	call(adminID, http.MethodPost, contextPath, `{"name":"Alpha subtask override","projectIds":["`+projectA+`"],"issueTypeIds":["it_subtask"]}`, http.StatusConflict)
+	call(adminID, http.MethodPost, contextPath, `{"name":"Subtask global","issueTypeIds":["it_subtask"]}`, http.StatusConflict)
+	call(adminID, http.MethodPut, contextPath+"/defaultValue", `{"defaultValues":[{"contextId":"`+globalContext+`","value":"Global fallback"},{"contextId":"`+override+`","value":"Alpha default"}]}`, http.StatusNoContent)
+	for _, scenario := range []struct{ project, issueType, want string }{
+		{keyA, "it_task", "Alpha default"},
+		{keyA, "it_subtask", "Global fallback"},
+		{keyB, "it_task", "Global fallback"},
+	} {
+		meta := call(adminID, http.MethodGet, "/rest/api/3/issue/createmeta/"+scenario.project+"/issuetypes/"+scenario.issueType+"?maxResults=60", "", http.StatusOK)
+		if !strings.Contains(meta.Body.String(), `"defaultValue":"`+scenario.want+`"`) {
+			t.Fatalf("%s/%s should default to %q: %s", scenario.project, scenario.issueType, scenario.want, meta.Body.String())
+		}
+	}
+	// Concurrent creates for the same project cannot both pass the scope
+	// check, and the losing transaction must leave no extra context behind.
+	raceCtx, cancelRace := context.WithTimeout(ctx, 15*time.Second)
+	defer cancelRace()
+	type contextResult struct {
+		id  string
+		err error
+	}
+	results := make(chan contextResult, 2)
+	start := make(chan struct{})
+	for _, name := range []string{"Beta concurrent one", "Beta concurrent two"} {
+		go func(name string) {
+			<-start
+			created, createErr := st.CreateCustomFieldContext(raceCtx, workspaceID, adminID, fieldID, name, "", []string{projectB}, nil)
+			result := contextResult{err: createErr}
+			if created != nil {
+				result.id = created.ID
+			}
+			results <- result
+		}(name)
+	}
+	close(start)
+	var winner string
+	wins, conflicts := 0, 0
+	for range 2 {
+		result := <-results
+		if result.err == nil {
+			wins++
+			winner = result.id
+		} else if errors.Is(result.err, store.ErrFieldContextConflict) {
+			conflicts++
+		} else {
+			t.Fatalf("concurrent context create: %v", result.err)
+		}
+	}
+	if wins != 1 || conflicts != 1 {
+		t.Fatalf("concurrent creates: wins=%d conflicts=%d", wins, conflicts)
+	}
+	call(adminID, http.MethodDelete, contextPath+"/"+winner, "", http.StatusNoContent)
+	call(adminID, http.MethodDelete, contextPath+"/"+override, "", http.StatusNoContent)
+	fallback := call(adminID, http.MethodGet, "/rest/api/3/issue/createmeta/"+keyA+"/issuetypes/it_task?maxResults=60", "", http.StatusOK)
+	if !strings.Contains(fallback.Body.String(), `"defaultValue":"Global fallback"`) {
+		t.Fatalf("deleting the override should restore the global default: %s", fallback.Body.String())
+	}
+	call(adminID, http.MethodPut, contextPath+"/defaultValue", `{"defaultValues":[{"contextId":"`+globalContext+`","value":null}]}`, http.StatusNoContent)
+
 	// Narrowing the global context to project A removes the field from B.
 	call(adminID, http.MethodPut, contextPath+"/"+globalContext+"/project", `{"projectIds":["`+projectA+`"]}`, http.StatusNoContent)
 	if !contains(fieldsFor(keyA, "it_task"), fieldID) {
@@ -249,7 +312,7 @@ func TestCustomFieldContextContract(t *testing.T) {
 
 	// Removing every scope entry returns a context to applying everywhere.
 	call(adminID, http.MethodPost, contextPath+"/"+betaContext+"/issuetype/remove", `{"issueTypeIds":["it_subtask"]}`, http.StatusNoContent)
-	call(adminID, http.MethodPost, contextPath+"/"+betaContext+"/project/remove", `{"projectIds":["`+projectB+`"]}`, http.StatusConflict)
+	call(adminID, http.MethodPost, contextPath+"/"+betaContext+"/project/remove", `{"projectIds":["`+projectB+`"]}`, http.StatusNoContent)
 
 	// A field keeps at least one context.
 	call(adminID, http.MethodDelete, contextPath+"/"+betaContext, "", http.StatusNoContent)
@@ -333,6 +396,34 @@ func TestCustomFieldContextContract(t *testing.T) {
 	if !strings.Contains(optionMeta.Body.String(), `"Canary"`) {
 		t.Fatal(optionMeta.Body.String())
 	}
+
+	// A global context may be created after a scoped context. Its options
+	// reach Beta, while Alpha continues to offer only its own options.
+	selectPath := "/rest/api/3/field/" + selectID + "/context"
+	if err = st.ChangeCustomFieldContextScope(ctx, workspaceID, adminID, selectID, selectContext, []string{projectA}, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	fallbackContext := decodeID(call(adminID, http.MethodPost, selectPath, `{"name":"Fallback ring"}`, http.StatusCreated))
+	fallbackOptions := call(adminID, http.MethodPost, selectPath+"/"+fallbackContext+"/option", `{"options":[{"value":"Global ring"}]}`, http.StatusOK)
+	var fallbackWire struct {
+		Options []struct {
+			ID int64 `json:"id"`
+		} `json:"options"`
+	}
+	if err = json.Unmarshal(fallbackOptions.Body.Bytes(), &fallbackWire); err != nil || len(fallbackWire.Options) != 1 {
+		t.Fatalf("fallback options: %s err=%v", fallbackOptions.Body.String(), err)
+	}
+	fallbackOption := fmt.Sprint(fallbackWire.Options[0].ID)
+	for _, scenario := range []struct{ project, expected, absent string }{
+		{keyA, "Canary", "Global ring"}, {keyB, "Global ring", "Canary"},
+	} {
+		meta := call(adminID, http.MethodGet, "/rest/api/3/issue/createmeta/"+scenario.project+"/issuetypes/it_task?maxResults=60", "", http.StatusOK)
+		if !strings.Contains(meta.Body.String(), scenario.expected) || strings.Contains(meta.Body.String(), scenario.absent) {
+			t.Fatalf("options for %s: %s", scenario.project, meta.Body.String())
+		}
+	}
+	call(adminID, http.MethodPost, "/rest/api/3/issue", `{"fields":{"project":{"key":"`+keyA+`"},"summary":"Wrong fallback option","issuetype":{"name":"Task"},"`+selectID+`":"`+fallbackOption+`"}}`, http.StatusBadRequest)
+	call(adminID, http.MethodPost, "/rest/api/3/issue", `{"fields":{"project":{"key":"`+keyB+`"},"summary":"Correct fallback option","issuetype":{"name":"Task"},"`+selectID+`":"`+fallbackOption+`"}}`, http.StatusCreated)
 
 	// A work item may only take an option the governing context offers.
 	call(adminID, http.MethodPost, "/rest/api/3/issue",

@@ -8,9 +8,7 @@ async function login(page: import('@playwright/test').Page, email: string, passw
   await page.getByRole('button', { name: 'Log in' }).click();
 }
 
-// The journey owns two projects and one custom field. A custom field cannot be
-// deleted through the API, so the field is scoped away from the shared demo
-// project at the end rather than left applying to it.
+// The journey owns and removes its two projects and custom field.
 test('site administrators scope a custom field with a context and the create form follows', async ({ page }) => {
   await login(page, 'demo@zzira.dev', 'demo1234');
   const stamp = Date.now().toString(36);
@@ -30,7 +28,7 @@ test('site administrators scope a custom field with a context and the create for
     return String((await created.json()).id);
   };
   const projectA = await makeProject(keyA, nameA);
-  await makeProject(keyB, nameB);
+  const projectB = await makeProject(keyB, nameB);
 
   const field = await page.request.post('/rest/api/3/field', {
     headers: auth, data: { name: `Release note ${stamp}`, type: 'text' },
@@ -38,6 +36,7 @@ test('site administrators scope a custom field with a context and the create for
   expect(field.status()).toBe(201);
   const fieldID = (await field.json()).id;
 
+  try {
   const createFormHasField = async (projectKey: string) => {
     await page.goto(`/projects/${projectKey}`);
     await page.locator('#global-create-issue').click();
@@ -63,6 +62,43 @@ test('site administrators scope a custom field with a context and the create for
   const context = card.locator('.custom-field-context').first();
   const contextID = await context.getAttribute('data-context-id');
   await expect(context).toContainText('Every project');
+
+  // Keep the global fallback while giving Alpha its own default.
+  await context.locator('.context-default-row input[name="defaultValue"]').fill('Global fallback');
+  await context.locator('.context-default-row').getByRole('button', { name: 'Save default' }).click();
+  const addContext = card.locator('form.screen-level-create');
+  await addContext.locator('input[name="name"]').fill('Alpha override');
+  await addContext.locator('textarea[name="description"]').fill('Only Alpha');
+  await addContext.locator('select[name="project"]').selectOption(projectA);
+  await addContext.getByRole('button', { name: 'Add context' }).click();
+  await expect(page.getByRole('status')).toContainText('Custom field context created.');
+  await expect(card.locator('.custom-field-context')).toHaveCount(2);
+  const override = card.locator('.custom-field-context').filter({ has: page.getByRole('heading', { name: 'Alpha override', exact: true }) });
+  await override.locator('.context-default-row input[name="defaultValue"]').fill('Alpha default');
+  await override.locator('.context-default-row').getByRole('button', { name: 'Save default' }).click();
+  for (const [key, value] of [[keyA, 'Alpha default'], [keyB, 'Global fallback']]) {
+    await page.goto(`/projects/${key}`);
+    await page.locator('#global-create-issue').click();
+    const form = page.getByRole('dialog', { name: 'Create issue' });
+    await expect(page.locator('#create-summary')).toBeFocused();
+    await form.locator('.create-more summary').click();
+    await expect(form.locator(`#create-${fieldID}`)).toHaveValue(value);
+    await page.keyboard.press('Escape');
+  }
+  await page.goto('/settings/custom-fields');
+  await addContext.locator('input[name="name"]').fill('Conflicting Alpha');
+  await addContext.locator('textarea[name="description"]').fill('Retain my description');
+  await addContext.locator('select[name="project"]').selectOption(projectA);
+  await addContext.getByRole('button', { name: 'Add context' }).click();
+  await expect(addContext.locator('input[name="name"]')).toHaveValue('Conflicting Alpha');
+  await expect(addContext.locator('textarea[name="description"]')).toHaveValue('Retain my description');
+  await expect(addContext.locator('select[name="project"]')).toHaveValues([projectA]);
+  await expect(card.locator('.custom-field-context')).toHaveCount(2);
+  await override.getByText('Narrow or remove this context', { exact: true }).click();
+  await override.getByRole('button', { name: 'Delete context', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Custom field context deleted.');
+  const fallback = await (await page.request.get(`/rest/api/3/issue/createmeta/${keyA}/issuetypes/10002?maxResults=60`, { headers: auth })).json();
+  expect(fallback.fields.find((entry: { fieldId: string }) => entry.fieldId === fieldID).defaultValue).toBe('Global fallback');
 
   // Narrowing the context to project A removes the field from project B.
   await context.locator('.context-project-row select').selectOption({ label: `${nameA} (${keyA})` });
@@ -102,7 +138,12 @@ test('site administrators scope a custom field with a context and the create for
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.setViewportSize({ width: 1280, height: 720 });
 
-  // The shared demo project must not keep this field, and a field always keeps
-  // one context, so the scope stays narrowed rather than being deleted.
   expect(await createFormHasField('ZZ')).toBe(false);
+  } finally {
+    await page.request.post(`/rest/api/3/field/${fieldID}/trash`, { headers: auth, timeout: 10_000 });
+    await page.request.delete(`/rest/api/3/field/${fieldID}`, { headers: auth, timeout: 10_000 });
+    for (const project of [projectA, projectB]) {
+      await page.request.delete(`/rest/api/3/project/${project}`, { headers: auth, timeout: 10_000 });
+    }
+  }
 });
