@@ -304,6 +304,7 @@ type SyncResponse struct {
 // ---- View models (render-only) ----
 
 type IssueView struct {
+	ChoiceFields       []IssueChoiceFieldView
 	ViewFields         map[string]bool
 	EditFields         map[string]bool
 	EnvironmentVisible bool
@@ -418,21 +419,31 @@ type WorkflowTransition struct {
 // EditDialogView drives the edit-issue dialog; rendered by both server and
 // wasm worker (offline editing). Members/levels/fields may be empty offline.
 type EditDialogView struct {
-	EditFields        map[string]bool
-	EnvironmentField  *CreateFieldMeta
-	CanAssign         bool
-	CanModifyReporter bool
-	ReporterRequired  bool
-	Reporters         []User
-	CanSetSecurity    bool
-	Issue             Issue
-	Assignees         []User
-	Members           []User
-	SecurityLevels    []WorkflowTransition // reuse shape: ID+Name pairs
-	CustomFields      []CustomFieldView
+	ChoiceFields           []IssueChoiceFieldView
+	ConfiguredChoiceFields []IssueChoiceFieldView
+	EditFields             map[string]bool
+	EnvironmentField       *CreateFieldMeta
+	CanAssign              bool
+	CanModifyReporter      bool
+	ReporterRequired       bool
+	Reporters              []User
+	CanSetSecurity         bool
+	Issue                  Issue
+	Assignees              []User
+	Members                []User
+	SecurityLevels         []WorkflowTransition // reuse shape: ID+Name pairs
+	CustomFields           []CustomFieldView
 	// ConfiguredCustomFields also supplies view and transition screens independently of editing.
 	ConfiguredCustomFields []CustomFieldView
 	Error                  string
+}
+
+// IssueChoiceFieldView describes a project-scoped component or version picker.
+type IssueChoiceFieldView struct {
+	Field    CreateFieldMeta
+	Value    string
+	Display  string
+	ReadOnly bool
 }
 
 // CustomFieldView is a render-only custom field descriptor with the value.

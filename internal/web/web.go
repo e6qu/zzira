@@ -768,7 +768,14 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 			viewCustomFields = append(viewCustomFields, field)
 		}
 	}
+	viewChoiceFields := []models.IssueChoiceFieldView{}
+	for _, field := range editView.ConfiguredChoiceFields {
+		if len(viewFields) == 0 || slices.Contains(viewFields, field.Field.ID) {
+			viewChoiceFields = append(viewChoiceFields, field)
+		}
+	}
 	view := &models.IssueView{
+		ChoiceFields:         viewChoiceFields,
 		ViewFields:           issueScreenFields(viewFields, reporterBehaviour),
 		EditFields:           editView.EditFields,
 		EnvironmentVisible:   !reporterBehaviour["environment"].IsHidden && (len(viewFields) == 0 || slices.Contains(viewFields, "environment")),
@@ -940,6 +947,16 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 		return nil, err
 	}
 	view.EditFields = issueScreenFields(reporterFields, behaviour)
+	choiceFields, err := h.issueChoiceFields(ctx, wsID, issue, behaviour, view.EditFields, permissions)
+	if err != nil {
+		return nil, err
+	}
+	view.ConfiguredChoiceFields = choiceFields
+	for _, field := range choiceFields {
+		if !field.ReadOnly {
+			view.ChoiceFields = append(view.ChoiceFields, field)
+		}
+	}
 	issue.FieldRenderers = map[string]string{}
 	for field, rule := range behaviour {
 		issue.FieldRenderers[field] = rule.Renderer
@@ -2723,6 +2740,8 @@ func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key s
 		if strings.TrimSpace(value) == "" {
 			in.Fields["environment"] = json.RawMessage("null")
 		}
+	case "components", "fixVersions", "versions":
+		in.Fields = map[string]json.RawMessage{field: issueChoiceRefs(r.PostForm["value"])}
 	case "priority":
 		in.PriorityID = &value
 	case "reporter":
@@ -2926,6 +2945,14 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 	}
 	if sec, ok := r.PostForm["security"]; ok {
 		in.SecurityLevelID = &sec[0] // "" = public
+	}
+	for _, field := range []string{"components", "fixVersions", "versions"} {
+		if values, provided := r.PostForm[field]; provided {
+			if in.Fields == nil {
+				in.Fields = map[string]json.RawMessage{}
+			}
+			in.Fields[field] = issueChoiceRefs(values)
+		}
 	}
 	customFields, cfErr := h.Store.CustomFieldsForProject(r.Context(), issue.ProjectID)
 	if cfErr != nil {

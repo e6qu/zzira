@@ -23,11 +23,11 @@
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
 <link rel="stylesheet" href="/static/css/workspace.css?v=66">
-<link rel="preload" href="/static/zzira-worker.wasm?v=39" as="fetch" crossorigin>
+<link rel="preload" href="/static/zzira-worker.wasm?v=40" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js?v=2.0.11" defer></script>
-<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=39" defer></script>
-<script src="/static/app.js?v=75" defer></script>
+<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=40" defer></script>
+<script src="/static/app.js?v=76" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -202,7 +202,7 @@
   <nav class="issue-breadcrumbs" aria-label="Breadcrumb">
     <a href="/projects">Projects</a><span aria-hidden="true">/</span><a href="/projects/{{.ProjectKey}}">{{.ProjectName}}</a><span aria-hidden="true">/</span><span aria-current="page">{{.Issue.Key}}</span>
   </nav>
-{{if or (.Issue.VersionRefs "fixVersions") (.Issue.VersionRefs "versions")}}<div class="issue-version-links">{{range .Issue.VersionRefs "fixVersions"}}<a href="/projects/{{$.ProjectKey}}/releases/{{.ID}}">Fix version: {{.Name}}</a> {{end}}{{range .Issue.VersionRefs "versions"}}<a href="/projects/{{$.ProjectKey}}/releases/{{.ID}}">Affects version: {{.Name}}</a> {{end}}</div>
+{{if or (and (.FieldOnView "fixVersions") (.Issue.VersionRefs "fixVersions")) (and (.FieldOnView "versions") (.Issue.VersionRefs "versions"))}}<div class="issue-version-links">{{if .FieldOnView "fixVersions"}}{{range .Issue.VersionRefs "fixVersions"}}<a href="/projects/{{$.ProjectKey}}/releases/{{.ID}}">Fix version: {{.Name}}</a> {{end}}{{end}}{{if .FieldOnView "versions"}}{{range .Issue.VersionRefs "versions"}}<a href="/projects/{{$.ProjectKey}}/releases/{{.ID}}">Affects version: {{.Name}}</a> {{end}}{{end}}</div>
 {{end}}  <header class="issue-header">
     <div class="issue-heading">
       <span class="issue-type-glyph" aria-hidden="true">✓</span>
@@ -368,6 +368,7 @@
 {{if .FieldOnView "labels"}}        <dt>{{if and (and .CanEdit .Editable) (.FieldOnEdit "labels")}}<label for="field-labels">Labels</label>{{else}}Labels{{end}}</dt><dd>{{if and (and .CanEdit .Editable) (.FieldOnEdit "labels")}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="labels"><input id="field-labels" name="value" value="{{join .Issue.Labels ", "}}" placeholder="None" aria-describedby="labels-help"><small id="labels-help" class="sr-only">Comma-separated labels; spaces are not allowed within a label.</small><button class="field-save" type="submit">Save labels</button></form>{{else}}{{if .Issue.Labels}}{{join .Issue.Labels ", "}}{{else}}None{{end}}{{end}}</dd>{{end}}
 {{if .FieldOnView "duedate"}}        <dt>{{if and (and .CanSchedule .Editable) (.FieldOnEdit "duedate")}}<label for="field-duedate">Due date</label>{{else}}Due date{{end}}</dt><dd>{{if and (and .CanSchedule .Editable) (.FieldOnEdit "duedate")}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="duedate"><input id="field-duedate" name="value" type="date" value="{{.Issue.DueDate}}"><button class="field-save" type="submit">Save due date</button></form>{{else}}{{if .Issue.DueDate}}{{.Issue.DueDate}}{{else}}None{{end}}{{end}}</dd>{{end}}
 {{if .FieldOnView "security"}}{{if .SecurityLevels}}        <dt>{{if and .CanSetSecurity (.FieldOnEdit "security")}}<label for="field-security">Security</label>{{else}}Security{{end}}</dt><dd>{{if and .CanSetSecurity (.FieldOnEdit "security")}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="security"><select id="field-security" name="value"><option value="">Public</option>{{$security := .Issue.SecurityLevelID}}{{range .SecurityLevels}}<option value="{{.ID}}" {{if eq .ID $security}}selected{{end}}>{{.Name}}</option>{{end}}</select><button class="field-save" type="submit">Save security</button></form>{{else}}{{if .SecurityLevelName}}{{.SecurityLevelName}}{{else}}Public{{end}}{{end}}</dd>{{end}}{{end}}
+{{range .ChoiceFields}}<dt>{{if and $.CanEdit (not .ReadOnly)}}<label for="field-{{.Field.ID}}">{{.Field.Name}}</label>{{else}}{{.Field.Name}}{{end}}</dt><dd>{{if and $.CanEdit (not .ReadOnly)}}<form class="inline-field" method="post" action="/issues/{{$.Issue.Key}}/fields" hx-post="/issues/{{$.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="{{.Field.ID}}"><input type="hidden" name="value" value=""><select id="field-{{.Field.ID}}" name="value" multiple size="3" {{if .Field.Required}}required{{end}}>{{$value := .Value}}{{range .Field.Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select><button class="field-save" type="submit">Save {{.Field.Name}}</button></form>{{else}}{{if .Display}}{{.Display}}{{else}}None{{end}}{{end}}</dd>{{end}}
       </dl>
 {{if .CustomFields}}      <details class="more-fields" data-issue-section="fields"><summary>More fields <span>{{len .CustomFields}}</span></summary><dl>{{range .CustomFields}}{{if and $.CanEdit (not .ReadOnly)}}<dt><label for="detail-field-{{.ID}}">{{.Name}}</label></dt><dd><form class="inline-field" method="post" action="/issues/{{$.Issue.Key}}/fields" hx-post="/issues/{{$.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="custom:{{.ID}}">{{if and .Renderer .Display}}<div class="description-text">{{fieldHTML .Display .Renderer}}</div>{{end}}{{template "custom_field_control" (customFieldControl . "detail-field-" "value")}}<button class="field-save" type="submit">Save {{.Name}}</button></form></dd>{{else}}<dt>{{.Name}}</dt><dd>{{if .Display}}{{fieldHTML .Display .Renderer}}{{else if .Value}}{{.Value}}{{else}}None{{end}}</dd>{{end}}{{end}}</dl></details>{{end}}
 {{- range .AppContexts}}      <details class="issue-context-panel" data-issue-context-key="{{$.CurrentUserID}}:{{.ID}}"><summary>{{if .IconURL}}<img src="{{.IconURL}}" alt="" referrerpolicy="no-referrer">{{end}}<span class="issue-context-copy"><strong>{{.Title}}</strong>{{if .ContextLabel}}<small>{{.ContextLabel}}</small>{{end}}</span>{{if eq .ContextStatusType "badge"}}<span class="issue-context-status-badge" aria-label="{{.ContextStatusAccessibleLabel}}"><span aria-hidden="true">{{.ContextStatusLabel}}</span></span>{{else if eq .ContextStatusType "lozenge"}}<span class="lozenge issue-context-status-lozenge {{.ContextStatusClass}}">{{.ContextStatusLabel}}</span>{{else if eq .ContextStatusType "icon"}}<img class="issue-context-status-icon" src="{{.ContextStatusIconURL}}" alt="" referrerpolicy="no-referrer">{{end}}</summary>{{if .RemoteURL}}<iframe class="app-context-frame" src="/app-modules/{{.ID}}/frame?issueKey={{$.Issue.Key}}&amp;issueId={{$.Issue.ID}}&amp;projectKey={{$.ProjectKey}}&amp;projectId={{$.Issue.ProjectID}}" title="{{.Title}}" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"></iframe>{{else}}<p>{{.Body}}</p>{{end}}</details>{{end}}
@@ -413,6 +414,9 @@
         <option value="{{.ID}}" {{if eq .ID $curSec}}selected{{end}}>{{.Name}}</option>
         {{end}}
       </select>
+    {{end}}
+    {{range .ChoiceFields}}
+    <label for="edit-{{.Field.ID}}">{{.Field.Name}}</label><input type="hidden" name="{{.Field.ID}}" value=""><select id="edit-{{.Field.ID}}" name="{{.Field.ID}}" multiple size="3" {{if .Field.Required}}required{{end}} {{if .Field.Description}}aria-describedby="edit-help-{{.Field.ID}}"{{end}}>{{$value := .Value}}{{range .Field.Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{if .Field.Description}}<small id="edit-help-{{.Field.ID}}" class="muted">{{.Field.Description}}</small>{{end}}
     {{end}}
     {{range .CustomFields}}
     <label for="field-{{.ID}}">{{.Name}}</label>

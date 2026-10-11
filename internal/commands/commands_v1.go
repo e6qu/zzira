@@ -143,6 +143,9 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 			screenFieldsProvided = append(screenFieldsProvided, field)
 		}
 	}
+	for field := range in.VersionOperations {
+		screenFieldsProvided = append(screenFieldsProvided, field)
+	}
 	for field, provided := range map[string]bool{
 		"description": in.Description != nil, "priority": in.PriorityID != nil, "assignee": in.AssigneeID != nil, "labels": in.Labels != nil, "duedate": in.DueDate != nil, "resolution": in.ResolutionID != nil, "security": in.SecurityLevelID != nil, "parent": in.ParentIDOrKey != nil, "timetracking": in.OriginalEstimate != nil || in.RemainingEstimate != nil,
 	} {

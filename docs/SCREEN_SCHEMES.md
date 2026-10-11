@@ -51,6 +51,14 @@ Every site has a `Default Screen Scheme`, which points to the `Default Screen`. 
 
 **Copy.** The settings page copies one, named "Copy of X" (then "Copy 2 of X"), carrying its configuration and nothing else: the copy is assigned to no project and is never the site default.
 
+Components, Fix versions and Affects versions have project-scoped multiple
+pickers in the issue editor and inline details. Empty selections clear only
+the submitted field; omitted fields stay unchanged. Fix-version editing also
+requires Resolve issues. View-only fields retain their saved values without
+controls, hidden fields disappear, and version links follow the view screen.
+Both direct version values and add/remove/set operations follow edit-screen
+checks. Offline configuration metadata remains tracked in [PLAN.md](../PLAN.md#14-local-first).
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
@@ -58,7 +66,6 @@ Tracked in [PLAN.md](../PLAN.md).
 - View screens govern the built-in details the issue page renders and custom
   fields. Fields outside the edit screen show saved values without edit
   controls. The page uses its own layout rather than reproducing screen tabs
-  and field order. Components and version controls remain outside the details
-  panel.
+  and field order.
 - Workflow transition screens resolve named screens, but present their fields
   as one list rather than using the screen's tabs ([WORKFLOW_RULES.md](WORKFLOW_RULES.md#gaps)).
