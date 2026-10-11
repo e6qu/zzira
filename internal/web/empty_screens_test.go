@@ -83,6 +83,13 @@ func TestEmptyAssignedScreensKeepOnlyRequiredContextAndRefuseEdits(t *testing.T)
 	if !found {
 		t.Fatal("project missing from create metadata")
 	}
+	var configuration string
+	if err := f.store.Pool.QueryRow(ctx, `SELECT mapping.configuration_id::text FROM project_field_configuration_schemes assigned JOIN field_configuration_scheme_items mapping ON mapping.scheme_id=assigned.scheme_id WHERE assigned.project_id=$1 AND mapping.issue_type_id=$2`, project.ID, store.DefaultIssueTypeMapping).Scan(&configuration); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.SetFieldConfigurationItems(ctx, ws, f.ownerID, configuration, []models.FieldConfigurationItem{{FieldID: "parent", IsHidden: true}}); err != nil {
+		t.Fatal(err)
+	}
 	subtaskForm, err := f.handler.buildCreateDialogData(ctx, ws, f.ownerID, map[string]string{"project": project.Key, "issuetype": "it_subtask"})
 	if err != nil {
 		t.Fatal(err)
