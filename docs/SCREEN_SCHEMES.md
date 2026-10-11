@@ -77,6 +77,10 @@ permission checks still apply; summary remains available on an empty screen.
 Legacy offline replicas retain their existing layout until screen metadata is
 replicated.
 
+When a required field blocks submission, the form opens its enclosing detail
+section and selects its tab before native validation focuses it. Later invalid
+fields in the same attempt do not hide the first field again.
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).

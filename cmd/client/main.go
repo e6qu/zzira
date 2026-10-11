@@ -461,8 +461,7 @@ func syncOnce() syncclient.SyncDisposition {
 		return syncclient.SyncRetry
 	}
 	if resp.StatusCode == http.StatusNotModified {
-		post(map[string]any{"type": "synced", "seq": cp})
-		postOutboxState()
+		postSyncState(cp, cp)
 		return syncclient.SyncAccepted
 	}
 	if syncclient.DispositionForSyncStatus(resp.StatusCode) == syncclient.SyncRevoked {
@@ -512,8 +511,7 @@ func syncOnce() syncclient.SyncDisposition {
 	setKV("server_head", fmt.Sprintf("%d", delta.Head))
 	exec(`COMMIT`, nil)
 	committed = true
-	post(map[string]any{"type": "synced", "seq": delta.To})
-	postOutboxState()
+	postSyncState(delta.To, delta.Head)
 	if currentView != "" && changedIssues[currentView] {
 		pushCurrentView()
 	}
@@ -953,13 +951,25 @@ func outboxSize() int64 {
 	return int64Of(rows[0], "n")
 }
 
-func postOutboxState() {
+func outboxState() map[string]any {
 	rows := selectObjects(`SELECT id, refused_status FROM outbox ORDER BY id LIMIT 1`, nil)
 	status := int64(0)
 	if len(rows) > 0 {
 		status = int64Of(rows[0], "refused_status")
 	}
-	post(map[string]any{"type": "outbox-state", "pending": outboxSize(), "refusedStatus": status})
+	return map[string]any{"type": "outbox-state", "pending": outboxSize(), "refusedStatus": status}
+}
+
+func postOutboxState() {
+	post(outboxState())
+}
+
+func postSyncState(seq, head int64) {
+	state := outboxState()
+	state["type"] = "synced"
+	state["seq"] = seq
+	state["caughtUp"] = seq == head
+	post(state)
 }
 
 // drainOutbox replays queued commands in order. Returns false on first failure

@@ -551,6 +551,28 @@
     });
     if (tabs[index]) tabs[index].focus();
   }
+  // Native validation reports every invalid control before focusing the
+  // first one. Reveal only that first control's tab so later invalid fields
+  // cannot hide it again during the same validation attempt.
+  let revealingInvalidField = false;
+  document.addEventListener('invalid', (event) => {
+    if (revealingInvalidField || !(event.target instanceof HTMLElement)) return;
+    revealingInvalidField = true;
+    setTimeout(() => { revealingInvalidField = false; }, 0);
+    const field = event.target;
+    let ancestor = field.parentElement;
+    while (ancestor) {
+      if (ancestor.tagName === 'DETAILS') ancestor.open = true;
+      ancestor = ancestor.parentElement;
+    }
+    const panel = field.closest('[role="tabpanel"]');
+    if (!panel) return;
+    const list = panel.parentElement?.querySelector('[role="tablist"]');
+    if (!list) return;
+    const tabs = Array.from(list.querySelectorAll('[data-field-tab]'));
+    const index = tabs.findIndex(tab => tab.getAttribute('aria-controls') === panel.id);
+    if (index >= 0) selectFieldTab(list, index);
+  }, true);
   document.addEventListener('click', (event) => {
     const target = event.target;
     const tab = target instanceof Element ? target.closest('[data-field-tab]') : null;
@@ -609,7 +631,7 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=60&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=61&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
@@ -810,21 +832,33 @@
         break;
       case 'synced':
         sawSync = true;
+        outboxState = { pending: Number(msg.pending) || 0, refusedStatus: Number(msg.refusedStatus) || 0 };
         if (mutationAwaitingSync && mutationMinSeq > 0 && msg.seq >= mutationMinSeq) {
           mutationAwaitingSync = false;
           mutationMinSeq = 0;
           pendingRootHtml = null;
         }
-        announce('synced \u00b7 seq ' + msg.seq, 1500);
-        setSyncRail('online', 'Synced', 'Sequence ' + msg.seq);
+        if (!outboxState.pending && msg.caughtUp !== false) {
+          announce('synced \u00b7 seq ' + msg.seq, 1500);
+          setSyncRail('online', 'Synced', 'Sequence ' + msg.seq);
+        } else if (!outboxState.pending) {
+          announce('Syncing — receiving server updates', 0);
+          setSyncRail('syncing', 'Syncing', 'Receiving server updates');
+        }
         showOutboxState();
         refreshBoardRegion();
         refreshNotificationBadge();
         break;
-      case 'outbox-state':
+      case 'outbox-state': {
+        const hadPending = outboxState.pending > 0;
         outboxState = { pending: Number(msg.pending) || 0, refusedStatus: Number(msg.refusedStatus) || 0 };
+        if (hadPending && !outboxState.pending) {
+          announce('Confirming saved changes with the server', 0);
+          setSyncRail('syncing', 'Confirming saves', 'Waiting for server state');
+        }
         showOutboxState();
         break;
+      }
       case 'outbox-export': {
         if (!exportRequested) break;
         exportRequested = false;
