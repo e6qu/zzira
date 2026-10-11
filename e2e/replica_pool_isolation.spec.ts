@@ -1,7 +1,78 @@
 import { apiAuthHeader } from './auth';
+import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 test.use({ actionTimeout: 15_000 });
+
+test('server-refused drafts survive reload and pause later saves until explicit retry', async ({ page, context }) => {
+  await context.addInitScript(() => {
+    const NativeWorker = window.Worker;
+    (window as any).__refusalReports = 0;
+    (window as any).Worker = class extends NativeWorker {
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super(url, options);
+        this.addEventListener('message', event => {
+          if (event.data?.type === 'outbox-state' && event.data.refusedStatus) (window as any).__refusalReports++;
+        });
+      }
+    };
+  });
+  await login(page);
+  const summary = `Refused offline draft ${Date.now()}`;
+  const key = await create(page, summary);
+  let attempts = 0;
+  let refuse = true;
+  const routeURL = `**/issues/${key}/edit`;
+  await context.route(routeURL, async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    attempts++;
+    if (refuse) await route.fulfill({ status: 400, body: 'Injected command refusal' });
+    else await route.continue();
+  });
+  try {
+    await page.goto(`/browse/${key}`);
+    await expect(page.locator('#sync-banner')).toContainText('synced', { timeout: 20_000 });
+    await context.setOffline(true);
+    for (const title of [`${summary} first`, `${summary} second`]) {
+      await page.locator('#edit-issue-button').click();
+      await page.locator('#edit-summary').fill(title);
+      await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'Edit issue', exact: true })).not.toBeVisible();
+      await expect(page.locator('.issue-summary')).toHaveText(title);
+    }
+    await context.setOffline(false);
+    const recovery = page.getByRole('region', { name: 'Offline save recovery' });
+    await expect(recovery).toContainText('2 queued draft(s)', { timeout: 20_000 });
+    expect(attempts).toBe(1);
+    await page.reload();
+    await expect(recovery).toContainText('HTTP 400', { timeout: 20_000 });
+    await expect.poll(() => page.evaluate(() => (window as any).__refusalReports), { timeout: 20_000 }).toBeGreaterThanOrEqual(3);
+    expect(attempts).toBe(1);
+    await expect(page.locator('[data-sync-label]')).toHaveText('Save needs attention');
+    const downloadPromise = page.waitForEvent('download');
+    await recovery.getByRole('button', { name: 'Download queued drafts' }).click();
+    const download = await downloadPromise;
+    const file = await download.path();
+    expect(file).toBeTruthy();
+    const exported = JSON.parse(await readFile(file!, 'utf8'));
+    expect(exported.commands).toHaveLength(2);
+    expect(exported.commands[0].refused_status).toBe(400);
+    expect(exported.commands[0].fields).toContainEqual(['summary', `${summary} first`]);
+    expect(exported.commands[1].fields).toContainEqual(['summary', `${summary} second`]);
+    const persisted = await page.request.get(`/rest/api/3/issue/${key}?fields=summary`, { headers: { Authorization: apiAuthHeader() } });
+    expect((await persisted.json()).fields.summary).toBe(summary);
+    refuse = false;
+    await recovery.getByRole('button', { name: 'Retry refused save' }).click();
+    await expect.poll(async () => (await (await page.request.get(`/rest/api/3/issue/${key}?fields=summary`, { headers: { Authorization: apiAuthHeader() } })).json()).fields.summary, { timeout: 20_000 }).toBe(`${summary} second`);
+    await expect(recovery).not.toBeVisible();
+    expect(attempts).toBe(3);
+    await expect(page.locator('[data-sync-label]')).toHaveText('Synced', { timeout: 20_000 });
+  } finally {
+    await context.setOffline(false);
+    await context.unroute(routeURL);
+    await page.request.delete(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() }, timeout: 10_000 });
+  }
+});
 
 async function login(page: import('@playwright/test').Page) {
   await page.goto('/login');

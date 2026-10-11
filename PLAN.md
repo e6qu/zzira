@@ -271,8 +271,8 @@ Owning reference: [CONFLUENCE_LIVE.md](docs/CONFLUENCE_LIVE.md).
 ## 14. Local-first closure
 
 - Complete offline screen and field metadata for richer work-item edits.
-- Preserve server-refused queued commands for recovery and reconcile their
-  optimistic field values with the authoritative work item.
+- Reconcile refused commands’ optimistic field values with the authoritative
+  work item, retaining the recoverable draft and other pending edits.
 - Permission-shaped replicas and safe queued writes for service, knowledge,
   dashboards, releases, reports and administration.
 - Conflict handling, idempotent replay, outbox ordering and cross-tab ownership when a replica ID is
