@@ -37,7 +37,18 @@
     });
   }
 
+  function positionThemeToggle() {
+    const header = document.querySelector('.global-header');
+    const button = header?.querySelector('[data-theme-toggle]');
+    const menu = header?.querySelector('.user-menu .user-popover');
+    if (!button || !menu) return;
+    const destination = window.matchMedia('(max-width:680px)').matches ? menu : header;
+    if (button.parentElement !== destination) destination.append(button);
+  }
+  window.matchMedia('(max-width:680px)').addEventListener('change', positionThemeToggle);
+
   function initThemeToggle() {
+    positionThemeToggle();
     const theme = savedTheme() || document.documentElement.dataset.theme;
     applyTheme(theme);
     document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
@@ -598,7 +609,7 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=53&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=54&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
