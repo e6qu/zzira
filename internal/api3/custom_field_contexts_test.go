@@ -237,8 +237,15 @@ func TestCustomFieldContextContract(t *testing.T) {
 	}
 	call(adminID, http.MethodPut, contextPath+"/defaultValue", `{"defaultValues":[{"contextId":"`+globalContext+`","value":null}]}`, http.StatusNoContent)
 
-	// Narrowing the global context to project A removes the field from B.
-	call(adminID, http.MethodPut, contextPath+"/"+globalContext+"/project", `{"projectIds":["`+projectA+`"]}`, http.StatusNoContent)
+	// REST cannot assign projects to a global context. Browser scope editing
+	// still narrows the global context to project A and removes the field from B.
+	call(adminID, http.MethodPut, contextPath+"/"+globalContext+"/project", `{"projectIds":["`+projectA+`"]}`, http.StatusBadRequest)
+	if !contains(fieldsFor(keyB, "it_task"), fieldID) {
+		t.Fatal("refused REST assignment changed the global scope")
+	}
+	if err = st.ChangeCustomFieldContextScope(ctx, workspaceID, adminID, fieldID, globalContext, []string{projectA}, nil, false); err != nil {
+		t.Fatal(err)
+	}
 	if !contains(fieldsFor(keyA, "it_task"), fieldID) {
 		t.Fatal("field should still apply to its own project")
 	}
@@ -424,6 +431,21 @@ func TestCustomFieldContextContract(t *testing.T) {
 	}
 	call(adminID, http.MethodPost, "/rest/api/3/issue", `{"fields":{"project":{"key":"`+keyA+`"},"summary":"Wrong fallback option","issuetype":{"name":"Task"},"`+selectID+`":"`+fallbackOption+`"}}`, http.StatusBadRequest)
 	call(adminID, http.MethodPost, "/rest/api/3/issue", `{"fields":{"project":{"key":"`+keyB+`"},"summary":"Correct fallback option","issuetype":{"name":"Task"},"`+selectID+`":"`+fallbackOption+`"}}`, http.StatusCreated)
+
+	// Association must respect a later-created global fallback rather than
+	// adding Beta to the older Alpha override.
+	if err = st.AssociateFieldsWithProjects(ctx, workspaceID, adminID, []string{projectB}, []string{selectID}, true); err != nil {
+		t.Fatal(err)
+	}
+	contextsAfterAssociation, scopeErr := st.CustomFieldContexts(ctx, workspaceID, selectID, nil)
+	if scopeErr != nil {
+		t.Fatal(scopeErr)
+	}
+	for _, context := range contextsAfterAssociation {
+		if context.ID == selectContext && contains(context.ProjectIDs, projectB) {
+			t.Fatal("association widened the project override instead of using the global fallback")
+		}
+	}
 
 	// A work item may only take an option the governing context offers.
 	call(adminID, http.MethodPost, "/rest/api/3/issue",

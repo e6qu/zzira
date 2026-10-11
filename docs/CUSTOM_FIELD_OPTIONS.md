@@ -59,8 +59,3 @@ Responses use Jira's beans:
 ## Code
 
 `internal/api3/custom_field_options.go`, `internal/api3/custom_field_values.go`, `internal/web/custom_field_contexts.go` (the settings page), `migrations/137_custom_field_options.sql`; tests in `internal/api3/custom_field_contexts_test.go`, `custom_field_pickers_test.go`, `internal/web/custom_field_options_admin_test.go` and `e2e/custom_field_options.spec.ts`.
-
-## Gaps
-
-Tracked in [PLAN.md](../PLAN.md).
-

@@ -1,3 +1,4 @@
+import { scopeFixtureField } from './field_contexts';
 import { apiAuthHeader } from './auth';
 import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
@@ -38,9 +39,7 @@ test('a field is named in each language a site speaks', async ({ page }) => {
   expect(field.status()).toBe(201);
   const fieldID = (await field.json()).id as string;
   const contexts = await (await page.request.get(`/rest/api/3/field/${fieldID}/context`, { headers: auth })).json();
-  expect((await page.request.put(`/rest/api/3/field/${fieldID}/context/${String(contexts.values[0].id)}/project`, {
-    headers: auth, data: { projectIds: [projectID] },
-  })).status()).toBe(204);
+  await scopeFixtureField(page.request, fieldID, String(contexts.values[0].id), projectID, auth);
 
   // Until someone translates it, every language reads the site's own name.
   const fieldBean = async () => {

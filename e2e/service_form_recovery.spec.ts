@@ -1,3 +1,4 @@
+import { scopeFixtureField } from './field_contexts';
 import { expect, test } from '@playwright/test';
 import { apiAuthHeader } from './auth';
 import axe from 'axe-core';
@@ -25,8 +26,7 @@ test('portal cascading details follow their parent and survive a refused draft',
     expect(created.status()).toBe(201);
     const id = (await created.json()).id as string;
     const contexts = await (await request.get(`/rest/api/3/field/${id}/context`, { headers })).json();
-    const context = contexts.values[0].id;
-    expect((await request.put(`/rest/api/3/field/${id}/context/${context}/project`, { headers, data: { projectIds: [String(project.id)] } })).status()).toBe(204);
+    const context = await scopeFixtureField(request, id, String(contexts.values[0].id), String(project.id), headers);
     const options = await request.post(`/rest/api/3/field/${id}/context/${context}/option`, { headers, data: { options: choices.map(value => ({ value })) } });
     expect(options.status()).toBe(200);
     return { id, context, options: (await options.json()).options.map((option: { id: string | number }) => ({ id: String(option.id) })) };
