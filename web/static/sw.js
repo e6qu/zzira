@@ -8,8 +8,8 @@
 // own navigation history and network observability. The private page cache
 // is instead purged by app.js posting CLEAR_PRIVATE_CACHE once it detects it
 // landed on /login or /signed-out, independent of how that page was reached.
-const STATIC_CACHE = 'zzira-static-v37';
-const PAGE_CACHE = 'zzira-pages-v37';
+const STATIC_CACHE = 'zzira-static-v38';
+const PAGE_CACHE = 'zzira-pages-v38';
 const CURRENT_CACHES = new Set([STATIC_CACHE, PAGE_CACHE]);
 const STATIC_PREFIX = '/static/';
 
@@ -60,8 +60,11 @@ self.addEventListener('fetch', (event) => {
     event.respondWith((async () => {
       try {
         const res = await fetch(req);
-        if (res.ok && (res.headers.get('Content-Type') || '').includes('text/html')) {
-          const cache = await caches.open(PAGE_CACHE);
+        const cache = await caches.open(PAGE_CACHE);
+        const noStore = /(?:^|,)\s*no-store\s*(?:,|$)/i.test(res.headers.get('Cache-Control') || '');
+        if (noStore || !res.ok) {
+          await cache.delete(req);
+        } else if ((res.headers.get('Content-Type') || '').includes('text/html')) {
           await cache.put(req, res.clone());
         }
         return res;

@@ -67,6 +67,15 @@ func (s *Store) CommentCount(ctx context.Context, issueID string) (int, error) {
 // comment is visible to anyone who can see the issue; a restricted one only to
 // members of its group or project role.
 func (s *Store) CommentVisibleTo(ctx context.Context, workspaceID, projectID, userID string, c *models.Comment) (bool, error) {
+	if userID == "" {
+		var internal bool
+		if err := s.Pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM service_request_comments WHERE comment_id=$1 AND NOT public)`, c.ID).Scan(&internal); err != nil {
+			return false, err
+		}
+		if internal {
+			return false, nil
+		}
+	}
 	switch c.VisibilityType {
 	case "":
 		return true, nil

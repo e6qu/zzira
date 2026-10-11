@@ -31,12 +31,16 @@ The anonymous user holds no global permissions, is in no group or role, and is n
 - **Email addresses** are shown only to the person and to administrators.
 - **Filters and dashboards** can be shared at most with signed-in users, as in Jira Cloud, so anonymous callers see none. Recent projects and favourite filters are empty, and viewing a project records no history.
 
-## Gaps
+## Public work item pages
 
-Tracked in [PLAN.md](../PLAN.md).
+With anonymous access enabled, `/browse/{key}` shows signed-out visitors the work item's description, details, public comments and attachments when its project grants Browse projects to `anyone`. Issue security, parent visibility, comment restrictions and internal service attachments use the same permission checks as REST. Internal service comments are hidden from anonymous reads too. Private, restricted and missing work all return 404.
 
-- Anonymous access is REST-only. Browser pages such as `/browse/{key}` redirect a signed-out visitor to `/login` even when the project grants Browse projects to `anyone` (`internal/web/web.go` `BrowseIssue`).
+The page offers a login link and no write controls. It loads no authenticated replica or editor, records no viewing history, honors the site date formats and supports light and dark themes. Responses use `Cache-Control: private, no-store`; the service worker respects that header and removes an older cached copy on a fresh response or access refusal. Public work item pages are unavailable offline.
+
+Invalid credentials and installations with anonymous access disabled retain the browser's login redirect. Other browser collections, custom-field details and worklog/history panels still require signing in.
 
 ## Tests
 
 `internal/api3/anonymous_access_test.go` calls every operation in the table without credentials, against a project granting Browse projects to `anyone` and a private project. It fails on a 401, a server error, or any response exposing the private project, its work or an email address. It also checks public work item, search, project, component and permission reads, and that writes, other operations and bad credentials stay unauthorized.
+
+`internal/web/anonymous_issue_test.go` covers public/private/security-restricted work, hidden parents, restricted and internal service comments, internal attachments, absent versus invalid credentials, disabled anonymous access, history isolation and grant revocation. `e2e/anonymous_browse.spec.ts` covers the signed-out journey, dark theme, 320 px accessibility, service-worker cache refusal, offline refusal and revocation.

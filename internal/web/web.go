@@ -36,6 +36,7 @@ type Handler struct {
 	ProviderSecrets                   *secretbox.Box
 	IdentityExternalURL               string
 	WorkspaceSlug                     string
+	AnonymousAccess                   bool
 	BaseURL                           string
 	InvitationNotificationsConfigured bool
 	DomainTXTLookup                   func(context.Context, string) ([]string, error)
@@ -2360,6 +2361,10 @@ func (h *Handler) IssuePreview(w http.ResponseWriter, r *http.Request, issueKey 
 func (h *Handler) BrowseIssue(w http.ResponseWriter, r *http.Request, key string) {
 	user := h.currentUser(r)
 	if user == nil {
+		if h.AnonymousAccess && !authn.PresentsCredentials(r) {
+			h.serveAnonymousIssue(w, r, key)
+			return
+		}
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}

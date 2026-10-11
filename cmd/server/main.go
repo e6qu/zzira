@@ -174,6 +174,7 @@ func main() {
 	// instance's configuration, the way a Jira site's administrator decides
 	// whether the anonymous user exists at all, and the default keeps it.
 	anonymousAccess := envOr("ZZIRA_ANONYMOUS_ACCESS", "on") != "off"
+	webHandler.AnonymousAccess = anonymousAccess
 	if !anonymousAccess {
 		log.Printf("anonymous access is off: a caller without credentials is refused, downloads included")
 	}
