@@ -23,11 +23,11 @@
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
 <link rel="stylesheet" href="/static/css/workspace.css?v=68">
-<link rel="preload" href="/static/zzira-worker.wasm?v=47" as="fetch" crossorigin>
+<link rel="preload" href="/static/zzira-worker.wasm?v=48" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js?v=2.0.11" defer></script>
-<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=47" defer></script>
-<script src="/static/app.js?v=86" defer></script>
+<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=48" defer></script>
+<script src="/static/app.js?v=87" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -151,13 +151,13 @@
       <legend class="sr-only">Issue context</legend>
       <div>
         <label for="create-project">Project <span aria-hidden="true">*</span></label>
-        <select id="create-project" name="project" required hx-get="/issues/new" hx-trigger="change" hx-target="#modal-root" hx-swap="innerHTML" hx-include="closest form">
+        <select id="create-project" name="project" required hx-get="/issues/new" hx-request='{"timeout":15000}' hx-trigger="change" hx-target="#modal-root" hx-swap="innerHTML" hx-include="closest form">
           {{range .Metadata.Projects}}<option value="{{.Project.Key}}" {{if eq $.Values.project .Project.Key}}selected{{end}}>{{.Project.Name}} ({{.Project.Key}})</option>{{end}}
         </select>
       </div>
       <div>
         <label for="create-issuetype">Issue type <span aria-hidden="true">*</span></label>
-        <select id="create-issuetype" name="issuetype" required hx-get="/issues/new" hx-trigger="change" hx-target="#modal-root" hx-swap="innerHTML" hx-include="closest form">
+        <select id="create-issuetype" name="issuetype" required hx-get="/issues/new" hx-request='{"timeout":15000}' hx-trigger="change" hx-target="#modal-root" hx-swap="innerHTML" hx-include="closest form">
           {{range .Selected.IssueTypes}}<option value="{{.ID}}" {{if eq $.Values.issuetype .ID}}selected{{end}}>{{.Name}}</option>{{end}}
         </select>
       </div>

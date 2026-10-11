@@ -186,3 +186,70 @@ test('create journey and createmeta share every supported field', async ({ page,
   await expect(page.getByRole('heading', { name: 'Sub-tasks' })).toBeVisible();
   await expect(page.getByRole('link', { name: new RegExp(`${childKey} Hierarchy child`) })).toBeVisible();
 });
+
+test('create metadata refresh pauses input and retains the draft after refusal', async ({ page, request }) => {
+  await login(page);
+  await page.goto('/projects/ZZ');
+  await page.locator('#global-create-issue').click();
+  const dialog = page.getByRole('dialog', { name: 'Create issue', exact: true });
+  await expect(dialog).toHaveAttribute('data-ready', '1');
+  await dialog.locator('form').evaluate(form => form.setAttribute('data-initial-refresh', 'true'));
+  await page.selectOption('#create-issuetype', 'it_task');
+  await expect(dialog.locator('form')).not.toHaveAttribute('data-initial-refresh', 'true');
+  await expect(dialog).toHaveAttribute('data-ready', '1');
+  const summary = `Refresh draft ${Date.now()}`;
+  await page.locator('#create-summary').fill(summary);
+  await page.locator('#create-description').fill('Retain this context.');
+  let mode: 'hold' | 'fail' | 'pass' = 'hold';
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/issues/new?**', async route => {
+    if (mode === 'hold') {
+      await held;
+      const response = await route.fetch();
+      await route.fulfill({ response });
+    } else if (mode === 'fail') {
+      await route.fulfill({ status: 503, contentType: 'text/plain', body: 'Metadata unavailable' });
+    } else await route.continue();
+  });
+  let key = '';
+  try {
+    await page.selectOption('#create-issuetype', 'it_subtask');
+    await expect(dialog.locator('form')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('#create-summary')).toBeDisabled();
+    await expect(page.locator('#create-description')).toBeDisabled();
+    await expect(page.locator('#create-project')).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: 'Create issue', exact: true })).toBeDisabled();
+    await expect(dialog.getByRole('status')).toHaveText('Updating fields…');
+    release();
+    await expect(page.locator('#create-parent')).toBeVisible();
+    await expect(page.locator('#create-summary')).toBeEnabled();
+    await expect(page.locator('#create-summary')).toHaveValue(summary);
+    await expect(page.locator('#create-description')).toHaveValue('Retain this context.');
+    mode = 'fail';
+    await page.selectOption('#create-issuetype', 'it_task');
+    await expect(dialog.locator('[data-request-error]')).toContainText('Could not complete this action');
+    await expect(page.locator('#create-issuetype')).toHaveValue('it_subtask');
+    await expect(page.locator('#create-summary')).toBeEnabled();
+    await expect(page.locator('#create-summary')).toHaveValue(summary);
+    await expect(page.locator('#create-description')).toHaveValue('Retain this context.');
+    mode = 'pass';
+    await dialog.locator('form').evaluate(form => form.setAttribute('data-retry-refresh', 'true'));
+    await page.selectOption('#create-issuetype', 'it_task');
+    await expect(dialog.locator('form')).not.toHaveAttribute('data-retry-refresh', 'true');
+    await expect(page.locator('#create-summary')).toBeEnabled();
+    await expect(page.locator('#create-summary')).toHaveValue(summary);
+    await expect(page.locator('#create-description')).toHaveValue('Retain this context.');
+    await Promise.all([
+      page.waitForURL(/\/browse\/ZZ-\d+$/, { timeout: 30_000 }),
+      dialog.getByRole('button', { name: 'Create issue', exact: true }).click(),
+    ]);
+    key = page.url().split('/').pop()!;
+    const fetched = await request.get(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() } });
+    expect(fetched.status()).toBe(200);
+    expect((await fetched.json()).fields).toMatchObject({ summary, issuetype: { name: 'Task' }, description: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Retain this context.' }] }] } });
+  } finally {
+    release();
+    if (key) await request.delete(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() }, timeout: 10_000 });
+  }
+});

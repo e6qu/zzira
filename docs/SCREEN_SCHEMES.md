@@ -45,6 +45,10 @@ Every site has a `Default Screen Scheme`, which points to the `Default Screen`. 
 
 `/settings/screen-schemes`: create and edit both kinds of scheme, map operations and work types, assign projects, and delete.
 
+Changing project or work type pauses create-dialog input until its fields refresh.
+A failed or timed-out refresh retains the draft and restores its previous
+selection for retry; it cannot submit against stale field metadata.
+
 ## Code
 
 `internal/api3/screen_schemes.go`, `internal/store/screen_schemes.go`, `internal/store/issue_type_screen_schemes.go`, `internal/web/screen_schemes.go`, `migrations/134_screen_schemes.sql`; tests in `internal/api3/screen_schemes_test.go` and `e2e/screen_schemes.spec.ts`.
