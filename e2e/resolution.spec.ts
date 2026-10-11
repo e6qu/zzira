@@ -21,6 +21,7 @@ async function accessible(page: Page) {
 
 test('a transition screen asks how work was resolved, and the field is editable', async ({ page, browser }) => {
   await login(page);
+  expect((await page.request.post('/rest/api/3/screens/addToDefault/resolution', { headers: { Authorization: apiAuthHeader() } })).status()).toBe(200);
   const stamp = Date.now().toString(36).toUpperCase();
 
   // A project and workflow of its own, so other specs keep theirs.

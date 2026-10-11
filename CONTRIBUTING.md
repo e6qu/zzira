@@ -90,7 +90,9 @@ when preparing a migration.
   numeric or opaque as its contract requires; see
   [docs/WIRE_IDS.md](docs/WIRE_IDS.md).
 - **The renderer is shared.** `internal/render` compiles for the server and for
-  WebAssembly, so a page renders the same offline.
+  WebAssembly, so a page renders the same offline. Replica initialization must
+  finish installing the SQLite schema before advertising readiness. Reserve
+  database and journal capacity without clearing existing replicas on retries.
 
 ## Making a change
 
