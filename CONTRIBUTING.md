@@ -86,13 +86,15 @@ runs `scripts/image-pins.py` on every pull request, on every push to `main` and
 daily. For each pin it reads Docker Hub's tag API and the mirror's manifest:
 
 - **ok**: the pin is the digest Docker Hub serves for the tag, and the mirror
-  serves the same digest.
+  serves the same digest; the digest has been published for at least 24 hours.
 - **HELD**: Docker Hub moved the tag, or published a newer release with the same
   variant and major version, less than 24 hours ago.
 - **DRIFT** (fails): that newer digest or release is at least 24 hours old, or
-  the mirror serves a different digest than the pin.
+  the mirror serves a different digest than the pin, or the pin itself is
+  still inside the 24-hour quarantine.
 
-To bump a pin, take the digest Docker Hub serves for the tag and confirm the
+To bump a pin, wait until its publication is at least 24 hours old, take the
+digest Docker Hub serves for the tag and confirm the
 mirror serves the same one, for example with
 `docker buildx imagetools inspect public.ecr.aws/docker/library/golang:<tag>`.
 Dependabot does not watch the Dockerfile: its anonymous lookups on

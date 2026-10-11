@@ -10,8 +10,8 @@ each pin is compared with Docker Hub:
           serves that digest too
   HELD    Docker Hub has something newer (a new digest for the tag, or a newer
           release with the same variant), but it is less than 24 hours old
-  DRIFT   Docker Hub has had something newer for at least 24 hours, or the
-          mirror serves a different digest for the tag than the pin: fails
+  DRIFT   Docker Hub has had something newer for at least 24 hours, the
+          mirror serves a different digest, or the pin is too young: fails
 
 Dependabot cannot do this job: its anonymous lookups on public.ecr.aws exceed
 ECR Public's limit of one unauthenticated request per second and fail with 429,
@@ -81,6 +81,8 @@ def newer_tags(tag, candidates):
 def verdict(pin_digest, hub_digest, hub_pushed, mirror_digest, newer, now):
     """Classify one pin. `newer` is a list of (tag, pushed) newer releases."""
     problems, held = [], []
+    if hub_digest == pin_digest and now - hub_pushed < WAIT:
+        problems.append(f'the pinned digest is inside the 24-hour quarantine until {(hub_pushed + WAIT).isoformat()}')
     if hub_digest != pin_digest:
         if now - hub_pushed >= WAIT:
             problems.append(f'Docker Hub has served {hub_digest} for the tag since {hub_pushed.isoformat()}')
@@ -120,13 +122,15 @@ def ecr_request(url, headers=None, method='GET'):
 
 def mirror_digest(registry, path, tag):
     headers = {'Accept': INDEX_TYPES}
-    if registry == 'public.ecr.aws':
+    if registry == 'public.ecr.aws/docker/library':
         scope = urllib.parse.quote(f'repository:docker/library/{path}:pull', safe='')
         _, body = ecr_request(f'https://public.ecr.aws/token/?scope={scope}&service=public.ecr.aws')
         headers['Authorization'] = 'Bearer ' + json.loads(body)['token']
         reply, _ = ecr_request(f'https://public.ecr.aws/v2/docker/library/{path}/manifests/{tag}', headers, 'HEAD')
-    else:
+    elif registry == 'mirror.gcr.io':
         reply, _ = request(f'https://mirror.gcr.io/v2/{path}/manifests/{tag}', headers, 'HEAD')
+    else:
+        raise ValueError(f'unsupported image registry: {registry}')
     digest = reply['Docker-Content-Digest']
     if not digest:
         raise ValueError(f'{registry} returned no digest for {path}:{tag}')
