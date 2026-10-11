@@ -13654,7 +13654,9 @@ globalThis.sqlite3ApiBootstrap.initializers.push(function(sqlite3){
           files.push([name,h]);
         }
       }
-      return Promise.all(files.map(async([name,h])=>{
+      // ZZIRA patch: settle all acquisitions before closing their handles.
+      // Promise.all can reject while other native acquisitions still succeed.
+      return Promise.allSettled(files.map(async([name,h])=>{
         try{
           const ah = await h.createSyncAccessHandle()
           this.#mapSAHToName.set(ah, name);
@@ -13671,10 +13673,15 @@ globalThis.sqlite3ApiBootstrap.initializers.push(function(sqlite3){
           }
         }catch(e){
           this.storeErr(e);
-          this.releaseAccessHandles();
           throw e;
         }
-      }));
+      })).then((results)=>{
+        const failed = results.find((result)=>result.status==='rejected');
+        if(failed){
+          this.releaseAccessHandles();
+          throw failed.reason;
+        }
+      });
     }
 
     

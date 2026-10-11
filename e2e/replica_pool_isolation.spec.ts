@@ -61,7 +61,7 @@ test('legacy migration preserves an outbox after a failed pool install', async (
     const replica = await page.evaluate(() => sessionStorage.getItem('zzira-replica-id'));
     await page.goto('/projects'); // Stop the Go worker before the storage fixture acquires its handles.
     const migratedFixture = await page.evaluate(async ({ replica, key, queuedSummary }) => {
-      const sqliteURL = new URL('/static/sqlite/sqlite3.js?v=2', location.href).href;
+      const sqliteURL = new URL('/static/sqlite/sqlite3.js?v=3', location.href).href;
       const storageURL = new URL('/static/replica-storage.js?v=1', location.href).href;
       const origin = location.origin;
       const source = `

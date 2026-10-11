@@ -33,7 +33,7 @@ async function requiredAsset(path, label) {
   throw new Error(`${label} unavailable: ${lastError?.message ?? lastError}`);
 }
 
-importScripts('/static/sqlite/sqlite3.js?v=2', '/static/replica-storage.js?v=1', '/static/wasm/wasm_exec.js?go=1.27.2&v=43');
+importScripts('/static/sqlite/sqlite3.js?v=3', '/static/replica-storage.js?v=1', '/static/wasm/wasm_exec.js?go=1.27.2&v=43');
 
 async function startReplica() {
     boot('boot: sqlite3.js + wasm_exec.js imported');

@@ -12,7 +12,8 @@ replicas of work items. Each session replica has its own OPFS pool so tabs can
 work independently. Existing shared-pool replicas migrate as complete SQLite
 copies, including queued commands; the original files remain available for
 recovery. A failed pool initialization releases handles without deleting data.
-The vendored SQLite initialization cleanup is patched for that guarantee;
+The vendored SQLite initialization cleanup and handle-acquisition settlement
+are patched for that guarantee;
 retain it when updating `web/static/sqlite/sqlite3.js`. Its SQLite version and
 WASM binary are unchanged.
 
