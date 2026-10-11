@@ -270,8 +270,7 @@ Owning reference: [CONFLUENCE_LIVE.md](docs/CONFLUENCE_LIVE.md).
 
 ## 14. Local-first closure
 
-- Complete offline screen and field metadata for richer work-item edits; summary
-  and description support omitted values and explicit clearing.
+- Complete offline screen and field metadata for richer work-item edits.
 - Permission-shaped replicas and safe queued writes for service, knowledge,
   dashboards, releases, reports and administration.
 - Conflict handling, idempotent replay, outbox ordering and cross-tab ownership when a replica ID is
