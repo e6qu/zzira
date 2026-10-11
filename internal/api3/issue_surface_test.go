@@ -394,8 +394,8 @@ func TestIssueSurfaceContract(t *testing.T) {
 
 	var reporterEdit struct{ Fields map[string]json.RawMessage }
 	decode(call(admin, "GET", "/rest/api/3/issue/"+reporterCreated.Key+"/editmeta", "", 200), &reporterEdit)
-	if _, present := reporterEdit.Fields["reporter"]; present {
-		t.Fatal("create-only reporter advertised for editing")
+	if _, present := reporterEdit.Fields["reporter"]; !present {
+		t.Fatal("editable reporter absent from metadata")
 	}
 
 	// The issue projection: named fields, details, creator, names and properties.

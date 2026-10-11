@@ -311,6 +311,10 @@ type IssueView struct {
 	// to false; its fields and estimates cannot then be changed.
 	Editable             bool
 	CanAssign            bool
+	CanModifyReporter    bool
+	CanEditReporter      bool
+	ReporterRequired     bool
+	Reporters            []User
 	CanSchedule          bool
 	CanSetSecurity       bool
 	CanDelete            bool
@@ -402,20 +406,24 @@ type WorkflowTransition struct {
 	// offered.
 	ScreenCustomFields []CustomFieldView
 	// ScreenMessage is the prompt a remind-people-to-update-fields screen shows.
-	ScreenMessage string
+	ScreenMessage    string
+	ReporterRequired bool
 }
 
 // EditDialogView drives the edit-issue dialog; rendered by both server and
 // wasm worker (offline editing). Members/levels/fields may be empty offline.
 type EditDialogView struct {
-	CanAssign      bool
-	CanSetSecurity bool
-	Issue          Issue
-	Assignees      []User
-	Members        []User
-	SecurityLevels []WorkflowTransition // reuse shape: ID+Name pairs
-	CustomFields   []CustomFieldView
-	Error          string
+	CanAssign         bool
+	CanModifyReporter bool
+	ReporterRequired  bool
+	Reporters         []User
+	CanSetSecurity    bool
+	Issue             Issue
+	Assignees         []User
+	Members           []User
+	SecurityLevels    []WorkflowTransition // reuse shape: ID+Name pairs
+	CustomFields      []CustomFieldView
+	Error             string
 }
 
 // CustomFieldView is a render-only custom field descriptor with the value.

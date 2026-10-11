@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -543,18 +544,26 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	// A transition is offered only to someone who may move the work, as the
 	// REST resource offers them: a control the server would refuse is not a
 	// control.
+	reporterBehaviour, err := h.Store.ResolveFieldBehaviour(r.Context(), wsID, issue.ProjectID, issue.IssueType.ID)
+	if err != nil {
+		return nil, err
+	}
 	canTransition := permissions["TRANSITION_ISSUES"]
 	if canTransition && issue.ArchivedAt == "" {
 		for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
 			message, _, _ := t.ScreenReminder()
 			screenFields := t.ScreenFields()
+			if reporterBehaviour["reporter"].IsHidden {
+				screenFields = slices.DeleteFunc(screenFields, func(field string) bool { return field == "reporter" })
+			}
+
 			asked := []models.CustomFieldView{}
 			for _, id := range screenFields {
 				if field, ok := customByID[id]; ok {
 					asked = append(asked, field)
 				}
 			}
-			transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: screenFields, ScreenCustomFields: asked, ScreenMessage: message})
+			transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: screenFields, ScreenCustomFields: asked, ScreenMessage: message, ReporterRequired: t.RequiredFields()["reporter"] || reporterBehaviour["reporter"].IsRequired})
 		}
 	}
 	// Resolution is offered to people who may resolve work, as Jira ties the
@@ -752,6 +761,10 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		CanEdit:              permissions["EDIT_ISSUES"] && editable,
 		Editable:             editable,
 		CanAssign:            permissions["ASSIGN_ISSUES"] && editable,
+		CanModifyReporter:    permissions["MODIFY_REPORTER"] && editable,
+		CanEditReporter:      editView.CanModifyReporter && permissions["EDIT_ISSUES"] && editable,
+		ReporterRequired:     editView.ReporterRequired,
+		Reporters:            editView.Reporters,
 		CanSchedule:          permissions["EDIT_ISSUES"] && permissions["SCHEDULE_ISSUES"] && editable,
 		CanSetSecurity:       permissions["EDIT_ISSUES"] && permissions["SET_ISSUE_SECURITY"] && editable,
 		CanDelete:            permissions["DELETE_ISSUES"] && issue.ArchivedAt == "",
@@ -899,6 +912,26 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	// receive new work; opening the editor must not silently unassign them.
 	if issue.Assignee != nil && !currentIncluded {
 		view.Assignees = append(view.Assignees, *issue.Assignee)
+	}
+	reporterFields, err := h.Store.ResolveScreenFields(ctx, wsID, issue.ProjectID, issue.IssueType.ID, "edit")
+	if err != nil {
+		return nil, err
+	}
+	behaviour, err := h.Store.ResolveFieldBehaviour(ctx, wsID, issue.ProjectID, issue.IssueType.ID)
+	if err != nil {
+		return nil, err
+	}
+	view.CanModifyReporter = permissions["MODIFY_REPORTER"] && !behaviour["reporter"].IsHidden && (len(reporterFields) == 0 || slices.Contains(reporterFields, "reporter"))
+	view.ReporterRequired = behaviour["reporter"].IsRequired
+	foundReporter := false
+	for _, member := range members {
+		view.Reporters = append(view.Reporters, *member)
+		if issue.Reporter != nil && member.ID == issue.Reporter.ID {
+			foundReporter = true
+		}
+	}
+	if issue.Reporter != nil && !foundReporter {
+		view.Reporters = append(view.Reporters, *issue.Reporter)
 	}
 	if scheme != nil {
 		for _, lvl := range scheme.Levels {
@@ -2341,6 +2374,8 @@ func (h *Handler) TransitionIssue(w http.ResponseWriter, r *http.Request, key st
 				labels = []string{}
 			}
 			update.Labels = &labels
+		case "reporter":
+			update.ReporterID = &value
 		case "assignee":
 			update.AssigneeID = &value
 		case "priority":
@@ -2607,6 +2642,8 @@ func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key s
 		in.Summary = &value
 	case "priority":
 		in.PriorityID = &value
+	case "reporter":
+		in.ReporterID = &value
 	case "assignee":
 		in.AssigneeID = &value
 	case "parent":
@@ -2788,6 +2825,9 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 	in := commands.UpdateIssueInput{
 		ActorID: user.ID, WorkspaceID: wsID, IssueIDOrKey: key,
 		Summary: &summary, Description: description,
+	}
+	if values, ok := r.PostForm["reporter"]; ok && len(values) > 0 {
+		in.ReporterID = &values[0]
 	}
 	if values, ok := r.PostForm["assignee"]; ok && len(values) > 0 {
 		in.AssigneeID = &values[0]

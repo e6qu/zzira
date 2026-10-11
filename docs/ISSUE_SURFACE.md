@@ -107,6 +107,17 @@ reporter permission. Required and hidden field configuration applies as well. RE
 `reporter: {"accountId": "…"}` with the same permission check. Omitted reporters
 default to the creator; empty, null and unknown accounts are refused.
 
+Single-item updates accept `fields.reporter: {"accountId": "…"}` or one
+`update.reporter` `set` operation. Edits require Edit issues and a Reporter field
+on the edit screen; changing its value also requires Modify reporter. An
+unchanged reporter may be kept even if that account is now inactive. New
+reporters must be active site members. Explicit `null` clears an optional
+Reporter; a required field configuration refuses it. Transition updates accept
+the same user/null values only when their transition screen includes Reporter.
+These paths preserve the creator and emit an audited Reporter change and any
+access revocation atomically. Bulk Reporter updates and explicit empty Reporter
+creation remain gaps.
+
 ## Writing work items
 
 - `POST /rest/api/3/issue` also stores `properties` and applies a `transition`,

@@ -90,6 +90,7 @@ type IssueUpdate struct {
 	Summary             *string
 	Description         json.RawMessage // non-nil = replace
 	PriorityID          *string         // "" = clear, nil = unchanged
+	ReporterID          *string         // "" = clear, nil = unchanged
 	AssigneeID          *string         // "" = unassign, nil = unchanged
 	ParentID            *string         // "" = clear, nil = unchanged
 	StatusID            *string         // transitions only; "" invalid
@@ -339,6 +340,22 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 			sets = append(sets, "assignee_id = "+arg(nilIfEmpty(newID)))
 		}
 	}
+	if up.ReporterID != nil && *up.ReporterID != currentUserID(current.Reporter) {
+		newID, newName := *up.ReporterID, ""
+		if newID != "" {
+			if err := tx.QueryRow(ctx, `SELECT u.display_name FROM memberships m JOIN users u ON u.id=m.user_id
+ WHERE m.workspace_id=$1 AND u.id=$2 AND u.active
+ AND EXISTS(SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id JOIN directory_users du ON du.directory_id=d.id AND du.user_id=u.id WHERE si.workspace_id=m.workspace_id AND d.active AND du.active)`, workspaceID, newID).Scan(&newName); err != nil {
+				return nil, nil, fmt.Errorf("reporter is not an active workspace member")
+			}
+		}
+		oldName := ""
+		if current.Reporter != nil {
+			oldName = current.Reporter.DisplayName
+		}
+		diff["reporter"] = diffItem("reporter", currentUserID(current.Reporter), oldName, newID, newName)
+		sets = append(sets, "reporter_id = "+arg(nilIfEmpty(newID)))
+	}
 	if up.ParentID != nil {
 		newID := *up.ParentID
 		oldID, oldKey := "", ""
@@ -411,6 +428,28 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	}
 	if err := appendAction(ctx, tx, action); err != nil {
 		return nil, nil, err
+	}
+	// Reporter-based browse and security grants are evaluated against the new
+	// row. Revoke the former reporter's replica in the same transaction.
+	if _, changed := diff["reporter"]; changed && current.Reporter != nil {
+		oldReporter := current.Reporter.ID
+		var visible bool
+		if err := tx.QueryRow(ctx, `SELECT jira_has_project_permission($1,$2,$3,$4,'BROWSE_PROJECTS') AND (COALESCE($5,'')='' OR jira_issue_security_visible($1,$2,$4,$3,$5))`, workspaceID, updated.ProjectID, oldReporter, issueID, updated.SecurityLevelID).Scan(&visible); err != nil {
+			return nil, nil, err
+		}
+		if !visible {
+			revokeSeq, err := nextSeq(ctx, tx, workspaceID)
+			if err != nil {
+				return nil, nil, err
+			}
+			payload, err := json.Marshal(models.TombstonePayload{IssueID: issueID, UserID: oldReporter, Reason: "reporter changed"})
+			if err != nil {
+				return nil, nil, err
+			}
+			if err = appendAction(ctx, tx, &models.Action{WorkspaceID: workspaceID, Seq: revokeSeq, EntityType: models.EntityTombstone, EntityID: issueID, Op: models.OpDelete, SchemaV: models.SchemaVersion, Payload: payload, ActorID: actorID}); err != nil {
+				return nil, nil, err
+			}
+		}
 	}
 	if up.TaskID != "" {
 		result, _ := json.Marshal(map[string]any{"jiraId": updated.JiraID, "key": updated.Key})
