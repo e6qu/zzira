@@ -115,6 +115,8 @@ Owning reference: [RELEASES.md](docs/RELEASES.md).
 
 - Additional documented field formats in `versionedRepresentations`; current
   values use format version `1`. Change history belongs to the changelog.
+- Extend JQL value validation to projects, components, versions, users and custom
+  field options ([JQL.md](docs/JQL.md#gaps)).
 - Filters: a richer subscription schedule builder than two presets and a cron
   expression.
 
