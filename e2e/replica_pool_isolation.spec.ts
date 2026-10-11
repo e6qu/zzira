@@ -1,6 +1,7 @@
 import { apiAuthHeader } from './auth';
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import axe from 'axe-core';
 
 test.use({ actionTimeout: 15_000 });
 
@@ -49,6 +50,11 @@ test('server-refused drafts survive reload and pause later saves until explicit 
     await expect.poll(() => page.evaluate(() => (window as any).__refusalReports), { timeout: 20_000 }).toBeGreaterThanOrEqual(3);
     expect(attempts).toBe(1);
     await expect(page.locator('[data-sync-label]')).toHaveText('Save needs attention');
+    await page.locator('[data-theme-toggle]').click();
+    await page.setViewportSize({ width: 320, height: 740 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.addScriptTag({ content: axe.source });
+    expect(await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations)).toEqual([]);
     const downloadPromise = page.waitForEvent('download');
     await recovery.getByRole('button', { name: 'Download queued drafts' }).click();
     const download = await downloadPromise;
