@@ -48,7 +48,7 @@ test('a planner infers missing dates from releases and sprints without committin
       expect(persisted.scheduling.inferredDates).toBe(mode);
       await page.goto(`/plans/${planID}`);
     };
-    const row = () => page.getByRole('table', { name: 'Plan work with dates, teams, sprints and estimates' }).getByRole('row').filter({ hasText: issueKey });
+    const row = () => page.getByRole('table', { name: 'Planned work with dates, teams, sprints and estimates' }).getByRole('row').filter({ hasText: issueKey });
     await setInference('ReleaseDates');
     await expect(row().getByText('Release dates', { exact: true })).toHaveCount(2);
     await expect(row().locator('td').nth(0)).toContainText('02/Nov/26');
