@@ -288,4 +288,4 @@ Remaining work is tracked in [PLAN.md](../PLAN.md).
   - `internal/agile/software.go`, `internal/store/jira_software.go`
   - `internal/api3/plans.go`, `internal/store/plans.go`, `internal/store/plan_*.go`, `internal/web/plan_planning.go`
   - `internal/api3/software_providers.go`, `internal/api3/expressions.go`, `internal/jexpr`
-- Browser tests: `e2e/software.spec.ts`, `e2e/timeline.spec.ts`, `e2e/plans_view.spec.ts`, `e2e/plans_teams.spec.ts`, `e2e/plans_setup.spec.ts`, `e2e/plans_date_fields.spec.ts`, `e2e/plans_duplicate.spec.ts`, `e2e/plans_lifecycle.spec.ts`, `e2e/plans_custom_fields.spec.ts`
+- Browser tests: `e2e/software.spec.ts`, `e2e/timeline.spec.ts`, `e2e/plans_view.spec.ts`, `e2e/plans_teams.spec.ts`, `e2e/plans_setup.spec.ts`, `e2e/plans_date_fields.spec.ts`, `e2e/plans_duplicate.spec.ts`, `e2e/plans_lifecycle.spec.ts`, `e2e/plans_custom_fields.spec.ts`, `e2e/plans_inferred_dates.spec.ts`, `e2e/plans_release_schedule.spec.ts`
