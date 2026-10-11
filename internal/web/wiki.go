@@ -1318,9 +1318,13 @@ func (h *Handler) WikiWhiteboardCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, message, status)
 		return
 	}
+	locale := r.PostFormValue("locale")
+	if r.PostFormValue("templateKey") == "" {
+		locale = ""
+	}
 	whiteboard, err := h.Commands.CreateWikiContent(r.Context(), ws, user.ID, models.WikiContent{
 		Type: "whiteboard", SpaceID: space.ID, Title: r.PostFormValue("title"), ParentID: r.PostFormValue("parentId"),
-		Private: r.PostFormValue("private") == "true", TemplateKey: r.PostFormValue("templateKey"), Locale: r.PostFormValue("locale"),
+		Private: r.PostFormValue("private") == "true", TemplateKey: r.PostFormValue("templateKey"), Locale: locale,
 	})
 	if err != nil {
 		status, message := wikiWebError(err)

@@ -97,6 +97,18 @@ func (s *Store) WikiContents(ctx context.Context, ws, user, spaceID, contentType
 }
 
 func (s *Store) CreateWikiContent(ctx context.Context, ws, actor string, input models.WikiContent) (*models.WikiContent, error) {
+	return s.createWikiContent(ctx, ws, actor, input, nil)
+}
+
+// CreateWikiContentWithCanvas commits the whiteboard and its starter objects together.
+func (s *Store) CreateWikiContentWithCanvas(ctx context.Context, ws, actor string, input models.WikiContent, canvas models.WikiWhiteboardData) (*models.WikiContent, error) {
+	if input.Type != "whiteboard" {
+		return nil, fmt.Errorf("%w: a canvas requires a whiteboard", ErrWikiValidation)
+	}
+	return s.createWikiContent(ctx, ws, actor, input, &canvas)
+}
+
+func (s *Store) createWikiContent(ctx context.Context, ws, actor string, input models.WikiContent, canvas *models.WikiWhiteboardData) (*models.WikiContent, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -143,6 +155,28 @@ func (s *Store) CreateWikiContent(ctx context.Context, ws, actor string, input m
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO wiki_content_versions(content_id,version,title,status,embed_url,author_id) VALUES($1::bigint,1,$2,'current',$3,$4)`, input.ID, input.Title, input.EmbedURL, actor); err != nil {
 		return nil, err
+	}
+	if canvas != nil {
+		objectIDs := make(map[string]string, len(canvas.Objects))
+		for _, object := range canvas.Objects {
+			if object.ID == "" || objectIDs[object.ID] != "" {
+				return nil, fmt.Errorf("%w: starter object IDs must be unique", ErrWikiValidation)
+			}
+			var id string
+			if err = tx.QueryRow(ctx, `INSERT INTO wiki_whiteboard_objects(whiteboard_id,object_type,title,body,x,y,width,height,color,created_by) VALUES($1::bigint,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id::text`, input.ID, object.Type, object.Title, object.Body, object.X, object.Y, object.Width, object.Height, object.Color, actor).Scan(&id); err != nil {
+				return nil, err
+			}
+			objectIDs[object.ID] = id
+		}
+		for _, connector := range canvas.Connectors {
+			from, to := objectIDs[connector.FromObjectID], objectIDs[connector.ToObjectID]
+			if from == "" || to == "" || from == to {
+				return nil, fmt.Errorf("%w: starter connectors must join two objects", ErrWikiValidation)
+			}
+			if _, err = tx.Exec(ctx, `INSERT INTO wiki_whiteboard_connectors(whiteboard_id,from_object_id,to_object_id,label,line_style,created_by) VALUES($1::bigint,$2::bigint,$3::bigint,$4,$5,$6)`, input.ID, from, to, connector.Label, connector.Style, actor); err != nil {
+				return nil, err
+			}
+		}
 	}
 	content, err := scanWikiContent(tx.QueryRow(ctx, wikiContentSelect+` WHERE c.id::text=$1`, input.ID))
 	if err != nil {

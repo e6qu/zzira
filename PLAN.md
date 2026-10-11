@@ -276,7 +276,8 @@ labelled connectors, a fixed 1400×800 SVG render, and whiteboard lifecycle in v
 - Shapes library, freehand, images, frames and sections, grouping, alignment and
   snapping.
 - Connectors with anchors, routing and arrowheads; automatic graph layout.
-- Templates that add content (53 keys are accepted today and add nothing).
+- Specialized template layout parity and translated labels beyond the native
+  English starters.
 - Voting, timer, sticky-to-work-item conversion, Smart Links.
 - Comments, reactions, version history, live collaboration (see 12).
 - Image and PDF export; accessible text equivalents.
