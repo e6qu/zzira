@@ -21,6 +21,8 @@ type PlanView struct {
 	// RollUp is whether the work under a parent is added up onto it.
 	RollUp        bool
 	CustomFilters map[string]string
+	Columns       []string
+	Zoom          string
 }
 
 // PlanGroupings are the fields a plan's work can be grouped by, in the order
@@ -40,9 +42,28 @@ func ValidPlanGrouping(value string) bool {
 	return false
 }
 
+// Plan columns keep work and its timeline visible; the remaining cells are optional.
+var PlanOptionalColumns = []string{"start", "end", "team", "sprint", "estimate", "dependencies"}
+
+func ValidPlanColumn(value string) bool {
+	for _, column := range PlanOptionalColumns {
+		if column == value {
+			return true
+		}
+	}
+	if !strings.HasPrefix(value, "customfield_") {
+		return false
+	}
+	id, err := strconv.ParseInt(strings.TrimPrefix(value, "customfield_"), 10, 64)
+	return err == nil && id > 0
+}
+func ValidPlanZoom(value string) bool {
+	return value == "compact" || value == "standard" || value == "detailed"
+}
+
 // PlanViews are a plan's saved views, by name.
 func (s *Store) PlanViews(ctx context.Context, workspaceID string, planID int64) ([]PlanView, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id,name,group_by,query,rollup,custom_filters FROM plan_views
+	rows, err := s.Pool.Query(ctx, `SELECT id,name,group_by,query,rollup,custom_filters,columns,zoom FROM plan_views
 		WHERE workspace_id=$1 AND plan_id=$2 ORDER BY lower(name),id`, workspaceID, planID)
 	if err != nil {
 		return nil, err
@@ -51,8 +72,11 @@ func (s *Store) PlanViews(ctx context.Context, workspaceID string, planID int64)
 	views := []PlanView{}
 	for rows.Next() {
 		var view PlanView
-		var filters []byte
-		if err := rows.Scan(&view.ID, &view.Name, &view.GroupBy, &view.Query, &view.RollUp, &filters); err != nil {
+		var filters, columns []byte
+		if err := rows.Scan(&view.ID, &view.Name, &view.GroupBy, &view.Query, &view.RollUp, &filters, &columns, &view.Zoom); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(columns, &view.Columns); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(filters, &view.CustomFilters); err != nil {
@@ -66,14 +90,17 @@ func (s *Store) PlanViews(ctx context.Context, workspaceID string, planID int64)
 // PlanViewByID is one saved view of a plan.
 func (s *Store) PlanViewByID(ctx context.Context, workspaceID string, planID, viewID int64) (*PlanView, error) {
 	view := &PlanView{}
-	var filters []byte
-	err := s.Pool.QueryRow(ctx, `SELECT id,name,group_by,query,rollup,custom_filters FROM plan_views
-		WHERE workspace_id=$1 AND plan_id=$2 AND id=$3`, workspaceID, planID, viewID).Scan(&view.ID, &view.Name, &view.GroupBy, &view.Query, &view.RollUp, &filters)
+	var filters, columns []byte
+	err := s.Pool.QueryRow(ctx, `SELECT id,name,group_by,query,rollup,custom_filters,columns,zoom FROM plan_views
+		WHERE workspace_id=$1 AND plan_id=$2 AND id=$3`, workspaceID, planID, viewID).Scan(&view.ID, &view.Name, &view.GroupBy, &view.Query, &view.RollUp, &filters, &columns, &view.Zoom)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("that view is not in this plan")
 	}
 	if err == nil {
 		err = json.Unmarshal(filters, &view.CustomFilters)
+		if err == nil {
+			err = json.Unmarshal(columns, &view.Columns)
+		}
 	}
 	return view, err
 }
@@ -91,6 +118,19 @@ func (s *Store) SavePlanView(ctx context.Context, workspaceID, actorID string, p
 	}
 	if !ValidPlanGrouping(view.GroupBy) {
 		return nil, planInvalid("%q is not a way to group a plan.", view.GroupBy)
+	}
+	if view.Zoom == "" {
+		view.Zoom = "standard"
+	}
+	if !ValidPlanZoom(view.Zoom) {
+		return nil, planInvalid("Choose compact, standard or detailed zoom.")
+	}
+	seenColumns := map[string]bool{}
+	for _, column := range view.Columns {
+		if !ValidPlanColumn(column) || seenColumns[column] {
+			return nil, planInvalid("Choose each column once from the plan.")
+		}
+		seenColumns[column] = true
 	}
 	if view.CustomFilters == nil {
 		view.CustomFilters = map[string]string{}
@@ -128,14 +168,29 @@ func (s *Store) SavePlanView(ctx context.Context, workspaceID, actorID string, p
 			return nil, planInvalid("The custom filter is no longer enabled in this plan.")
 		}
 	}
+	for _, column := range view.Columns {
+		if strings.HasPrefix(column, "customfield_") {
+			var included bool
+			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM plans p CROSS JOIN jsonb_array_elements(p.custom_fields) field WHERE p.workspace_id=$1 AND p.id=$2 AND field->>'customFieldId'=$3)`, workspaceID, planID, strings.TrimPrefix(column, "customfield_")).Scan(&included); err != nil {
+				return nil, err
+			}
+			if !included {
+				return nil, planInvalid("That custom column is no longer added to this plan.")
+			}
+		}
+	}
+	columns, err := json.Marshal(view.Columns)
+	if err != nil {
+		return nil, err
+	}
 	filters, err := json.Marshal(view.CustomFilters)
 	if err != nil {
 		return nil, err
 	}
-	if err = tx.QueryRow(ctx, `INSERT INTO plan_views(workspace_id,plan_id,name,group_by,query,rollup,created_by,custom_filters)
-	 VALUES($1,$2,$3,$4,$5,$6,$7,$8)
-	 ON CONFLICT(workspace_id,plan_id,lower(name)) DO UPDATE SET group_by=EXCLUDED.group_by,query=EXCLUDED.query,rollup=EXCLUDED.rollup,custom_filters=EXCLUDED.custom_filters
-	 RETURNING id,name`, workspaceID, planID, view.Name, view.GroupBy, view.Query, view.RollUp, actorID, filters).Scan(&view.ID, &view.Name); err != nil {
+	if err = tx.QueryRow(ctx, `INSERT INTO plan_views(workspace_id,plan_id,name,group_by,query,rollup,created_by,custom_filters,columns,zoom)
+	 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+	 ON CONFLICT(workspace_id,plan_id,lower(name)) DO UPDATE SET group_by=EXCLUDED.group_by,query=EXCLUDED.query,rollup=EXCLUDED.rollup,custom_filters=EXCLUDED.custom_filters,columns=EXCLUDED.columns,zoom=EXCLUDED.zoom
+	 RETURNING id,name`, workspaceID, planID, view.Name, view.GroupBy, view.Query, view.RollUp, actorID, filters, columns, view.Zoom).Scan(&view.ID, &view.Name); err != nil {
 		return nil, err
 	}
 	if err = siteConfigurationAudit(ctx, tx, workspaceID, actorID, "plan.view_saved", "plan:"+strconv.FormatInt(planID, 10)+":view:"+strconv.FormatInt(view.ID, 10), view); err != nil {

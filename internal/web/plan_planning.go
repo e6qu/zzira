@@ -52,6 +52,9 @@ type planPageData struct {
 	CustomCells           map[string]map[string]planCustomFieldCell
 	CustomFilters         []planCustomFieldFilter
 	WorkColumnCount       int
+	Zoom                  string
+	ColumnChoices         []planColumnChoice
+	VisibleColumns        map[string]bool
 	ViewDraftName         string
 	ViewFilterUnavailable bool
 	Groups                []planGroup
@@ -360,9 +363,9 @@ func (h *Handler) renderPlanPage(w http.ResponseWriter, r *http.Request, message
 		}
 		return
 	}
-	data.WorkColumnCount = 8 + len(data.CustomColumns)
-	if data.Edit {
-		data.WorkColumnCount++
+	if err := configurePlanLayout(r, &data); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	data.Groups = planGroups(planCustomFieldRows(&data), planning.Items, data.GroupBy, data.Query)
 	h.writeWorkspacePageStatus(w, r, "page_plan", user, workspaceID, data, "plans", "", status)
@@ -405,7 +408,11 @@ func (h *Handler) PlanViewSave(w http.ResponseWriter, r *http.Request) {
 			filters[strings.TrimPrefix(key, "cf_")] = values[0]
 		}
 	}
-	view, err := h.Store.SavePlanView(r.Context(), workspaceID, user.ID, plan.ID, store.PlanView{Name: r.PostFormValue("name"), GroupBy: r.PostFormValue("group"), Query: r.PostFormValue("q"), RollUp: r.PostFormValue("rollup") == "true", CustomFilters: filters})
+	var columns []string
+	if r.PostFormValue("columnsProvided") == "1" {
+		columns = append([]string{}, r.PostForm["column"]...)
+	}
+	view, err := h.Store.SavePlanView(r.Context(), workspaceID, user.ID, plan.ID, store.PlanView{Name: r.PostFormValue("name"), GroupBy: r.PostFormValue("group"), Query: r.PostFormValue("q"), RollUp: r.PostFormValue("rollup") == "true", CustomFilters: filters, Columns: columns, Zoom: r.PostFormValue("zoom")})
 	if err != nil {
 		if errors.Is(err, store.ErrProjectPermission) {
 			http.Error(w, "You can no longer edit this plan.", http.StatusForbidden)
@@ -426,6 +433,11 @@ func (h *Handler) PlanViewSave(w http.ResponseWriter, r *http.Request) {
 		// Rebuild the same view from submitted controls and keep its refused
 		// name, rather than redirecting away from the planner's choices.
 		values := url.Values{"scenario": {strconv.FormatInt(scenario.ID, 10)}, "group": {r.PostFormValue("group")}, "q": {r.PostFormValue("q")}, "rollup": {r.PostFormValue("rollup")}}
+		values.Set("zoom", r.PostFormValue("zoom"))
+		if columns != nil {
+			values.Set("columnsProvided", "1")
+			values["column"] = columns
+		}
 		for id, value := range filters {
 			values.Set("cf_"+id, value)
 		}

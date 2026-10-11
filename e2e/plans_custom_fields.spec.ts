@@ -62,9 +62,18 @@ test('a planner selects custom columns and filters persisted work by labels', as
     await expect(work.getByRole('row').filter({ hasText: 'red planning work' })).toHaveCount(0);
     await page.reload();
     await expect(page.getByLabel(fieldName, { exact: true })).toHaveValue('"blue"');
+    const standardWidth = Number(await work.locator('.timeline-scale').getAttribute('width'));
+    await page.getByLabel('Timeline zoom', { exact: true }).selectOption('detailed');
+    await page.getByText('Columns', { exact: true }).click();
+    await page.getByLabel('Show Start', { exact: true }).uncheck();
+    await page.getByRole('button', { name: 'Show', exact: true }).click();
+    await expect(work.getByRole('columnheader', { name: 'Start', exact: true })).toHaveCount(0);
+    await expect(work.locator('.timeline-scale')).toHaveAttribute('width', String(standardWidth * 2));
     await page.getByLabel('Keep this view as').fill('   ');
     await page.getByRole('button', { name: 'Save view', exact: true }).click();
     await expect(page.getByRole('alert')).toHaveText('A view needs a name of at most 120 characters.');
+    await expect(page.getByLabel('Timeline zoom', { exact: true })).toHaveValue('detailed');
+    await expect(page.getByLabel('Show Start', { exact: true })).not.toBeChecked();
     await expect(page.getByLabel('Keep this view as')).toHaveValue('   ');
     await expect(work.getByRole('row').filter({ hasText: 'red planning work' })).toHaveCount(0);
     await page.getByLabel('Keep this view as').fill(`Blue work ${stamp}`);
@@ -75,6 +84,9 @@ test('a planner selects custom columns and filters persisted work by labels', as
     await expect(work.getByRole('row').filter({ hasText: 'red planning work' })).toHaveCount(1);
     await page.getByRole('link', { name: `Blue work ${stamp}`, exact: true }).click();
     await expect(page).toHaveURL(savedURL.replace(/&notice=.*$/, ''));
+    await expect(page.getByLabel('Timeline zoom', { exact: true })).toHaveValue('detailed');
+    await expect(work.getByRole('columnheader', { name: 'Start', exact: true })).toHaveCount(0);
+    await expect(work.locator('.timeline-scale')).toHaveAttribute('width', String(standardWidth * 2));
     await expect(work.getByRole('row').filter({ hasText: 'red planning work' })).toHaveCount(0);
     await expect(page.getByLabel(fieldName, { exact: true })).toHaveValue('"blue"');
     await page.setViewportSize({ width: 320, height: 740 });

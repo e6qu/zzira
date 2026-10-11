@@ -53,15 +53,18 @@ func TestASavedPlanViewKeepsHowThePlanIsRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	saved, err := st.SavePlanView(ctx, workspaceID, leadID, planID, PlanView{Name: "By team", GroupBy: "team", Query: "PAY", RollUp: true})
+	saved, err := st.SavePlanView(ctx, workspaceID, leadID, planID, PlanView{Name: "By team", GroupBy: "team", Query: "PAY", RollUp: true, Columns: []string{"team"}, Zoom: "detailed"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Saving the same name again is the same view, changed, rather than a
 	// second one with the same name.
-	again, err := st.SavePlanView(ctx, workspaceID, leadID, planID, PlanView{Name: "by team", GroupBy: "sprint"})
+	again, err := st.SavePlanView(ctx, workspaceID, leadID, planID, PlanView{Name: "by team", GroupBy: "sprint", Columns: []string{}, Zoom: "compact"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if again.Zoom != "compact" || again.Columns == nil || len(again.Columns) != 0 {
+		t.Fatalf("layout not preserved: %+v", again)
 	}
 	if again.ID != saved.ID {
 		t.Fatalf("saving over the view made a second one: %d and %d", saved.ID, again.ID)
@@ -74,7 +77,7 @@ func TestASavedPlanViewKeepsHowThePlanIsRead(t *testing.T) {
 		t.Fatalf("views = %+v", views)
 	}
 	read, err := st.PlanViewByID(ctx, workspaceID, planID, saved.ID)
-	if err != nil || read.Name != "By team" || read.RollUp {
+	if err != nil || read.Name != "By team" || read.RollUp || read.Zoom != "compact" || read.Columns == nil {
 		t.Fatalf("read back %+v, %v", read, err)
 	}
 
@@ -83,6 +86,9 @@ func TestASavedPlanViewKeepsHowThePlanIsRead(t *testing.T) {
 		view PlanView
 		want string
 	}{
+		{"unknown zoom", PlanView{Name: "Invalid zoom", Zoom: "huge"}, "Choose compact"},
+		{"unknown column", PlanView{Name: "Invalid column", Columns: []string{"not-a-column"}}, "Choose each column"},
+		{"duplicate column", PlanView{Name: "Duplicate column", Columns: []string{"team", "team"}}, "Choose each column"},
 		{"no name", PlanView{Name: "  "}, "needs a name"},
 		{"an unknown grouping", PlanView{Name: "Odd", GroupBy: "colour"}, "not a way to group"},
 		{"a filter that is too long", PlanView{Name: "Long", Query: strings.Repeat("x", 201)}, "at most 200"},

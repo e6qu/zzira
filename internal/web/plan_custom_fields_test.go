@@ -108,12 +108,25 @@ func TestPlanCustomFieldsPersistDisplayFilterAndRespectScope(t *testing.T) {
 	if refusedView.Code != 400 || !strings.Contains(refusedView.Body.String(), `name="name" value="   "`) || !strings.Contains(refusedView.Body.String(), "Blue work") || strings.Contains(refusedView.Body.String(), "Red work") {
 		t.Fatal("refused view lost its name or selected filter")
 	}
-	savedView, err := f.store.SavePlanView(ctx, ws, f.ownerID, planID, store.PlanView{Name: "Blue view", CustomFilters: map[string]string{labelID: `"blue"`}})
+	savedView, err := f.store.SavePlanView(ctx, ws, f.ownerID, planID, store.PlanView{Name: "Blue view", CustomFilters: map[string]string{labelID: `"blue"`}, Columns: []string{"customfield_" + labelID}, Zoom: "detailed"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	viewPath := "?view=" + strconv.FormatInt(savedView.ID, 10)
 	viewPage := get(viewPath, 200).Body.String()
+	if strings.Contains(viewPage, `<th scope="col">Start</th>`) || !strings.Contains(viewPage, `<th scope="col">Plan labels</th>`) || !strings.Contains(viewPage, `value="detailed" selected`) {
+		t.Fatal("saved view lost column selection or zoom")
+	}
+	emptyColumns, err := f.store.SavePlanView(ctx, ws, f.ownerID, planID, store.PlanView{Name: "Work only", Columns: []string{}, Zoom: "compact"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptyLayout := get("?view="+strconv.FormatInt(emptyColumns.ID, 10), 200).Body.String()
+	if strings.Contains(emptyLayout, `<th scope="col">Start</th>`) || strings.Contains(emptyLayout, `<th scope="col">Plan labels</th>`) || !strings.Contains(emptyLayout, "Blue work") {
+		t.Fatal("explicitly empty columns became defaults")
+	}
+	get("?zoom=unknown", 400)
+	get("?columnsProvided=1&column=unknown", 400)
 	if !strings.Contains(viewPage, "Blue work") || strings.Contains(viewPage, "Red work") {
 		t.Fatal("saved view did not retain custom filter")
 	}

@@ -825,6 +825,8 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
 .plan-view-current { text-decoration:underline; }
 .plan-group-row>.plan-group-heading { padding:10px 12px; text-align:left; font-size:12px; letter-spacing:.02em; background:var(--ds-surface-sunken); }
 .plan-no-matches { margin:12px 0 0; }
+.plan-view-form input[type="checkbox"] { flex:none; width:24px; min-width:24px; height:24px; padding:0; }
+.plan-columns { min-width:0; max-width:100%; }.plan-columns fieldset { display:grid; gap:8px; min-width:0; margin:8px 0 0; padding:12px; border:1px solid var(--ds-border); border-radius:var(--ds-radius); }.plan-columns label { overflow-wrap:anywhere; }
 @media(max-width:680px) { .plan-view-form input { min-width:0; width:100%; }.plan-view-form label { flex:1 1 100%; } }
 .plan-manage-forms { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-top:12px; }.plan-manage-forms h3 { margin:0; font-size:14px; }
 .plan-flag { display:inline-block; width:10px; height:10px; margin-left:6px; border-radius:50%; vertical-align:middle; background:var(--plan-flag); }i.plan-flag { margin-left:0; }
