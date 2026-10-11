@@ -162,3 +162,75 @@ test('legacy migration preserves an outbox after a failed pool install', async (
     await page.request.delete(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() }, timeout: 10_000 });
   }
 });
+
+
+async function replicaStatement(page: import('@playwright/test').Page, replica: string, sql: string) {
+  return page.evaluate(async ({ replica, sql }) => {
+    const sqliteURL = new URL('/static/sqlite/sqlite3.js?v=3', location.href).href;
+    const storageURL = new URL('/static/replica-storage.js?v=1', location.href).href;
+    const source = `
+      importScripts(${JSON.stringify(sqliteURL)}, ${JSON.stringify(storageURL)});
+      self.onmessage = async ({data}) => {
+        try {
+          const sqlite3 = await sqlite3InitModule({locateFile:name => new URL('/static/sqlite/' + name,data.origin).href});
+          const pool = await self.zziraReplicaStorage(sqlite3,data.replica);
+          const db = new pool.OpfsSAHPoolDb('/zzira-' + data.replica + '.db');
+          let outbox;
+          try { db.exec(data.sql); outbox = db.selectValue('SELECT COUNT(*) FROM outbox'); }
+          finally { db.close(); pool.pauseVfs(); }
+          self.postMessage({outbox});
+        } catch (error) { self.postMessage({error:String(error)}); }
+      };
+    `;
+    const blob = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    const worker = new Worker(blob);
+    try {
+      return await new Promise<any>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('replica statement timed out')), 20_000);
+        worker.onmessage = event => { clearTimeout(timer); resolve(event.data); };
+        worker.onerror = () => { clearTimeout(timer); reject(new Error('replica statement worker failed')); };
+        worker.postMessage({ replica, sql, origin: location.origin });
+      });
+    } finally { worker.terminate(); URL.revokeObjectURL(blob); }
+  }, { replica, sql });
+}
+
+test('a refused optimistic update rolls back its outbox and retains the draft', async ({ page, context }) => {
+  await login(page);
+  const summary = `Atomic offline edit ${Date.now()}`;
+  const changed = `${summary} changed`;
+  const key = await create(page, summary);
+  try {
+    await page.goto(`/browse/${key}`);
+    await expect(page.locator('#sync-banner')).toContainText('synced', { timeout: 20_000 });
+    const replica = await page.evaluate(() => sessionStorage.getItem('zzira-replica-id'));
+    expect(replica).toBeTruthy();
+    await page.goto('/projects');
+    expect(await replicaStatement(page, replica!, "CREATE TRIGGER reject_local_edit BEFORE UPDATE ON issues BEGIN SELECT RAISE(ABORT,'injected optimistic update refusal'); END")).toEqual({ outbox: 0 });
+    await context.setOffline(true);
+    await page.goto(`/browse/${key}`);
+    await expect(page.locator('#sync-banner')).toContainText('offline', { timeout: 20_000 });
+    await page.locator('#edit-issue-button').click();
+    await page.locator('#edit-summary').fill(changed);
+    await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await expect(page.locator('[data-offline-save-error]')).toHaveText('The change could not be saved offline.');
+    await expect(page.locator('#edit-summary')).toHaveValue(changed);
+    await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toBeEnabled();
+    await page.keyboard.press('Escape');
+    await page.goto('/projects');
+    expect(await replicaStatement(page, replica!, 'DROP TRIGGER reject_local_edit')).toEqual({ outbox: 0 });
+    await page.goto(`/browse/${key}`);
+    await expect(page.locator('.issue-summary')).toHaveText(summary);
+    await page.locator('#edit-issue-button').click();
+    await page.locator('#edit-summary').fill(changed);
+    await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Edit issue', exact: true })).not.toBeVisible();
+    await page.reload();
+    await expect(page.locator('.issue-summary')).toHaveText(changed);
+    await context.setOffline(false);
+    await expect.poll(async () => (await (await page.request.get(`/rest/api/3/issue/${key}?fields=summary`, { headers: { Authorization: apiAuthHeader() } })).json()).fields.summary, { timeout: 20_000 }).toBe(changed);
+  } finally {
+    await context.setOffline(false);
+    await page.request.delete(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() }, timeout: 10_000 });
+  }
+});
