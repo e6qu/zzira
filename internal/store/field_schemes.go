@@ -560,6 +560,28 @@ func (s *Store) AssociateFieldsWithProjects(ctx context.Context, workspaceID, ac
 	if err = projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
 		return err
 	}
+	if associate {
+		// Take all field locks before configuration writes and action sequences.
+		// Stable ordering prevents two multi-field associations from deadlocking.
+		rows, lockErr := tx.Query(ctx, `SELECT id FROM custom_fields
+			WHERE id=ANY($1) AND (workspace_id IS NULL OR workspace_id=$2)
+			ORDER BY id FOR UPDATE`, fieldIDs, workspaceID)
+		if lockErr != nil {
+			return lockErr
+		}
+		for rows.Next() {
+			var id string
+			if lockErr = rows.Scan(&id); lockErr != nil {
+				rows.Close()
+				return lockErr
+			}
+		}
+		lockErr = rows.Err()
+		rows.Close()
+		if lockErr != nil {
+			return lockErr
+		}
+	}
 	for _, projectID := range projectIDs {
 		var schemeID int64
 		if err = tx.QueryRow(ctx, `SELECT scheme_id FROM project_field_configuration_schemes
@@ -592,19 +614,27 @@ func (s *Store) AssociateFieldsWithProjects(ctx context.Context, workspaceID, ac
 // project. A context that already covers every project reaches it, so there is
 // nothing to widen.
 func extendCustomFieldToProject(ctx context.Context, tx pgx.Tx, fieldID, projectID string) error {
+	var covered bool
+	if err := tx.QueryRow(ctx, `SELECT jira_custom_field_context($1,$2,NULL) IS NOT NULL`, fieldID, projectID).Scan(&covered); err != nil {
+		return err
+	}
+	if covered {
+		return nil
+	}
 	var contextID int64
-	var allProjects bool
-	err := tx.QueryRow(ctx, `SELECT id, all_projects FROM custom_field_contexts
-		WHERE field_id=$1 ORDER BY id LIMIT 1`, fieldID).Scan(&contextID, &allProjects)
-	if err == pgx.ErrNoRows || (err == nil && allProjects) {
+	err := tx.QueryRow(ctx, `SELECT id FROM custom_field_contexts
+		WHERE field_id=$1 ORDER BY id LIMIT 1`, fieldID).Scan(&contextID)
+	if err == pgx.ErrNoRows {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO custom_field_context_projects(context_id,project_id)
-		VALUES($1,$2) ON CONFLICT DO NOTHING`, contextID, projectID)
-	return err
+	if _, err = tx.Exec(ctx, `INSERT INTO custom_field_context_projects(context_id,project_id)
+		VALUES($1,$2) ON CONFLICT DO NOTHING`, contextID, projectID); err != nil {
+		return err
+	}
+	return assertNoContextOverlapTx(ctx, tx, fieldID, strconv.FormatInt(contextID, 10))
 }
 
 func sortedKeys[V any](m map[string]V) []string {

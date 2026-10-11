@@ -26,7 +26,7 @@ Context names are unique per field, ignoring case. Every change is written to th
 ## Behavior
 
 - A context with no projects applies to every project; one with no work types applies to every work type. Removing the last project or work type returns the context to "all".
-- No two contexts of a field may cover the same project and work type. A create or widen that would overlap is 409 (`assertNoContextOverlapTx`, `internal/store/custom_field_contexts.go`). A global context therefore blocks any other context on that field.
+- A field may have one global fallback and project-specific overrides. A project may belong to only one explicit context, even when contexts name different work types. A second global context or duplicate project assignment returns 409. Scope changes and deletion checks lock the field so concurrent writes cannot bypass these rules.
 - A custom field always keeps at least one context. A new custom field gets a global context from a database trigger.
 - The SQL function `jira_custom_field_context(field, project, work type)` returns the governing context, preferring one that names the project, then one that names the work type. Everything below uses it:
   - `createmeta` and the create dialog leave out a field whose context does not reach the project and work type.
@@ -37,7 +37,7 @@ Context names are unique per field, ignoring case. Every change is written to th
 
 ## UI
 
-`/settings/custom-fields`: per field, create and delete contexts; add or remove projects and work types; set the default value; manage options; for Assets fields, choose whether a context holds one object or several.
+`/settings/custom-fields`: per field, create and delete contexts; add or remove projects and work types; set the default value; manage options; for Assets fields, choose whether a context holds one object or several. A refused context creation preserves its name, description, projects and work types for correction.
 
 ## Code
 
@@ -47,4 +47,4 @@ Context names are unique per field, ignoring case. Every change is written to th
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- The overlap rule differs from Jira. Jira allows one global context alongside project-scoped contexts, which take precedence, and forbids only one project being in two contexts.
+- The project-assignment API still allows converting a global context to project scope. The pinned Cloud contract requires HTTP 400 for this API operation from April 2026; browser scope editing remains supported.
