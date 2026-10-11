@@ -116,6 +116,88 @@ func TestFieldConfigurationContract(t *testing.T) {
 		t.Fatal(items.Body.String())
 	}
 
+	type fieldRule struct {
+		ID          string `json:"id"`
+		IsRequired  bool   `json:"isRequired"`
+		IsHidden    bool   `json:"isHidden"`
+		Description string `json:"description"`
+	}
+	readRule := func(id string) fieldRule {
+		t.Helper()
+		var wire struct {
+			Values []fieldRule `json:"values"`
+		}
+		if err = json.Unmarshal(call(adminID, http.MethodGet, itemsPath, "", http.StatusOK).Body.Bytes(), &wire); err != nil {
+			t.Fatal(err)
+		}
+		for _, rule := range wire.Values {
+			if rule.ID == id {
+				return rule
+			}
+		}
+		t.Fatalf("missing field rule %s", id)
+		return fieldRule{}
+	}
+	// Properties omitted from a partial update retain their stored values.
+	call(adminID, http.MethodPut, itemsPath, `{"fieldConfigurationItems":[{"id":"priority","description":"Updated help"},{"id":"summary","description":"Describe the work"}]}`, http.StatusNoContent)
+	if rule := readRule("priority"); !rule.IsRequired || rule.IsHidden || rule.Description != "Updated help" {
+		t.Fatalf("partial priority rule: %+v", rule)
+	}
+	if rule := readRule("summary"); !rule.IsRequired || rule.Description != "Describe the work" {
+		t.Fatalf("partial summary rule: %+v", rule)
+	}
+	// An invalid later field rolls back earlier patches and their audit log.
+	var before, after int
+	if err = st.Pool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1`, workspaceID).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	call(adminID, http.MethodPut, itemsPath, `{"fieldConfigurationItems":[{"id":"priority","description":"Must roll back"},{"id":"missing_field","isRequired":true}]}`, http.StatusBadRequest)
+	if err = st.Pool.QueryRow(ctx, `SELECT count(*) FROM actions WHERE workspace_id=$1`, workspaceID).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if before != after || readRule("priority").Description != "Updated help" {
+		t.Fatal("refused field patch left partial state or an audit record")
+	}
+	// Explicit false clears a setting. Hiding drops required/help properties;
+	// unhiding does not revive them.
+	call(adminID, http.MethodPut, itemsPath, `{"fieldConfigurationItems":[{"id":"priority","isRequired":false}]}`, http.StatusNoContent)
+	if rule := readRule("priority"); rule.IsRequired || rule.Description != "Updated help" {
+		t.Fatalf("explicit false: %+v", rule)
+	}
+	call(adminID, http.MethodPut, itemsPath, `{"fieldConfigurationItems":[{"id":"priority","isRequired":true}]}`, http.StatusNoContent)
+	call(adminID, http.MethodPut, itemsPath, `{"fieldConfigurationItems":[{"id":"priority","isHidden":true}]}`, http.StatusNoContent)
+	if rule := readRule("priority"); !rule.IsHidden || rule.IsRequired || rule.Description != "" {
+		t.Fatalf("hidden baseline: %+v", rule)
+	}
+	call(adminID, http.MethodPut, itemsPath, `{"fieldConfigurationItems":[{"id":"priority","isHidden":false}]}`, http.StatusNoContent)
+	if rule := readRule("priority"); rule.IsHidden || rule.IsRequired || rule.Description != "" {
+		t.Fatalf("unhidden baseline: %+v", rule)
+	}
+	// Independent concurrent property patches must both survive.
+	required, help := true, "Concurrent help"
+	raceCtx, cancelRace := context.WithTimeout(ctx, 15*time.Second)
+	defer cancelRace()
+	results := make(chan error, 2)
+	start := make(chan struct{})
+	for _, patch := range []store.FieldConfigurationItemPatch{
+		{FieldID: "priority", IsRequired: &required}, {FieldID: "priority", Description: &help},
+	} {
+		go func(patch store.FieldConfigurationItemPatch) {
+			<-start
+			results <- st.PatchFieldConfigurationItems(raceCtx, workspaceID, adminID, configID, []store.FieldConfigurationItemPatch{patch})
+		}(patch)
+	}
+	close(start)
+	for range 2 {
+		if patchErr := <-results; patchErr != nil {
+			t.Fatal(patchErr)
+		}
+	}
+	if rule := readRule("priority"); !rule.IsRequired || rule.Description != help {
+		t.Fatalf("concurrent patches lost a property: %+v", rule)
+	}
+	call(adminID, http.MethodPut, itemsPath, `{"fieldConfigurationItems":[{"id":"priority","isRequired":true,"description":"Pick the release priority"}]}`, http.StatusNoContent)
+
 	schemeID := decodeID(call(adminID, http.MethodPost, "/rest/api/3/fieldconfigurationscheme", `{"name":"Release field scheme","description":"Strict fields for tasks"}`, http.StatusCreated))
 	call(adminID, http.MethodPut, "/rest/api/3/fieldconfigurationscheme/"+schemeID, `{"description":"Strict fields for release tasks"}`, http.StatusNoContent)
 	call(adminID, http.MethodGet, "/rest/api/3/fieldconfigurationscheme", "", http.StatusOK)
