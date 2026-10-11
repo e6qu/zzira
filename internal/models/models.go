@@ -404,10 +404,11 @@ type IssueLinkView struct {
 
 // WorkflowTransition decouples the view from the workflow package.
 type WorkflowTransition struct {
-	ID           string
-	Name         string
-	ScreenFields []string
-	ScreenTabs   []FieldTab
+	ID                   string
+	Name                 string
+	ScreenFields         []string
+	ScreenTabs           []FieldTab
+	ScreenRequiredFields map[string]bool
 	// ScreenCustomFields describes the custom fields among ScreenFields, so a
 	// transition screen renders them as the edit dialog does rather than as a
 	// text box labelled with a field id. Empty offline, where screens are not
@@ -416,6 +417,11 @@ type WorkflowTransition struct {
 	// ScreenMessage is the prompt a remind-people-to-update-fields screen shows.
 	ScreenMessage    string
 	ReporterRequired bool
+}
+
+// FieldRequired also supports views built before required screen metadata existed.
+func (t WorkflowTransition) FieldRequired(field string) bool {
+	return field == "summary" || t.ScreenRequiredFields[field] || (field == "reporter" && t.ReporterRequired)
 }
 
 // ScreenTabGroups keeps only tabs with fields offered by this transition.

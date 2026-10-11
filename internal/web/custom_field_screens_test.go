@@ -31,7 +31,7 @@ func TestCustomFieldViewsRespectScreensHiddenRulesAndWorkTypeContexts(t *testing
 		}
 	})
 	fields := map[string]string{}
-	values := map[string]json.RawMessage{}
+	values := map[string]json.RawMessage{"environment": json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Existing environment"}]}]}`)}
 	for _, name := range []string{"Shared", "View only", "Edit only", "Hidden", "Story only"} {
 		number, err := f.store.NextCustomFieldNumber(ctx)
 		if err != nil {
@@ -63,7 +63,7 @@ func TestCustomFieldViewsRespectScreensHiddenRulesAndWorkTypeContexts(t *testing
 	if err := f.store.Pool.QueryRow(ctx, `SELECT mapping.configuration_id::text FROM project_field_configuration_schemes assigned JOIN field_configuration_scheme_items mapping ON mapping.scheme_id=assigned.scheme_id WHERE assigned.project_id=$1 AND mapping.issue_type_id=$2`, project.ID, store.DefaultIssueTypeMapping).Scan(&configID); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.store.SetFieldConfigurationItems(ctx, ws, f.ownerID, configID, []models.FieldConfigurationItem{{FieldID: fields["Hidden"], IsHidden: true}, {FieldID: fields["Shared"], IsRequired: true}}); err != nil {
+	if err := f.store.SetFieldConfigurationItems(ctx, ws, f.ownerID, configID, []models.FieldConfigurationItem{{FieldID: fields["Hidden"], IsHidden: true}, {FieldID: fields["Shared"], IsRequired: true}, {FieldID: "environment", IsRequired: true}}); err != nil {
 		t.Fatal(err)
 	}
 	screen := func(name string, names ...string) string {
@@ -96,7 +96,7 @@ func TestCustomFieldViewsRespectScreensHiddenRulesAndWorkTypeContexts(t *testing
 	if err := f.store.AssignIssueTypeScreenScheme(ctx, ws, f.ownerID, project.ID, types.ID); err != nil {
 		t.Fatal(err)
 	}
-	wf := workflow.Workflow{ID: store.NewID("wf"), Name: "Field transition", Transitions: []workflow.Transition{{ID: "1", Name: "Create", Type: workflow.TransitionInitial, To: "st_todo"}, {ID: "21", Name: "Start with view field", From: []string{"st_todo"}, To: "st_inprogress", Screen: &workflow.Rule{ID: "custom-screen", RuleKey: workflow.RuleTransitionScreen, Parameters: map[string]string{"fields": fields["View only"] + "," + fields["Hidden"] + "," + fields["Story only"]}}}}}
+	wf := workflow.Workflow{ID: store.NewID("wf"), Name: "Field transition", Transitions: []workflow.Transition{{ID: "1", Name: "Create", Type: workflow.TransitionInitial, To: "st_todo"}, {ID: "21", Name: "Start with view field", From: []string{"st_todo"}, To: "st_inprogress", Screen: &workflow.Rule{ID: "custom-screen", RuleKey: workflow.RuleTransitionScreen, Parameters: map[string]string{"fields": "environment," + fields["View only"] + "," + fields["Hidden"] + "," + fields["Story only"]}}}}}
 	wf.Transitions[1].Validators = []workflow.Rule{{ID: "require-view-field", RuleKey: workflow.RuleValidateFieldValue, Parameters: map[string]string{"ruleType": "fieldRequired", "fieldsRequired": fields["View only"]}}}
 	if err := f.store.CreateWorkflow(ctx, ws, wf); err != nil {
 		t.Fatal(err)
@@ -132,10 +132,13 @@ func TestCustomFieldViewsRespectScreensHiddenRulesAndWorkTypeContexts(t *testing
 	if len(view.Transitions) != 1 || names(view.Transitions[0].ScreenCustomFields) != "View only" {
 		t.Fatalf("transition screen fields: %+v", view.Transitions)
 	}
+	if !view.Transitions[0].FieldRequired("environment") || view.Transitions[0].FieldRequired("labels") {
+		t.Fatal("transition native field configuration was lost")
+	}
 	if !view.Transitions[0].ScreenCustomFields[0].Required || view.CustomFields[1].Required {
 		t.Fatal("transition validator did not scope requiredness to its own control")
 	}
-	if !slices.Equal(view.Transitions[0].ScreenFields, []string{fields["View only"]}) {
+	if !slices.Equal(view.Transitions[0].ScreenFields, []string{"environment", fields["View only"]}) {
 		t.Fatalf("transition offered hidden or out-of-context controls: %v", view.Transitions[0].ScreenFields)
 	}
 	edit, err := f.handler.buildEditDialogView(ctx, ws, f.ownerID, issue, map[string]bool{"ASSIGN_ISSUES": true, "MODIFY_REPORTER": true})

@@ -95,8 +95,10 @@ fields in the same attempt do not hide the first field again.
 Named workflow transition screens also use their configured tabs and field order.
 Empty tabs and fields hidden by configuration or outside a custom field's context
 are omitted. Inline field lists and one usable tab remain plain forms. Each
-transition has its own control and help-text IDs. Assignee and Priority start at
-the saved values; tab selection and drafts survive another issue action's refresh.
+transition has its own control and help-text IDs. Native fields also carry required
+configuration and transition-validator rules into browser validation; an empty
+required control reveals its tab and receives focus before submission. Assignee
+and Priority start at the saved values; tab selection and drafts survive another issue action's refresh.
 Multiple selections survive refreshes and save together; deselecting all explicitly
 clears a transition field. Unchanged rich Description and Environment documents
 retain their formatting. Custom values use the same typed encoder as the editor.
