@@ -228,7 +228,9 @@ Errors use the module format, `[{"message": …}]`. Provider rate limits are des
     the timeline's zoom and its columns are not part of it, and rolling up
     covers dates and estimates.
 - Scenarios cannot change parent, rank, release or status, and cannot create work items.
-- Cross-project releases: the plan's `crossProjectReleases` list is validated and stored, but nothing shows it or plans against it. There is no multi-project release in the plan or the release hub.
+- Cross-project releases can be configured on the plan and read in the release
+  hub. Creating member versions and using their dates in the auto-scheduler
+  remain; see [RELEASES.md](RELEASES.md).
 - No REST teams API (Atlassian's public teams API).
 
 Remaining work is tracked in [PLAN.md](../PLAN.md).
