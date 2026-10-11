@@ -43,7 +43,7 @@ A site's levels run Subtask (`-1`), Base (`0`), Epic (`1`) and any named levels 
 | `GET` / `PUT` / `DELETE` | `/rest/api/3/issuetype/{id}/properties/{key}` | `PUT` is 201 new, 200 replaced; value is non-empty JSON, at most 32768 characters |
 
 - A new type joins the site's default work type scheme.
-- Deleting a type in use needs `alternativeIssueTypeId`. Missing: 404. Same type: 409. Other kind (standard vs subtask) or incompatible replacement: 400. Work items move to the alternative. The type is removed from every work type scheme, work type screen scheme, field configuration scheme, custom field context and workflow scheme mapping.
+- Deleting a type in use needs `alternativeIssueTypeId`. Missing: 404. Same type: 409. Other kind (standard vs subtask) or incompatible replacement: 400. Work items move to the alternative, each with an administrator-authored history entry and replica update. The migration actions and metadata deletion commit together; history retains the deleted type's public ID and name. The type is removed from every work type scheme, work type screen scheme, field configuration scheme, custom field context and workflow scheme mapping.
 - Replacement choices apply each affected project's effective mappings, including default fallbacks. A type must be offered by every affected project; matching one project is insufficient. The admin picker and alternatives REST read share this check, and deletion rechecks it within its transaction. The [Atlassian issue-type contract](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-types/) describes the compatibility requirement.
 - Avatars: the system catalogue has five work type icons (`internal/store/universal_avatars.go`), plus the site's uploads.
 
@@ -187,7 +187,6 @@ settings change.
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- Work type deletion still needs issue action/sync records for the migrated work items.
 - Team-managed scoping (`scope`, `entityId`) is not modelled; every type is company-managed.
 - A priority scheme update applies its mappings before answering, so the 202 has no `task`.
 - The system avatar catalogue has five work type icons; Jira's is larger.

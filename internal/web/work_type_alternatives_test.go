@@ -145,7 +145,7 @@ func TestWorkTypeAlternativesRequireCompatibleProjectConfigurations(t *testing.T
 		t.Fatal(err)
 	}
 	for _, name := range []string{"Wrong workflow", "Wrong fields", "Wrong screen", "Missing from project"} {
-		if err := f.store.DeleteIssueType(ctx, ws, kinds["Source"].ID, kinds[name].ID); !errors.Is(err, store.ErrIssueMetadataValidation) {
+		if err := f.store.DeleteIssueType(ctx, ws, f.ownerID, kinds["Source"].ID, kinds[name].ID); !errors.Is(err, store.ErrIssueMetadataValidation) {
 			t.Fatalf("incompatible deletion %s: %v", name, err)
 		}
 		current, err := f.store.IssueByIDOrKey(ctx, ws, issue.Key)
@@ -153,7 +153,7 @@ func TestWorkTypeAlternativesRequireCompatibleProjectConfigurations(t *testing.T
 			t.Fatalf("refused deletion changed work: %+v %v", current, err)
 		}
 	}
-	if err := f.store.DeleteIssueType(ctx, ws, kinds["Source"].ID, kinds["Compatible"].ID); err != nil {
+	if err := f.store.DeleteIssueType(ctx, ws, f.ownerID, kinds["Source"].ID, kinds["Compatible"].ID); err != nil {
 		t.Fatal(err)
 	}
 	current, err := f.store.IssueByIDOrKey(ctx, ws, issue.Key)

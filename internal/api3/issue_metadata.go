@@ -19,6 +19,8 @@ import (
 
 func issueMetadataError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, store.ErrProjectPermission):
+		jiraError(w, http.StatusForbidden, "Administrator permission is required.")
 	case errors.Is(err, store.ErrIssueMetadataValidation):
 		jiraError(w, http.StatusBadRequest, trimErrorPrefix(err))
 	case errors.Is(err, store.ErrIssueMetadataConflict):
@@ -312,12 +314,12 @@ func (h *Handler) issueTypeResource(w http.ResponseWriter, r *http.Request, id s
 		}
 		writeJSON(w, http.StatusOK, h.issueTypeBean(updated))
 	case http.MethodDelete:
-		workspaceID, _, authErr := h.authWorkspaceAdmin(r)
+		workspaceID, actorID, authErr := h.authWorkspaceAdmin(r)
 		if authErr != nil {
 			writeJerr(w, authErr)
 			return
 		}
-		if err := h.Store.DeleteIssueType(r.Context(), workspaceID, id, r.URL.Query().Get("alternativeIssueTypeId")); err != nil {
+		if err := h.Store.DeleteIssueType(r.Context(), workspaceID, actorID, id, r.URL.Query().Get("alternativeIssueTypeId")); err != nil {
 			issueMetadataError(w, err)
 			return
 		}

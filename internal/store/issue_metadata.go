@@ -236,7 +236,7 @@ func (s *Store) AlternativeIssueTypes(ctx context.Context, workspaceID, idOrName
 // DeleteIssueType removes an issue type from the site. Issues of that type move
 // to the alternative, and the type leaves every scheme and mapping that named
 // it, so nothing is left pointing at a type the site no longer has.
-func (s *Store) DeleteIssueType(ctx context.Context, workspaceID, idOrName, alternative string) error {
+func (s *Store) DeleteIssueType(ctx context.Context, workspaceID, actorID, idOrName, alternative string) error {
 	current, err := s.IssueTypeInWorkspace(ctx, workspaceID, idOrName)
 	if err != nil {
 		return err
@@ -246,6 +246,14 @@ func (s *Store) DeleteIssueType(ctx context.Context, workspaceID, idOrName, alte
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
+		return err
+	}
+	// Serialize deletion with new references to the work type.
+	var lockedID string
+	if err := tx.QueryRow(ctx, `SELECT id FROM issue_types WHERE id=$1 FOR UPDATE`, current.ID).Scan(&lockedID); err != nil {
+		return err
+	}
 	var inUse int
 	if err = tx.QueryRow(ctx, `SELECT count(*) FROM issues WHERE workspace_id=$1 AND issuetype_id=$2`, workspaceID, current.ID).Scan(&inUse); err != nil {
 		return err
@@ -282,7 +290,7 @@ func (s *Store) DeleteIssueType(ctx context.Context, workspaceID, idOrName, alte
 		}
 	}
 	if inUse > 0 {
-		if _, err = tx.Exec(ctx, `UPDATE issues SET issuetype_id=$3, updated_at=now() WHERE workspace_id=$1 AND issuetype_id=$2`, workspaceID, current.ID, target.ID); err != nil {
+		if err := migrateIssueType(ctx, tx, workspaceID, actorID, current, target); err != nil {
 			return err
 		}
 	}

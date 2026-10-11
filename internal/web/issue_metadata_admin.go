@@ -135,7 +135,7 @@ func (h *Handler) WorkTypesMutation(w http.ResponseWriter, r *http.Request) {
 			notice = name + " saved."
 		}
 	case "delete":
-		if err = h.Store.DeleteIssueType(r.Context(), workspaceID, value("workType"), value("alternative")); err == nil {
+		if err = h.Store.DeleteIssueType(r.Context(), workspaceID, user.ID, value("workType"), value("alternative")); err == nil {
 			notice = "Work type deleted."
 		}
 	case "create-scheme":

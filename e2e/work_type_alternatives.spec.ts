@@ -57,6 +57,12 @@ test('an administrator replaces a work type only with a compatible type', async 
     await expect(page.getByRole('complementary', { name: 'Issue details', exact: true })).toContainText(`Compatible ${stamp}`);
     await page.reload();
     expect((await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=issuetype`, { headers })).json()).fields.issuetype.id).toBe(kinds.Compatible);
+    const history = await page.request.get(`/rest/api/3/issue/${issueKey}/changelog`, { headers });
+    expect(history.status()).toBe(200);
+    const migrations = (await history.json()).values.filter((entry: any) => entry.items.some((item: any) => item.field === 'issuetype'));
+    expect(migrations).toHaveLength(1);
+    expect(migrations[0].author.accountId).toBe(me.accountId);
+    expect(migrations[0].items.find((item: any) => item.field === 'issuetype')).toMatchObject({ from: kinds.Source, fromString: `Source ${stamp}`, to: kinds.Compatible, toString: `Compatible ${stamp}` });
   } finally {
     await page.request.delete(`/rest/api/3/project/${projectID}`, { headers, timeout: 10_000 });
     if (typeSchemeID) await page.request.delete(`/rest/api/3/issuetypescheme/${typeSchemeID}`, { headers, timeout: 10_000 });
