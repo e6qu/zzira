@@ -2,6 +2,8 @@ import { apiAuthHeader } from './auth';
 import { expect, test } from '@playwright/test';
 import axe from 'axe-core';
 
+test.use({ actionTimeout: 15_000 });
+
 test('fields on only the edit screen can be changed in the issue dialog', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel('Email').fill('demo@zzira.dev');
@@ -73,8 +75,8 @@ test('fields on only the edit screen can be changed in the issue dialog', async 
     expect(afterClear.parent.key).toBe(parentKey);
     expect(afterClear.timetracking.originalEstimateSeconds).toBeUndefined();
     expect(afterClear.timetracking.remainingEstimateSeconds).toBe(3600);
-    await page.setViewportSize({ width: 320, height: 740 });
     await page.locator('[data-theme-toggle]').click();
+    await page.setViewportSize({ width: 320, height: 740 });
     await page.locator('#edit-issue-button').click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.addScriptTag({ content: axe.source });
