@@ -347,7 +347,14 @@ func (h *Handler) renderPlanPage(w http.ResponseWriter, r *http.Request, message
 		var own func(items []models.TimelineItem)
 		own = func(items []models.TimelineItem) {
 			for _, item := range items {
-				data.OwnDates[item.Issue.ID] = [2]string{item.StartDate, item.DueDate}
+				start, end := item.StartDate, item.DueDate
+				if item.InferredStart != "" {
+					start = ""
+				}
+				if item.InferredEnd != "" {
+					end = ""
+				}
+				data.OwnDates[item.Issue.ID] = [2]string{start, end}
 				own(item.Children)
 			}
 		}
@@ -458,11 +465,11 @@ func planCurrentValue(item *store.PlanItem, timeline *models.TimelineItem, field
 	case "summary":
 		value = item.Issue.Summary
 	case "startDate":
-		if timeline.StartDate != "" {
+		if timeline.StartDate != "" && timeline.InferredStart == "" {
 			value = timeline.StartDate
 		}
 	case "endDate":
-		if timeline.DueDate != "" {
+		if timeline.DueDate != "" && timeline.InferredEnd == "" {
 			value = timeline.DueDate
 		}
 	case "team":
@@ -1163,6 +1170,12 @@ func rolledTimeline(items []models.TimelineItem, dates map[string][2]string) []m
 	rolled := make([]models.TimelineItem, 0, len(items))
 	for _, item := range items {
 		if span, ok := dates[item.Issue.ID]; ok {
+			if span[0] != item.StartDate {
+				item.InferredStart = ""
+			}
+			if span[1] != item.DueDate {
+				item.InferredEnd = ""
+			}
 			item.StartDate, item.DueDate = span[0], span[1]
 		}
 		item.Children = rolledTimeline(item.Children, dates)

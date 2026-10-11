@@ -93,8 +93,7 @@ Owning reference: [JIRA_SOFTWARE.md](docs/JIRA_SOFTWARE.md#plans).
 - Auto-scheduler: schedule against releases too, so a version's date bounds
   what may go after it.
 - Scenario edits: parent, rank, release, status, custom fields, create work items.
-- Make `inferredDates` take effect; extend custom columns beyond text, numbers,
-  dates, URLs, selects and labels.
+- Extend custom columns beyond text, numbers, dates, URLs, selects and labels.
 - Atlassian Teams REST API.
 
 ## 3. Cross-project releases

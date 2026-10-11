@@ -197,10 +197,10 @@ func planAutoSchedule(planning PlanPlanning, sequential bool, request PlanSchedu
 		if iteration.sprint && item.SprintID != iteration.key {
 			result.Changes = append(result.Changes, planScheduleChange(item, "sprint", iteration.key, planScheduleCurrent(item, timeline, "sprint")))
 		}
-		if iteration.start != "" && planDayOf(timeline.StartDate) != iteration.start {
+		if iteration.start != "" && (timeline.InferredStart != "" || planDayOf(timeline.StartDate) != iteration.start) {
 			result.Changes = append(result.Changes, planScheduleChange(item, "startDate", iteration.start, planScheduleCurrent(item, timeline, "startDate")))
 		}
-		if iteration.end != "" && planDayOf(timeline.DueDate) != iteration.end {
+		if iteration.end != "" && (timeline.InferredEnd != "" || planDayOf(timeline.DueDate) != iteration.end) {
 			result.Changes = append(result.Changes, planScheduleChange(item, "endDate", iteration.end, planScheduleCurrent(item, timeline, "endDate")))
 		}
 	}
@@ -228,11 +228,11 @@ func planScheduleCurrent(item *PlanItem, timeline *models.TimelineItem, field st
 	var value any
 	switch field {
 	case "startDate":
-		if timeline.StartDate != "" {
+		if timeline.StartDate != "" && timeline.InferredStart == "" {
 			value = planDayOf(timeline.StartDate)
 		}
 	case "endDate":
-		if timeline.DueDate != "" {
+		if timeline.DueDate != "" && timeline.InferredEnd == "" {
 			value = planDayOf(timeline.DueDate)
 		}
 	case "sprint":

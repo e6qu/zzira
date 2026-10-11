@@ -157,6 +157,12 @@ func planScheduling(r *http.Request, plan *store.Plan) error {
 		return errors.New("estimates are counted in story points, days or hours")
 	}
 	plan.Scheduling.Estimation = estimation
+	if inferred := r.PostFormValue("inferredDates"); inferred != "" {
+		plan.Scheduling.InferredDates = inferred
+		if !slices.Contains([]string{"None", "SprintDates", "ReleaseDates"}, inferred) {
+			return errors.New("choose no inferred dates, assigned sprint dates or assigned release dates")
+		}
+	}
 	for name, field := range map[string]*store.PlanDateField{"startField": &plan.Scheduling.StartDate, "endField": &plan.Scheduling.EndDate} {
 		value := r.PostFormValue(name)
 		if value == "" {

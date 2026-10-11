@@ -98,6 +98,16 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
 - **Scheduling.** The start and end fields: Due date, Target start, Target end, or any date custom field. Every site gets Target start and Target end fields. Also the estimation unit (StoryPoints, Days or Hours) and whether dependencies are Sequential or Concurrent.
 - **Permissions.** View or Edit, granted to groups or accounts.
 
+Missing dates can be inferred from assigned sprint dates (for Scrum work) or
+live fixed release dates. Explicit stored or scenario dates take precedence.
+The table labels inferred dates, and edit forms keep their underlying fields
+empty. Inference does not create drafts or write dates back to work items;
+manual scheduling and auto-scheduling remain explicit draft changes. Archived
+or unavailable releases contribute no dates. This follows Atlassian's
+[sprint](https://support.atlassian.com/jira-software-cloud/docs/schedule-issues-in-advanced-roadmaps-according-to-sprints/)
+and [release](https://support.atlassian.com/jira-software-cloud/docs/schedule-issues-in-advanced-roadmaps-according-to-releases/)
+scheduling behavior.
+
 **Browser pages**
 - `/plans` pages the active plans the viewer can open, and, for site
   administrators, creates one: a name, the boards, projects and filters it
@@ -256,7 +266,7 @@ Errors use the module format, `[{"message": …}]`. Provider rate limits are des
 ## Gaps
 
 - Plans:
-  - `inferredDates` is stored but not used. Custom columns currently support
+  - Custom columns currently support
     text, numbers, dates, URLs, selects and labels; other picker types remain.
 - Scenarios cannot change parent, rank, release, status or custom fields, and cannot create work items.
 - Cross-project releases can be configured on the plan and read in the release
