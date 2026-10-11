@@ -1,6 +1,8 @@
 import { apiAuthHeader } from './auth';
 import { expect, test } from '@playwright/test';
 
+test.use({ actionTimeout: 15_000 });
+
 test('an empty assigned screen hides optional fields and rejects forged edits', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel('Email').fill('demo@zzira.dev');
