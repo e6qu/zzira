@@ -69,6 +69,7 @@
     },
     "resolution": null,
     "resolutiondate": null,
+    "security": null,
     "status": {
       "id": "st_todo",
       "name": "To Do",

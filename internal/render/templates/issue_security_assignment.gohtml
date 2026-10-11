@@ -1,0 +1,11 @@
+{{define "page_issue_security_assignment"}}
+<!doctype html><html lang="en"><head><title>Map security levels · {{(site $).Title}}</title>{{template "head" .}}</head><body><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
+<nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/settings/issue-security-schemes">Issue security schemes</a><span aria-hidden="true">/</span><span aria-current="page">Map security levels</span></nav>
+<header class="page-header"><div><h1>Map security levels</h1><p>Assign {{.Data.Scheme.Name}} to {{.Data.Project.Name}} ({{.Data.Project.Key}}).</p></div></header>
+{{if .Data.Error}}<p class="form-error" role="alert">{{.Data.Error}}</p>{{end}}
+<form class="surface-card project-details-form" method="post" action="/settings/issue-security-schemes/{{.Data.Scheme.ID}}"><input type="hidden" name="action" value="assign-project"><input type="hidden" name="project" value="{{.Data.Project.ID}}"><input type="hidden" name="mapped" value="true">
+<p>Choose where work at each current level moves. Choosing no security level makes that work visible to everyone who can browse the project. Work that already has no level keeps its visibility.</p>
+{{range .Data.Levels}}<label for="security-map-{{.ID}}">Replace {{.Name}} ({{.Count}} {{if eq .Count 1}}work item{{else}}work items{{end}})</label><select id="security-map-{{.ID}}" name="level.{{.ID}}" required><option value="">Choose a replacement</option><option value="none" {{if eq (index $.Data.Chosen .ID) "none"}}selected{{end}}>No security level</option>{{$old := .ID}}{{range $.Data.Scheme.Levels}}<option value="{{.ID}}" {{if eq (index $.Data.Chosen $old) .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{end}}
+<div class="page-header-actions"><a class="btn" href="/settings/issue-security-schemes">Cancel</a><button class="btn btn-primary" type="submit">Assign scheme with mappings</button></div>
+</form></main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
+{{end}}

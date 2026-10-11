@@ -54,6 +54,35 @@ type IssueSecurityLevelMapping struct {
 	OldUnsecured bool   `json:"oldUnsecured,omitempty"`
 }
 
+type IssueSecurityLevelUsage struct {
+	ID, Name string
+	Count    int
+}
+
+// ProjectIssueSecurityLevelUsage includes archived work: assigning a scheme
+// migrates every work item's level, not just the active navigator results.
+func (s *Store) ProjectIssueSecurityLevelUsage(ctx context.Context, workspaceID, projectID string) ([]IssueSecurityLevelUsage, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT i.security_level_id,COALESCE(l->>'name',i.security_level_id),count(*)
+		FROM issues i JOIN projects p ON p.id=i.project_id
+		LEFT JOIN security_schemes s ON s.id=p.security_scheme_id
+		LEFT JOIN LATERAL jsonb_array_elements(s.levels) l ON l->>'id'=i.security_level_id
+		WHERE p.workspace_id=$1 AND p.id=$2 AND i.security_level_id IS NOT NULL
+		GROUP BY i.security_level_id,l->>'name' ORDER BY lower(COALESCE(l->>'name',i.security_level_id)),i.security_level_id`, workspaceID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	levels := []IssueSecurityLevelUsage{}
+	for rows.Next() {
+		var level IssueSecurityLevelUsage
+		if err := rows.Scan(&level.ID, &level.Name, &level.Count); err != nil {
+			return nil, err
+		}
+		levels = append(levels, level)
+	}
+	return levels, rows.Err()
+}
+
 type assignIssueSecuritySchemeTaskPayload struct {
 	ProjectID      string                      `json:"projectId"`
 	TargetSchemeID string                      `json:"schemeId"`

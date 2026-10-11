@@ -67,8 +67,6 @@ Each numbered item is one or more substantial PRs.
   larger avatar catalogue remain ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#gaps)).
 - The screen catalog includes Reporter, Environment, Attachment and Linked
   work items; `projectKey` honored on tab-field reads.
-- Issue security scheme form sends the level mapping for projects with secured
-  work.
 - Custom field contexts: a global context coexists with project contexts that
   override it.
 - Custom field options: delete, replace on work items, reorder anywhere.

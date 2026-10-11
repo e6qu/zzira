@@ -1359,13 +1359,6 @@ func (h *Handler) getIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		return
 	}
 	bean := beans[0]
-	if fields, ok := bean["fields"].(map[string]any); ok && issue.SecurityLevelID != "" {
-		if _, wanted := fields["security"]; wanted || len(options.Fields) == 0 {
-			if name := h.Store.SecurityLevelName(r.Context(), issue.ProjectID, issue.SecurityLevelID); name != "" {
-				fields["security"] = map[string]any{"id": issue.SecurityLevelID, "name": name}
-			}
-		}
-	}
 	requested := normalizeSearchFields(options.Fields, definitions, options.FieldsByKeys)
 	names, schemas := searchFieldMetadata(requested, len(options.Fields) == 0, options.FieldsByKeys, definitions)
 	if hasSearchExpand(options, "names") {
@@ -1402,6 +1395,7 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 		"description": i.Description,
 		"labels":      i.Labels,
 		"duedate":     nil,
+		"security":    nil,
 		"fixVersions": []any{},
 		"versions":    []any{},
 		"created":     issueCreated(i),
@@ -1421,6 +1415,9 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 	}
 	if i.DueDate != "" {
 		fields["duedate"] = i.DueDate
+	}
+	if i.SecurityLevelID != "" {
+		fields["security"] = map[string]any{"id": i.SecurityLevelID}
 	}
 	if i.Parent != nil {
 		parentID := strconv.FormatInt(i.Parent.JiraID, 10)

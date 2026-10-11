@@ -59,3 +59,25 @@ func TestSearchOptionValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestSecurityFieldSurvivesExplicitProjectionAndClearing(t *testing.T) {
+	h := &Handler{}
+	for _, level := range []string{"", "10001"} {
+		bean := h.issueBean(&models.Issue{JiraID: 10000, Key: "SEC-1", SecurityLevelID: level})
+		projected := projectSearchIssue(bean, []string{"security"}, false)
+		fields, ok := projected["fields"].(map[string]any)
+		if !ok {
+			t.Fatal("requesting security omitted the fields object")
+		}
+		value, present := fields["security"]
+		if !present || len(fields) != 1 {
+			t.Fatalf("security projection = %#v", fields)
+		}
+		if level == "" && value != nil {
+			t.Fatalf("cleared security must be null: %#v", value)
+		}
+		if level != "" && value.(map[string]any)["id"] != level {
+			t.Fatalf("restricted security = %#v", value)
+		}
+	}
+}

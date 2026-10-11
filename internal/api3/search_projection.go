@@ -422,15 +422,27 @@ func hasSearchExpand(options searchOptions, name string) bool {
 
 func (h *Handler) searchIssueBeans(ctx context.Context, workspaceID, userID string, issues []*models.Issue, options searchOptions, defaultAll bool, definitions []searchFieldDefinition) ([]map[string]any, error) {
 	requested := normalizeSearchFields(options.Fields, definitions, options.FieldsByKeys)
+	all, include, exclude := requestedFieldSet(requested, defaultAll)
 	beans := make([]map[string]any, 0, len(issues))
 	editMetadata := map[string]map[string]any{}
 	fulls := make([]map[string]any, len(issues))
+	securityNames := map[string]string{}
 	visibleIssues, err := authz.IssuesWithVisibleParents(ctx, h.Store, userID, issues)
 	if err != nil {
 		return nil, err
 	}
 	for index, issue := range visibleIssues {
 		fulls[index] = h.issueBean(issue)
+		if issue.SecurityLevelID != "" && (all || include["security"]) && !exclude["security"] {
+			fields := fulls[index]["fields"].(map[string]any)
+			key := issue.ProjectID + "/" + issue.SecurityLevelID
+			name, known := securityNames[key]
+			if !known {
+				name = h.Store.SecurityLevelName(ctx, issue.ProjectID, issue.SecurityLevelID)
+				securityNames[key] = name
+			}
+			fields["security"] = map[string]any{"id": issue.SecurityLevelID, "name": name}
+		}
 	}
 	h.addTimeTracking(ctx, issues, fulls)
 	if err := h.decorateCustomFieldValues(ctx, workspaceID, fulls); err != nil {
