@@ -163,7 +163,7 @@ func init() {
 			return map[string]any{"ID": field, "Transition": transition, "View": view}
 		},
 		"transitionCustomFieldControl": func(field models.CustomFieldView, prefix, name string) map[string]any {
-			return map[string]any{"Field": field, "Prefix": prefix, "Name": name, "HelpID": prefix + "help-" + field.ID}
+			return map[string]any{"Field": field, "Prefix": prefix, "Name": name, "HelpID": prefix + "help-" + field.ID, "ClearMarker": true}
 		},
 		// detailField passes one create-form field to its control along with the
 		// values and flags the control needs, so tabs and the plain list render

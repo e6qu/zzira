@@ -11,14 +11,17 @@ import (
 func TestTransitionTabsKeepValuesAndScopeControlsToTheirAction(t *testing.T) {
 	view := fixtureIssue()
 	transition := models.WorkflowTransition{
-		ID: "31", Name: "Finish", ScreenFields: []string{"labels", "summary", "assignee", "priority", "customfield_17001"},
+		ID: "31", Name: "Finish", ScreenFields: []string{"labels", "summary", "assignee", "priority", "customfield_17001", "customfield_17002"},
 		ScreenTabs: []models.FieldTab{
 			{Name: "Details", Fields: []string{"labels"}},
-			{Name: "Text", Fields: []string{"summary", "assignee", "priority", "customfield_17001"}},
+			{Name: "Text", Fields: []string{"summary", "assignee", "priority", "customfield_17001", "customfield_17002"}},
 			{Name: "Hidden", Fields: []string{"environment"}},
 			{Name: "Empty"},
 		},
-		ScreenCustomFields: []models.CustomFieldView{{ID: "customfield_17001", Name: "Decision", Type: "text", Value: "Saved decision", Description: "Why this decision"}},
+		ScreenCustomFields: []models.CustomFieldView{
+			{ID: "customfield_17001", Name: "Decision", Type: "text", Value: "Saved decision", Description: "Why this decision"},
+			{ID: "customfield_17002", Name: "Choices", Type: "multiselect", Value: "one,two", Options: []models.CreateFieldOption{{ID: "one", Name: "One"}, {ID: "two", Name: "Two"}}},
+		},
 	}
 	other := transition
 	other.ID, other.Name = "41", "Resolve"
@@ -63,6 +66,9 @@ func TestTransitionTabsKeepValuesAndScopeControlsToTheirAction(t *testing.T) {
 	}
 	if strings.Contains(html, ">Hidden<") || strings.Contains(html, ">Empty<") {
 		t.Fatal("transition tabs exposed groups with no offered fields")
+	}
+	if strings.Count(html, `<input type="hidden" name="field_customfield_17002" value="">`) != 2 || strings.Count(html, `value="one" selected`) != 2 || strings.Count(html, `value="two" selected`) != 2 {
+		t.Fatal("transition multi-select must retain every selection and submit an explicit clear marker")
 	}
 	view.Transitions[0].ScreenFields = []string{"labels"}
 	view.Transitions = view.Transitions[:1]

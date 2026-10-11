@@ -1,6 +1,7 @@
 import { apiAuthHeader } from './auth';
 import { test, expect, Page } from '@playwright/test';
 import axe from 'axe-core';
+import { scopeFixtureField } from './field_contexts';
 
 const DEMO = { email: 'demo@zzira.dev', password: 'demo1234' };
 
@@ -64,10 +65,26 @@ test('a transition collects the fields of the screen it names, and follows that 
   await page.getByRole('button', { name: 'Publish workflow' }).click();
   await expect(page.getByText('Published', { exact: true })).toBeVisible();
 
+  const fieldIDs: Record<string, string> = {};
+  let optionIDs: string[] = [];
+  for (const type of ['number', 'multiselect']) {
+    const response = await page.request.post('/rest/api/3/field', { headers, data: { name: `${type} transition ${stamp}`, type } });
+    expect(response.status()).toBe(201);
+    const fieldID = String((await response.json()).id);
+    fieldIDs[type] = fieldID;
+    const contexts = await (await page.request.get(`/rest/api/3/field/${fieldID}/context`, { headers })).json();
+    const contextID = await scopeFixtureField(page.request, fieldID, String(contexts.values[0].id), projectID, headers);
+    if (type === 'multiselect') {
+      const options = await page.request.post(`/rest/api/3/field/${fieldID}/context/${contextID}/option`, { headers, data: { options: [{ value: 'One' }, { value: 'Two' }] } });
+      expect(options.status()).toBe(200);
+      optionIDs = (await options.json()).options.map((option: { id: string }) => String(option.id));
+    }
+  }
+  const rich = { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Retained rich transition', marks: [{ type: 'strong' }] }] }] };
   const me = await (await page.request.get('/rest/api/3/myself', { headers })).json();
   const created = await page.request.post('/rest/api/3/issue', {
     headers: { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' },
-    data: { fields: { project: { key }, summary: `Screen-backed work ${stamp}`, issuetype: { name: 'Task' }, assignee: { accountId: me.accountId } } },
+    data: { fields: { project: { key }, summary: `Screen-backed work ${stamp}`, issuetype: { name: 'Task' }, assignee: { accountId: me.accountId }, description: rich, environment: rich, [fieldIDs.number]: 2, [fieldIDs.multiselect]: [optionIDs[0]] } },
   });
   expect(created.status()).toBe(201);
   const issueKey = (await created.json()).key as string;
@@ -91,7 +108,7 @@ test('a transition collects the fields of the screen it names, and follows that 
   const textTab = await page.request.post(`/rest/api/3/screens/${screenID}/tabs`, { headers, data: { name: 'Text' } });
   expect(textTab.status()).toBe(200);
   const textID = String((await textTab.json()).id);
-  for (const fieldId of ['summary', 'assignee', 'priority']) {
+  for (const fieldId of ['summary', 'assignee', 'priority', 'description', 'environment', fieldIDs.number, fieldIDs.multiselect]) {
     expect((await page.request.post(`/rest/api/3/screens/${screenID}/tabs/${textID}/fields`, { headers, data: { fieldId } })).status()).toBe(200);
   }
   expect((await page.request.post(`/rest/api/3/screens/${screenID}/tabs`, { headers, data: { name: 'Unused' } })).status()).toBe(200);
@@ -115,6 +132,8 @@ test('a transition collects the fields of the screen it names, and follows that 
   await expect(text).toBeFocused();
   await expect(again.getByLabel('Assignee')).toHaveValue(initial.assignee.accountId);
   await expect(again.getByLabel('Priority').locator('option:checked')).toHaveText(initial.priority.name);
+  await again.getByLabel(`number transition ${stamp}`, { exact: true }).fill('12.5');
+  await again.getByLabel(`multiselect transition ${stamp}`, { exact: true }).selectOption(optionIDs);
   await again.getByLabel('Summary', { exact: true }).fill('');
   await text.focus();
   await page.keyboard.press('Home');
@@ -135,6 +154,15 @@ test('a transition collects the fields of the screen it names, and follows that 
   await text.click();
   await again.getByLabel('Summary', { exact: true }).fill('Saved tabbed transition');
 
+  // Two dirty actions sharing one URL must retain their own hidden identity.
+  const later = page.locator('details.transition-screen').filter({ has: page.locator('summary').filter({ hasText: /^Finish later$/ }) });
+  await later.locator('summary').click();
+  await later.getByRole('tab', { name: 'Text', exact: true }).click();
+  await later.getByLabel(`multiselect transition ${stamp}`, { exact: true }).selectOption([]);
+  const finishID = await again.locator('input[name="transition"]').inputValue();
+  const laterID = await later.locator('input[name="transition"]').inputValue();
+  expect(finishID).not.toBe(laterID);
+
   // Another action refreshes the issue without losing this action's draft/tab.
   const watch = page.locator('.watch-button[aria-keyshortcuts="W"]');
   const watching = await watch.getAttribute('aria-pressed');
@@ -143,6 +171,13 @@ test('a transition collects the fields of the screen it names, and follows that 
   await expect(text).toHaveAttribute('aria-selected', 'true');
   await expect(again.getByLabel('Summary', { exact: true })).toHaveValue('Saved tabbed transition');
   await expect(again.getByLabel('Labels')).toHaveValue('screened');
+
+  await expect(again.locator('input[name="transition"]')).toHaveValue(finishID);
+  await expect(later.locator('input[name="transition"]')).toHaveValue(laterID);
+  await expect(again.getByLabel(`multiselect transition ${stamp}`, { exact: true })).toHaveValues(optionIDs);
+  await expect(later.getByLabel(`multiselect transition ${stamp}`, { exact: true })).toHaveValues([]);
+  await expect(again.getByLabel(`number transition ${stamp}`, { exact: true })).toHaveValue('12.5');
+  await later.locator('summary').click();
 
   await page.locator('[data-theme-toggle]').click();
   await page.setViewportSize({ width: 320, height: 740 });
@@ -169,4 +204,30 @@ test('a transition collects the fields of the screen it names, and follows that 
   }, { timeout: 15_000 }).toEqual({ summary: 'Saved tabbed transition', status: 'Done', resolution: "Won't Do", labels: ['screened'], assignee: initial.assignee.accountId, priority: initial.priority.id });
   await page.reload();
   await expect(page.locator('.issue-summary')).toHaveText('Saved tabbed transition');
+  const saved = (await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=description,environment,${fieldIDs.number},${fieldIDs.multiselect}`, { headers })).json()).fields;
+  expect(saved.description).toEqual(rich);
+  expect(saved.environment).toEqual(rich);
+  expect(saved[fieldIDs.number]).toBe(12.5);
+  expect(saved[fieldIDs.multiselect]).toEqual(optionIDs);
+
+  // Deselecting all options is a clear; omitted fields were covered at the web edge.
+  const clearIssue = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key }, summary: 'Clear transition values', issuetype: { name: 'Task' }, description: rich, environment: rich, [fieldIDs.number]: 2, [fieldIDs.multiselect]: optionIDs } } });
+  expect(clearIssue.status()).toBe(201);
+  const clearKey = String((await clearIssue.json()).key);
+  await page.goto(`/browse/${clearKey}`);
+  const clear = page.locator('details.transition-screen').filter({ has: page.locator('summary').filter({ hasText: /^Finish$/ }) });
+  await clear.locator('summary').click();
+  await clear.getByRole('tab', { name: 'Text', exact: true }).click();
+  await clear.getByLabel(`multiselect transition ${stamp}`, { exact: true }).selectOption([]);
+  await clear.getByLabel(`number transition ${stamp}`, { exact: true }).fill('');
+  await clear.getByLabel('Description', { exact: true }).fill('');
+  await clear.getByLabel('Environment', { exact: true }).fill('');
+  await clear.getByRole('button', { name: 'Complete Finish', exact: true }).click();
+  await expect.poll(async () => (await (await page.request.get(`/rest/api/3/issue/${clearKey}?fields=status`, { headers })).json()).fields.status.name).toBe('Done');
+  await page.reload();
+  const cleared = (await (await page.request.get(`/rest/api/3/issue/${clearKey}?fields=description,environment,${fieldIDs.number},${fieldIDs.multiselect}`, { headers })).json()).fields;
+  expect(cleared.environment).toBeNull();
+  expect(cleared[fieldIDs.number] ?? null).toBeNull();
+  expect(cleared[fieldIDs.multiselect] ?? null).toBeNull();
+  expect(JSON.stringify(cleared.description)).not.toContain('Retained rich transition');
 });

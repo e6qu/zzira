@@ -633,7 +633,7 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=63&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=64&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
@@ -1020,17 +1020,39 @@
   // and otherwise by the form it belongs to and its name -- a comment's
   // hidden document field has no id, and losing it sends an empty comment.
   function formKey(form) {
-    return 'form:' + (form.getAttribute('action') || form.id || '');
+    const transition = form.querySelector('input[name="transition"]');
+    return 'form:' + (form.getAttribute('action') || form.id || '') + (transition ? ':transition:' + encodeURIComponent(transition.value) : '');
+  }
+  function typedFieldValue(field) {
+    return field instanceof HTMLSelectElement && field.multiple
+      ? Array.from(field.selectedOptions, (option) => option.value)
+      : field.value;
+  }
+  function restoreTypedField(field, value) {
+    if (field instanceof HTMLSelectElement && field.multiple && Array.isArray(value)) {
+      let changed = false;
+      for (const option of field.options) {
+        const selected = value.includes(option.value);
+        if (option.selected !== selected) {
+          option.selected = selected;
+          changed = true;
+        }
+      }
+      return changed;
+    }
+    if (field.value === value) return false;
+    field.value = value;
+    return true;
   }
   function typedValues(root) {
     const typed = {};
     root.querySelectorAll('form[data-dirty="true"]').forEach((form) => {
       const key = formKey(form);
       form.querySelectorAll('input[id], textarea[id], select[id]').forEach((field) => {
-        typed['#' + field.id] = field.value;
+        typed['#' + field.id] = typedFieldValue(field);
       });
       form.querySelectorAll('input[name]:not([id]), textarea[name]:not([id]), select[name]:not([id])').forEach((field) => {
-        typed[key + '|name:' + field.name] = field.value;
+        typed[key + '|name:' + field.name] = typedFieldValue(field);
       });
       // A rich editor holds what was written as nodes rather than as a value,
       // so the nodes themselves are kept: reading them back as markup would
@@ -1046,8 +1068,7 @@
     Object.keys(typed).forEach((key) => {
       if (key.startsWith('#')) {
         const field = document.getElementById(key.slice(1));
-        if (!field || field.value === typed[key]) return;
-        field.value = typed[key];
+        if (!field || !restoreTypedField(field, typed[key])) return;
         const form = field.closest('form');
         if (form) form.dataset.dirty = 'true';
         return;
@@ -1057,8 +1078,7 @@
       if (!form) return;
       if (fieldPart.startsWith('name:')) {
         const field = form.querySelector(`[name="${fieldPart.slice('name:'.length)}"]:not([id])`);
-        if (!field || field.value === typed[key]) return;
-        field.value = typed[key];
+        if (!field || !restoreTypedField(field, typed[key])) return;
         form.dataset.dirty = 'true';
         return;
       }
