@@ -379,3 +379,71 @@ func (s *Store) PlanIterationCapacities(ctx context.Context, scenarioID int64) (
 	}
 	return out, rows.Err()
 }
+
+// copyPlanScenariosTx copies every scenario and its draft values in the same
+// snapshot as the plan and teams. Source metadata cannot change halfway through
+// the copy, and copied team references never point back to the source plan.
+func copyPlanScenariosTx(ctx context.Context, tx pgx.Tx, sourcePlanID, copiedPlanID int64, actorID string, teamIDs map[int64]int64) error {
+	var sourceDefault, copiedDefault int64
+	if err := tx.QueryRow(ctx, `SELECT source.scenario_id,copied.scenario_id
+		FROM plans source,plans copied WHERE source.id=$1 AND copied.id=$2`, sourcePlanID, copiedPlanID).Scan(&sourceDefault, &copiedDefault); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `UPDATE plan_scenarios copied SET name=source.name,color=source.color
+		FROM plan_scenarios source WHERE source.id=$1 AND copied.id=$2
+		AND source.plan_id=$3 AND copied.plan_id=$4`, sourceDefault, copiedDefault, sourcePlanID, copiedPlanID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return planInvalid("The source plan has no default scenario.")
+	}
+	rows, err := tx.Query(ctx, `WITH mapping AS MATERIALIZED (
+		SELECT id AS source_id,nextval('jira_plan_scenario_id') AS new_id,name,color
+		FROM plan_scenarios WHERE plan_id=$1 AND id<>$3
+	), inserted AS (
+		INSERT INTO plan_scenarios(id,plan_id,name,color,created_by)
+		SELECT new_id,$2,name,color,$4 FROM mapping RETURNING id
+	)
+	SELECT source_id,new_id FROM mapping JOIN inserted ON inserted.id=mapping.new_id`, sourcePlanID, copiedPlanID, sourceDefault, actorID)
+	if err != nil {
+		return err
+	}
+	scenarioIDs := map[int64]int64{sourceDefault: copiedDefault}
+	for rows.Next() {
+		var source, copied int64
+		if err = rows.Scan(&source, &copied); err != nil {
+			rows.Close()
+			return err
+		}
+		scenarioIDs[source] = copied
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	scenarios, err := json.Marshal(scenarioIDs)
+	if err != nil {
+		return err
+	}
+	teams, err := json.Marshal(teamIDs)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO plan_scenario_changes(scenario_id,issue_id,field,value,changed_by,changed_at)
+		SELECT (mapping.value)::bigint,c.issue_id,c.field,
+			CASE WHEN c.field='team' AND c.value<>'null'::jsonb
+				THEN COALESCE($2::jsonb->(c.value#>>'{}'),'null'::jsonb) ELSE c.value END,
+			c.changed_by,c.changed_at
+		FROM plan_scenario_changes c
+		JOIN jsonb_each_text($1::jsonb) mapping ON mapping.key=c.scenario_id::text`, scenarios, teams); err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO plan_scenario_iteration_capacity(scenario_id,team_id,iteration,capacity,changed_by,changed_at)
+		SELECT scenario.value::bigint,team.value::bigint,c.iteration,c.capacity,c.changed_by,c.changed_at
+		FROM plan_scenario_iteration_capacity c
+		JOIN jsonb_each_text($1::jsonb) scenario ON scenario.key=c.scenario_id::text
+		JOIN jsonb_each_text($2::jsonb) team ON team.key=c.team_id::text`, scenarios, teams)
+	return err
+}

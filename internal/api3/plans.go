@@ -18,6 +18,8 @@ func planError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	message := "internal error"
 	switch {
+	case errors.Is(err, store.ErrProjectPermission):
+		status, message = http.StatusForbidden, "Administer Jira is required to duplicate a plan."
 	case errors.Is(err, store.ErrPlanValidation):
 		status, message = http.StatusBadRequest, strings.TrimPrefix(err.Error(), store.ErrPlanValidation.Error()+": ")
 	case errors.Is(err, store.ErrPlanNotFound):

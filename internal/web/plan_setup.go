@@ -53,6 +53,8 @@ type planSettingsData struct {
 	Estimations                  []string
 	DateFields                   []struct{ Value, Label string }
 	StartDateValue, EndDateValue string
+	CanDuplicate                 bool
+	DuplicateName                string
 	Plan                         store.Plan
 	Lead                         string
 	Sources                      []planSourceChoice
@@ -278,6 +280,19 @@ func (h *Handler) writePlanSettings(w http.ResponseWriter, r *http.Request, user
 	data := planSettingsData{
 		Plan: plan, Excluded: map[int64]bool{}, Estimations: planEstimations,
 		Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error"),
+	}
+	var err error
+	if data.CanDuplicate, err = h.Store.IsAdmin(r.Context(), workspaceID, user.ID); err != nil {
+		http.Error(w, "Could not load plan permissions.", http.StatusInternalServerError)
+		return
+	}
+	copyName := []rune("Copy of " + plan.Name)
+	if len(copyName) > 255 {
+		copyName = copyName[:255]
+	}
+	data.DuplicateName = string(copyName)
+	if r.PostFormValue("action") == "duplicate" {
+		data.DuplicateName = r.PostFormValue("name")
 	}
 	data.StartDateValue, data.EndDateValue = planDateFieldValue(plan.Scheduling.StartDate), planDateFieldValue(plan.Scheduling.EndDate)
 	data.DateFields = slices.Clone(planDateFields)
@@ -523,4 +538,49 @@ func planExcludedIDs(values []string) ([]int64, error) {
 
 func planSettingsBack(w http.ResponseWriter, r *http.Request, plan store.Plan, key, message string) {
 	redirectLocal(w, r, "/plans/"+strconv.FormatInt(plan.ID, 10)+"/settings?"+key+"="+url.QueryEscape(message))
+}
+
+// DuplicatePlan copies an active plan through the same store operation as REST.
+func (h *Handler) DuplicatePlan(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok || !parseForm(w, r) {
+		return
+	}
+	planID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	plan, err := h.Store.Plan(r.Context(), workspaceID, planID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if plan.Status != "Active" {
+		http.Error(w, "The plan is no longer active.", http.StatusConflict)
+		return
+	}
+	id, err := h.Store.DuplicatePlan(r.Context(), workspaceID, user.ID, planID, r.PostFormValue("name"))
+	if err != nil {
+		if errors.Is(err, store.ErrProjectPermission) {
+			http.Error(w, "Administer Jira is required to duplicate a plan.", http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, store.ErrPlanNotActive) {
+			http.Error(w, "The plan is no longer active.", http.StatusConflict)
+			return
+		}
+		if errors.Is(err, store.ErrPlanNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		if message := planErrorMessage(err); message != "" {
+			r.PostForm.Set("action", "duplicate")
+			h.writePlanSettings(w, r, user, workspaceID, plan, message, http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "Could not duplicate the plan.", http.StatusInternalServerError)
+		return
+	}
+	redirectLocal(w, r, "/plans/"+strconv.FormatInt(id, 10))
 }

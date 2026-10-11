@@ -87,7 +87,7 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
 | `POST` | Creates a plan. |
 | `GET/PUT …/{planId}` | Reads a plan. `PUT` applies a JSON Patch, then validates the whole plan again. |
 | `PUT …/{planId}/archive`, `…/trash` | Changes the status of an active plan. |
-| `POST …/{planId}/duplicate` | Copies the plan's sources and teams. Scenarios are not copied. |
+| `POST …/{planId}/duplicate` | Copies settings, sources, teams, scenarios, draft edits and iteration capacities with independent team references. |
 | `GET …/{planId}/team` | Lists the plan's teams. |
 | `POST …/team/atlassian`, `…/team/planonly` | Adds a team. |
 | `GET/PUT/DELETE …/team/{atlassian or planonly}/{teamId}` | Reads, updates or removes one team. |
@@ -109,6 +109,11 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
   releases, and who else may view or edit it. Refused scheduling saves retain
   the chosen date sources for correction; removing a configured date field
   shows an unavailable choice rather than silently selecting another source.
+- Site administrators can duplicate an active plan from its settings, choosing
+  a copy name. Scenarios keep their names, colors, draft authors and timestamps;
+  their team references and capacities use the copied memberships. Edits in a
+  duplicate stay independent of the source plan. A refused name stays in the
+  form for correction.
 - **Cross-project releases** group the versions that ship together across the
   projects a plan reads: create one with a name and the versions it groups,
   change or remove it later. The plan shows each one with its member versions,
@@ -245,4 +250,4 @@ Remaining work is tracked in [PLAN.md](../PLAN.md).
   - `internal/agile/software.go`, `internal/store/jira_software.go`
   - `internal/api3/plans.go`, `internal/store/plans.go`, `internal/store/plan_*.go`, `internal/web/plan_planning.go`
   - `internal/api3/software_providers.go`, `internal/api3/expressions.go`, `internal/jexpr`
-- Browser tests: `e2e/software.spec.ts`, `e2e/timeline.spec.ts`, `e2e/plans_view.spec.ts`, `e2e/plans_teams.spec.ts`, `e2e/plans_setup.spec.ts`
+- Browser tests: `e2e/software.spec.ts`, `e2e/timeline.spec.ts`, `e2e/plans_view.spec.ts`, `e2e/plans_teams.spec.ts`, `e2e/plans_setup.spec.ts`, `e2e/plans_date_fields.spec.ts`, `e2e/plans_duplicate.spec.ts`

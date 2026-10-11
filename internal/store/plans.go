@@ -593,17 +593,21 @@ func (s *Store) SetPlanStatus(ctx context.Context, workspaceID string, planID in
 	return tx.Commit(ctx)
 }
 
-// DuplicatePlan copies an active plan with its issue sources and teams.
+// DuplicatePlan copies an active plan, including independent scenario drafts
+// and capacities with their references remapped to the copied teams.
 func (s *Store) DuplicatePlan(ctx context.Context, workspaceID, actorID string, planID int64, name string) (int64, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || len([]rune(name)) > 255 {
 		return 0, planInvalid("The plan name must be between 1 and 255 characters.")
 	}
-	tx, err := s.Pool.Begin(ctx)
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := projectAdmin(ctx, tx, workspaceID, actorID); err != nil {
+		return 0, err
+	}
 	if err := activePlanTx(ctx, tx, workspaceID, planID); err != nil {
 		return 0, err
 	}
@@ -613,13 +617,40 @@ func (s *Store) DuplicatePlan(ctx context.Context, workspaceID, actorID string, 
 		workspaceID, planID, name, actorID).Scan(&id); err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(ctx, `WITH copied AS (
-			INSERT INTO plan_issue_sources(plan_id,position,type,value) SELECT $2,position,type,value FROM plan_issue_sources WHERE plan_id=$1 RETURNING id,type,value
-		)
-		INSERT INTO plan_teams(plan_id,atlassian_team_id,name,planning_style,issue_source_id,sprint_length,capacity,member_account_ids)
-		SELECT $2,t.atlassian_team_id,t.name,t.planning_style,c.id,t.sprint_length,t.capacity,t.member_account_ids
-		FROM plan_teams t LEFT JOIN plan_issue_sources o ON o.id=t.issue_source_id LEFT JOIN copied c ON c.type=o.type AND c.value=o.value
-		WHERE t.plan_id=$1 ORDER BY t.id`, planID, id); err != nil {
+	teamRows, err := tx.Query(ctx, `WITH copied AS (
+		INSERT INTO plan_issue_sources(plan_id,position,type,value)
+		SELECT $2,position,type,value FROM plan_issue_sources WHERE plan_id=$1 RETURNING id,type,value
+	), mapping AS MATERIALIZED (
+		SELECT t.id AS source_id,nextval('jira_plan_team_id') AS new_id,
+			t.atlassian_team_id,t.name,t.planning_style,c.id AS issue_source_id,
+			t.sprint_length,t.capacity,t.member_account_ids
+		FROM plan_teams t LEFT JOIN plan_issue_sources o ON o.id=t.issue_source_id
+		LEFT JOIN copied c ON c.type=o.type AND c.value=o.value
+		WHERE t.plan_id=$1
+	), inserted AS (
+		INSERT INTO plan_teams(id,plan_id,atlassian_team_id,name,planning_style,issue_source_id,sprint_length,capacity,member_account_ids)
+		SELECT new_id,$2,atlassian_team_id,name,planning_style,issue_source_id,sprint_length,capacity,member_account_ids
+		FROM mapping RETURNING id
+	)
+	SELECT source_id,new_id FROM mapping JOIN inserted ON inserted.id=mapping.new_id`, planID, id)
+	if err != nil {
+		return 0, err
+	}
+	teamIDs := map[int64]int64{}
+	for teamRows.Next() {
+		var source, copied int64
+		if err = teamRows.Scan(&source, &copied); err != nil {
+			teamRows.Close()
+			return 0, err
+		}
+		teamIDs[source] = copied
+	}
+	err = teamRows.Err()
+	teamRows.Close()
+	if err != nil {
+		return 0, err
+	}
+	if err = copyPlanScenariosTx(ctx, tx, planID, id, actorID, teamIDs); err != nil {
 		return 0, err
 	}
 	return id, tx.Commit(ctx)

@@ -525,6 +525,7 @@ func main() {
 	mux.HandleFunc("GET /plans/{id}", webHandler.PlanPage)
 	mux.HandleFunc("GET /plans/{id}/settings", webHandler.PlanSettingsPage)
 	mux.HandleFunc("POST /plans/{id}/settings", webHandler.PlanSettingsSave)
+	mux.HandleFunc("POST /plans/{id}/duplicate", webHandler.DuplicatePlan)
 	mux.HandleFunc("POST /plans/{id}/work", webHandler.PlanWorkChange)
 	mux.HandleFunc("POST /plans/{id}/scenarios", webHandler.PlanScenarioChange)
 	mux.HandleFunc("POST /plans/{id}/capacity", webHandler.PlanCapacityChange)

@@ -87,6 +87,7 @@
 <label for="plan-holder-person">Person</label><select id="plan-holder-person" name="holder">{{range .Data.Members}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}{{range .Data.Groups}}<option value="{{.ID}}">Group: {{.Name}}</option>{{end}}</select>
 <label for="plan-access">Access</label><select id="plan-access" name="access"><option value="View">Can view</option><option value="Edit">Can edit</option></select>
 <button class="btn btn-primary" type="submit">Give access</button></form></section>
+{{if .Data.CanDuplicate}}<section class="surface-card" aria-labelledby="plan-duplicate-heading"><h2 id="plan-duplicate-heading">Duplicate plan</h2><p>Copy the settings, teams, scenarios, draft edits and iteration capacities. Changes in the copy stay independent of this plan.</p><form class="project-details-form" method="post" action="/plans/{{.Data.Plan.ID}}/duplicate"><input type="hidden" name="action" value="duplicate"><label for="plan-duplicate-name">Copy name</label><input id="plan-duplicate-name" name="name" value="{{.Data.DuplicateName}}" maxlength="255" required><button class="btn" type="submit">Duplicate plan</button></form></section>{{end}}
 </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
 {{end}}
 

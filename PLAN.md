@@ -93,7 +93,7 @@ Owning reference: [JIRA_SOFTWARE.md](docs/JIRA_SOFTWARE.md#plans).
 - Auto-scheduler: schedule against releases too, so a version's date bounds
   what may go after it.
 - Plan setup in the browser: choose the plan's custom fields.
-- Restore archived and trashed plans; duplicate copies scenarios.
+- Restore archived and trashed plans.
 - Scenario edits: parent, rank, release, status, create work items.
 - Views: saved zoom and columns.
 - Make `inferredDates` and plan `customFields` take effect.
