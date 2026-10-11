@@ -87,3 +87,4 @@ Tracked in [PLAN.md](../PLAN.md).
   and field order.
 - Workflow transition screens resolve named screens, but present their fields
   as one list rather than using the screen's tabs ([WORKFLOW_RULES.md](WORKFLOW_RULES.md#gaps)).
+- Edit dialogs flatten screen tabs into the configured field order.
