@@ -78,8 +78,8 @@ backlogs remain epic-level, as Jira's do.
 - Bounce handling for the project sender address (the address itself is the
   From header of the mail a project's work queues, once its domain is
   verified).
-- Anonymous browser collections and custom-field, worklog and history panels
-  beyond public work item pages ([anonymous access](docs/ANONYMOUS_ACCESS.md)).
+- Anonymous browser filters and custom-field, worklog and history panels
+  beyond public project/work item lists ([anonymous access](docs/ANONYMOUS_ACCESS.md)).
 - `atlassian-addons-project-access` role for installed apps.
 - Project templates: inline `REF` objects and team-managed projects.
 - Development triggers beyond branch created: commits, pull requests, reviews,

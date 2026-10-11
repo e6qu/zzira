@@ -33,14 +33,22 @@ The anonymous user holds no global permissions, is in no group or role, and is n
 
 ## Public work item pages
 
+With anonymous access enabled, `/projects` lists active projects granting
+**Browse projects** to `anyone`. A project opens `/issues/{key}`, which lists
+only its publicly visible, non-archived work, including issue-security checks.
+Both lists page by key, 50 rows at a time, and offer a return to the first page.
+Public work item breadcrumbs link back to the project and directory. Private,
+archived and trashed projects stay out of public collections. Other browser
+filters are explicitly refused; log in for the full navigator.
+
 With anonymous access enabled, `/browse/{key}` shows signed-out visitors the work item's description, details, public comments and attachments when its project grants Browse projects to `anyone`. Issue security, parent visibility, comment restrictions and internal service attachments use the same permission checks as REST. Internal service comments are hidden from anonymous reads too. Private, restricted and missing work all return 404.
 
-The page offers a login link and no write controls. It loads no authenticated replica or editor, records no viewing history, honors the site date formats and supports light and dark themes. Responses use `Cache-Control: private, no-store`; the service worker respects that header and removes an older cached copy on a fresh response or access refusal. Public work item pages are unavailable offline.
+Public pages offer a login link and no write controls. It loads no authenticated replica or editor, records no viewing history, honors the site date formats and supports light and dark themes. Responses use `Cache-Control: private, no-store`; the service worker respects that header and removes an older cached copy on a fresh response or access refusal. Public work item and collection pages are unavailable offline.
 
-Invalid credentials and installations with anonymous access disabled retain the browser's login redirect. Other browser collections, custom-field details and worklog/history panels still require signing in.
+Invalid credentials and installations with anonymous access disabled retain the browser's login redirect. Navigator filters, boards, dashboards, custom-field details and worklog/history panels still require signing in.
 
 ## Tests
 
 `internal/api3/anonymous_access_test.go` calls every operation in the table without credentials, against a project granting Browse projects to `anyone` and a private project. It fails on a 401, a server error, or any response exposing the private project, its work or an email address. It also checks public work item, search, project, component and permission reads, and that writes, other operations and bad credentials stay unauthorized.
 
-`internal/web/anonymous_issue_test.go` covers public/private/security-restricted work, hidden parents, restricted and internal service comments, internal attachments, absent versus invalid credentials, disabled anonymous access, history isolation and grant revocation. `e2e/anonymous_browse.spec.ts` covers the signed-out journey, dark theme, 320 px accessibility, service-worker cache refusal, offline refusal and revocation.
+`internal/web/anonymous_issue_test.go` covers public/private/security-restricted work, hidden parents, restricted and internal service comments, internal attachments, absent versus invalid credentials, disabled anonymous access, history isolation and grant revocation. `e2e/anonymous_browse.spec.ts` covers the signed-out work item journey, dark theme, 320 px accessibility, service-worker cache refusal, offline refusal and revocation. `internal/web/anonymous_collections_test.go` verifies paging, lifecycle, permissions, security, history isolation and credential handling; `e2e/anonymous_collections.spec.ts` covers public discovery, paging, mobile accessibility, cache refusal and revocation.
