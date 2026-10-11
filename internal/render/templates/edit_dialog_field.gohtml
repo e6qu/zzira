@@ -53,6 +53,6 @@
     {{range .CustomFields}}{{if eq .ID $field}}
     <label for="field-{{.ID}}">{{.Name}}</label>
       {{template "custom_field_control" (customFieldControl . "field-" "")}}
-      {{if .Description}}<small id="edit-help-{{.ID}}" class="muted">{{.Description}}</small>{{end}}
+      {{if .Description}}<small id="field-help-{{.ID}}" class="muted">{{.Description}}</small>{{end}}
     {{end}}{{end}}
 {{end}}{{end}}{{end}}

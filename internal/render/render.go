@@ -156,14 +156,11 @@ func init() {
 		"selectedVersion": func(csv, id string) bool { return slices.Contains(strings.Split(csv, ","), id) },
 		// customFieldControl passes a custom field to its control with the
 		// element id prefix and the input name, which defaults to the field id.
-		"customFieldControl": func(field any, prefix, name string) map[string]any {
-			return map[string]any{"Field": field, "Prefix": prefix, "Name": name}
+		"customFieldControl": func(field models.CustomFieldView, prefix, name string) map[string]any {
+			return map[string]any{"Field": field, "Prefix": prefix, "Name": name, "HelpID": prefix + "help-" + field.ID}
 		},
 		"transitionScreenField": func(field string, transition any, view any) map[string]any {
 			return map[string]any{"ID": field, "Transition": transition, "View": view}
-		},
-		"transitionCustomFieldControl": func(field models.CustomFieldView, prefix, name string) map[string]any {
-			return map[string]any{"Field": field, "Prefix": prefix, "Name": name, "HelpID": prefix + "help-" + field.ID, "ClearMarker": true}
 		},
 		// detailField passes one create-form field to its control along with the
 		// values and flags the control needs, so tabs and the plain list render

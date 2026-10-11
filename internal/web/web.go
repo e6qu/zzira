@@ -1682,6 +1682,21 @@ func createFieldsFromForm(fields []models.CreateFieldMeta, values map[string]str
 	return custom, nil
 }
 
+// encodeWebCustomFieldValues excludes empty form markers while retaining all
+// selected options. A present control with no selected values explicitly clears.
+func encodeWebCustomFieldValues(fieldType string, values []string) (json.RawMessage, error) {
+	selected := make([]string, 0, len(values))
+	for _, value := range values {
+		if value != "" {
+			selected = append(selected, value)
+		}
+	}
+	if len(selected) == 0 {
+		return json.RawMessage("null"), nil
+	}
+	return encodeWebCustomField(fieldType, strings.Join(selected, ","))
+}
+
 func encodeWebCustomField(fieldType, value string) (json.RawMessage, error) {
 	switch fieldType {
 	case models.CustomFieldNumber:
@@ -2522,22 +2537,10 @@ func (h *Handler) TransitionIssue(w http.ResponseWriter, r *http.Request, key st
 					http.Error(w, "custom field is not available for this project", http.StatusBadRequest)
 					return
 				}
-				// Multiple selects post one value per option. The empty marker
-				// also makes deselecting every option an explicit clear.
-				selected := []string{}
-				for _, entry := range values {
-					if entry != "" {
-						selected = append(selected, entry)
-					}
-				}
-				encoded := json.RawMessage("null")
-				if len(selected) > 0 {
-					var encodeErr error
-					encoded, encodeErr = encodeWebCustomField(definition.Type, strings.Join(selected, ","))
-					if encodeErr != nil {
-						http.Error(w, definition.Name+" "+encodeErr.Error(), http.StatusBadRequest)
-						return
-					}
+				encoded, encodeErr := encodeWebCustomFieldValues(definition.Type, values)
+				if encodeErr != nil {
+					http.Error(w, definition.Name+" "+encodeErr.Error(), http.StatusBadRequest)
+					return
 				}
 				if update.Fields == nil {
 					update.Fields = make(map[string]json.RawMessage)
@@ -2830,13 +2833,13 @@ func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key s
 		fieldID := strings.TrimPrefix(field, prefix)
 		encoded := json.RawMessage(strconv.Quote(value))
 		if definition, err := h.Store.CustomFieldByID(r.Context(), wsID, fieldID); err == nil {
-			// A multiple choice posts one value per chosen entry; a blank value
-			// clears the field.
-			joined := strings.Join(r.PostForm["value"], ",")
-			if strings.TrimSpace(joined) == "" {
-				encoded = json.RawMessage("null")
-			} else if encoded, err = encodeWebCustomField(definition.Type, joined); err != nil {
-				http.Error(w, err.Error(), commandErrorStatus(err))
+			values, provided := r.PostForm["value"]
+			if !provided {
+				http.Error(w, "custom field value is required", http.StatusBadRequest)
+				return
+			}
+			if encoded, err = encodeWebCustomFieldValues(definition.Type, values); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 		}
@@ -3043,23 +3046,18 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 	}
 	for _, cf := range customFields {
 		if v, ok := r.PostForm[cf.ID]; ok {
-			if v[0] == "" {
-				if _, existed := issue.Fields[cf.ID]; !existed {
-					continue
-				}
-				if in.Fields == nil {
-					in.Fields = map[string]json.RawMessage{}
-				}
-				in.Fields[cf.ID] = json.RawMessage("null")
-				continue
-			}
-			if in.Fields == nil {
-				in.Fields = map[string]json.RawMessage{}
-			}
-			encoded, err := encodeWebCustomField(cf.Type, strings.Join(v, ","))
+			encoded, err := encodeWebCustomFieldValues(cf.Type, v)
 			if err != nil {
 				http.Error(w, cf.Name+" "+err.Error(), http.StatusBadRequest)
 				return
+			}
+			if string(encoded) == "null" {
+				if _, existed := issue.Fields[cf.ID]; !existed {
+					continue
+				}
+			}
+			if in.Fields == nil {
+				in.Fields = map[string]json.RawMessage{}
 			}
 			in.Fields[cf.ID] = encoded
 		}
