@@ -23,7 +23,13 @@ test('server-refused drafts survive reload and pause later saves until explicit 
   const key = await create(page, summary);
   let attempts = 0;
   let refuse = true;
+  let refuseConfirmation = false;
   const routeURL = `**/issues/${key}/edit`;
+  const syncURL = '**/sync?**';
+  await context.route(syncURL, async route => {
+    if (refuseConfirmation && attempts >= 3) await route.fulfill({ status: 503, body: 'Injected confirmation refusal' });
+    else await route.continue();
+  });
   await context.route(routeURL, async route => {
     if (route.request().method() !== 'POST') return route.continue();
     attempts++;
@@ -41,6 +47,7 @@ test('server-refused drafts survive reload and pause later saves until explicit 
       await expect(page.getByRole('dialog', { name: 'Edit issue', exact: true })).not.toBeVisible();
       await expect(page.locator('.issue-summary')).toHaveText(title);
     }
+    await page.evaluate(() => { (window as any).__bannerLog = []; });
     await context.setOffline(false);
     const recovery = page.getByRole('region', { name: 'Offline save recovery' });
     await expect(recovery).toContainText('2 queued draft(s)', { timeout: 20_000 });
@@ -50,6 +57,7 @@ test('server-refused drafts survive reload and pause later saves until explicit 
     await expect.poll(() => page.evaluate(() => (window as any).__refusalReports), { timeout: 20_000 }).toBeGreaterThanOrEqual(3);
     expect(attempts).toBe(1);
     await expect(page.locator('[data-sync-label]')).toHaveText('Save needs attention');
+    expect(await page.evaluate(() => ((window as any).__bannerLog || []).some((message: string) => /^synced\b/.test(message)))).toBe(false);
     await page.locator('[data-theme-toggle]').click();
     await page.setViewportSize({ width: 320, height: 740 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -68,14 +76,19 @@ test('server-refused drafts survive reload and pause later saves until explicit 
     const persisted = await page.request.get(`/rest/api/3/issue/${key}?fields=summary`, { headers: { Authorization: apiAuthHeader() } });
     expect((await persisted.json()).fields.summary).toBe(summary);
     refuse = false;
+    refuseConfirmation = true;
     await recovery.getByRole('button', { name: 'Retry refused save' }).click();
     await expect.poll(async () => (await (await page.request.get(`/rest/api/3/issue/${key}?fields=summary`, { headers: { Authorization: apiAuthHeader() } })).json()).fields.summary, { timeout: 20_000 }).toBe(`${summary} second`);
     await expect(recovery).not.toBeVisible();
     expect(attempts).toBe(3);
+    await expect(page.locator('[data-sync-label]')).toHaveText('Sync needs attention', { timeout: 20_000 });
+    expect(await page.evaluate(() => ((window as any).__bannerLog || []).some((message: string) => /^synced\b/.test(message)))).toBe(false);
+    refuseConfirmation = false;
     await expect(page.locator('[data-sync-label]')).toHaveText('Synced', { timeout: 20_000 });
   } finally {
     await context.setOffline(false);
     await context.unroute(routeURL);
+    await context.unroute(syncURL);
     await page.request.delete(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() }, timeout: 10_000 });
   }
 });

@@ -14,15 +14,31 @@ test('a contributor creates, recovers and edits Environment through an assigned 
   const project = await page.request.post('/rest/api/3/project', { headers, data: { key, name: `Environment work ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' } });
   expect(project.status()).toBe(201);
   const projectID = String((await project.json()).id);
-  let screenID = '', schemeID = '', typeSchemeID = '';
+  let screenID = '', schemeID = '', typeSchemeID = '', configID = '', configSchemeID = '';
   try {
+    const configuration = await page.request.post('/rest/api/3/fieldconfiguration', { headers, data: { name: `Required environment ${stamp}` } });
+    expect(configuration.status()).toBe(201);
+    configID = String((await configuration.json()).id);
+    const setRequired = async (required: boolean) => {
+      expect((await page.request.put(`/rest/api/3/fieldconfiguration/${configID}/fields`, { headers, data: { fieldConfigurationItems: ['labels', 'environment'].map(id => ({ id, isRequired: required })) } })).status()).toBe(204);
+    };
+    await setRequired(true);
+    const configScheme = await page.request.post('/rest/api/3/fieldconfigurationscheme', { headers, data: { name: `Required environment types ${stamp}` } });
+    expect(configScheme.status()).toBe(201);
+    configSchemeID = String((await configScheme.json()).id);
+    expect((await page.request.put(`/rest/api/3/fieldconfigurationscheme/${configSchemeID}/mapping`, { headers, data: { mappings: [{ issueTypeId: 'default', fieldConfigurationId: configID }] } })).status()).toBe(204);
+    expect((await page.request.put('/rest/api/3/fieldconfigurationscheme/project', { headers, data: { fieldConfigurationSchemeId: configSchemeID, projectId: projectID } })).status()).toBe(204);
     const screen = await page.request.post('/rest/api/3/screens', { headers, data: { name: `Environment form ${stamp}` } });
     expect(screen.status()).toBe(201);
     screenID = String((await screen.json()).id);
     const tabs = await (await page.request.get(`/rest/api/3/screens/${screenID}/tabs`, { headers })).json();
-    for (const fieldId of ['summary', 'description', 'environment']) {
+    for (const fieldId of ['summary', 'description', 'labels']) {
       expect((await page.request.post(`/rest/api/3/screens/${screenID}/tabs/${tabs[0].id}/fields`, { headers, data: { fieldId } })).status()).toBe(200);
     }
+    const environmentTab = await page.request.post(`/rest/api/3/screens/${screenID}/tabs`, { headers, data: { name: 'Runtime' } });
+    expect(environmentTab.status()).toBe(200);
+    const environmentTabID = String((await environmentTab.json()).id);
+    expect((await page.request.post(`/rest/api/3/screens/${screenID}/tabs/${environmentTabID}/fields`, { headers, data: { fieldId: 'environment' } })).status()).toBe(200);
     const scheme = await page.request.post('/rest/api/3/screenscheme', { headers, data: { name: `Environment scheme ${stamp}`, screens: { default: screenID } } });
     expect(scheme.status()).toBe(201);
     schemeID = String((await scheme.json()).id);
@@ -34,12 +50,21 @@ test('a contributor creates, recovers and edits Environment through an assigned 
     await page.locator('#global-create-issue').click();
     const create = page.getByRole('dialog', { name: 'Create issue' });
     await expect(create).toBeVisible();
-    await create.locator('.create-more summary').click();
-    await create.getByLabel('Environment', { exact: true }).fill('Production Linux');
     await create.getByLabel('Summary', { exact: false }).fill(`Environment journey ${stamp}`);
+    await create.getByRole('button', { name: 'Create issue', exact: true }).click();
+    await expect(create.locator('#create-labels')).toBeFocused();
+    await expect(create.locator('#create-environment')).not.toBeVisible();
+    await create.locator('#create-labels').fill('production');
+    await create.getByRole('button', { name: 'Create issue', exact: true }).click();
+    await expect(create.locator('#create-environment')).toBeFocused();
+    await expect(create.getByRole('tab', { name: 'Runtime' })).toHaveAttribute('aria-selected', 'true');
+    await expect(create.getByLabel('Summary', { exact: false })).toHaveValue(`Environment journey ${stamp}`);
+    await create.locator('#create-environment').fill('Production Linux');
     await create.getByRole('button', { name: 'Create issue', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/browse/${key}-\\d+$`));
     const issueKey = page.url().split('/').pop()!;
+    expect((await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=labels`, { headers })).json()).fields.labels).toEqual(['production']);
+    await setRequired(false);
     await expect(page.locator('.issue-environment .description-text')).toHaveText('Production Linux');
     await page.reload();
     await expect(page.locator('.issue-environment .description-text')).toHaveText('Production Linux');
@@ -76,5 +101,7 @@ test('a contributor creates, recovers and edits Environment through an assigned 
     if (typeSchemeID) await page.request.delete(`/rest/api/3/issuetypescreenscheme/${typeSchemeID}`, { headers, timeout: 10_000 });
     if (schemeID) await page.request.delete(`/rest/api/3/screenscheme/${schemeID}`, { headers, timeout: 10_000 });
     if (screenID) await page.request.delete(`/rest/api/3/screens/${screenID}`, { headers, timeout: 10_000 });
+    if (configSchemeID) await page.request.delete(`/rest/api/3/fieldconfigurationscheme/${configSchemeID}`, { headers, timeout: 10_000 });
+    if (configID) await page.request.delete(`/rest/api/3/fieldconfiguration/${configID}`, { headers, timeout: 10_000 });
   }
 });
