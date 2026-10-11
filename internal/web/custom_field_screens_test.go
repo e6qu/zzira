@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -129,6 +130,9 @@ func TestCustomFieldViewsRespectScreensHiddenRulesAndWorkTypeContexts(t *testing
 	}
 	if len(view.Transitions) != 1 || names(view.Transitions[0].ScreenCustomFields) != "View only" {
 		t.Fatalf("transition screen fields: %+v", view.Transitions)
+	}
+	if !slices.Equal(view.Transitions[0].ScreenFields, []string{fields["View only"]}) {
+		t.Fatalf("transition offered hidden or out-of-context controls: %v", view.Transitions[0].ScreenFields)
 	}
 	edit, err := f.handler.buildEditDialogView(ctx, ws, f.ownerID, issue, map[string]bool{"ASSIGN_ISSUES": true, "MODIFY_REPORTER": true})
 	if err != nil {

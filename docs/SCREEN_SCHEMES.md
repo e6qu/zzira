@@ -84,6 +84,14 @@ When a required field blocks submission, the form opens its enclosing detail
 section and selects its tab before native validation focuses it. Later invalid
 fields in the same attempt do not hide the first field again.
 
+Named workflow transition screens also use their configured tabs and field order.
+Empty tabs and fields hidden by configuration or outside a custom field's context
+are omitted. Inline field lists and one usable tab remain plain forms. Each
+transition has its own control and help-text IDs. Assignee and Priority start at
+the saved values; tab selection and drafts survive another issue action's refresh.
+The transition journey is covered by `e2e/transition_screens.spec.ts`; full CI
+validation remains tracked in the plan.
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
@@ -92,5 +100,3 @@ Tracked in [PLAN.md](../PLAN.md).
   fields. Fields outside the edit screen show saved values without edit
   controls. The page uses its own layout rather than reproducing screen tabs
   and field order.
-- Workflow transition screens resolve named screens, but present their fields
-  as one list rather than using the screen's tabs ([WORKFLOW_RULES.md](WORKFLOW_RULES.md#gaps)).

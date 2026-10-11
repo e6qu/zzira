@@ -22,12 +22,12 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=70">
-<link rel="preload" href="/static/zzira-worker.wasm?v=52" as="fetch" crossorigin>
+<link rel="stylesheet" href="/static/css/workspace.css?v=71">
+<link rel="preload" href="/static/zzira-worker.wasm?v=53" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js?v=2.0.11" defer></script>
-<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=52" defer></script>
-<script src="/static/app.js?v=91" defer></script>
+<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=53" defer></script>
+<script src="/static/app.js?v=92" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -215,8 +215,24 @@
     </div>
     <div class="issue-transitions" role="group" aria-label="Issue actions">
 {{range .Transitions}}
-{{if .ScreenFields}}{{$t := .}}
-      <details class="transition-screen" data-issue-section="transition-{{.ID}}"><summary class="btn btn-transition">{{.Name}}</summary><form method="post" action="/issues/{{$.Issue.Key}}/transition" hx-post="/issues/{{$.Issue.Key}}/transition" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="transition" value="{{.ID}}">{{if .ScreenMessage}}<p class="transition-reminder" role="note">{{.ScreenMessage}}</p>{{end}}{{range .ScreenFields}}{{$field := .}}{{if eq . "summary"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Summary</label><input id="transition-{{$.Issue.ID}}-{{.}}" name="field_summary" value="{{$.Issue.Summary}}" maxlength="255">{{else if eq . "description"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Description</label><textarea id="transition-{{$.Issue.ID}}-{{.}}" name="field_description" rows="3">{{adfToText $.Issue.Description}}</textarea>{{else if eq . "environment"}}<label for="transition-{{$t.ID}}-{{$.Issue.ID}}-environment">Environment</label><textarea id="transition-{{$t.ID}}-{{$.Issue.ID}}-environment" name="field_environment" rows="3">{{adfToText (index $.Issue.Fields "environment")}}</textarea>{{else if eq . "labels"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Labels</label><input id="transition-{{$.Issue.ID}}-{{.}}" name="field_labels" value="{{join $.Issue.Labels ", "}}" placeholder="release, verified">{{else if eq . "assignee"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Assignee</label><select id="transition-{{$.Issue.ID}}-{{.}}" name="field_assignee"><option value="">Unassigned</option>{{range $.Assignees}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}</select>{{else if eq . "reporter"}}<label for="transition-{{$t.ID}}-{{$.Issue.ID}}-{{.}}">Reporter</label>{{if $.CanModifyReporter}}<select id="transition-{{$t.ID}}-{{$.Issue.ID}}-{{.}}" name="field_reporter" {{if $t.ReporterRequired}}required{{end}}>{{if not $t.ReporterRequired}}<option value="">None</option>{{end}}{{$reporter := ""}}{{if $.Issue.Reporter}}{{$reporter = $.Issue.Reporter.ID}}{{end}}{{range $.Reporters}}<option value="{{.ID}}" {{if eq .ID $reporter}}selected{{end}}>{{.DisplayName}}</option>{{end}}</select>{{else}}<output id="transition-{{$t.ID}}-{{$.Issue.ID}}-{{.}}">{{if $.Issue.Reporter}}{{$.Issue.Reporter.DisplayName}}{{else}}None{{end}}</output>{{end}}{{else if eq . "priority"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Priority</label><select id="transition-{{$.Issue.ID}}-{{.}}" name="field_priority"><option value="">None</option>{{range $.Priorities}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>{{else if eq . "resolution"}}<label for="transition-{{$.Issue.ID}}-{{.}}">Resolution</label><select id="transition-{{$.Issue.ID}}-{{.}}" name="field_resolution"><option value="">Unresolved</option>{{$chosen := ""}}{{if $.Issue.Resolution}}{{$chosen = $.Issue.Resolution.ID}}{{end}}{{range $.Resolutions}}<option value="{{.ID}}" {{if eq .ID $chosen}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{else}}{{$described := false}}{{range $t.ScreenCustomFields}}{{if eq .ID $field}}{{$described = true}}<label for="transition-{{$.Issue.ID}}-{{.ID}}">{{.Name}}</label>{{template "custom_field_control" (customFieldControl . (printf "transition-%s-" $.Issue.ID) (printf "field_%s" .ID))}}{{if .Description}}<small id="edit-help-{{.ID}}" class="muted">{{.Description}}</small>{{end}}{{end}}{{end}}{{if not $described}}<label for="transition-{{$.Issue.ID}}-{{$field}}">{{$field}}</label><input id="transition-{{$.Issue.ID}}-{{$field}}" name="field_{{$field}}">{{end}}{{end}}{{end}}<button type="submit" class="btn btn-primary">Complete {{.Name}}</button></form></details>
+{{if .ScreenFields}}{{$t := .}}{{$prefix := printf "transition-%s-%s" .ID $.Issue.ID}}
+      <details class="transition-screen" data-issue-section="transition-{{.ID}}"><summary class="btn btn-transition">{{.Name}}</summary>
+        <form method="post" action="/issues/{{$.Issue.Key}}/transition" hx-post="/issues/{{$.Issue.Key}}/transition" hx-target="#issue-view-holder" hx-swap="innerHTML">
+          <input type="hidden" name="transition" value="{{.ID}}">
+          {{if .ScreenMessage}}<p class="transition-reminder" role="note">{{.ScreenMessage}}</p>{{end}}
+          {{with .ScreenTabGroups}}
+          <div class="transition-field-tabs">
+            <div class="tablist" role="tablist" aria-label="{{ $t.Name }} field tabs">{{range $index, $tab := .}}
+              <button type="button" role="tab" data-field-tab id="{{$prefix}}-tab-{{$index}}" aria-controls="{{$prefix}}-tabpanel-{{$index}}" aria-selected="{{if eq $index 0}}true{{else}}false{{end}}" tabindex="{{if eq $index 0}}0{{else}}-1{{end}}">{{.Name}}</button>{{end}}
+            </div>
+            {{range $index, $tab := .}}<div class="transition-tab-fields" role="tabpanel" id="{{$prefix}}-tabpanel-{{$index}}" aria-labelledby="{{$prefix}}-tab-{{$index}}" {{if ne $index 0}}hidden{{end}}>
+              {{range .Fields}}{{template "transition_screen_field" (transitionScreenField . $t $)}}{{end}}
+            </div>{{end}}
+          </div>
+          {{else}}{{range .ScreenFields}}{{template "transition_screen_field" (transitionScreenField . $t $)}}{{end}}{{end}}
+          <button type="submit" class="btn btn-primary">Complete {{.Name}}</button>
+        </form>
+      </details>
 {{else}}
       <form method="post" action="/issues/{{$.Issue.Key}}/transition" hx-post="/issues/{{$.Issue.Key}}/transition" hx-target="#issue-view-holder" hx-swap="innerHTML">
         <input type="hidden" name="transition" value="{{.ID}}">
@@ -1289,7 +1305,7 @@
 </html>
 {{end}}
 
-{{define "custom_field_control"}}{{$field := .Field}}{{$value := $field.Value}}{{$name := .Name}}{{if not $name}}{{$name = $field.ID}}{{end}}{{if and $field.Options (or (eq $field.Type "select") (eq $field.Type "cascadingselect") (eq $field.Type "userpicker") (eq $field.Type "grouppicker") (eq $field.Type "project") (eq $field.Type "version") (eq $field.Type "team"))}}<select id="{{.Prefix}}{{$field.ID}}" name="{{$name}}" {{if $field.Description}}aria-describedby="edit-help-{{$field.ID}}"{{end}}><option value="">None</option>{{range $field.Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{else if and $field.Options (or (eq $field.Type "multiselect") (eq $field.Type "multiuserpicker") (eq $field.Type "multigrouppicker") (eq $field.Type "multiversion"))}}<select id="{{.Prefix}}{{$field.ID}}" name="{{$name}}" multiple size="3" {{if $field.Description}}aria-describedby="edit-help-{{$field.ID}}"{{end}}>{{range $field.Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{else}}<input id="{{.Prefix}}{{$field.ID}}" name="{{$name}}" value="{{$value}}" placeholder="None" {{if eq $field.Type "number"}}type="number" step="any" inputmode="decimal"{{else if eq $field.Type "datetime"}}type="datetime-local"{{else if eq $field.Type "date"}}type="date"{{else if eq $field.Type "url"}}type="url"{{end}} {{if $field.Description}}aria-describedby="edit-help-{{$field.ID}}"{{end}}>{{end}}{{end}}
+{{define "custom_field_control"}}{{$field := .Field}}{{$helpID := printf "edit-help-%s" $field.ID}}{{if .HelpID}}{{$helpID = .HelpID}}{{end}}{{$value := $field.Value}}{{$name := .Name}}{{if not $name}}{{$name = $field.ID}}{{end}}{{if and $field.Options (or (eq $field.Type "select") (eq $field.Type "cascadingselect") (eq $field.Type "userpicker") (eq $field.Type "grouppicker") (eq $field.Type "project") (eq $field.Type "version") (eq $field.Type "team"))}}<select id="{{.Prefix}}{{$field.ID}}" name="{{$name}}" {{if $field.Description}}aria-describedby="{{$helpID}}"{{end}}><option value="">None</option>{{range $field.Options}}<option value="{{.ID}}" {{if eq $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{else if and $field.Options (or (eq $field.Type "multiselect") (eq $field.Type "multiuserpicker") (eq $field.Type "multigrouppicker") (eq $field.Type "multiversion"))}}<select id="{{.Prefix}}{{$field.ID}}" name="{{$name}}" multiple size="3" {{if $field.Description}}aria-describedby="{{$helpID}}"{{end}}>{{range $field.Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{else}}<input id="{{.Prefix}}{{$field.ID}}" name="{{$name}}" value="{{$value}}" placeholder="None" {{if eq $field.Type "number"}}type="number" step="any" inputmode="decimal"{{else if eq $field.Type "datetime"}}type="datetime-local"{{else if eq $field.Type "date"}}type="date"{{else if eq $field.Type "url"}}type="url"{{end}} {{if $field.Description}}aria-describedby="{{$helpID}}"{{end}}>{{end}}{{end}}
 
 {{define "create_detail_field"}}{{$ := .}}{{with .Field}}
         {{$value := index $.Values .ID}}

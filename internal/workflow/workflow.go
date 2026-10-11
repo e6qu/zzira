@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/e6qu/zzira/internal/models"
 )
 
 const (
@@ -248,6 +250,8 @@ type Transition struct {
 	Triggers   []Rule               `json:"triggers,omitempty"`
 	Conditions *ConditionGroup      `json:"conditions,omitempty"`
 	Screen     *Rule                `json:"transitionScreen,omitempty"`
+	// ScreenTabs is resolved from the live named screen, never saved in the workflow.
+	ScreenTabs []models.FieldTab `json:"-"`
 	// CustomIssueEventID is the event the transition fires instead of the
 	// one Jira derives from the status change.
 	CustomIssueEventID string `json:"customIssueEventId,omitempty"`

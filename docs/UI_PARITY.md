@@ -11,7 +11,7 @@ This ledger tracks complete user goals, persona by persona, and the browser spec
 | User signs in and orients | ✅ | `identity-providers`, `session-isolation`, `directories`, `v0`, `mobile_theme` | — |
 | Signed-out visitor reads public work | 🟡 | `anonymous_browse`, `anonymous_collections` | Browser filters and custom-field/worklog/history panels require signing in ([ANONYMOUS_ACCESS](ANONYMOUS_ACCESS.md#public-work-item-pages)) |
 | Contributor finds work | ✅ | `v2`, `filters`, `directories`, `issue_preview_recovery` | — |
-| Contributor creates and triages work | ✅ | `environment`, `reporter_optional_create`, `create`, `reporter_edit`, `v1`, `v3`, `issue_editor_loading`, `triage`, `issue_disclosure_sync`, `issue_mentions`, `mention_composition`, `custom_field_options`, `edit_dialog_fields`, `empty_screens`, `issue_choice_fields`, `custom_field_screens` | — |
+| Contributor creates and triages work | ✅ | `environment`, `reporter_optional_create`, `create`, `reporter_edit`, `v1`, `v3`, `issue_editor_loading`, `triage`, `issue_disclosure_sync`, `issue_mentions`, `mention_composition`, `custom_field_options`, `edit_dialog_fields`, `transition_screens`, `empty_screens`, `issue_choice_fields`, `custom_field_screens` | — |
 | Contributor changes many work items at once | ✅ | `navigator_bulk`, `v2` | Work type and status are changed through bulk move and bulk transition, as Jira does ([BULK_ISSUES](BULK_ISSUES.md#in-the-navigator)) |
 | Contributor records when work happened | ✅ | `worklog_started`, `v3` | Worklog group/role restrictions ([WORKLOGS](WORKLOGS.md#gaps)) |
 | Contributor records how work was resolved | ✅ | `resolution` | — |

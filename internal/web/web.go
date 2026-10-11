@@ -555,12 +555,16 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		for _, t := range wf.AvailableFor(issue.Status.ID, evaluation) {
 			message, _, _ := t.ScreenReminder()
 			screenFields := t.ScreenFields()
-			if reporterBehaviour["environment"].IsHidden {
-				screenFields = slices.DeleteFunc(screenFields, func(field string) bool { return field == "environment" })
-			}
-			if reporterBehaviour["reporter"].IsHidden {
-				screenFields = slices.DeleteFunc(screenFields, func(field string) bool { return field == "reporter" })
-			}
+			screenFields = slices.DeleteFunc(screenFields, func(field string) bool {
+				if reporterBehaviour[field].IsHidden {
+					return true
+				}
+				if strings.HasPrefix(field, "customfield_") {
+					_, configured := customByID[field]
+					return !configured
+				}
+				return false
+			})
 
 			asked := []models.CustomFieldView{}
 			for _, id := range screenFields {
@@ -568,7 +572,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 					asked = append(asked, field)
 				}
 			}
-			transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: screenFields, ScreenCustomFields: asked, ScreenMessage: message, ReporterRequired: t.RequiredFields()["reporter"] || reporterBehaviour["reporter"].IsRequired})
+			transitions = append(transitions, models.WorkflowTransition{ID: t.ID, Name: t.Name, ScreenFields: screenFields, ScreenTabs: t.ScreenTabs, ScreenCustomFields: asked, ScreenMessage: message, ReporterRequired: t.RequiredFields()["reporter"] || reporterBehaviour["reporter"].IsRequired})
 		}
 	}
 	// Resolution is offered to people who may resolve work, as Jira ties the

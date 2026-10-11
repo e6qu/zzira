@@ -91,6 +91,26 @@ func TestResolutionComesFromTheTransitionOrTheEdit(t *testing.T) {
 	// The transition screen's resolution is the one recorded.
 	chosen := raise("finished a different way")
 	duplicate := "Duplicate"
+	before, err := st.IssueByIDOrKey(ctx, ws, chosen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, blank := range []string{"   ", "\t\n", "\u00a0"} {
+		labels := []string{"must-not-save"}
+		if _, _, err := svc.TransitionIssueWithUpdate(ctx, actor, ws, chosen, "31", store.IssueUpdate{Summary: &blank, Labels: &labels, ResolutionID: &duplicate}); err == nil || !strings.Contains(err.Error(), "summary is required") {
+			t.Fatalf("blank transition summary was not refused: %v", err)
+		}
+		if _, _, err := svc.UpdateIssue(ctx, UpdateIssueInput{ActorID: actor, WorkspaceID: ws, IssueIDOrKey: chosen, Summary: &blank, Labels: &labels}); err == nil || !strings.Contains(err.Error(), "summary is required") {
+			t.Fatalf("blank edit summary was not refused: %v", err)
+		}
+	}
+	after, err := st.IssueByIDOrKey(ctx, ws, chosen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Summary != before.Summary || after.Status.ID != before.Status.ID || after.UpdatedSeq != before.UpdatedSeq || len(after.Labels) != 0 || after.Resolution != nil {
+		t.Fatal("refused blank summary changed the issue or its action sequence")
+	}
 	if _, _, err := svc.TransitionIssueWithUpdate(ctx, actor, ws, chosen, "31", store.IssueUpdate{ResolutionID: &duplicate}); err != nil {
 		t.Fatal(err)
 	}
