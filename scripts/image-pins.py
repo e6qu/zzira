@@ -19,6 +19,7 @@ and it applies no cooldown to that registry. This check makes a few requests
 per image and spaces its ECR Public requests a second apart.
 """
 import datetime as dt
+import functools
 import json
 import re
 import subprocess
@@ -147,10 +148,43 @@ def hub_candidates(hub, tag):
     match = VERSION.fullmatch(tag)
     if not match:
         return []
-    name = urllib.parse.quote(match[1] + match[2].split('.')[0] + '.', safe='')
-    _, body = request(f'https://hub.docker.com/v2/repositories/{hub}/tags?page_size=100&ordering=last_updated&name={name}')
-    return [(row['name'], timestamp(row['tag_last_pushed'])) for row in json.loads(body)['results']
-            if row.get('tag_last_pushed')]
+    return hub_release_tags(hub, match[1] + match[2].split('.')[0] + '.', match[3] or '')
+
+
+@functools.lru_cache(maxsize=64)
+def hub_tag_page(url):
+    _, body = request(url)
+    return json.loads(body)
+
+
+@functools.lru_cache(maxsize=64)
+def hub_release_tags(hub, prefix, variant):
+    """Read all matching pages, once per repository, release family and variant."""
+    name = urllib.parse.quote(prefix, safe='')
+    url = f'https://hub.docker.com/v2/repositories/{hub}/tags?page_size=100&ordering=last_updated&name={name}'
+    page = hub_tag_page(url)
+    if variant and page.get('count', 0) > 100:
+        variant_name = urllib.parse.quote(variant, safe='')
+        variant_url = f'https://hub.docker.com/v2/repositories/{hub}/tags?page_size=100&ordering=last_updated&name={variant_name}'
+        variant_page = hub_tag_page(variant_url)
+        if variant_page['count'] < page['count']:
+            url, page = variant_url, variant_page
+    seen, tags = set(), []
+    while url:
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme != 'https' or parsed.netloc != 'hub.docker.com':
+            raise ValueError('Docker Hub returned a pagination link outside its HTTPS API')
+        if url in seen:
+            raise ValueError('Docker Hub returned a repeated pagination link')
+        seen.add(url)
+        page = hub_tag_page(url)
+        for row in page['results']:
+            if not row.get('tag_last_pushed'):
+                raise ValueError(f'Docker Hub returned no publication time for {hub}:{row["name"]}')
+            tags.append((row['name'], timestamp(row['tag_last_pushed'])))
+        following = page.get('next')
+        url = urllib.parse.urljoin(url, following) if following else None
+    return tags
 
 
 def tracked_files():
@@ -182,8 +216,9 @@ def main():
         print(f'{state:<6} {label}' + ''.join('\n         ' + note for note in notes))
         failed += state == 'DRIFT'
     if failed:
-        print(f'{failed} image pin(s) are behind Docker Hub or could not be checked. Bump each one to the '
-              'digest Docker Hub serves once the mirror serves the same digest.', file=sys.stderr)
+        print(f'{failed} image pin(s) failed freshness or publication checks. Resolve the errors above; '
+              'update a pin only after its publication is at least 24 hours old and the mirror serves '
+              'the same digest as Docker Hub.', file=sys.stderr)
         return 1
     print(f'All {len(found)} pinned images are current or held.')
     return 0
