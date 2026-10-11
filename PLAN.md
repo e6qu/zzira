@@ -1,10 +1,8 @@
 # ZZIRA delivery plan
 
-ZZIRA is a self-hosted Jira Cloud, Jira Software, Jira Service Management and
-Confluence Cloud. The UI and API behave as Atlassian's do; the architecture is
-Linear's: one command layer writing an immutable action log, and permission-shaped
-browser replicas synced from it. This plan lists every piece of Atlassian behavior
-still missing and the order to build it in.
+ZZIRA reimplements Jira Cloud, Jira Software, Jira Service Management and
+Confluence Cloud. Compatibility is partial. This plan tracks remaining delivery
+work; shipped behavior and its evidence belong in the ledgers and feature docs.
 
 Status and evidence: [CLOUD_PARITY.md](docs/CLOUD_PARITY.md) (product status),
 [UI_PARITY.md](docs/UI_PARITY.md) (persona journeys),
@@ -41,25 +39,29 @@ models, and Atlassian-hosted Forge compute. Clients that hardcode
 - Go suite, `go vet`, lint, wasm build, e2e, security scans and conformance
   checks pass; docs and ledgers change in the same PR.
 
-## Order
+## Delivery order
 
-1. [Work item model](#1-work-item-model) — admin surfaces and the remaining field families.
-2. In parallel after 1: [Plans](#2-plans), [cross-project releases](#3-cross-project-releases),
-   [boards, reports and DORA](#4-boards-reports-and-dora), [JQL and filters](#5-jql-and-filters).
-3. In parallel, independent of 1: [enterprise identity](#6-enterprise-identity),
-   [automation](#7-automation), [Assets](#8-assets), [Service Management](#9-service-management),
-   [Confluence](#10-confluence), [diagrams](#11-whiteboards-and-diagrams),
-   [live collaboration](#12-live-collaboration), [apps](#13-apps).
-4. [Local-first closure](#14-local-first-closure), then [certification](#15-certification).
+1. Fix a broken persisted journey, data loss, authorization error or failing
+   CI before adding scope. Keep recovery regressions in the owning browser spec.
+2. Close usable browser journeys: plan team setup, security-scheme level
+   mapping and whiteboard templates. An enabled control must perform its action.
+3. Finish the work item model and its dependent planning, release, dashboard
+   and search behavior (sections 1–5).
+4. Close identity, automation, Assets, service, knowledge and app gaps
+   (sections 6–13), one complete command/API/browser slice at a time.
+5. Extend local-first guarantees (section 14) and certify the complete contract
+   and release matrix (section 15).
 
-Each numbered item is one or more substantial PRs.
+The sections below retain the compatibility scope. Closing a browser defect or
+removing a stale claim does not certify an API operation. For each PR, name the
+remaining item, verify it in code, ship its persisted outcome and evidence,
+then remove that item after all CI checks pass and the PR is merged.
 
 ## 1. Work item model
 
-**Hierarchy rollups.** Levels above epic exist ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#work-type-hierarchy)), and plans, roadmaps and `hierarchyLevel` in JQL read through all of them. What remains:
-- The epic report and epic burndown follow a level above the epic as well, summarising the work under everything beneath it ([REPORTS.md](docs/REPORTS.md)).
-- Boards and backlogs treat the epic level as the top, as Jira's do; a board
-  above the epic level would be ours, not Jira's.
+**Hierarchy rollups.** Extend the epic report and epic burndown to summarise
+work beneath a level above Epic ([REPORTS.md](docs/REPORTS.md)). Boards and
+backlogs remain epic-level, as Jira's do.
 
 **Metadata and configuration UI.**
 - Work type alternatives must share workflow, field configuration and screen
@@ -74,15 +76,10 @@ Each numbered item is one or more substantial PRs.
 - Custom field options: delete, replace on work items, reorder anywhere.
 - App field options: `projects2` scope, `defaultValue`, property indexes for JQL.
 - Store `renderer` / `rendererType` on field configuration items.
-- `alternatives` for work types narrows by shared workflow, field configuration
-  and screen schemes; team-managed `scope` and `entityId`; priority scheme update
-  returns its `task`.
 - Classification level on work items: field, REST value, UI control, JQL,
   project default, organization default; org admins only.
 
 **Platform odds and ends.**
-- Navigator bulk edit reaches only the six fields it offers; the REST endpoint
-  takes any field on the shared edit metadata, including custom fields.
 - Worklogs: `started`, real `updated`/`updateAuthor`, `issueId`, `self` with the
   work item; list paging and `startedAfter`/`startedBefore`/`expand=properties`;
   worklog visibility.
@@ -98,38 +95,24 @@ Each numbered item is one or more substantial PRs.
 
 ## 2. Plans
 
-Jira Plans (Advanced Roadmaps): cross-project plans over boards, projects and
-filters, with teams, capacity, scenarios and an auto-scheduler. ZZIRA has plan
-REST CRUD, sources, exclusions, scenarios with review changes, teams, capacity,
-dependency checks, and a scheduler that fills each team's iterations by rank,
-capacity and dependencies into the scenario a planner then reviews
-([JIRA_SOFTWARE](docs/JIRA_SOFTWARE.md)).
+Owning reference: [JIRA_SOFTWARE.md](docs/JIRA_SOFTWARE.md#plans).
 
 - Auto-scheduler: schedule against releases too, so a version's date bounds
   what may go after it.
-- Plan setup in the browser: a date custom field as a plan's date, plan custom
-  fields, and adding or removing a team (create, scheduling, sources,
-  exclusions, permissions, how each team plans, and cross-project releases are
-  there).
+- Plan setup in the browser: date custom fields, plan custom fields, and adding
+  or removing a team.
 - Restore archived and trashed plans; duplicate copies scenarios.
 - Scenario edits: parent, rank, release, status, create work items.
-- Views: a saved zoom or column set. Work is grouped by team, sprint, project,
-  status or assignee, filtered by key or summary, rolled up onto its parents,
-  and kept under a name ([JIRA_SOFTWARE](docs/JIRA_SOFTWARE.md)).
-- `inferredDates` and plan `customFields` take effect. (Capacity is read from velocity when nobody has typed one: [JIRA_SOFTWARE.md](docs/JIRA_SOFTWARE.md).)
+- Views: saved zoom and columns.
+- Make `inferredDates` and plan `customFields` take effect.
 - Atlassian Teams REST API.
 
 ## 3. Cross-project releases
 
-Jira Plans create a cross-project release that groups same-named versions across
-projects. ZZIRA stores `crossProjectReleases` on a plan and returns it over REST,
-and the release hub reads it back; nothing plans with it yet.
+Owning reference: [RELEASES.md](docs/RELEASES.md).
 
 - Create the member versions from the plan (today they are linked, not created).
-- Cross-project releases as auto-scheduler input. The release hub reads them
-  back: a version says what ships with it, and the version page lists the other
-  projects' versions with their dates, progress and release state
-  ([RELEASES.md](docs/RELEASES.md)).
+- Cross-project releases as auto-scheduler input.
 - Release hub: deployments grouped across projects, release gates, environment
   promotion, drag reordering, dates in the viewer's locale and site time zone.
 
@@ -141,7 +124,6 @@ and the release hub reads it back; nothing plans with it yet.
 
 ## 5. JQL and filters
 
-- Fields: JSM's `Organizations`, which needs a request to be shared with one.
 - `fields.lastViewed` on a work item read, which needs the reader threaded
   through the bean.
 - Historical `versionedRepresentations`.
@@ -150,10 +132,7 @@ and the release hub reads it back; nothing plans with it yet.
 
 ## 6. Enterprise identity
 
-Atlassian Guard and organization administration. ZZIRA has OIDC sign-in (Google,
-Entra, Atlassian, custom), SAML 2.0 sign-in ([ADMIN.md](docs/ADMIN.md)), DNS
-domain verification, IP allowlists, SCIM user and group provisioning,
-authentication policies, and managed profile edit, suspend, restore and remove.
+Owning references: [ADMIN.md](docs/ADMIN.md), [SCIM.md](docs/SCIM.md).
 
 - SAML: single logout, encrypted assertions, signed authentication requests,
   and provider-initiated sign-in, which is refused today.
@@ -176,37 +155,23 @@ authentication policies, and managed profile edit, suspend, restore and remove.
 
 ## 7. Automation
 
-ZZIRA runs the event, scheduled, manual and incoming-webhook triggers, the
-condition catalog, and 14 action types including web requests and page creation.
+Owning reference: [AUTOMATION.md](docs/AUTOMATION.md#gaps).
 
-- Work deleted, work moved, versions, sprints, work entering or leaving a
-  sprint, and wiki content are covered.
 - Connections: execute actions through stored connections (auth, secrets,
   rotation).
 - Usage limits: per-site monthly execution quota, usage page, global vs
   single-project rule accounting, over-limit behavior.
-- Confluence actions beyond creating, commenting on and labelling a page.
-  Triggers for pages created, updated, commented and labelled, and for blog
-  posts, are done.
-- Branches: related work items at any level, and branches inside branches.
-  JQL branches, branching over each item in a list, over the work a rule
-  created, and several branches in one rule are done.
-- Web request custom bodies and headers, the manual trigger with its questions
-  in the rule editor and on the work item, and variables (create variable
-  action, `{{variable}}`) are done.
-- Running a manual rule over a selection of work items from the navigator.
+- Confluence actions beyond creating, commenting on, labelling, appending to
+  and archiving a page; triggers for spaces, attachments and custom content.
+- Branches: remaining related-work hierarchy coverage. Nested branches are
+  refused, matching Jira; they are not a missing feature.
 - Remaining Jira action catalog, compared action by action with Atlassian's
-  list: watchers, cloning, deleting comments and links. Looking work items up
-  and keeping what was found is done.
+  list: deleting comments and links, editing components, fix versions, work
+  type and custom fields.
 
 ## 8. Assets
 
-Jira Service Management Assets: schemas, object types with a hierarchy, typed
-attributes, objects, references, AQL, imports and a REST API. ZZIRA has per-desk
-schemas with inline attributes, objects, directed relationships, request impact
-links, the Assets portal field, the workspace discovery endpoints, an import of
-objects from a file, and an Assets REST API under the Assets workspace
-([SERVICE_MANAGEMENT](docs/SERVICE_MANAGEMENT.md#assets-api)).
+Owning reference: [SERVICE_MANAGEMENT.md](docs/SERVICE_MANAGEMENT.md#assets-api).
 
 - Separate object types within a schema, inherited attributes, and reference,
   user, group, status and URL attribute types. Each schema is currently its
@@ -272,8 +237,7 @@ objects from a file, and an Assets REST API under the Assets workspace
 
 ## 11. Whiteboards and diagrams
 
-ZZIRA has a canvas with draggable stickies, text and shapes, form controls,
-labelled connectors, a fixed 1400×800 SVG render, and whiteboard lifecycle in v2.
+Owning reference: [CONFLUENCE_SITE_SURFACES.md](docs/CONFLUENCE_SITE_SURFACES.md#whiteboards).
 
 - Direct manipulation beyond dragging: resize, pan, zoom, multi-select, keyboard
   editing.
@@ -288,20 +252,20 @@ labelled connectors, a fixed 1400×800 SVG render, and whiteboard lifecycle in v
 
 ## 12. Live collaboration
 
-ZZIRA polls presence (15 s) and merges page bodies (1 s), with named carets and
-offline typing.
+Owning reference: [CONFLUENCE_LIVE.md](docs/CONFLUENCE_LIVE.md).
 
 - Server push (WebSocket or SSE) replacing polling.
 - Structural ADF step merging; live titles; live never-published drafts.
 - Live whiteboards and databases; live comments and reactions.
-- Multi-user convergence tests under latency and disconnects.
+- Extend the page/blog convergence and disconnect tests to structural edits,
+  never-published drafts, whiteboards and databases.
 
 ## 13. Apps
 
-- Jira Connect modules: `configurePage`, `dialogs`, `webSections`,
+- Jira Connect modules: `dialogs`, `webSections`,
   `keyboardShortcuts`, workflow conditions, validators and post functions (stored
   today, not executed), `jiraSearchRequestViews`, `jiraBackgroundScripts`,
-  `profilePages`, `jiraProjectTabPanels`.
+  `jiraProjectTabPanels`.
 - Confluence Connect modules: dynamic and static content macros, `customContent`,
   `blueprints`, `spaceToolsTabs`, `confluenceContentProperties`.
 - Admin pages: custom locations, `cacheable`, `fullPage`, icons.
@@ -323,7 +287,7 @@ offline typing.
 
 ## 15. Certification
 
-- Move all 1,207 operations from partial to delivered with golden
+- Move every pinned operation from partial to delivered with golden
   request/response evidence.
 - An executable conformance harness that runs every operation against a server.
 - Go, TypeScript and Python client fixtures with only the base URL changed;
@@ -338,7 +302,13 @@ offline typing.
 - Verify a gap in the code before building; docs have been wrong in both
   directions.
 - Substantial PRs; keep the PR title and body current.
-- Push once it builds; run the Go suite and e2e locally while CI runs.
+- Run focused checks serially at low priority locally. Full builds, test gates
+  and large evidence regeneration belong on GitHub runners; preserve local
+  interactivity and stop if resource limits are reached.
+- Wait for every head check to pass before merging. Squash with an explicit
+  one-line subject of at most 80 characters and an empty body; no trailers.
+- Adopt dependencies only after the 24-hour publication gate passes. PostgreSQL
+  major upgrades need a separate data migration, not an image-only bump.
 - Never expose internal ids to clients ([WIRE_IDS.md](docs/WIRE_IDS.md)).
 - Update the owning doc, [CLOUD_PARITY.md](docs/CLOUD_PARITY.md) and this plan in
   the same PR; delete plan items when they ship.
