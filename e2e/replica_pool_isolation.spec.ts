@@ -242,7 +242,7 @@ test('offline description clearing survives reload while omitted fields retain t
   const response = await page.request.post('/rest/api/3/issue', {
     headers: { Authorization: apiAuthHeader() },
     data: { fields: { project: { key: 'ZZ' }, issuetype: { name: 'Task' }, summary,
-      description: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: description }] }] } } },
+      description: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: description, marks: [{ type: 'strong' }] }] }] } } },
   });
   expect(response.status()).toBe(201);
   const key = String((await response.json()).key);
@@ -259,7 +259,15 @@ test('offline description clearing survives reload while omitted fields retain t
     await page.getByRole('button', { name: 'Save changes', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Edit issue', exact: true })).not.toBeVisible();
     await page.reload();
-    await expect(page.locator('.issue-description .description-text')).toHaveText(description);
+    await expect(page.locator('.issue-description strong')).toHaveText(description);
+    // An unchanged value submitted by the ordinary form preserves rich formatting.
+    await page.locator('#edit-issue-button').click();
+    await expect(page.locator('#edit-description')).toHaveValue(description);
+    await page.locator('#edit-summary').fill(`${summary} unchanged description`);
+    await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Edit issue', exact: true })).not.toBeVisible();
+    await page.reload();
+    await expect(page.locator('.issue-description strong')).toHaveText(description);
     // A present empty value is a clear, and must survive an offline reload.
     await page.locator('#edit-issue-button').click();
     await expect(page.locator('#edit-description')).toHaveValue(description);
@@ -278,7 +286,7 @@ test('offline description clearing survives reload while omitted fields retain t
       const fields = (await fetched.json()).fields;
       const text = (node: any): string => String(node?.text ?? '') + (node?.content ?? []).map(text).join('');
       return { summary: fields.summary, description: text(fields.description) };
-    }, { timeout: 20_000 }).toEqual({ summary: `${summary} changed`, description: '' });
+    }, { timeout: 20_000 }).toEqual({ summary: `${summary} unchanged description`, description: '' });
   } finally {
     await context.setOffline(false);
     await page.request.delete(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() }, timeout: 10_000 });

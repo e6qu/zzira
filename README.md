@@ -10,7 +10,8 @@ The architecture follows Linear's
 layer writes an immutable action log, and browsers keep permission-shaped local
 replicas of work items. Offline forms close only after the local command and
 its display update commit; a refused local save keeps the draft for retry.
-Clearing Description is retained locally across reloads and replayed on reconnect.
+Description clears survive local reloads and replay on reconnect; unchanged rich
+descriptions retain their formatting.
 Each session replica has its own OPFS pool so tabs can
 work independently. Existing shared-pool replicas migrate as complete SQLite
 copies, including queued commands; the original files remain available for
