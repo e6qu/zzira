@@ -137,14 +137,21 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		return nil, nil, err
 	}
 	_, environmentProvided := in.Fields["environment"]
-	customFieldsProvided := []string{}
+	screenFieldsProvided := []string{}
 	for field := range in.Fields {
-		if strings.HasPrefix(field, "customfield_") {
-			customFieldsProvided = append(customFieldsProvided, field)
+		if strings.HasPrefix(field, "customfield_") || field == "components" || field == "fixVersions" || field == "versions" {
+			screenFieldsProvided = append(screenFieldsProvided, field)
 		}
 	}
-	slices.Sort(customFieldsProvided)
-	if (in.ReporterID != nil || environmentProvided || len(customFieldsProvided) > 0) && !OverridesFromContext(ctx).ScreenSecurity {
+	for field, provided := range map[string]bool{
+		"description": in.Description != nil, "priority": in.PriorityID != nil, "assignee": in.AssigneeID != nil, "labels": in.Labels != nil, "duedate": in.DueDate != nil, "resolution": in.ResolutionID != nil, "security": in.SecurityLevelID != nil, "parent": in.ParentIDOrKey != nil, "timetracking": in.OriginalEstimate != nil || in.RemainingEstimate != nil,
+	} {
+		if provided {
+			screenFieldsProvided = append(screenFieldsProvided, field)
+		}
+	}
+	slices.Sort(screenFieldsProvided)
+	if (in.ReporterID != nil || environmentProvided || len(screenFieldsProvided) > 0) && !OverridesFromContext(ctx).ScreenSecurity {
 		fields, err := s.Store.ResolveScreenFields(ctx, in.WorkspaceID, issue.ProjectID, issue.IssueType.ID, "edit")
 		if err != nil {
 			return nil, nil, err
@@ -155,7 +162,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		if in.ReporterID != nil && len(fields) > 0 && !slices.Contains(fields, "reporter") {
 			return nil, nil, fmt.Errorf("reporter is not available on this work item's edit screen")
 		}
-		for _, field := range customFieldsProvided {
+		for _, field := range screenFieldsProvided {
 			if len(fields) > 0 && !slices.Contains(fields, field) {
 				return nil, nil, fmt.Errorf("%s is not available on this work item's edit screen", field)
 			}
