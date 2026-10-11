@@ -69,7 +69,6 @@ backlogs remain epic-level, as Jira's do.
   larger avatar catalogue remain ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#gaps)).
 - Add Environment, Attachment and Linked work items to the screen catalog.
 - App field options: `projects2` scope, `defaultValue`, property indexes for JQL.
-- Store `renderer` / `rendererType` on field configuration items.
 - Classification level on work items: field, REST value, UI control, JQL,
   project default, organization default; org admins only.
 

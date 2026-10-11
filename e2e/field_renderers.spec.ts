@@ -1,0 +1,91 @@
+import { apiAuthHeader } from './auth';
+import { scopeFixtureField } from './field_contexts';
+import { expect, test } from '@playwright/test';
+import axe from 'axe-core';
+
+test('an administrator changes field formatting without changing stored content', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill('demo@zzira.dev');
+  await page.getByLabel('Password').fill('demo1234');
+  await page.getByRole('button', { name: 'Log in' }).click();
+  const headers = { Authorization: apiAuthHeader() };
+  const stamp = Date.now();
+  const key = `FRT${stamp.toString().slice(-7)}`;
+  const me = await (await page.request.get('/rest/api/3/myself', { headers })).json();
+  const project = await page.request.post('/rest/api/3/project', { headers, data: { key, name: `Renderer work ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' } });
+  expect(project.status()).toBe(201);
+  const projectID = String((await project.json()).id);
+  let fieldID = '';
+  try {
+    const field = await page.request.post('/rest/api/3/field', { headers, data: { name: `Rendered notes ${stamp}`, type: 'com.atlassian.jira.plugin.system.customfieldtypes:textfield', description: 'Renderer journey' } });
+    expect(field.status()).toBe(201);
+    fieldID = String((await field.json()).id);
+    const contexts = await (await page.request.get(`/rest/api/3/field/${fieldID}/context`, { headers })).json();
+    await scopeFixtureField(page.request, fieldID, String(contexts.values[0].id), projectID, headers);
+    const configuration = await page.request.post('/rest/api/3/fieldconfiguration', { headers, data: { name: `Renderer configuration ${stamp}` } });
+    expect(configuration.status()).toBe(201);
+    const configID = String((await configuration.json()).id);
+    expect((await page.request.put(`/rest/api/3/fieldconfiguration/${configID}/fields`, { headers, data: { fieldConfigurationItems: [{ id: 'description' }, { id: fieldID }] } })).status()).toBe(204);
+    const scheme = await page.request.post('/rest/api/3/fieldconfigurationscheme', { headers, data: { name: `Renderer scheme ${stamp}` } });
+    expect(scheme.status()).toBe(201);
+    const schemeID = String((await scheme.json()).id);
+    expect((await page.request.put(`/rest/api/3/fieldconfigurationscheme/${schemeID}/mapping`, { headers, data: { mappings: [{ issueTypeId: 'default', fieldConfigurationId: configID }] } })).status()).toBe(204);
+    expect((await page.request.put('/rest/api/3/fieldconfigurationscheme/project', { headers, data: { projectId: projectID, fieldConfigurationSchemeId: schemeID } })).status()).toBe(204);
+    const description = { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Rich description', marks: [{ type: 'strong' }] }] }] };
+    const source = '*Bold notes* <script>alert(1)</script>';
+    const created = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key }, issuetype: { name: 'Task' }, summary: 'Renderer journey', description, [fieldID]: source } } });
+    expect(created.status()).toBe(201);
+    const issueKey = String((await created.json()).key);
+    const row = (id: string) => page.locator(`.field-config-card[data-field-config-id="${configID}"] .field-config-row[data-field-id="${id}"]`);
+    const setRenderer = async (id: string, name: string, value: string) => {
+      await page.goto('/settings/field-configurations');
+      await row(id).getByText(`Renderer ${name}`, { exact: true }).click();
+      await row(id).getByLabel(`Renderer for ${name}`, { exact: true }).selectOption(value);
+      await row(id).getByRole('button', { name: `Save renderer ${name}`, exact: true }).click();
+      await expect(page.getByRole('status')).toHaveText('Field renderer saved.');
+      await page.reload();
+      await row(id).getByText(`Renderer ${name}`, { exact: true }).click();
+      await expect(row(id).getByLabel(`Renderer for ${name}`, { exact: true })).toHaveValue(value);
+    };
+    await setRenderer('description', 'Description', 'jira-text-renderer');
+    await setRenderer(fieldID, `Rendered notes ${stamp}`, 'atlassian-wiki-renderer');
+    await page.goto(`/browse/${issueKey}`);
+    await expect(page.locator('.issue-description .description-text')).toHaveText('Rich description');
+    await expect(page.locator('.issue-description strong')).toHaveCount(0);
+    const notes = page.locator('.issue-context-panel').filter({ has: page.locator(`#detail-field-${fieldID}`) });
+    await notes.locator('summary').first().click();
+    await expect(notes.locator('strong').filter({ hasText: 'Bold notes' })).toHaveCount(1);
+    const expanded = await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=description,${fieldID}&expand=renderedFields`, { headers })).json();
+    expect(expanded.renderedFields.description).not.toContain('<strong>');
+    expect(expanded.renderedFields[fieldID]).toContain('<strong>Bold notes</strong>');
+    expect(expanded.renderedFields[fieldID]).not.toContain('<script>');
+    await page.goto('/settings/field-configurations');
+    await row('description').getByText('Renderer Description', { exact: true }).click();
+    const select = row('description').getByLabel('Renderer for Description', { exact: true });
+    await select.evaluate((element: HTMLSelectElement) => { element.add(new Option('Unavailable', 'missing-renderer')); element.value = 'missing-renderer'; });
+    await row('description').getByRole('button', { name: 'Save renderer Description', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('choose the text or wiki renderer');
+    await row('description').getByText('Renderer Description', { exact: true }).click();
+    await expect(select).toHaveValue('missing-renderer');
+    await select.selectOption('atlassian-wiki-renderer');
+    await row('description').getByRole('button', { name: 'Save renderer Description', exact: true }).click();
+    await expect(page.getByRole('status')).toHaveText('Field renderer saved.');
+    await page.setViewportSize({ width: 320, height: 740 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.addScriptTag({ content: axe.source });
+    const violations = await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations);
+    expect(violations).toEqual([]);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto(`/browse/${issueKey}`);
+    await expect(page.locator('.issue-description strong')).toHaveText('Rich description');
+    const stored = await (await page.request.get(`/rest/api/3/issue/${issueKey}`, { headers })).json();
+    expect(stored.fields.description).toEqual(description);
+    expect(stored.fields[fieldID]).toBe(source);
+  } finally {
+    await page.request.delete(`/rest/api/3/project/${projectID}`, { headers, timeout: 10_000 });
+    if (fieldID) {
+      await page.request.post(`/rest/api/3/field/${fieldID}/trash`, { headers, timeout: 10_000 });
+      await page.request.delete(`/rest/api/3/field/${fieldID}`, { headers, timeout: 10_000 });
+    }
+  }
+});

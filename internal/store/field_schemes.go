@@ -26,9 +26,10 @@ type FieldScheme struct {
 
 // FieldSchemeParameters are the rules a scheme applies to one field.
 type FieldSchemeParameters struct {
-	IsRequired  bool
-	Description string
-	WorkTypeID  string
+	RendererType *string
+	IsRequired   bool
+	Description  string
+	WorkTypeID   string
 }
 
 // FieldSchemeField is a field's association with a scheme: the rules that apply
@@ -118,7 +119,7 @@ func (s *Store) FieldSchemeFields(ctx context.Context, workspaceID, schemeID str
 		return nil, err
 	}
 	rows, err := s.Pool.Query(ctx, `
-		SELECT item.field_id, mapping.issue_type_id, item.is_required, item.description
+		SELECT item.field_id, mapping.issue_type_id, item.is_required, item.description, item.renderer
 		FROM field_configuration_scheme_items mapping
 		JOIN field_configuration_items item ON item.configuration_id=mapping.configuration_id
 		WHERE mapping.workspace_id=$1 AND mapping.scheme_id=$2 AND NOT item.is_hidden
@@ -137,7 +138,7 @@ func (s *Store) FieldSchemeFields(ctx context.Context, workspaceID, schemeID str
 	for rows.Next() {
 		var fieldID, workTypeID string
 		var parameters FieldSchemeParameters
-		if err = rows.Scan(&fieldID, &workTypeID, &parameters.IsRequired, &parameters.Description); err != nil {
+		if err = rows.Scan(&fieldID, &workTypeID, &parameters.IsRequired, &parameters.Description, &parameters.RendererType); err != nil {
 			return nil, err
 		}
 		parameters.WorkTypeID = workTypeID
@@ -162,7 +163,7 @@ func (s *Store) FieldSchemeFields(ctx context.Context, workspaceID, schemeID str
 		// The scheme's fallback mapping carries the parameters that apply when
 		// a work type has no entry of its own.
 		if fallback, ok := found.byWorkType[DefaultIssueTypeMapping]; ok {
-			field.Parameters = FieldSchemeParameters{IsRequired: fallback.IsRequired, Description: fallback.Description}
+			field.Parameters = FieldSchemeParameters{IsRequired: fallback.IsRequired, Description: fallback.Description, RendererType: fallback.RendererType}
 		}
 
 		fallback, hasFallback := found.byWorkType[DefaultIssueTypeMapping]
@@ -173,7 +174,7 @@ func (s *Store) FieldSchemeFields(ctx context.Context, workspaceID, schemeID str
 			parameters := found.byWorkType[workTypeID]
 			// A work type whose rules match the fallback is not an override;
 			// reporting it as one would read as a difference that is not there.
-			if !hasFallback || parameters.IsRequired != fallback.IsRequired || parameters.Description != fallback.Description {
+			if !hasFallback || parameters.IsRequired != fallback.IsRequired || parameters.Description != fallback.Description || rendererValue(parameters.RendererType) != rendererValue(fallback.RendererType) {
 				field.WorkTypeParameters = append(field.WorkTypeParameters, parameters)
 			}
 			field.RestrictedToWorkTypes = append(field.RestrictedToWorkTypes, workTypeID)
@@ -249,8 +250,8 @@ func schemeOwnedConfiguration(ctx context.Context, tx pgx.Tx, workspaceID string
 		RETURNING id`, workspaceID, configurationID, schemeStamp(schemeID, workTypeID)).Scan(&clonedID); err != nil {
 		return 0, err
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO field_configuration_items(workspace_id,configuration_id,field_id,is_required,is_hidden,description)
-		SELECT $1,$2,field_id,is_required,is_hidden,description FROM field_configuration_items WHERE configuration_id=$3`,
+	if _, err = tx.Exec(ctx, `INSERT INTO field_configuration_items(workspace_id,configuration_id,field_id,is_required,is_hidden,description,renderer)
+		SELECT $1,$2,field_id,is_required,is_hidden,description,renderer FROM field_configuration_items WHERE configuration_id=$3`,
 		workspaceID, clonedID, configurationID); err != nil {
 		return 0, err
 	}
@@ -386,15 +387,26 @@ func applyFieldSchemeField(ctx context.Context, tx pgx.Tx, workspaceID, fieldID,
 		}
 		for _, override := range item.WorkTypeParameters {
 			if override.WorkTypeID == workTypeID {
+				inheritedRenderer := parameters.RendererType
 				parameters = override
+				if parameters.RendererType == nil {
+					parameters.RendererType = inheritedRenderer
+				}
 			}
 		}
+		if parameters.RendererType != nil {
+			normalized, valid := NormalizeFieldRenderer(*parameters.RendererType)
+			if !valid {
+				return fmt.Errorf("choose the text or wiki renderer")
+			}
+			parameters.RendererType = &normalized
+		}
 		hidden := !visible[workTypeID]
-		if _, err = tx.Exec(ctx, `INSERT INTO field_configuration_items(workspace_id,configuration_id,field_id,is_required,is_hidden,description)
-			VALUES($1,$2,$3,$4,$5,$6)
+		if _, err = tx.Exec(ctx, `INSERT INTO field_configuration_items(workspace_id,configuration_id,field_id,is_required,is_hidden,description,renderer)
+			VALUES($1,$2,$3,$4,$5,$6,COALESCE($7,''))
 			ON CONFLICT(configuration_id,field_id) DO UPDATE SET
-				is_required=EXCLUDED.is_required,is_hidden=EXCLUDED.is_hidden,description=EXCLUDED.description`,
-			workspaceID, configurationID, fieldID, parameters.IsRequired && !hidden, hidden, parameters.Description); err != nil {
+				is_required=EXCLUDED.is_required,is_hidden=EXCLUDED.is_hidden,description=EXCLUDED.description,renderer=CASE WHEN $7::text IS NULL THEN field_configuration_items.renderer ELSE EXCLUDED.renderer END`,
+			workspaceID, configurationID, fieldID, parameters.IsRequired && !hidden, hidden, parameters.Description, parameters.RendererType); err != nil {
 			return err
 		}
 	}

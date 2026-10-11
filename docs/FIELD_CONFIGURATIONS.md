@@ -51,8 +51,15 @@ Names are unique per site, ignoring case. Every change is written to the action 
 
 **Copy.** The settings page copies a configuration, named "Copy of X" (then "Copy 2 of X"), carrying its configuration and nothing else: the copy is assigned to no project and is never the site default.
 
-## Gaps
 
-Tracked in [PLAN.md](../PLAN.md).
+## Renderers
 
-- A field configuration item's `renderer` (wiki or plain text) is not stored; each field type renders one way.
+ Legacy `renderer` and field-scheme `rendererType` share the same
+rule. Wiki and plain text choices survive partial updates, work-type overrides
+and copies. Legacy `wiki-renderer` / `text-renderer` aliases normalize to
+`atlassian-wiki-renderer` / `jira-text-renderer`; unknown plugins are refused.
+An explicit empty renderer restores the existing default presentation. The
+settings page offers a renderer control for description and text custom fields.
+Issue pages, previews and REST rendered fields apply it without changing the
+stored content. Rich output is sanitized; plain output is escaped. The
+`field_renderers` browser journey covers saving, reload and refused-input retry.

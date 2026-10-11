@@ -10,6 +10,7 @@ import (
 
 	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/authz"
+	"github.com/e6qu/zzira/internal/fieldrender"
 	"github.com/e6qu/zzira/internal/models"
 )
 
@@ -469,6 +470,14 @@ func (h *Handler) searchIssueBeans(ctx context.Context, workspaceID, userID stri
 			layouts.complete, layouts.day = models.SiteDateLayouts(configuration.ApplicationProperties)
 		}
 	}
+	var fieldRules map[string]map[string]map[string]models.FieldBehaviour
+	if hasSearchExpand(options, "renderedFields") {
+		var rulesErr error
+		fieldRules, rulesErr = h.Store.ResolveFieldBehaviourByProject(ctx, workspaceID)
+		if rulesErr != nil {
+			return nil, rulesErr
+		}
+	}
 	for index, issue := range issues {
 		full := fulls[index]
 		if fields, ok := full["fields"].(map[string]any); ok {
@@ -483,7 +492,19 @@ func (h *Handler) searchIssueBeans(ctx context.Context, workspaceID, userID stri
 		}
 		fields, _ := bean["fields"].(map[string]any)
 		if hasSearchExpand(options, "renderedFields") {
-			bean["renderedFields"] = renderedSearchFields(fields, layouts)
+			rendered := renderedSearchFields(fields, layouts)
+			rules := fieldRules[issue.ProjectID][issue.IssueType.ID]
+			for _, definition := range definitions {
+				rule := rules[definition.ID]
+				if rule.Renderer == "" {
+					continue
+				}
+				key := searchFieldOutput(definition, options.FieldsByKeys)
+				if value, exists := fields[key]; exists && (key == "description" || definition.Schema["custom"] == models.CustomFieldTypeKeys[models.CustomFieldText] || definition.Schema["custom"] == "com.atlassian.jira.plugin.system.customfieldtypes:textarea") {
+					rendered[key] = fieldrender.HTML(value, rule.Renderer)
+				}
+			}
+			bean["renderedFields"] = rendered
 		}
 		if hasSearchExpand(options, "transitions") {
 			transitions, err := h.issueTransitionBeans(ctx, workspaceID, userID, issue)

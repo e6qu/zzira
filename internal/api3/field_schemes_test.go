@@ -3,6 +3,7 @@ package api3
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"strconv"
@@ -288,6 +289,25 @@ func TestFieldAssociationSchemes(t *testing.T) {
 	call(adminID, "PUT", "/rest/api/3/field/association",
 		`{"associationContexts":[{"type":"CUSTOM","identifier":"x"}],"fields":[]}`, 400)
 
+	// Renderer choices share the same rows as legacy configurations, survive
+	// partial parameter writes, and follow work-type overrides and cloning.
+	call(adminID, "PUT", "/rest/api/3/config/fieldschemes/fields/parameters", `{"`+field.ID+`":[{"schemeIds":["`+cloneID+`"],"parameters":{"rendererType":"atlassian-wiki-renderer"},"workTypeParameters":[{"workTypeId":"`+restricted+`","rendererType":"jira-text-renderer"}]}]}`, 200)
+	rendererPath := "/rest/api/3/config/fieldschemes/" + cloneID + "/fields/" + field.ID + "/parameters"
+	rendererRead := decode(call(adminID, "GET", rendererPath, "", 200))
+	if rendererRead["parameters"].(map[string]any)["rendererType"] != "atlassian-wiki-renderer" || !strings.Contains(fmt.Sprint(rendererRead["workTypeParameters"]), "jira-text-renderer") {
+		t.Fatalf("renderer parameters missing: %v", rendererRead)
+	}
+	call(adminID, "PUT", "/rest/api/3/config/fieldschemes/fields/parameters", `{"`+field.ID+`":[{"schemeIds":["`+cloneID+`"],"parameters":{"description":"Help only"}}]}`, 200)
+	rendererRead = decode(call(adminID, "GET", rendererPath, "", 200))
+	if rendererRead["parameters"].(map[string]any)["rendererType"] != "atlassian-wiki-renderer" {
+		t.Fatalf("partial parameter write dropped renderer: %v", rendererRead)
+	}
+	rendererCopy := decode(call(adminID, "POST", "/rest/api/3/config/fieldschemes/"+cloneID+"/clone", `{"name":"Renderer copy"}`, 200))
+	rendererCopyID := text(rendererCopy["id"])
+	copiedParameters := decode(call(adminID, "GET", "/rest/api/3/config/fieldschemes/"+rendererCopyID+"/fields/"+field.ID+"/parameters", "", 200))
+	if copiedParameters["parameters"].(map[string]any)["rendererType"] != "atlassian-wiki-renderer" || !strings.Contains(fmt.Sprint(copiedParameters["workTypeParameters"]), "jira-text-renderer") {
+		t.Fatalf("scheme clone dropped renderers: %v", copiedParameters)
+	}
 	// Deleting the clone, and the 404 afterwards.
 	deleted := decode(call(adminID, "DELETE", "/rest/api/3/config/fieldschemes/"+cloneID, "", 200))
 	if deleted["deleted"] != true {

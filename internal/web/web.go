@@ -922,6 +922,10 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	if err != nil {
 		return nil, err
 	}
+	issue.FieldRenderers = map[string]string{}
+	for field, rule := range behaviour {
+		issue.FieldRenderers[field] = rule.Renderer
+	}
 	view.CanModifyReporter = permissions["MODIFY_REPORTER"] && !behaviour["reporter"].IsHidden && (len(reporterFields) == 0 || slices.Contains(reporterFields, "reporter"))
 	view.ReporterRequired = behaviour["reporter"].IsRequired
 	foundReporter := false
@@ -967,6 +971,9 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 			}
 		}
 		fieldView := models.CustomFieldView{ID: cf.ID, Name: cf.Name, Type: cf.Type, Description: cf.Description, Value: value, Display: value, Options: choices[cf.ID]}
+		if cf.Type == models.CustomFieldText {
+			fieldView.Renderer = behaviour[cf.ID].Renderer
+		}
 		if len(fieldView.Options) > 0 && value != "" {
 			names := map[string]string{}
 			for _, option := range fieldView.Options {
@@ -2336,6 +2343,15 @@ func (h *Handler) IssuePreview(w http.ResponseWriter, r *http.Request, issueKey 
 	if err != nil {
 		http.NotFound(w, r)
 		return
+	}
+	behaviour, err := h.Store.ResolveFieldBehaviour(r.Context(), wsID, issue.ProjectID, issue.IssueType.ID)
+	if err != nil {
+		http.Error(w, "Could not load field rules.", http.StatusInternalServerError)
+		return
+	}
+	issue.FieldRenderers = map[string]string{}
+	for field, rule := range behaviour {
+		issue.FieldRenderers[field] = rule.Renderer
 	}
 	writeFragment(w, "issue_preview", issue)
 }

@@ -22,12 +22,12 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=61">
-<link rel="preload" href="/static/zzira-worker.wasm?v=25" as="fetch" crossorigin>
+<link rel="stylesheet" href="/static/css/workspace.css?v=62">
+<link rel="preload" href="/static/zzira-worker.wasm?v=26" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js?v=2.0.11" defer></script>
-<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=25" defer></script>
-<script src="/static/app.js?v=61" defer></script>
+<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=26" defer></script>
+<script src="/static/app.js?v=62" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -247,7 +247,7 @@
     <div class="issue-primary">
       <section class="issue-section issue-description" data-field="description">
         <div class="section-heading"><h2>Description</h2></div>
-        <div class="description-text">{{adfHTML .Issue.Description}}</div>
+        <div class="description-text">{{fieldHTML .Issue.Description (index .Issue.FieldRenderers "description")}}</div>
       </section>
 {{if .AppIssueContent}}      <div class="issue-quick-add" aria-label="Add app content">{{range .AppIssueContent}}{{if not .Added}}<form method="post" action="/issues/{{$.Issue.Key}}/app-content/{{.Module.ID}}" hx-post="/issues/{{$.Issue.Key}}/app-content/{{.Module.ID}}" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="action" value="add"><button class="btn" type="submit" aria-label="Add {{.Module.Title}}">+ {{.Module.Title}}</button></form>{{end}}{{end}}</div>{{end}}{{range .AppIssueContent}}{{if .Added}}      <section class="issue-section app-context-module app-issue-content" aria-labelledby="app-content-{{.Module.ID}}"><div class="section-heading"><div><span class="eyebrow">{{.Module.AppName}} app content</span><h2 id="app-content-{{.Module.ID}}">{{.Module.Title}}</h2></div><form method="post" action="/issues/{{$.Issue.Key}}/app-content/{{.Module.ID}}" hx-post="/issues/{{$.Issue.Key}}/app-content/{{.Module.ID}}" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="action" value="remove"><button class="quiet-action" type="submit">Remove</button></form></div><iframe class="app-context-frame" src="/app-modules/{{.Module.ID}}/frame?issueKey={{$.Issue.Key}}" title="{{.Module.Title}}" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"></iframe></section>{{end}}{{end}}{{range .AppPanels}}      <section class="issue-section app-context-module" aria-labelledby="app-panel-{{.ID}}"><div class="section-heading"><div><span class="eyebrow">{{.AppName}} app</span><h2 id="app-panel-{{.ID}}">{{.Title}}</h2></div></div>{{if .RemoteURL}}<iframe class="app-context-frame" src="/app-modules/{{.ID}}/frame?issueKey={{$.Issue.Key}}" title="{{.Title}}" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"></iframe>{{else}}<p>{{.Body}}</p>{{end}}</section>
 {{end}}
@@ -346,7 +346,7 @@
           <div class="activity-content"><header><span class="avatar" aria-hidden="true"><span>{{initials .AuthorName}}</span></span><strong>{{.AuthorName}}</strong><span class="activity-verb">{{if eq .Kind "comment"}}commented{{else if eq .Kind "worklog"}}logged <span class="lozenge">{{timeSpent .TimeSpentSeconds}}</span>{{else}}changed this work item{{end}}</span><time datetime="{{.Created}}">{{.Created}}</time>
           {{if and (eq .Kind "worklog") .CanDelete}}<form method="post" action="/issues/{{$.Issue.Key}}/worklogs/{{.ID}}/delete" hx-delete="/issues/{{$.Issue.Key}}/worklogs/{{.ID}}" hx-target="#issue-view-holder" hx-swap="innerHTML" hx-confirm="Delete this work log?"><button type="submit" class="icon-danger" aria-label="Delete work log from {{.Created}}">×</button></form>{{end}}</header>
 {{if and (eq .Kind "worklog") .Started}}<p class="muted">Work started <time datetime="{{.Started}}">{{.Started}}</time></p>{{end}}
-          {{if eq .Kind "history"}}<ul class="change-list">{{range .Items}}<li><strong>{{.Field}}</strong> changed{{if .FromString}} from “{{.FromString}}”{{end}}{{if .ToString}} to “{{.ToString}}”{{end}}</li>{{end}}</ul>{{else if .Body}}<div class="comment-body">{{adfHTML .Body}}</div>{{end}}</div>
+          {{if eq .Kind "history"}}<ul class="change-list">{{range .Items}}<li><strong>{{.Field}}</strong> changed{{if .FromString}} from “{{.FromString}}”{{end}}{{if .ToString}} to “{{.ToString}}”{{end}}</li>{{end}}</ul>{{else if .Body}}<div class="comment-body">{{if eq .Kind "comment"}}{{fieldHTML .Body (index $.Issue.FieldRenderers "comment")}}{{else}}{{adfHTML .Body}}{{end}}</div>{{end}}</div>
         </article>{{else}}<div class="empty-state" data-activity-empty><strong>No activity yet</strong><small>Comments, work logs, and field changes will appear here.</small></div>{{end}}
         <div class="empty-state" data-activity-filter-empty {{if .Comments}}hidden{{end}}><strong>No matching activity</strong><small>Choose another activity filter.</small></div>
         </div>
@@ -368,7 +368,7 @@
         <dt>{{if and .CanSchedule .Editable}}<label for="field-duedate">Due date</label>{{else}}Due date{{end}}</dt><dd>{{if and .CanSchedule .Editable}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="duedate"><input id="field-duedate" name="value" type="date" value="{{.Issue.DueDate}}"><button class="field-save" type="submit">Save due date</button></form>{{else}}{{if .Issue.DueDate}}{{.Issue.DueDate}}{{else}}None{{end}}{{end}}</dd>
 {{if .SecurityLevels}}        <dt>{{if .CanSetSecurity}}<label for="field-security">Security</label>{{else}}Security{{end}}</dt><dd>{{if .CanSetSecurity}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="security"><select id="field-security" name="value"><option value="">Public</option>{{$security := .Issue.SecurityLevelID}}{{range .SecurityLevels}}<option value="{{.ID}}" {{if eq .ID $security}}selected{{end}}>{{.Name}}</option>{{end}}</select><button class="field-save" type="submit">Save security</button></form>{{else}}{{if .SecurityLevelName}}{{.SecurityLevelName}}{{else}}Public{{end}}{{end}}</dd>{{end}}
       </dl>
-{{if .CustomFields}}      <details class="more-fields" data-issue-section="fields"><summary>More fields <span>{{len .CustomFields}}</span></summary><dl>{{range .CustomFields}}{{if $.CanEdit}}<dt><label for="detail-field-{{.ID}}">{{.Name}}</label></dt><dd><form class="inline-field" method="post" action="/issues/{{$.Issue.Key}}/fields" hx-post="/issues/{{$.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="custom:{{.ID}}">{{template "custom_field_control" (customFieldControl . "detail-field-" "value")}}<button class="field-save" type="submit">Save {{.Name}}</button></form></dd>{{else}}<dt>{{.Name}}</dt><dd>{{if .Display}}{{.Display}}{{else if .Value}}{{.Value}}{{else}}None{{end}}</dd>{{end}}{{end}}</dl></details>{{end}}
+{{if .CustomFields}}      <details class="more-fields" data-issue-section="fields"><summary>More fields <span>{{len .CustomFields}}</span></summary><dl>{{range .CustomFields}}{{if $.CanEdit}}<dt><label for="detail-field-{{.ID}}">{{.Name}}</label></dt><dd><form class="inline-field" method="post" action="/issues/{{$.Issue.Key}}/fields" hx-post="/issues/{{$.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="custom:{{.ID}}">{{if and .Renderer .Display}}<div class="description-text">{{fieldHTML .Display .Renderer}}</div>{{end}}{{template "custom_field_control" (customFieldControl . "detail-field-" "value")}}<button class="field-save" type="submit">Save {{.Name}}</button></form></dd>{{else}}<dt>{{.Name}}</dt><dd>{{if .Display}}{{fieldHTML .Display .Renderer}}{{else if .Value}}{{.Value}}{{else}}None{{end}}</dd>{{end}}{{end}}</dl></details>{{end}}
 {{- range .AppContexts}}      <details class="issue-context-panel" data-issue-context-key="{{$.CurrentUserID}}:{{.ID}}"><summary>{{if .IconURL}}<img src="{{.IconURL}}" alt="" referrerpolicy="no-referrer">{{end}}<span class="issue-context-copy"><strong>{{.Title}}</strong>{{if .ContextLabel}}<small>{{.ContextLabel}}</small>{{end}}</span>{{if eq .ContextStatusType "badge"}}<span class="issue-context-status-badge" aria-label="{{.ContextStatusAccessibleLabel}}"><span aria-hidden="true">{{.ContextStatusLabel}}</span></span>{{else if eq .ContextStatusType "lozenge"}}<span class="lozenge issue-context-status-lozenge {{.ContextStatusClass}}">{{.ContextStatusLabel}}</span>{{else if eq .ContextStatusType "icon"}}<img class="issue-context-status-icon" src="{{.ContextStatusIconURL}}" alt="" referrerpolicy="no-referrer">{{end}}</summary>{{if .RemoteURL}}<iframe class="app-context-frame" src="/app-modules/{{.ID}}/frame?issueKey={{$.Issue.Key}}&amp;issueId={{$.Issue.ID}}&amp;projectKey={{$.ProjectKey}}&amp;projectId={{$.Issue.ProjectID}}" title="{{.Title}}" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"></iframe>{{else}}<p>{{.Body}}</p>{{end}}</details>{{end}}
       <section class="watcher-summary" aria-labelledby="watchers-title"><h3 id="watchers-title">Watchers <span>{{len .Watchers}}</span></h3>{{if .Watchers}}<ul>{{range .Watchers}}<li>{{template "avatar" .}}<span>{{.DisplayName}}</span></li>{{end}}</ul>{{else}}<p>No one is watching yet.</p>{{end}}</section>
       <section class="watcher-summary" aria-labelledby="voters-title"><h3 id="voters-title">Voters <span>{{len .Voters}}</span></h3>{{if .Voters}}<ul>{{range .Voters}}<li>{{template "avatar" .}}<span>{{.DisplayName}}</span></li>{{end}}</ul>{{else}}<p>No votes yet.</p>{{end}}</section>
@@ -515,7 +515,7 @@
   </header>
   <div class="issue-preview-description">
     <h3>Description</h3>
-    <div class="description-text">{{adfHTML .Description}}</div>
+    <div class="description-text">{{fieldHTML .Description (index .FieldRenderers "description")}}</div>
   </div>
   <dl>
     <dt>Status</dt><dd><span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></dd>

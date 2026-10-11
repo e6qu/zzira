@@ -47,8 +47,8 @@ There is no separate page; the same data is edited at `/settings/field-configura
 
 `internal/api3/field_schemes.go`; tests in `internal/api3/field_schemes_test.go`.
 
-## Gaps
 
-Tracked in [PLAN.md](../PLAN.md).
 
-- The `rendererType` field parameter is not stored.
+**Renderers.** `rendererType` shares the legacy field configuration's persisted
+rule, including work-type overrides, partial updates and copies. See
+[renderer behavior and browser controls](FIELD_CONFIGURATIONS.md#renderers).

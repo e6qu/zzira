@@ -257,6 +257,8 @@ type Issue struct {
 
 	UpdatedSeq int64  `json:"-"`
 	UpdatedAt  string `json:"updated"`
+	// FieldRenderers belongs to the read view and is never stored in snapshots.
+	FieldRenderers map[string]string `json:"-"`
 }
 
 // Action is one immutable ordered record of a change.
@@ -428,6 +430,7 @@ type EditDialogView struct {
 
 // CustomFieldView is a render-only custom field descriptor with the value.
 type CustomFieldView struct {
+	Renderer    string
 	ID          string
 	Name        string
 	Type        string

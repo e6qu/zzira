@@ -352,7 +352,7 @@ func (s *Store) ResolveFieldBehaviour(ctx context.Context, workspaceID, projectI
 			WHERE item.issue_type_id IN ($3, $4)
 			ORDER BY (item.issue_type_id = $3) DESC LIMIT 1
 		)
-		SELECT item.field_id,item.is_required,item.is_hidden,item.description
+		SELECT item.field_id,item.is_required,item.is_hidden,item.description,item.renderer
 		FROM field_configuration_items item
 		JOIN chosen ON chosen.configuration_id=item.configuration_id`,
 		workspaceID, projectID, issueTypeID, DefaultIssueTypeMapping)
@@ -364,7 +364,7 @@ func (s *Store) ResolveFieldBehaviour(ctx context.Context, workspaceID, projectI
 	for rows.Next() {
 		var fieldID string
 		var rule models.FieldBehaviour
-		if err = rows.Scan(&fieldID, &rule.IsRequired, &rule.IsHidden, &rule.Description); err != nil {
+		if err = rows.Scan(&fieldID, &rule.IsRequired, &rule.IsHidden, &rule.Description, &rule.Renderer); err != nil {
 			return nil, err
 		}
 		behaviour[fieldID] = rule
@@ -391,7 +391,7 @@ func (s *Store) ResolveFieldBehaviourByProject(ctx context.Context, workspaceID 
 				AND item.issue_type_id IN (work_type.id, $2)
 			ORDER BY assigned.project_id, work_type.id, (item.issue_type_id = work_type.id) DESC
 		)
-		SELECT chosen.project_id,chosen.issue_type_id,item.field_id,item.is_required,item.is_hidden,item.description
+		SELECT chosen.project_id,chosen.issue_type_id,item.field_id,item.is_required,item.is_hidden,item.description,item.renderer
 		FROM chosen
 		JOIN field_configuration_items item ON item.configuration_id=chosen.configuration_id`,
 		workspaceID, DefaultIssueTypeMapping)
@@ -403,7 +403,7 @@ func (s *Store) ResolveFieldBehaviourByProject(ctx context.Context, workspaceID 
 	for rows.Next() {
 		var projectID, issueTypeID, fieldID string
 		var rule models.FieldBehaviour
-		if err = rows.Scan(&projectID, &issueTypeID, &fieldID, &rule.IsRequired, &rule.IsHidden, &rule.Description); err != nil {
+		if err = rows.Scan(&projectID, &issueTypeID, &fieldID, &rule.IsRequired, &rule.IsHidden, &rule.Description, &rule.Renderer); err != nil {
 			return nil, err
 		}
 		if resolved[projectID] == nil {

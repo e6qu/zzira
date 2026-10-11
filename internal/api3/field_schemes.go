@@ -26,6 +26,9 @@ func (h *Handler) fieldSchemeBean(scheme *store.FieldScheme) map[string]any {
 
 func fieldSchemeParametersBean(ids issueTypeIDs, parameters store.FieldSchemeParameters, withWorkType bool) map[string]any {
 	bean := map[string]any{"isRequired": parameters.IsRequired, "description": parameters.Description}
+	if parameters.RendererType != nil {
+		bean["rendererType"] = *parameters.RendererType
+	}
 	if withWorkType {
 		bean["workTypeId"] = wireNumericID(ids.toWire(parameters.WorkTypeID))
 	}
@@ -277,13 +280,15 @@ func decodeFieldSchemeItems(w http.ResponseWriter, r *http.Request) (map[string]
 		RestrictedToWorkTypes []json.RawMessage `json:"restrictedToWorkTypes"`
 		WorkTypeIDs           []json.RawMessage `json:"workTypeIds"`
 		Parameters            *struct {
-			IsRequired  bool   `json:"isRequired"`
-			Description string `json:"description"`
+			IsRequired   bool    `json:"isRequired"`
+			Description  string  `json:"description"`
+			RendererType *string `json:"rendererType"`
 		} `json:"parameters"`
 		WorkTypeParameters []struct {
-			WorkTypeID  json.RawMessage `json:"workTypeId"`
-			IsRequired  bool            `json:"isRequired"`
-			Description string          `json:"description"`
+			WorkTypeID   json.RawMessage `json:"workTypeId"`
+			IsRequired   bool            `json:"isRequired"`
+			Description  string          `json:"description"`
+			RendererType *string         `json:"rendererType"`
 		} `json:"workTypeParameters"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&wire); err != nil {
@@ -311,13 +316,13 @@ func decodeFieldSchemeItems(w http.ResponseWriter, r *http.Request) (map[string]
 			}
 			if item.Parameters != nil {
 				converted.Parameters = &store.FieldSchemeParameters{
-					IsRequired: item.Parameters.IsRequired, Description: item.Parameters.Description,
+					IsRequired: item.Parameters.IsRequired, Description: item.Parameters.Description, RendererType: item.Parameters.RendererType,
 				}
 			}
 			for _, override := range item.WorkTypeParameters {
 				converted.WorkTypeParameters = append(converted.WorkTypeParameters, store.FieldSchemeParameters{
 					WorkTypeID: strings.Trim(string(override.WorkTypeID), `"`),
-					IsRequired: override.IsRequired, Description: override.Description,
+					IsRequired: override.IsRequired, Description: override.Description, RendererType: override.RendererType,
 				})
 			}
 			request[fieldID] = append(request[fieldID], converted)

@@ -315,6 +315,7 @@ type FieldConfigurationItem struct {
 	IsRequired  bool   `json:"isRequired"`
 	IsHidden    bool   `json:"isHidden"`
 	Description string `json:"description,omitempty"`
+	Renderer    string `json:"renderer,omitempty"`
 }
 
 // FieldConfigurationScheme maps each work type to a field configuration and is
@@ -334,6 +335,7 @@ type FieldConfigurationSchemeItem struct {
 
 // FieldBehaviour is the resolved per-field outcome for one form.
 type FieldBehaviour struct {
+	Renderer    string
 	IsRequired  bool
 	IsHidden    bool
 	Description string

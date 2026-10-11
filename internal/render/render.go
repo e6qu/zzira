@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/e6qu/zzira/internal/adf"
+	"github.com/e6qu/zzira/internal/fieldrender"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/wikimarkup"
 )
@@ -127,6 +128,10 @@ func init() {
 			return strings.ToUpper(parts[0][:1] + parts[len(parts)-1][:1])
 		},
 		"adfToText": adfToText,
+		"fieldHTML": func(value any, renderer string) template.HTML {
+			// Escaping and rich-markup sanitization are centralized in fieldrender.
+			return template.HTML(fieldrender.HTML(value, renderer)) // #nosec G203 -- escaped or sanitized by fieldrender
+		},
 		"adfHTML": func(raw json.RawMessage) template.HTML {
 			// Safe by construction: adf.ToHTML html-escapes every text node and
 			// attribute value (see internal/adf tests); output is golden-locked.
