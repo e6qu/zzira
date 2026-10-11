@@ -1089,8 +1089,8 @@ func applyOptimistic(kind, body string) {
 		if s := vals.Get("summary"); s != "" {
 			exec(`UPDATE issues SET summary=$2 WHERE id=$1`, []any{currentView, s})
 		}
-		if d := vals.Get("description"); d != "" {
-			doc, err := json.Marshal(adfFor(d))
+		if vals.Has("description") {
+			doc, err := json.Marshal(adfFor(vals.Get("description")))
 			if err != nil {
 				post(map[string]any{"type": "error", "message": "encode offline description: " + err.Error()})
 				return

@@ -234,3 +234,53 @@ test('a refused optimistic update rolls back its outbox and retains the draft', 
     await page.request.delete(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() }, timeout: 10_000 });
   }
 });
+
+test('offline description clearing survives reload while omitted fields retain their value', async ({ page, context }) => {
+  await login(page);
+  const summary = `Offline description ${Date.now()}`;
+  const description = `${summary} original text`;
+  const response = await page.request.post('/rest/api/3/issue', {
+    headers: { Authorization: apiAuthHeader() },
+    data: { fields: { project: { key: 'ZZ' }, issuetype: { name: 'Task' }, summary,
+      description: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: description }] }] } } },
+  });
+  expect(response.status()).toBe(201);
+  const key = String((await response.json()).key);
+  try {
+    await page.goto(`/browse/${key}`);
+    await expect(page.locator('#sync-banner')).toContainText('synced', { timeout: 20_000 });
+    await expect(page.locator('.issue-description .description-text')).toHaveText(description);
+    await context.setOffline(true);
+    await page.locator('#edit-issue-button').click();
+    await expect(page.locator('#edit-description')).toHaveValue(description);
+    // An omitted field leaves its replica value alone.
+    await page.locator('#edit-description').evaluate(field => field.remove());
+    await page.locator('#edit-summary').fill(`${summary} changed`);
+    await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Edit issue', exact: true })).not.toBeVisible();
+    await page.reload();
+    await expect(page.locator('.issue-description .description-text')).toHaveText(description);
+    // A present empty value is a clear, and must survive an offline reload.
+    await page.locator('#edit-issue-button').click();
+    await expect(page.locator('#edit-description')).toHaveValue(description);
+    await page.locator('#edit-description').fill('');
+    await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Edit issue', exact: true })).not.toBeVisible();
+    await page.reload();
+    await expect(page.locator('.issue-description .description-text')).toHaveText('');
+    await page.locator('#edit-issue-button').click();
+    await expect(page.locator('#edit-description')).toHaveValue('');
+    await page.keyboard.press('Escape');
+    await context.setOffline(false);
+    await expect.poll(async () => {
+      const fetched = await page.request.get(`/rest/api/3/issue/${key}?fields=summary,description`, { headers: { Authorization: apiAuthHeader() } });
+      expect(fetched.status()).toBe(200);
+      const fields = (await fetched.json()).fields;
+      const text = (node: any): string => String(node?.text ?? '') + (node?.content ?? []).map(text).join('');
+      return { summary: fields.summary, description: text(fields.description) };
+    }, { timeout: 20_000 }).toEqual({ summary: `${summary} changed`, description: '' });
+  } finally {
+    await context.setOffline(false);
+    await page.request.delete(`/rest/api/3/issue/${key}`, { headers: { Authorization: apiAuthHeader() }, timeout: 10_000 });
+  }
+});
