@@ -257,17 +257,21 @@ func (s *Store) SetPlanChange(ctx context.Context, workspaceID, actorID string, 
 	if _, err := planScenarioTx(ctx, tx, workspaceID, planID, scenarioID); err != nil {
 		return err
 	}
-	if sameJSON(value, current) {
-		_, err = tx.Exec(ctx, `DELETE FROM plan_scenario_changes WHERE scenario_id=$1 AND issue_id=$2 AND field=$3`, scenarioID, issueID, field)
-	} else {
-		_, err = tx.Exec(ctx, `INSERT INTO plan_scenario_changes(scenario_id,issue_id,field,value,changed_by) VALUES($1,$2,$3,$4,$5)
-			ON CONFLICT (scenario_id,issue_id,field) DO UPDATE SET value=EXCLUDED.value,changed_by=EXCLUDED.changed_by,changed_at=now()`,
-			scenarioID, issueID, field, []byte(value), actorID)
-	}
-	if err != nil {
+	if err := setPlanChangeTx(ctx, tx, actorID, scenarioID, issueID, field, value, current); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func setPlanChangeTx(ctx context.Context, tx pgx.Tx, actorID string, scenarioID int64, issueID, field string, value, current json.RawMessage) error {
+	if sameJSON(value, current) {
+		_, err := tx.Exec(ctx, `DELETE FROM plan_scenario_changes WHERE scenario_id=$1 AND issue_id=$2 AND field=$3`, scenarioID, issueID, field)
+		return err
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO plan_scenario_changes(scenario_id,issue_id,field,value,changed_by) VALUES($1,$2,$3,$4,$5)
+		ON CONFLICT (scenario_id,issue_id,field) DO UPDATE SET value=EXCLUDED.value,changed_by=EXCLUDED.changed_by,changed_at=now()`,
+		scenarioID, issueID, field, []byte(value), actorID)
+	return err
 }
 
 func sameJSON(a, b json.RawMessage) bool {

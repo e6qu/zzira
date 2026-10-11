@@ -336,7 +336,7 @@ test('a planner schedules a scenario automatically and reviews what it did', asy
   // into the next. The work with no team is named rather than dropped.
   await page.getByLabel('Schedule automatically').selectOption('unplanned');
   await page.getByLabel('From', { exact: true }).fill('2027-01-25');
-  await page.getByRole('button', { name: 'Schedule into iterations' }).click();
+  await page.getByRole('button', { name: 'Schedule work' }).click();
   const notice = page.getByRole('status');
   await expect(notice).toContainText('Planned 2 work items');
   await expect(notice).toContainText(`${homeless} because it has no team`);
@@ -361,7 +361,7 @@ test('a planner schedules a scenario automatically and reviews what it did', asy
 
   // Running it again finds nothing left to plan, because the first run planned it.
   await page.goto(`/plans/${planID}`);
-  await page.getByRole('button', { name: 'Schedule into iterations' }).click();
+  await page.getByRole('button', { name: 'Schedule work' }).click();
   await expect(page.getByRole('status')).toContainText('Planned 0 work items');
   expect((await request.put(`/rest/api/3/plans/plan/${planID}/trash`, { headers })).status()).toBe(204);
   expect((await request.delete(`/rest/api/3/project/${projectKey}?enableUndo=false`, { headers })).status()).toBe(204);

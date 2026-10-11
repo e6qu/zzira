@@ -156,19 +156,25 @@ scheduling behavior.
   edit the plan can keep the pair under a name, and the saved views are links
   that open the plan that way (`?group=`, `?q=`, `?rollup=`, `?view=`). Saving
   over a name changes that view rather than adding another.
-- **Scheduling automatically** fills each team's iterations with the work
-  nobody has planned -- or with everything unfinished, when that is asked for
-  -- in the plan's own rank order. A work item goes into the earliest
-  iteration of its team that still has room for its estimate, never before the
-  day the run starts from, and never before the work that blocks it: a later
-  iteration when the plan's dependencies are Sequential, the same one when
-  they are Concurrent. Work bigger than a whole iteration goes into the first
-  one with room left. An epic is not placed: its bar is what the work beneath
-  it adds up to. What could not be placed is named with the reason -- no team,
-  a team with no iterations, or nothing left with room -- rather than left out
-  quietly, and work with no estimate is placed but takes no capacity. Every
-  answer is a change in the scenario, so **Review changes** still decides what
-  reaches Jira.
+- **Scheduling automatically** places estimated work into team iterations in
+  rank order as capacity allows. Choose unplanned work or everything unfinished;
+  active-sprint work stays untouched in either mode, and its existing load still
+  counts against capacity. Iterations ending before **From** are excluded.
+  Sequential dependencies use a later iteration; concurrent dependencies may
+  share one. Oversized work starts in the first iteration with room left.
+  Parents roll up their children's dates instead of taking capacity themselves.
+- Unestimated work takes no capacity. Its explicit dates take precedence,
+  followed by assigned sprint dates and live fixed release dates, including
+  when it has no team. Archived or unavailable releases supply no dates.
+  Inferred dates become explicit scenario drafts when scheduled. Work that
+  cannot be placed is named with its reason; past or reversed fallback spans
+  are refused. A run saves all its draft edits together and rechecks plan edit
+  access. **Review changes** still decides what reaches Jira. Date precedence
+  and active-sprint protection follow Atlassian's
+  [scheduler rules](https://support.atlassian.com/jira-software-cloud/docs/how-does-the-auto-scheduler-in-advanced-roadmaps-work/)
+  and [scheduling journey](https://support.atlassian.com/jira-software-cloud/docs/auto-schedule-issues-on-your-advanced-roadmaps-timeline/).
+  Release constraints for estimated work and flexible release dates remain
+  [delivery gaps](../PLAN.md#2-plans).
 - **Rolling up** reads a parent by the work under it: its bar spans the
   earliest start and latest end anywhere beneath it, and its estimate is what
   that work adds up to. The item's own dates and estimate are untouched --

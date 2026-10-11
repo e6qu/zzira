@@ -62,12 +62,31 @@ func (s *Store) AutoSchedulePlan(ctx context.Context, workspaceID, actorID strin
 		return PlanScheduleResult{}, err
 	}
 	result := planAutoSchedule(planning, plan.Scheduling.Dependencies != "Concurrent", request)
-	for _, change := range result.Changes {
-		if err := s.SetPlanChange(ctx, workspaceID, actorID, plan.ID, scenarioID, change.IssueID, change.Field, change.Value, change.Current); err != nil {
-			return result, fmt.Errorf("plan %s: %w", change.IssueKey, err)
+	return result, s.applyPlanSchedule(ctx, workspaceID, actorID, plan.ID, scenarioID, result.Changes)
+}
+
+// A scheduler run is one draft update. A refused write rolls back all of it.
+func (s *Store) applyPlanSchedule(ctx context.Context, workspaceID, actorID string, planID, scenarioID int64, changes []PlanScheduleChange) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err = activePlanTx(ctx, tx, workspaceID, planID); err != nil {
+		return err
+	}
+	if err = planEditorTx(ctx, tx, workspaceID, actorID, planID); err != nil {
+		return err
+	}
+	if _, err = planScenarioTx(ctx, tx, workspaceID, planID, scenarioID); err != nil {
+		return err
+	}
+	for _, change := range changes {
+		if err := setPlanChangeTx(ctx, tx, actorID, scenarioID, change.IssueID, change.Field, change.Value, change.Current); err != nil {
+			return fmt.Errorf("plan %s: %w", change.IssueKey, err)
 		}
 	}
-	return result, nil
+	return tx.Commit(ctx)
 }
 
 // planAutoSchedule is the scheduler itself, over a plan as a scenario plans
@@ -76,10 +95,23 @@ func (s *Store) AutoSchedulePlan(ctx context.Context, workspaceID, actorID strin
 func planAutoSchedule(planning PlanPlanning, sequential bool, request PlanScheduleRequest) PlanScheduleResult {
 	result := PlanScheduleResult{Changes: []PlanScheduleChange{}, Skipped: []PlanScheduleSkip{}}
 	from := request.From.Format("2006-01-02")
+	sprints := map[string]PlanSprint{}
+	for _, sprint := range planning.Sprints {
+		sprints[sprint.ID] = sprint
+	}
 
 	// Each team's iterations, with the work already planned into them as the
-	// load they start with. Scheduling everything again empties them, because
-	// the run is deciding where that work goes.
+	// load they start with. Scheduling everything again releases movable
+	// work while retaining completed and active-sprint work.
+	protectedLoads := map[int64]map[string]float64{}
+	for _, item := range planning.Items {
+		if item.activeSprint && item.Estimate != nil && item.Issue.Status.Category != "done" {
+			if protectedLoads[item.TeamID] == nil {
+				protectedLoads[item.TeamID] = map[string]float64{}
+			}
+			protectedLoads[item.TeamID][item.SprintID] += *item.Estimate
+		}
+	}
 	iterations := map[int64][]*planScheduleIteration{}
 	notes := map[int64]string{}
 	for _, capacity := range planning.Capacity {
@@ -89,8 +121,9 @@ func planAutoSchedule(planning PlanPlanning, sequential bool, request PlanSchedu
 				continue
 			}
 			used := iteration.Planned
-			if request.All {
+			if request.All && sprints[iteration.Key].State != "active" && iteration.State != "active" {
 				used = iteration.Completed
+				used += protectedLoads[capacity.Team.ID][iteration.Key]
 			}
 			iterations[capacity.Team.ID] = append(iterations[capacity.Team.ID], &planScheduleIteration{
 				key: iteration.Key, start: iteration.Start, end: iteration.End,
@@ -135,12 +168,42 @@ func planAutoSchedule(planning PlanPlanning, sequential bool, request PlanSchedu
 		if item.Issue.Status.Category == "done" {
 			continue
 		}
-		scheduled := item.SprintID != "" || timeline.StartDate != "" || timeline.DueDate != ""
+		if item.activeSprint || sprints[item.SprintID].State == "active" {
+			if index, ok := planScheduleIndexOf(iterations[item.TeamID], item.SprintID); ok {
+				placed[item.Issue.ID] = index
+			}
+			result.Skipped = append(result.Skipped, PlanScheduleSkip{Key: item.Issue.Key, Reason: "it belongs to an active sprint"})
+			continue
+		}
+		scheduled := item.SprintID != "" || (timeline.StartDate != "" && timeline.InferredStart == "") || (timeline.DueDate != "" && timeline.InferredEnd == "")
 		if scheduled && !request.All {
 			if index, ok := planScheduleIndexOf(iterations[item.TeamID], item.SprintID); ok {
 				placed[item.Issue.ID] = index
 			}
 			continue
+		}
+		// Unestimated work uses its own dates, then its assigned sprint, then
+		// live release dates. These dates do not consume team capacity.
+		if item.Estimate == nil {
+			start, end := planUnestimatedDates(item, timeline, sprints, planning.releaseDates)
+			if start != "" || end != "" {
+				if end != "" && (end < from || (start != "" && end < start)) {
+					result.Skipped = append(result.Skipped, PlanScheduleSkip{Key: item.Issue.Key, Reason: "its available dates end before the scheduling window or start date"})
+					continue
+				}
+				result.Scheduled++
+				result.Unestimated++
+				if index, ok := planScheduleIndexOf(iterations[item.TeamID], item.SprintID); ok {
+					placed[item.Issue.ID] = index
+				}
+				if start != "" && (timeline.InferredStart != "" || planDayOf(timeline.StartDate) != start) {
+					result.Changes = append(result.Changes, planScheduleChange(item, "startDate", start, planScheduleCurrent(item, timeline, "startDate")))
+				}
+				if end != "" && (timeline.InferredEnd != "" || planDayOf(timeline.DueDate) != end) {
+					result.Changes = append(result.Changes, planScheduleChange(item, "endDate", end, planScheduleCurrent(item, timeline, "endDate")))
+				}
+				continue
+			}
 		}
 		if item.TeamID == 0 {
 			result.Skipped = append(result.Skipped, PlanScheduleSkip{Key: item.Issue.Key, Reason: "it has no team"})
@@ -205,6 +268,24 @@ func planAutoSchedule(planning PlanPlanning, sequential bool, request PlanSchedu
 		}
 	}
 	return result
+}
+
+// planUnestimatedDates preserves explicit dates while filling missing dates
+// from a current sprint and then the releases assigned to the work item's project.
+func planUnestimatedDates(item *PlanItem, timeline *models.TimelineItem, sprints map[string]PlanSprint, releases map[string]planReleaseDates) (string, string) {
+	span := models.TimelineItem{}
+	if timeline.InferredStart == "" {
+		span.StartDate = planDayOf(timeline.StartDate)
+	}
+	if timeline.InferredEnd == "" {
+		span.DueDate = planDayOf(timeline.DueDate)
+	}
+	if sprint, ok := sprints[item.SprintID]; ok && sprint.State != "closed" {
+		fillPlanDates(&span, sprint.Start, sprint.End, "Sprint dates")
+	}
+	start, end := planReleaseSpan(item.Issue, releases)
+	fillPlanDates(&span, start, end, "Release dates")
+	return span.StartDate, span.DueDate
 }
 
 // planScheduleIndexOf finds which of a team's iterations a sprint is.
