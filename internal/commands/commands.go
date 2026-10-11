@@ -174,7 +174,7 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 			return nil, nil, fmt.Errorf("reporter is not an active workspace member")
 		}
 	}
-	if err = s.enforceFieldConfiguration(ctx, in, project.ID, issueType.ID); err != nil {
+	if err = s.enforceFieldConfiguration(ctx, in, project.ID, issueType.ID, issueType.Subtask); err != nil {
 		return nil, nil, err
 	}
 	if err = s.enforceCustomFieldContexts(ctx, in.WorkspaceID, project.ID, issueType.ID, in.Fields); err != nil {
@@ -420,7 +420,7 @@ func plainTextToADF(text string) json.RawMessage {
 // enforceFieldConfiguration applies the project's field configuration to a
 // create request, so the command path rejects exactly what the form advertises
 // rather than leaving required and hidden as cosmetic labels.
-func (s *Service) enforceFieldConfiguration(ctx context.Context, in CreateIssueInput, projectID, issueTypeID string) error {
+func (s *Service) enforceFieldConfiguration(ctx context.Context, in CreateIssueInput, projectID, issueTypeID string, subtask bool) error {
 	rules, err := s.Store.ResolveFieldBehaviour(ctx, in.WorkspaceID, projectID, issueTypeID)
 	if err != nil {
 		return err
@@ -447,8 +447,9 @@ func (s *Service) enforceFieldConfiguration(ctx context.Context, in CreateIssueI
 	}
 	for field, rule := range rules {
 		// Summary and the context fields are required by the command path
-		// itself, so a configuration can neither relax nor hide them.
-		if field == "summary" {
+		// itself, so a configuration can neither relax nor hide them. A
+		// subtask also requires its parent independently of configuration.
+		if field == "summary" || (field == "parent" && subtask) {
 			continue
 		}
 		present := supplied[field]

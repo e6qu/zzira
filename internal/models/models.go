@@ -517,6 +517,8 @@ type CreateProjectMeta struct {
 	Project    Project           `json:"project"`
 	IssueTypes []IssueType       `json:"issueTypes"`
 	Fields     []CreateFieldMeta `json:"fields"`
+	// ForEdit keeps creation-only requirements out of existing-work metadata.
+	ForEdit bool `json:"-"`
 	// ScreenTabs groups the same fields by the tabs of that screen, so a form
 	// can show a screen's tabs as tabs. Keyed by work type id.
 	ScreenTabs map[string][]FieldTab `json:"-"`
@@ -605,7 +607,8 @@ func (m CreateProjectMeta) DetailTabsForIssueType(issueTypeID string, fields []C
 // FieldsForIssueType narrows and orders the project's fields to what the work
 // type's form screen shows. Context fields and summary always survive: the
 // command path cannot create work without a project, a work type, and a
-// summary, so a screen may not hide them.
+// summary, so a screen may not hide them. Subtask creation also retains its
+// mandatory parent, while edit metadata follows the assigned edit screen.
 func (m CreateProjectMeta) FieldsForIssueType(issueTypeID string) []CreateFieldMeta {
 	screen := m.ScreenFields[issueTypeID]
 	if screen == nil {
@@ -625,6 +628,11 @@ func (m CreateProjectMeta) FieldsForIssueType(issueTypeID string) []CreateFieldM
 		if field.ID == "summary" {
 			summary = field
 			_, summaryOnScreen = rank[field.ID]
+		}
+		if field.ID == "parent" && m.requiresCreateParent(issueTypeID) {
+			if _, shown := rank[field.ID]; !shown {
+				context = append(context, field)
+			}
 		}
 		if _, shown := rank[field.ID]; shown {
 			selected = append(selected, field)
@@ -672,13 +680,11 @@ func (m CreateProjectMeta) applyCustomFieldContexts(issueTypeID string, fields [
 // and summary are exempt, because work cannot be created without them.
 func (m CreateProjectMeta) applyFieldBehaviour(issueTypeID string, fields []CreateFieldMeta) []CreateFieldMeta {
 	rules := m.FieldBehaviour[issueTypeID]
-	if len(rules) == 0 {
-		return fields
-	}
 	out := make([]CreateFieldMeta, 0, len(fields))
 	for _, field := range fields {
 		rule, governed := rules[field.ID]
-		exempt := field.Section == "context" || field.ID == "summary"
+		requiredParent := field.ID == "parent" && m.requiresCreateParent(issueTypeID)
+		exempt := field.Section == "context" || field.ID == "summary" || requiredParent
 		if governed && rule.IsHidden && !exempt {
 			continue
 		}
@@ -690,9 +696,25 @@ func (m CreateProjectMeta) applyFieldBehaviour(issueTypeID string, fields []Crea
 				field.Description = rule.Description
 			}
 		}
+		if requiredParent {
+			field.Required = true
+			field.Section = "primary"
+		}
 		out = append(out, field)
 	}
 	return out
+}
+
+func (m CreateProjectMeta) requiresCreateParent(issueTypeID string) bool {
+	if m.ForEdit {
+		return false
+	}
+	for _, issueType := range m.IssueTypes {
+		if issueType.ID == issueTypeID {
+			return issueType.Subtask
+		}
+	}
+	return false
 }
 
 // FieldRules exposes the project's field configuration for one work type so the

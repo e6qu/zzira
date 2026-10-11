@@ -429,6 +429,7 @@ func (s *Store) IssueEditMetadata(ctx context.Context, workspaceID, userID strin
 	}
 	for index := range metadata.Projects {
 		project := &metadata.Projects[index]
+		project.ForEdit = true
 		project.ScreenFields = fields[project.Project.ID]
 		project.ScreenTabs = tabs[project.Project.ID]
 	}

@@ -83,6 +83,26 @@ func TestEmptyAssignedScreensKeepOnlyRequiredContextAndRefuseEdits(t *testing.T)
 	if !found {
 		t.Fatal("project missing from create metadata")
 	}
+	subtaskForm, err := f.handler.buildCreateDialogData(ctx, ws, f.ownerID, map[string]string{"project": project.Key, "issuetype": "it_subtask"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentShown := false
+	for _, field := range subtaskForm.Selected.Fields {
+		if field.ID == "parent" {
+			parentShown = field.Required && field.Section == "primary" && len(field.Options) > 0
+		}
+	}
+	if !parentShown {
+		t.Fatal("empty subtask screen hid its mandatory parent")
+	}
+	child, _, err := f.handler.Commands.CreateIssue(ctx, commands.CreateIssueInput{ActorID: f.ownerID, WorkspaceID: ws, ProjectIDOrKey: project.ID, IssueTypeID: "it_subtask", Summary: "Child behind an empty screen", ParentIDOrKey: issue.Key})
+	if err != nil || child.Parent == nil || child.Parent.Key != issue.Key {
+		t.Fatalf("empty-screen subtask did not persist its parent: %+v %v", child, err)
+	}
+	if _, _, err := f.handler.Commands.CreateIssue(ctx, commands.CreateIssueInput{ActorID: f.ownerID, WorkspaceID: ws, ProjectIDOrKey: project.ID, IssueTypeID: "it_subtask", Summary: "Missing parent"}); err == nil {
+		t.Fatal("empty-screen subtask accepted a missing parent")
+	}
 	edit, err := f.handler.buildEditDialogView(ctx, ws, f.ownerID, issue, map[string]bool{"MODIFY_REPORTER": true, "RESOLVE_ISSUES": true, "SCHEDULE_ISSUES": true})
 	if err != nil || edit.CanModifyReporter || edit.EnvironmentField != nil || len(edit.ChoiceFields) != 0 || len(edit.CustomFields) != 0 {
 		t.Fatalf("empty edit screen exposed fields: %+v %v", edit, err)

@@ -66,6 +66,11 @@ Tab-field reads accept the same `projectKey` scope as tab reads: project
 administrators can read fields on screens their project uses. Field mutations
 remain restricted to site administrators.
 
+Subtask creation always shows its required Parent beside Summary, including
+when the create screen is empty or omits Parent. Field configuration cannot
+hide that required context. Existing-work edit metadata still follows the edit
+screen and field visibility.
+
 ## Tabs on forms
 
 A screen with more than one tab is shown as tabs on the create form: one panel at a time, with the arrow keys moving between them. A screen with one tab is shown as a plain list, as a single tab is just a form.

@@ -62,6 +62,21 @@ test('an empty assigned screen hides optional fields and rejects forged edits', 
     await create.getByLabel('Summary', { exact: false }).fill(`Empty create screen ${stamp}`);
     await create.getByRole('button', { name: 'Create issue', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/browse/${key}-\\d+$`));
+    await page.goto(`/projects/${key}`);
+    await page.locator('#global-create-issue').click();
+    await create.getByLabel('Issue type', { exact: false }).selectOption('it_subtask');
+    await expect(create.locator('#create-parent')).toBeVisible();
+    await expect(create.locator('#create-parent')).toHaveAttribute('required', '');
+    await expect(create.locator('.create-more')).toHaveCount(0);
+    const parentOption = create.locator('#create-parent option').filter({ hasText: issueKey });
+    await create.locator('#create-parent').selectOption(await parentOption.getAttribute('value') as string);
+    await create.getByLabel('Summary', { exact: false }).fill(`Empty-screen subtask ${stamp}`);
+    await create.getByRole('button', { name: 'Create issue', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/browse/${key}-\\d+$`));
+    const childKey = page.url().split('/').pop();
+    const child = await (await page.request.get(`/rest/api/3/issue/${childKey}?fields=parent,issuetype`, { headers })).json();
+    expect(child.fields.parent.key).toBe(issueKey);
+    expect(child.fields.issuetype.subtask).toBe(true);
   } finally {
     await page.request.delete(`/rest/api/3/project/${projectID}`, { headers, timeout: 10_000 });
     if (typeSchemeID) await page.request.delete(`/rest/api/3/issuetypescreenscheme/${typeSchemeID}`, { headers, timeout: 10_000 });
