@@ -104,9 +104,11 @@ Plans (Jira's Advanced Roadmaps) collect work from several projects into one sch
   reads, and what it estimates in. The creator becomes the plan lead.
 - `/plans/{id}/settings` is the plan's setup, for anyone who may edit it: its
   name and lead, its scheduling (estimation unit and the fields its dates come
-  from), its issue sources, its exclusion rules (how long completed work stays
+  from, including date-only and datetime custom fields), its issue sources, its exclusion rules (how long completed work stays
   visible, and the work types and statuses to leave out), its cross-project
-  releases, and who else may view or edit it.
+  releases, and who else may view or edit it. Refused scheduling saves retain
+  the chosen date sources for correction; removing a configured date field
+  shows an unavailable choice rather than silently selecting another source.
 - **Cross-project releases** group the versions that ship together across the
   projects a plan reads: create one with a name and the versions it groups,
   change or remove it later. The plan shows each one with its member versions,

@@ -239,7 +239,7 @@ func validatePlanTx(ctx context.Context, tx pgx.Tx, workspaceID string, plan *Pl
 			if date.DateCustomFieldID == nil {
 				return planInvalid("A DateCustomField date needs dateCustomFieldId.")
 			}
-			found, err := exists(ctx, tx, `SELECT 1 FROM custom_fields WHERE id='customfield_'||$2::bigint::text AND (workspace_id IS NULL OR workspace_id=$1) AND type='datetime'`, workspaceID, *date.DateCustomFieldID)
+			found, err := exists(ctx, tx, `SELECT 1 FROM custom_fields WHERE id='customfield_'||$2::bigint::text AND (workspace_id IS NULL OR workspace_id=$1) AND type IN ('date','datetime')`, workspaceID, *date.DateCustomFieldID)
 			if err != nil {
 				return err
 			}
