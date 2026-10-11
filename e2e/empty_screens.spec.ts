@@ -35,11 +35,11 @@ test('an empty assigned screen hides optional fields and rejects forged edits', 
     populatedScreenID = String((await populated.json()).id);
     const tabs = await (await page.request.get(`/rest/api/3/screens/${populatedScreenID}/tabs`, { headers })).json();
     expect((await page.request.post(`/rest/api/3/screens/${populatedScreenID}/tabs/${tabs[0].id}/fields`, { headers, data: { fieldId: 'labels' } })).status()).toBe(200);
-    expect((await page.request.put(`/rest/api/3/screenscheme/${schemeID}`, { headers, data: { screens: { default: screenID, create: populatedScreenID } } })).status()).toBe(204);
+    expect((await page.request.put(`/rest/api/3/screenscheme/${schemeID}`, { headers, data: { screens: { default: screenID, create: populatedScreenID } } })).status()).toBe(200);
     const editMeta = await page.request.get(`/rest/api/3/issue/${issueKey}/editmeta`, { headers });
     expect(editMeta.status()).toBe(200);
     expect(Object.keys((await editMeta.json()).fields)).toEqual(['summary']);
-    expect((await page.request.put(`/rest/api/3/screenscheme/${schemeID}`, { headers, data: { screens: { default: screenID, create: screenID } } })).status()).toBe(204);
+    expect((await page.request.put(`/rest/api/3/screenscheme/${schemeID}`, { headers, data: { screens: { default: screenID, create: screenID } } })).status()).toBe(200);
     await page.goto(`/browse/${issueKey}`);
     await expect(page.locator('#field-priority, #field-labels, #field-reporter, #field-components')).toHaveCount(0);
     await page.locator('#edit-issue-button').click();
