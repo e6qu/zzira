@@ -24,12 +24,10 @@ updates:
       interval: weekly
     cooldown:
       default-days: 1
-  - package-ecosystem: docker
-    directory: /
-    schedule:
-      interval: weekly
-    cooldown:
-      default-days: 1
+  # No `docker` entry: its anonymous lookups on public.ecr.aws for the
+  # Dockerfile's base image exceed ECR Public's one-request-per-second limit and
+  # fail with 429, and it applies no cooldown to that registry.
+  # scripts/image-pins.py (the image-pins workflow) keeps those pins current.
   - package-ecosystem: docker-compose
     directory: /
     schedule:

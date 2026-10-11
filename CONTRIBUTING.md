@@ -76,6 +76,33 @@ bumps for this reason. PostgreSQL 18 also changes the image's `PGDATA` and volum
 layout; consult the [official image documentation](https://hub.docker.com/_/postgres)
 when preparing a migration.
 
+### Container image pins
+
+Every image is a copy of a Docker Hub image, pinned by tag and digest:
+`public.ecr.aws/docker/library/<name>` for official images and
+`mirror.gcr.io/<repository>` for the rest, because Docker Hub limits anonymous
+pulls and the shared CI runners exhaust that limit. The `image-pins` workflow
+runs `scripts/image-pins.py` on every pull request, on every push to `main` and
+daily. For each pin it reads Docker Hub's tag API and the mirror's manifest:
+
+- **ok**: the pin is the digest Docker Hub serves for the tag, and the mirror
+  serves the same digest.
+- **HELD**: Docker Hub moved the tag, or published a newer release with the same
+  variant and major version, less than 24 hours ago.
+- **DRIFT** (fails): that newer digest or release is at least 24 hours old, or
+  the mirror serves a different digest than the pin.
+
+To bump a pin, take the digest Docker Hub serves for the tag and confirm the
+mirror serves the same one, for example with
+`docker buildx imagetools inspect public.ecr.aws/docker/library/golang:<tag>`.
+Dependabot does not watch the Dockerfile: its anonymous lookups on
+public.ecr.aws fail with 429 and skip the cooldown. Test the check locally with:
+
+```sh
+python3 -m unittest discover -s scripts -p test_image_pins.py
+python3 scripts/image-pins.py
+```
+
 ## How the code is arranged
 
 - **`internal/commands` is the only way to write.** REST handlers, browser
