@@ -87,6 +87,9 @@ func TestWorkTypeDeletionRecordsEveryMigrationAndRollsBackFailedActions(t *testi
 	if _, err := f.store.IssueTypeInWorkspace(ctx, ws, source.ID); err != nil {
 		t.Fatalf("failed migration deleted source metadata: %v", err)
 	}
+	if actions, err := f.store.ActionsSince(ctx, ws, f.ownerID, checkpoint, 200); err != nil || len(actions) != 0 {
+		t.Fatalf("failed migration published actions: %d %v", len(actions), err)
+	}
 	dropConstraint()
 	if err := f.store.DeleteIssueType(ctx, ws, f.ownerID, source.ID, target.ID); err != nil {
 		t.Fatal(err)
