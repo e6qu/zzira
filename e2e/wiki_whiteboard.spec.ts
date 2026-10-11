@@ -58,7 +58,7 @@ async function prepareWhiteboard(page: Page) {
 
   await addObject('Build', 'sticky', 'yellow', '100');
   await addObject('Deploy', 'shape', 'green', '520');
-  await expect(page.getByRole('img', { name: 'Release flow visual map' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Release flow visual map' })).toBeVisible();
   await expect(page.locator('.wiki-canvas-object')).toHaveCount(2);
 
   await page.locator('summary').filter({ hasText: 'Add connector' }).click();
@@ -142,7 +142,8 @@ for (const failure of ['network', 'permission', 'sign-in redirect', 'unexpected 
   });
 }
 
-test('a canceled whiteboard drag restores its position without saving', async ({ page }) => {
+for (const cancel of ['pointercancel', 'Escape']) {
+test(`a whiteboard drag canceled by ${cancel} restores its position without saving`, async ({ page }) => {
   await prepareWhiteboard(page);
   const target = object(page);
   const beforeX = (await target.getAttribute('data-x'))!;
@@ -162,7 +163,8 @@ test('a canceled whiteboard drag restores its position without saving', async ({
   await page.mouse.down();
   await page.mouse.move(box.x + 90, box.y + 60, { steps: 5 });
   expect(await target.getAttribute('data-x')).not.toBe(beforeX);
-  await page.locator('[data-whiteboard-canvas]').evaluate(canvas => {
+  if (cancel === 'Escape') await page.keyboard.press('Escape');
+  else await page.locator('[data-whiteboard-canvas]').evaluate(canvas => {
     canvas.dispatchEvent(new PointerEvent('pointercancel', {
       pointerId: Number((canvas as HTMLElement).dataset.testPointer), bubbles: true,
     }));
@@ -173,6 +175,7 @@ test('a canceled whiteboard drag restores its position without saving', async ({
   await expect(target).toHaveAttribute('data-y', beforeY);
   expect(saves).toBe(0);
 });
+}
 
 test('an unfinished whiteboard save cannot race another drag', async ({ page }) => {
   await prepareWhiteboard(page);
@@ -197,6 +200,9 @@ test('an unfinished whiteboard save cannot race another drag', async ({ page }) 
     await expect(page.getByRole('button', { name: 'Delete Build', exact: true })).toBeDisabled();
     await dragObject(page, 'Deploy');
     await expect(deploy).toHaveAttribute('data-x', deployX);
+    await expect(deploy).toHaveAttribute('data-y', deployY);
+    await deploy.focus();
+    await page.keyboard.press('Shift+ArrowDown');
     await expect(deploy).toHaveAttribute('data-y', deployY);
     expect(saves).toBe(1);
   } finally {
@@ -282,5 +288,53 @@ test('knowledge collaborator starts from an editable persisted template', async 
   await expect(page.locator('.wiki-canvas-object')).toHaveCount(5);
   await expect(page.locator('.wiki-connector-solid')).toHaveCount(3);
   await expect(page.locator('.wiki-whiteboard-object-list article').filter({ has: page.locator('input[name="title"][value="Start"]') }).locator('[name="body"]')).toHaveValue('A customer requests a change');
+  await checkAccessibility(page);
+});
+
+
+test('canvas keyboard moves persist and recover from refusal', async ({ page }) => {
+  await prepareWhiteboard(page);
+  const target = object(page);
+  const connector = page.locator('.wiki-connector-dashed');
+  await target.focus();
+  await expect(target).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('[data-whiteboard-status]')).toHaveText('Build moved to 101, 80.');
+  await expect(target).toHaveAttribute('data-x', '101');
+  await expect(connector).toHaveAttribute('x1', '221');
+  await page.keyboard.press('Shift+ArrowDown');
+  await expect(page.locator('[data-whiteboard-status]')).toHaveText('Build moved to 101, 90.');
+  await page.keyboard.press('Tab');
+  await expect(object(page, 'Deploy')).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(target).toBeFocused();
+  const path = await page.locator('[data-whiteboard-canvas]').getAttribute('data-save');
+  const pattern = `**${path}/${await target.getAttribute('data-whiteboard-object')}`;
+  await page.route(pattern, route => route.fulfill({ status: 403, body: 'Not allowed' }));
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('[data-whiteboard-status]')).toContainText('could not be saved');
+  await expect(target).toHaveAttribute('data-x', '101');
+  await expect(connector).toHaveAttribute('x1', '221');
+  await expect(target).toBeFocused();
+  await page.unroute(pattern);
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('[data-whiteboard-status]')).toHaveText('Build moved to 100, 90.');
+  await page.reload();
+  await expect(target).toHaveAttribute('data-x', '100');
+  await expect(target).toHaveAttribute('data-y', '90');
+  const form = page.locator('.wiki-whiteboard-object-list article').filter({ has: page.locator('input[name="title"][value="Build"]') });
+  await form.locator('[name="x"]').fill('0');
+  await form.locator('[name="y"]').fill('0');
+  await form.getByRole('button', { name: 'Save Build', exact: true }).click();
+  await expect(target).toHaveAttribute('data-x', '0');
+  await expect(target).toHaveAttribute('data-y', '0');
+  let boundarySaves = 0;
+  page.on('request', request => { if (request.method() === 'POST' && /\/objects\//.test(request.url())) boundarySaves++; });
+  await target.focus();
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowUp');
+  await expect(target).toHaveAttribute('data-x', '0');
+  await expect(target).toHaveAttribute('data-y', '0');
+  expect(boundarySaves).toBe(0);
   await checkAccessibility(page);
 });

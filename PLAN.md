@@ -229,8 +229,8 @@ Owning reference: [SERVICE_MANAGEMENT.md](docs/SERVICE_MANAGEMENT.md#assets-api)
 
 Owning reference: [CONFLUENCE_SITE_SURFACES.md](docs/CONFLUENCE_SITE_SURFACES.md#whiteboards).
 
-- Direct manipulation beyond dragging: resize, pan, zoom, multi-select, keyboard
-  editing.
+- Direct manipulation beyond dragging and keyboard movement: resize, pan,
+  zoom, multi-select and text editing on the canvas.
 - Shapes library, freehand, images, frames and sections, grouping, alignment and
   snapping.
 - Connectors with anchors, routing and arrowheads; automatic graph layout.

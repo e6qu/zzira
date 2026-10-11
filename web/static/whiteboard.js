@@ -1,7 +1,7 @@
 (() => {
   // An object on the canvas is dragged where it belongs, and the move is
-  // saved the moment it is let go. Everything the drag can do is also on the
-  // form below the canvas, which is what a keyboard uses.
+  // saved the moment it is let go. Focus an object to move it with arrow
+  // keys, or use the coordinate form below the canvas.
   const canvas = document.querySelector('[data-whiteboard-canvas]');
   if (!canvas || !window.PointerEvent) return;
   const status = document.querySelector('[data-whiteboard-status]');
@@ -96,6 +96,7 @@
     if (!group) return;
     // A second drag could otherwise race the save and its rollback.
     if (saving) return;
+    group.focus({ preventScroll: true });
     const point = canvasPoint(event);
     dragging = {
       group,
@@ -136,4 +137,29 @@
   canvas.addEventListener('pointerup', release);
   canvas.addEventListener('pointercancel', event => release(event, true));
   canvas.addEventListener('lostpointercapture', event => release(event, true));
+
+  canvas.addEventListener('keydown', async event => {
+    if (event.key === 'Escape' && dragging) {
+      event.preventDefault();
+      event.stopPropagation();
+      await release({ pointerId: dragging.pointerId }, true);
+      return;
+    }
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const direction = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[event.key];
+    const group = event.target.closest('[data-whiteboard-object]');
+    if (!direction || !group) return;
+    event.preventDefault();
+    // Keyboard and pointer moves share the same save and rollback lock.
+    if (saving || dragging) return;
+    const from = { x: Number(group.dataset.x), y: Number(group.dataset.y) };
+    const step = event.shiftKey ? 10 : 1;
+    // Objects entered through coordinates can extend beyond the viewport.
+    // Keep their position and let inward nudges move them back gradually.
+    const x = Math.min(Math.max(from.x + direction[0] * step, 0), Math.max(from.x, width - Number(group.dataset.width)));
+    const y = Math.min(Math.max(from.y + direction[1] * step, 0), Math.max(from.y, height - Number(group.dataset.height)));
+    if (x === from.x && y === from.y) return;
+    place(group, x, y);
+    if (!(await save(group))) place(group, from.x, from.y);
+  });
 })();
