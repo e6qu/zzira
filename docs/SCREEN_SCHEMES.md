@@ -57,7 +57,7 @@ the submitted field; omitted fields stay unchanged. Fix-version editing also
 requires Resolve issues. View-only fields retain their saved values without
 controls, hidden fields disappear, and version links follow the view screen.
 Both direct version values and add/remove/set operations follow edit-screen
-checks. Offline configuration metadata remains tracked in [PLAN.md](../PLAN.md#14-local-first).
+checks. Offline configuration metadata remains tracked in [PLAN.md](../PLAN.md#14-local-first-closure).
 
 The edit dialog also exposes configured Priority, Labels, Due date, Parent,
 Resolution and estimate fields, including fields absent from the view screen.
