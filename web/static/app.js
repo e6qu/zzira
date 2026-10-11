@@ -697,7 +697,7 @@
         const queue = (event) => {
           event.preventDefault();
           event.stopImmediatePropagation();
-          queueOfflineForm(form);
+          if (queueOfflineForm(form)) window.zzira.closeModal();
         };
         form.addEventListener('submit', queue);
         form.querySelectorAll('button[type="submit"]').forEach((button) => {
