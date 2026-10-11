@@ -203,7 +203,9 @@ The kinds are `transition`, `comment`, `worklog`, `assign`, `link`, `watch`,
 transition names the status it moves to; the applier runs the workflow
 transition that leads there, so conditions, validators and post functions all
 run. A resolution is taken from the transition screen when it asks for one, and
-recorded as an edit when it does not.
+recorded as an edit when it does not. That historical edit uses the trusted
+importer's screen override so the current edit screen need not include
+Resolution; the event actor's ordinary permissions still apply.
 
 `minutes` is how far into the working day an event happened, for the times a
 day is too coarse to say what happened: an outage found at nine and over by ten

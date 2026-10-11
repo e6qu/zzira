@@ -261,6 +261,7 @@ test('admin builds a rule that sets a description and logs work', async ({ page 
 test('admin builds a rule that sets the assignee, resolution and estimate', async ({ page }) => {
   await login(page);
   const headers = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
+  expect((await page.request.post('/rest/api/3/screens/addToDefault/resolution', { headers })).status()).toBe(200);
   const fixture = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key: 'ZZ' }, summary: `Field edit rule work ${Date.now()}`, issuetype: { name: 'Task' } } } });
   expect(fixture.status()).toBe(201);
   const fixtureKey = (await fixture.json()).key as string;

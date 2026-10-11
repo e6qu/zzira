@@ -116,6 +116,9 @@ func TestResolutionComesFromTheTransitionOrTheEdit(t *testing.T) {
 	}
 
 	// An edit sets and clears it too.
+	if err := st.AddFieldToDefaultScreen(ctx, ws, actor, "resolution"); err != nil {
+		t.Fatal(err)
+	}
 	wontDo := "Won't Do"
 	if _, _, err := svc.UpdateIssue(ctx, UpdateIssueInput{
 		ActorID: actor, WorkspaceID: ws, IssueIDOrKey: chosen, ResolutionID: &wontDo,
