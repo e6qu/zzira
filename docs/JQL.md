@@ -121,7 +121,10 @@ matches nothing.
   the site does not have answers Jira's `The value 'X' does not exist for the
   field 'Y'.` -- as an error under `strict`, as a warning under `warn`, where
   the clause then matches nothing. `Unresolved` stays the absence of a
-  resolution, and `EMPTY` is not a value.
+  resolution, and `EMPTY` is not a value. Workspace-specific renames are
+  accepted by name or numeric ID; deleted priorities, resolutions and work
+  types are excluded under both forms. Removing the last catalogue entry
+  keeps validation enabled, and a deletion does not affect another workspace.
 - `validateQuery`: `strict` (or `true`) answers 400 with every error; `warn`
   (or `false`) runs the query with failing clauses matching nothing, skips
   unsortable ordering and returns `warningMessages`; `none` does the same
