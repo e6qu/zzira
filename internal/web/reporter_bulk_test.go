@@ -174,7 +174,7 @@ func TestBulkReporterUsesGlobalAndPerItemPermissions(t *testing.T) {
 	call("GET", query, "", 404)
 	call("POST", "/rest/api/3/bulk/issues/fields", body, 400)
 	exec(`INSERT INTO screen_tab_fields(workspace_id,screen_id,tab_id,field_id,position) VALUES($1,$2,$3,'reporter',$4)`, ws, screenID, tabID, position)
-	submitted = call("POST", "/rest/api/3/bulk/issues/fields", payload("null"), 201)
+	call("POST", "/rest/api/3/bulk/issues/fields", payload("null"), 201)
 	if err := runner.DrainOnce(ctx, ws); err != nil {
 		t.Fatal(err)
 	}
