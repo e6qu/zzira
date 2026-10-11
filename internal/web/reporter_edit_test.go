@@ -103,6 +103,10 @@ func TestReporterEditTransitionAndRevocation(t *testing.T) {
 	if read["reporter"].(map[string]any)["accountId"] != f.otherID || read["creator"].(map[string]any)["accountId"] != f.ownerID {
 		t.Fatal(read)
 	}
+	expression := call(f.ownerID, "POST", "/rest/api/3/expression/eval", `{"expression":"{reporter: issue.reporter.accountId, creator: issue.creator.accountId}","context":{"issue":{"key":"`+issue.Key+`"}}}`, 200)["value"].(map[string]any)
+	if expression["reporter"] != f.otherID || expression["creator"] != f.ownerID {
+		t.Fatal("expression confused Reporter with creator", expression)
+	}
 	var payload []byte
 	if err = f.store.Pool.QueryRow(ctx, `SELECT payload FROM actions WHERE workspace_id=$1 AND entity_type='issue' AND entity_id=$2 ORDER BY seq DESC LIMIT 1`, ws, issue.ID).Scan(&payload); err != nil {
 		t.Fatal(err)
@@ -119,6 +123,10 @@ func TestReporterEditTransitionAndRevocation(t *testing.T) {
 	cleared := call(f.ownerID, "GET", path+"?fields=reporter", "", 200)["fields"].(map[string]any)
 	if value, ok := cleared["reporter"]; !ok || value != nil {
 		t.Fatalf("cleared Reporter projection: %v", cleared)
+	}
+	expression = call(f.ownerID, "POST", "/rest/api/3/expression/eval", `{"expression":"{reporter: issue.reporter, creator: issue.creator.accountId}","context":{"issue":{"key":"`+issue.Key+`"}}}`, 200)["value"].(map[string]any)
+	if expression["reporter"] != nil || expression["creator"] != f.ownerID {
+		t.Fatal("cleared Reporter changed expression creator", expression)
 	}
 	call(f.ownerID, "PUT", path, `{"fields":{"reporter":{"accountId":"`+f.ownerID+`"}}}`, 204)
 	configurations, err := f.store.FieldConfigurations(ctx, ws, nil)
