@@ -67,8 +67,8 @@ backlogs remain epic-level, as Jira's do.
 - Work type alternatives must share workflow, field configuration and screen
   schemes; team-managed scoping, asynchronous priority-scheme updates and a
   larger avatar catalogue remain ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#gaps)).
-- The screen catalog includes Reporter, Environment, Attachment and Linked
-  work items.
+- Add Environment, Attachment and Linked work items to the screen catalog.
+- Reporter controls on edit and transition forms, and REST updates.
 - Custom field contexts: a global context coexists with project contexts that
   override it.
 - Custom field options: delete, replace on work items, reorder anywhere.

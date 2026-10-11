@@ -25,6 +25,7 @@ var systemScreenFields = []models.ScreenField{
 	{ID: "summary", Name: "Summary"},
 	{ID: "description", Name: "Description"},
 	{ID: "assignee", Name: "Assignee"},
+	{ID: "reporter", Name: "Reporter"},
 	{ID: "priority", Name: "Priority"},
 	{ID: "labels", Name: "Labels"},
 	{ID: "duedate", Name: "Due date"},

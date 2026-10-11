@@ -666,6 +666,9 @@ type createIssueRequest struct {
 		Assignee *struct {
 			AccountID string `json:"accountId"`
 		} `json:"assignee"`
+		Reporter *struct {
+			AccountID string `json:"accountId"`
+		} `json:"reporter"`
 		Security *struct {
 			ID string `json:"id"`
 		} `json:"security"`
@@ -838,6 +841,14 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, 400, "Invalid issue fields.")
 		return
 	}
+	reporterID := ""
+	if _, provided := rawRequest.Fields["reporter"]; provided {
+		if req.Fields.Reporter == nil || strings.TrimSpace(req.Fields.Reporter.AccountID) == "" {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"reporter": "Reporter must identify an active account."})
+			return
+		}
+		reporterID = req.Fields.Reporter.AccountID
+	}
 	_, assigneeProvided := rawRequest.Fields["assignee"]
 	if req.Fields.Assignee != nil {
 		assigneeID = req.Fields.Assignee.AccountID
@@ -900,6 +911,7 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		}(),
 		PriorityID:                priorityID,
 		AssigneeID:                assigneeID,
+		ReporterID:                reporterID,
 		UseProjectDefaultAssignee: !assigneeProvided || assigneeID == "-1",
 		SecurityLevelID: func() string {
 			if req.Fields.Security == nil {
@@ -951,7 +963,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 	}
 	supported := map[string]struct{}{
 		"project": {}, "summary": {}, "description": {}, "issuetype": {}, "priority": {},
-		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "components": {}, "parent": {},
+		"assignee": {}, "reporter": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "components": {}, "parent": {},
 		"timetracking": {}, "duedate": {},
 	}
 	for field := range raw.Fields {
@@ -990,7 +1002,7 @@ func createIssueFieldError(err error) map[string]string {
 		return fields
 	}
 	message := err.Error()
-	for _, field := range []string{"summary", "project", "priority", "assignee", "security", "resolution", "labels", "description", "components", "parent"} {
+	for _, field := range []string{"summary", "project", "priority", "assignee", "reporter", "security", "resolution", "labels", "description", "components", "parent"} {
 		if strings.Contains(message, field) {
 			return map[string]string{field: message}
 		}
@@ -1897,7 +1909,7 @@ func (h *Handler) issueEditFields(ctx context.Context, workspaceID, userID strin
 		}
 		project.FieldBehaviour = map[string]map[string]models.FieldBehaviour{issue.IssueType.ID: behaviour}
 		for _, source := range project.FieldsForIssueType(issue.IssueType.ID) {
-			if source.ID == "project" || source.ID == "issuetype" {
+			if source.ID == "project" || source.ID == "issuetype" || source.ID == "reporter" {
 				continue
 			}
 			field := source

@@ -101,6 +101,12 @@ fetch preserve this reader scope.
 the request names fields to include and asks for no expansions or properties.
 Unknown or hidden work items are left out.
 
+The browser create form exposes Reporter when its screen includes the field.
+It starts with the signed-in user and offers other members only with Modify
+reporter permission. Required and hidden field configuration applies as well. REST creation accepts
+`reporter: {"accountId": "…"}` with the same permission check. Omitted reporters
+default to the creator; empty, null and unknown accounts are refused.
+
 ## Writing work items
 
 - `POST /rest/api/3/issue` also stores `properties` and applies a `transition`,

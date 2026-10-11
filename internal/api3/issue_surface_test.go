@@ -379,6 +379,25 @@ func TestIssueSurfaceContract(t *testing.T) {
 	call(admin, "PUT", "/rest/api/3/issue/ISS-1/assignee", `{}`, 400)
 	call(admin, "PUT", "/rest/api/3/issue/ISS-1/assignee", `{"accountId":"-1"}`, 204)
 
+	// Reporter is writable on create through the shared command and permission gate.
+	for _, reporter := range []string{"null", "{}", `{"accountId":""}`, `{"accountId":"usr_missing"}`} {
+		refused := call(admin, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"ISS"},"summary":"Invalid reporter","issuetype":{"name":"Task"},"reporter":`+reporter+`}}`, 400)
+		if !strings.Contains(string(refused), "reporter") {
+			t.Fatalf("reporter error=%s", refused)
+		}
+	}
+	var reporterCreated struct{ Key string }
+	decode(call(admin, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"ISS"},"summary":"Reported for a colleague","issuetype":{"name":"Task"},"reporter":{"accountId":"`+member+`"}}}`, 201), &reporterCreated)
+	if got := getIssue(admin, reporterCreated.Key, "?fields=reporter,creator"); !strings.Contains(string(got.Fields["reporter"]), member) || !strings.Contains(string(got.Fields["creator"]), admin) {
+		t.Fatalf("reporter/creator=%+v", got.Fields)
+	}
+
+	var reporterEdit struct{ Fields map[string]json.RawMessage }
+	decode(call(admin, "GET", "/rest/api/3/issue/"+reporterCreated.Key+"/editmeta", "", 200), &reporterEdit)
+	if _, present := reporterEdit.Fields["reporter"]; present {
+		t.Fatal("create-only reporter advertised for editing")
+	}
+
 	// The issue projection: named fields, details, creator, names and properties.
 	var created struct{ ID, Key string }
 	decode(call(admin, "POST", "/rest/api/3/issue", `{"fields":{"project":{"key":"ISS"},"summary":"Alpha created through the API","issuetype":{"name":"Task"}},"properties":[{"key":"origin","value":{"source":"api"}}]}`, 201), &created)

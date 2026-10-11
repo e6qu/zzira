@@ -415,9 +415,12 @@ func (s *Service) enforceFieldConfiguration(ctx context.Context, in CreateIssueI
 		"summary":     strings.TrimSpace(in.Summary) != "",
 		"description": strings.TrimSpace(in.Description) != "" || len(in.DescriptionADF) > 0,
 		"assignee":    in.AssigneeID != "" && in.AssigneeID != "-1",
-		"priority":    in.PriorityID != "",
-		"parent":      strings.TrimSpace(in.ParentIDOrKey) != "",
-		"security":    in.SecurityLevelID != "",
+		// A service request derives its reporter from the customer, rather
+		// than submitting the Reporter screen field.
+		"reporter": in.ReporterID != "" && !in.customerRequest,
+		"priority": in.PriorityID != "",
+		"parent":   strings.TrimSpace(in.ParentIDOrKey) != "",
+		"security": in.SecurityLevelID != "",
 		// The browser create form posts an empty labels input, and
 		// strings.Split("", ",") yields one empty entry, so count real values.
 		"labels": hasNonEmptyValue(in.Labels),
@@ -431,7 +434,7 @@ func (s *Service) enforceFieldConfiguration(ctx context.Context, in CreateIssueI
 		if field == "summary" {
 			continue
 		}
-		if rule.IsRequired && !supplied[field] {
+		if rule.IsRequired && !supplied[field] && !(field == "reporter" && in.ActorID != "") {
 			return fmt.Errorf("%s is required by the field configuration for this work type", field)
 		}
 		if rule.IsHidden && supplied[field] {

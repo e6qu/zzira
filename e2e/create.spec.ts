@@ -42,6 +42,7 @@ async function login(page: Page) {
 test('create journey and createmeta share every supported field', async ({ page, request }) => {
   const auth = { headers: { Authorization: apiAuthHeader() } };
   const demoID = (await (await request.get('/rest/api/3/myself', auth)).json()).accountId;
+  const reporterID = (await (await request.get('/rest/api/3/myself', { headers: { Authorization: apiAuthHeader('ana@zzira.dev') } })).json()).accountId;
   const unique = Date.now().toString();
 
 	const fieldResponse = await request.post('/rest/api/3/field', {
@@ -73,8 +74,9 @@ test('create journey and createmeta share every supported field', async ({ page,
 		fieldStart += pageBody.fields.length;
 	} while (fieldStart < fieldMetaBody.total);
   expect(fieldMetaBody.fields.map((field: any) => field.fieldId)).toEqual(expect.arrayContaining([
-		'project', 'issuetype', 'summary', 'description', 'assignee', 'priority', 'labels', 'parent', 'security', customFieldID,
+		'project', 'issuetype', 'summary', 'description', 'assignee', 'reporter', 'priority', 'labels', 'parent', 'security', customFieldID,
   ]));
+  expect(fieldMetaBody.fields.find((field: any) => field.fieldId === 'reporter')).toMatchObject({ required: true, defaultValue: { accountId: demoID }, allowedValues: expect.arrayContaining([expect.objectContaining({ accountId: reporterID })]) });
 	const customMeta = fieldMetaBody.fields.find((field: any) => field.fieldId === customFieldID);
   expect(customMeta.schema).toMatchObject({ type: 'number', customId: Number(customFieldID.replace('customfield_', '')) });
 	const subtaskMeta = await (await request.get('/rest/api/3/issue/createmeta/ZZ/issuetypes/10003?maxResults=100', auth)).json();
@@ -92,13 +94,13 @@ test('create journey and createmeta share every supported field', async ({ page,
     ...auth,
     data: { fields: {
       project: { id: projectID }, summary: apiSummary, issuetype: { id: '10002' },
-      assignee: { accountId: demoID }, priority: { id: '3' }, labels: ['api-create'],
+      assignee: { accountId: demoID }, reporter: { accountId: reporterID }, priority: { id: '3' }, labels: ['api-create'],
       security: { id: levelID }, [customFieldID]: 5,
     } },
   });
   expect(apiCreated.status()).toBe(201);
   const apiIssue = await (await request.get(`/rest/api/3/issue/${(await apiCreated.json()).key}`, auth)).json();
-  expect(apiIssue.fields).toMatchObject({ labels: ['api-create'], security: { id: levelID }, [customFieldID]: 5 });
+  expect(apiIssue.fields).toMatchObject({ labels: ['api-create'], reporter: { accountId: reporterID }, security: { id: levelID }, [customFieldID]: 5 });
 
   await login(page);
   await page.goto('/projects/ZZ');
@@ -109,6 +111,8 @@ test('create journey and createmeta share every supported field', async ({ page,
   await page.fill('#create-summary', `Metadata UI create ${unique}`);
   await page.fill('#create-description', 'Created from the shared field schema.');
   await page.locator('.create-more summary').click();
+  await expect(page.locator('#create-reporter')).toHaveValue(demoID);
+  await page.selectOption('#create-reporter', reporterID);
   await page.selectOption('#create-assignee', demoID);
   await page.selectOption('#create-priority', 'pr_medium');
   await page.fill('#create-labels', 'create-parity, ui');
@@ -123,16 +127,19 @@ test('create journey and createmeta share every supported field', async ({ page,
   await expect(page.locator('#create-summary')).toHaveValue('');
   await expect(page.getByRole('checkbox', { name: 'Create another' })).toBeChecked();
   const uiIssue = await (await request.get(`/rest/api/3/issue/${createdKey}`, auth)).json();
-  expect(uiIssue.fields).toMatchObject({ labels: ['create-parity', 'ui'], security: { id: levelID }, [customFieldID]: 8 });
+  expect(uiIssue.fields).toMatchObject({ labels: ['create-parity', 'ui'], reporter: { accountId: reporterID }, security: { id: levelID }, [customFieldID]: 8 });
 
   const retrySummary = `Validation retry ${unique}`;
   await page.fill('#create-summary', retrySummary);
   await page.locator('.create-more summary').click();
+  await expect(page.locator('#create-reporter')).toHaveValue(demoID);
+  await page.selectOption('#create-reporter', reporterID);
   await page.fill('#create-labels', 'two words');
   await dialog.getByRole('button', { name: 'Create issue' }).click();
   await expect(page.getByRole('alert')).toContainText('labels must be');
   await expect(page.locator('#create-summary')).toHaveValue(retrySummary);
   await expect(page.locator('#create-labels')).toHaveValue('two words');
+  await expect(page.locator('#create-reporter')).toHaveValue(reporterID);
 
   await page.fill('#create-labels', 'validated');
   await page.getByRole('checkbox', { name: 'Create another' }).uncheck();
@@ -143,6 +150,8 @@ test('create journey and createmeta share every supported field', async ({ page,
   await page.waitForURL(/\/browse\/ZZ-\d+$/, { timeout: 30_000 });
   await expect(page.locator('.issue-summary')).toHaveText(retrySummary);
 
+  // A visible dialog must accept field changes before HTMX's deferred settle.
+  await page.locator('#global-create-issue').evaluate(trigger => trigger.setAttribute('hx-swap', 'innerHTML settle:5s'));
   await page.locator('#global-create-issue').click();
   const subtaskDialog = page.getByRole('dialog', { name: 'Create issue' });
   await expect(subtaskDialog).toBeVisible();
@@ -151,7 +160,7 @@ test('create journey and createmeta share every supported field', async ({ page,
     page.waitForResponse(response => {
       const url = new URL(response.url());
       return response.request().method() === 'GET' && url.pathname === '/issues/new' && url.searchParams.get('issuetype') === 'it_subtask';
-    }),
+    }, { timeout: 10_000 }),
     page.selectOption('#create-issuetype', 'it_subtask'),
   ]);
   expect(metadataResponse.ok()).toBe(true);

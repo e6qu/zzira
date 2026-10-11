@@ -33,11 +33,15 @@ Screen names are unique per site, and tab names are unique per screen, both igno
 
 ## Field catalog
 
-A screen can only hold fields the forms can render. The system fields, in order: `summary`, `description`, `assignee`, `priority`, `labels`, `duedate`, `parent`, `components`, `fixVersions`, `versions`, `resolution`, `security` (Restrict to), `timetracking`, `issuetype` and `project` (`systemScreenFields`, `internal/store/screens.go`). After them come the site's custom fields. Adding any other field is refused. `issuetype` and `resolution` offer the site's catalogues, `priority` the priorities of the project's priority scheme, and `parent` the work items one level above ([ISSUE_METADATA.md](ISSUE_METADATA.md)).
+A screen can only hold fields the forms can render. The system fields, in order: `summary`, `description`, `assignee`, `reporter`, `priority`, `labels`, `duedate`, `parent`, `components`, `fixVersions`, `versions`, `resolution`, `security` (Restrict to), `timetracking`, `issuetype` and `project` (`systemScreenFields`, `internal/store/screens.go`). After them come the site's custom fields. Adding any other field is refused. `issuetype` and `resolution` offer the site's catalogues, `priority` the priorities of the project's priority scheme, and `parent` the work items one level above ([ISSUE_METADATA.md](ISSUE_METADATA.md)).
+
+Reporter defaults to the current user. The create form offers other site members
+only with the project's Modify reporter permission, and the command enforces
+that permission on submission. A refused create retains the chosen reporter.
 
 ## Default screen
 
-Every site has a `Default Screen` with one `Field Tab`. It holds every system field the forms render. A new custom field is added to it by trigger.
+Every site has a `Default Screen` with one `Field Tab`. It starts with the standard create fields, including Reporter. A new custom field is added to it by trigger.
 
 ## UI
 
@@ -65,4 +69,5 @@ A workflow transition can name a screen; the transition then asks for the fields
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- Reporter, Environment, Attachment and Linked issues are not in the field catalog.
+- Environment, Attachment and Linked issues are not in the field catalog.
+- Reporter controls on edit and transition forms.
