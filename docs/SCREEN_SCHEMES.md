@@ -76,7 +76,9 @@ custom fields in the assigned edit screen’s tabs and field order. Tabs without
 usable controls are omitted; one usable tab remains a plain form. Hidden fields
 and permission checks still apply; summary remains available on an empty screen.
 Custom multi-select controls save every selected option and explicitly clear when
-all options are deselected, in both the dialog and inline editors. Omitted custom
+all options are deselected, in both the dialog and inline editors. Required custom
+fields use native validation in edit, inline and transition controls; transition
+validators add requiredness only to that transition’s controls. Omitted custom
 fields remain unchanged; help text is associated with each editor’s own control.
 Unchanged Description and Environment retain their rich documents when a browser
 posts CRLF line endings. Inline Environment saves also retain unchanged formatting
