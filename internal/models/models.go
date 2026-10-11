@@ -407,6 +407,7 @@ type WorkflowTransition struct {
 	ID           string
 	Name         string
 	ScreenFields []string
+	ScreenTabs   []FieldTab
 	// ScreenCustomFields describes the custom fields among ScreenFields, so a
 	// transition screen renders them as the edit dialog does rather than as a
 	// text box labelled with a field id. Empty offline, where screens are not
@@ -415,6 +416,32 @@ type WorkflowTransition struct {
 	// ScreenMessage is the prompt a remind-people-to-update-fields screen shows.
 	ScreenMessage    string
 	ReporterRequired bool
+}
+
+// ScreenTabGroups keeps only tabs with fields offered by this transition.
+// Inline field lists and screens with one usable tab retain their plain form.
+func (t WorkflowTransition) ScreenTabGroups() []FieldTab {
+	allowed := make(map[string]bool, len(t.ScreenFields))
+	for _, field := range t.ScreenFields {
+		allowed[field] = true
+	}
+	tabs := []FieldTab{}
+	for _, tab := range t.ScreenTabs {
+		group := FieldTab{Name: tab.Name}
+		for _, field := range tab.Fields {
+			if allowed[field] {
+				group.Fields = append(group.Fields, field)
+				delete(allowed, field)
+			}
+		}
+		if len(group.Fields) > 0 {
+			tabs = append(tabs, group)
+		}
+	}
+	if len(tabs) < 2 {
+		return nil
+	}
+	return tabs
 }
 
 // EditDialogView drives the edit-issue dialog; rendered by both server and

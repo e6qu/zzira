@@ -1,0 +1,21 @@
+{{define "transition_screen_field"}}
+{{$t := .Transition}}{{$view := .View}}{{$field := .ID}}{{$prefix := printf "transition-%s-%s-" $t.ID $view.Issue.ID}}
+{{if eq $field "summary"}}
+<label for="{{$prefix}}{{$field}}">Summary</label><input id="{{$prefix}}{{$field}}" name="field_summary" value="{{$view.Issue.Summary}}" maxlength="255" required>
+{{else if eq $field "description"}}
+<label for="{{$prefix}}{{$field}}">Description</label><textarea id="{{$prefix}}{{$field}}" name="field_description" rows="3">{{adfToText $view.Issue.Description}}</textarea>
+{{else if eq $field "environment"}}
+<label for="{{$prefix}}environment">Environment</label><textarea id="{{$prefix}}environment" name="field_environment" rows="3">{{adfToText (index $view.Issue.Fields "environment")}}</textarea>
+{{else if eq $field "labels"}}
+<label for="{{$prefix}}{{$field}}">Labels</label><input id="{{$prefix}}{{$field}}" name="field_labels" value="{{join $view.Issue.Labels ", "}}" placeholder="release, verified">
+{{else if eq $field "assignee"}}
+<label for="{{$prefix}}{{$field}}">Assignee</label><select id="{{$prefix}}{{$field}}" name="field_assignee"><option value="">Unassigned</option>{{$assignee := ""}}{{if $view.Issue.Assignee}}{{$assignee = $view.Issue.Assignee.ID}}{{end}}{{range $view.Assignees}}<option value="{{.ID}}" {{if eq .ID $assignee}}selected{{end}}>{{.DisplayName}}</option>{{end}}</select>
+{{else if eq $field "reporter"}}
+<label for="{{$prefix}}{{$field}}">Reporter</label>{{if $view.CanModifyReporter}}<select id="{{$prefix}}{{$field}}" name="field_reporter" {{if $t.ReporterRequired}}required{{end}}>{{if not $t.ReporterRequired}}<option value="">None</option>{{end}}{{$reporter := ""}}{{if $view.Issue.Reporter}}{{$reporter = $view.Issue.Reporter.ID}}{{end}}{{range $view.Reporters}}<option value="{{.ID}}" {{if eq .ID $reporter}}selected{{end}}>{{.DisplayName}}</option>{{end}}</select>{{else}}<output id="{{$prefix}}{{$field}}">{{if $view.Issue.Reporter}}{{$view.Issue.Reporter.DisplayName}}{{else}}None{{end}}</output>{{end}}
+{{else if eq $field "priority"}}
+<label for="{{$prefix}}{{$field}}">Priority</label><select id="{{$prefix}}{{$field}}" name="field_priority"><option value="">None</option>{{$priority := ""}}{{if $view.Issue.Priority}}{{$priority = $view.Issue.Priority.ID}}{{end}}{{range $view.Priorities}}<option value="{{.ID}}" {{if eq .ID $priority}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+{{else if eq $field "resolution"}}
+<label for="{{$prefix}}{{$field}}">Resolution</label><select id="{{$prefix}}{{$field}}" name="field_resolution"><option value="">Unresolved</option>{{$chosen := ""}}{{if $view.Issue.Resolution}}{{$chosen = $view.Issue.Resolution.ID}}{{end}}{{range $view.Resolutions}}<option value="{{.ID}}" {{if eq .ID $chosen}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+{{else}}
+{{$described := false}}{{range $t.ScreenCustomFields}}{{if eq .ID $field}}{{$described = true}}<label for="{{$prefix}}{{.ID}}">{{.Name}}</label>{{template "custom_field_control" (transitionCustomFieldControl . $prefix (printf "field_%s" .ID))}}{{if .Description}}<small id="{{$prefix}}help-{{.ID}}" class="muted">{{.Description}}</small>{{end}}{{end}}{{end}}{{if not $described}}<label for="{{$prefix}}{{$field}}">{{$field}}</label><input id="{{$prefix}}{{$field}}" name="field_{{$field}}">{{end}}{{end}}
+{{end}}

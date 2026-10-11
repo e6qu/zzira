@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"slices"
 	"strings"
@@ -112,6 +113,32 @@ func TestTransitionFollowsItsScreen(t *testing.T) {
 	}
 	if got := fieldsNow(); slices.Contains(got, "assignee") {
 		t.Fatalf("a field removed from the screen is still on the transition: %v", got)
+	}
+
+	text, err := st.AddScreenTab(ctx, ws, admin, screen.ID, "Text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddScreenTabField(ctx, ws, admin, screen.ID, text.ID, "summary"); err != nil {
+		t.Fatal(err)
+	}
+	wf, err := st.WorkflowForProjectAndIssueType(ctx, projectID, "it_task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	transition, ok := wf.Validate("31", "st_todo")
+	if !ok || len(transition.ScreenTabs) != 3 {
+		t.Fatalf("live transition layout lost its empty or populated tabs: %+v", transition.ScreenTabs)
+	}
+	if transition.ScreenTabs[1].Name != "Fields" || !slices.Equal(transition.ScreenTabs[1].Fields, []string{"resolution", "labels"}) || transition.ScreenTabs[2].Name != "Text" || !slices.Equal(transition.ScreenTabs[2].Fields, []string{"summary"}) {
+		t.Fatalf("live transition layout did not follow its screen: %+v", transition.ScreenTabs)
+	}
+	encoded, err := json.Marshal(wf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "ScreenTabs") || strings.Contains(string(encoded), `"Text"`) {
+		t.Fatal("resolved tab metadata leaked into the workflow definition")
 	}
 
 	// The workflow records the screen, not a copy of what it held.

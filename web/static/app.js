@@ -540,7 +540,7 @@
 
   // A form whose screen has more than one tab shows them as tabs: one
   // panel at a time, with the arrow keys moving between them as ARIA asks.
-  function selectFieldTab(list, index) {
+  function selectFieldTab(list, index, focus = true) {
     const tabs = Array.from(list.querySelectorAll('[data-field-tab]'));
     tabs.forEach((tab, position) => {
       const selected = position === index;
@@ -549,7 +549,7 @@
       const panel = document.getElementById(tab.getAttribute('aria-controls') || '');
       if (panel) panel.hidden = !selected;
     });
-    if (tabs[index]) tabs[index].focus();
+    if (focus && tabs[index]) tabs[index].focus();
   }
   // Native validation reports every invalid control before focusing the
   // first one. Reveal only that first control's tab so later invalid fields
@@ -633,7 +633,7 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=62&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=63&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
@@ -976,6 +976,7 @@
       key: details.dataset.issueSection,
       open: details.open,
       focused: details.querySelector('summary') === document.activeElement,
+      tabs: Array.from(details.querySelectorAll('[role="tablist"]')).map((list) => list.querySelector('[data-field-tab][aria-selected="true"]')?.id).filter(Boolean),
     }));
   }
   function restoreIssueSections(sections) {
@@ -986,6 +987,11 @@
       const state = states.get(details.dataset.issueSection);
       if (!state) return;
       details.open = state.open;
+      details.querySelectorAll('[role="tablist"]').forEach((list) => {
+        const tabs = Array.from(list.querySelectorAll('[data-field-tab]'));
+        const index = tabs.findIndex((tab) => state.tabs.includes(tab.id));
+        if (index >= 0) selectFieldTab(list, index, false);
+      });
       if (state.focused && document.activeElement === document.body) {
         details.querySelector('summary')?.focus({ preventScroll: true });
       }

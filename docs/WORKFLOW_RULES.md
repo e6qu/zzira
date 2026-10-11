@@ -110,6 +110,16 @@ The error names refused statuses and remains visible when another status saves.
 Stalled requests time out after 15 seconds and unlock the editor. The browser
 journey is covered by `e2e/workflow_layout_recovery.spec.ts`.
 
+Named transition screens retain their configured tabs and field order. Empty
+or hidden-only tabs disappear; inline lists and one usable tab remain plain forms.
+Arrow keys, Home and End select tabs, and a blank required Summary on an inactive
+tab is revealed before focus moves to it. Refused submissions keep the draft.
+Assignee and Priority retain their saved selections. Whitespace-only summaries
+are refused by the shared edit and transition commands before any fields save.
+Each transition has distinct control and help-text IDs, and refreshing the issue
+through another action retains the active tab and draft. Browser coverage:
+`e2e/transition_screens.spec.ts`; full CI validation remains in [PLAN.md](../PLAN.md).
+
 ## Code
 
 `internal/workflow/workflow.go`, `internal/api3/api3_workflow_capabilities.go`, `internal/web/directories.go`, `migrations/196_workflow_agent_runs_and_transition_ids.sql`.
@@ -118,7 +128,6 @@ journey is covered by `e2e/workflow_layout_recovery.spec.ts`.
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- A transition screen renders its fields as one list; a screen's tabs are not shown as tabs.
 - `development-triggers` has only the branch-created trigger. Jira also triggers on commits, pull requests, reviews and deployments.
 
 The issue page offers each action using its project permission: edit, assignment,

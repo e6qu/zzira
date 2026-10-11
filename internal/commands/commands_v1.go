@@ -173,7 +173,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 	}
 	if in.Summary != nil {
 		sum := *in.Summary
-		if len(sum) == 0 || len(sum) > 255 {
+		if strings.TrimSpace(sum) == "" || len(sum) > 255 {
 			return nil, nil, fmt.Errorf("summary is required (max 255 chars)")
 		}
 	}
@@ -607,7 +607,7 @@ func (s *Service) transitionIssueWithUpdate(ctx context.Context, actorID, worksp
 	if err := s.validateReporterChange(ctx, workspaceID, update.ReporterID, issue); err != nil {
 		return nil, nil, err
 	}
-	if update.Summary != nil && (len(*update.Summary) == 0 || len(*update.Summary) > 255) {
+	if update.Summary != nil && (strings.TrimSpace(*update.Summary) == "" || len(*update.Summary) > 255) {
 		return nil, nil, fmt.Errorf("summary is required (max 255 chars)")
 	}
 	if len(update.Description) > 1<<20 {
