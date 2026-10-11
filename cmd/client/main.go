@@ -56,6 +56,7 @@ func main() {
 	}
 
 	post(map[string]any{"type": "ready", "renderer": build.Renderer})
+	postOutboxState()
 
 	// Yield to the browser event loop before doing any network work. An issue
 	// document can be opened and edited while this worker starts; synchronous
@@ -297,6 +298,7 @@ CREATE TABLE IF NOT EXISTS outbox (
   method TEXT NOT NULL,
   path TEXT NOT NULL,
   body TEXT NOT NULL,
+  refused_status INTEGER NOT NULL DEFAULT 0,
   content_type TEXT NOT NULL DEFAULT 'application/x-www-form-urlencoded'
 );
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
@@ -313,6 +315,7 @@ func initDB() error {
 	}
 	db = sah.New(js.ValueOf("/zzira-" + replica + ".db"))
 	exec(schemaSQL, nil)
+	ensureColumn("outbox", "refused_status", "INTEGER NOT NULL DEFAULT 0")
 	ensureColumn("issues", "labels", "TEXT NOT NULL DEFAULT '[]'")
 	ensureColumn("issue_links", "inward", "TEXT")
 	ensureColumn("issue_links", "outward", "TEXT")
@@ -459,6 +462,7 @@ func syncOnce() syncclient.SyncDisposition {
 	}
 	if resp.StatusCode == http.StatusNotModified {
 		post(map[string]any{"type": "synced", "seq": cp})
+		postOutboxState()
 		return syncclient.SyncAccepted
 	}
 	if syncclient.DispositionForSyncStatus(resp.StatusCode) == syncclient.SyncRevoked {
@@ -509,6 +513,7 @@ func syncOnce() syncclient.SyncDisposition {
 	exec(`COMMIT`, nil)
 	committed = true
 	post(map[string]any{"type": "synced", "seq": delta.To})
+	postOutboxState()
 	if currentView != "" && changedIssues[currentView] {
 		pushCurrentView()
 	}
@@ -936,6 +941,7 @@ func enqueueMessage(msg js.Value) (saved bool) {
 	exec(`COMMIT`, nil)
 	committed = true
 	post(map[string]any{"type": "queued", "requestId": requestID, "size": size})
+	postOutboxState()
 	return true
 }
 
@@ -947,6 +953,15 @@ func outboxSize() int64 {
 	return int64Of(rows[0], "n")
 }
 
+func postOutboxState() {
+	rows := selectObjects(`SELECT id, refused_status FROM outbox ORDER BY id LIMIT 1`, nil)
+	status := int64(0)
+	if len(rows) > 0 {
+		status = int64Of(rows[0], "refused_status")
+	}
+	post(map[string]any{"type": "outbox-state", "pending": outboxSize(), "refusedStatus": status})
+}
+
 // drainOutbox replays queued commands in order. Returns false on first failure
 // (still offline) — remaining entries stay queued for the next attempt.
 func drainOutbox() (bool, int64) {
@@ -954,9 +969,13 @@ func drainOutbox() (bool, int64) {
 	if n == 0 {
 		return false, 0
 	}
-	rows := selectObjects(`SELECT id, method, path, body, content_type FROM outbox ORDER BY id LIMIT 1`, nil)
+	rows := selectObjects(`SELECT id, method, path, body, content_type, refused_status FROM outbox ORDER BY id LIMIT 1`, nil)
 	if len(rows) == 0 {
 		return false, 0
+	}
+	if int64Of(rows[0], "refused_status") != 0 {
+		postOutboxState()
+		return false, n // Preserve ordering until the user explicitly retries.
 	}
 	id := int64Of(rows[0], "id")
 	method := str(rows[0], "method")
@@ -980,11 +999,12 @@ func drainOutbox() (bool, int64) {
 	switch syncclient.DispositionForStatus(resp.StatusCode) {
 	case syncclient.OutboxAccepted:
 		exec(`DELETE FROM outbox WHERE id=$1`, []any{id})
+		postOutboxState()
 		return true, n - 1
 	case syncclient.OutboxRejected:
-		exec(`DELETE FROM outbox WHERE id=$1`, []any{id})
-		post(map[string]any{"type": "error", "message": fmt.Sprintf("outbox cmd rejected (%d)", resp.StatusCode)})
-		return true, n - 1
+		exec(`UPDATE outbox SET refused_status=$2 WHERE id=$1`, []any{id, resp.StatusCode})
+		postOutboxState()
+		return false, n
 	default:
 		post(map[string]any{"type": "error", "message": fmt.Sprintf("outbox cmd will retry (%d)", resp.StatusCode)})
 		return false, n
@@ -1005,6 +1025,13 @@ func onMessage(_ js.Value, args []js.Value) any {
 		return nil
 	}
 	switch msg.Get("type").String() {
+	case "export-outbox":
+		post(map[string]any{"type": "outbox-export", "commands": selectObjects(`SELECT id, method, path, body, content_type, refused_status FROM outbox ORDER BY id`, nil)})
+	case "retry-outbox":
+		// Never retry a different command than the refused head of the queue.
+		exec(`UPDATE outbox SET refused_status=0 WHERE id=(SELECT id FROM outbox ORDER BY id LIMIT 1)`, nil)
+		postOutboxState()
+		go runProtected("retry", func() { maintenanceCycle(true) })
 	case "seed-view":
 		issue := msg.Get("issue")
 		id := issue.Get("id").String()

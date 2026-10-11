@@ -609,7 +609,7 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=58&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=60&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
@@ -747,6 +747,57 @@
     if (ms) announcementTimer = setTimeout(() => { el.hidden = true; }, ms);
   }
 
+  let outboxState = { pending: 0, refusedStatus: 0 };
+  let exportRequested = false;
+  function showOutboxState() {
+    let panel = document.getElementById('offline-recovery');
+    if (outboxState.refusedStatus && !panel) {
+      panel = document.createElement('section');
+      panel.id = 'offline-recovery';
+      panel.className = 'offline-recovery';
+      panel.setAttribute('aria-label', 'Offline save recovery');
+      const message = document.createElement('p');
+      message.dataset.recoveryMessage = '';
+      panel.append(message);
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.className = 'btn';
+      download.textContent = 'Download queued drafts';
+      download.addEventListener('click', () => {
+        exportRequested = true;
+        worker.postMessage({ type: 'export-outbox' });
+      });
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'btn';
+      retry.dataset.recoveryRetry = '';
+      retry.textContent = 'Retry refused save';
+      retry.addEventListener('click', () => {
+        retry.disabled = true;
+        worker.postMessage({ type: 'retry-outbox' });
+      });
+      panel.append(download, retry);
+      const main = document.getElementById('main-content');
+      if (main) main.prepend(panel);
+    }
+    if (panel) {
+      panel.hidden = !outboxState.refusedStatus;
+      panel.querySelector('[data-recovery-message]').textContent =
+        'The server refused a save (HTTP ' + outboxState.refusedStatus + '). ' +
+        outboxState.pending + ' queued draft(s) remain on this device. Local changes are not saved on the server. ' +
+        'Download them for review, then retry after resolving the refusal. Later saves are paused.';
+      panel.querySelector('[data-recovery-retry]').disabled = offlineMode || !navigator.onLine;
+    }
+    if (outboxState.refusedStatus) {
+      announce('Save needs attention — queued drafts retained', 0);
+      setSyncRail('offline', 'Save needs attention', outboxState.pending + ' retained draft(s)');
+    } else if (outboxState.pending) {
+      const offline = offlineMode || !navigator.onLine;
+      announce((offline ? 'offline — queued' : 'Changes pending') + ' (' + outboxState.pending + ')', 0);
+      setSyncRail(offline ? 'offline' : 'syncing', offline ? 'Queued offline' : 'Changes pending', outboxState.pending + ' queued');
+    }
+  }
+
   if (worker) worker.onmessage = (e) => {
     const msg = e.data || {};
     switch (msg.type) {
@@ -766,9 +817,30 @@
         }
         announce('synced \u00b7 seq ' + msg.seq, 1500);
         setSyncRail('online', 'Synced', 'Sequence ' + msg.seq);
+        showOutboxState();
         refreshBoardRegion();
         refreshNotificationBadge();
         break;
+      case 'outbox-state':
+        outboxState = { pending: Number(msg.pending) || 0, refusedStatus: Number(msg.refusedStatus) || 0 };
+        showOutboxState();
+        break;
+      case 'outbox-export': {
+        if (!exportRequested) break;
+        exportRequested = false;
+        const commands = (msg.commands || []).map(command => ({
+          ...command, fields: Array.from(new URLSearchParams(command.body || '').entries()),
+        }));
+        const url = URL.createObjectURL(new Blob([JSON.stringify({ version: 1, commands }, null, 2)], { type: 'application/json' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'zzira-queued-drafts.json';
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        break;
+      }
       case 'queued':
         finishOfflineForm(msg.requestId);
         announce('offline \u2014 queued (' + msg.size + ')', 4000);
@@ -783,6 +855,7 @@
       case 'offline':
         announce('offline \u2014 showing local copy', 4000);
         setSyncRail('offline', 'Offline', 'Showing local copy');
+        showOutboxState();
         break;
       case 'revoked':
         worker.terminate();
@@ -1216,11 +1289,13 @@
     // next maintenance tick. This message follows buffered offline commands.
     postWorker({ type: 'network-state', online: true });
     postWorker({ type: 'sync-now' });
+    showOutboxState();
   });
   window.addEventListener('offline', () => {
     offlineMode = true;
     postWorker({ type: 'network-state', online: false });
     setSyncRail('offline', 'Offline', 'Showing local copy');
+    showOutboxState();
   });
 
   // ---- Modal helpers ----

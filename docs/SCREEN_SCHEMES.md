@@ -71,6 +71,12 @@ stay unchanged, invalid durations refuse the entire edit, and clearing one
 estimate retains its unsubmitted counterpart. These additional controls wait
 for server field metadata; legacy offline editors keep their existing fields.
 
+The edit dialog renders native controls, project component/version pickers and
+custom fields in the assigned edit screen’s field order. Hidden fields and
+permission checks still apply; summary remains available on an empty screen.
+Legacy offline replicas retain their existing layout until screen metadata is
+replicated.
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
@@ -81,3 +87,4 @@ Tracked in [PLAN.md](../PLAN.md).
   and field order.
 - Workflow transition screens resolve named screens, but present their fields
   as one list rather than using the screen's tabs ([WORKFLOW_RULES.md](WORKFLOW_RULES.md#gaps)).
+- Edit dialogs flatten screen tabs into the configured field order.

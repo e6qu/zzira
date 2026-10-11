@@ -66,7 +66,7 @@ backlogs remain epic-level, as Jira's do.
 **Metadata and configuration UI.**
 - Team-managed work type scoping, asynchronous priority-scheme updates and a
   larger avatar catalogue remain ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#gaps)).
-- Reproduce screen field order and transition screen tabs ([SCREEN_SCHEMES.md](docs/SCREEN_SCHEMES.md#gaps)).
+- Reproduce view screen field order and edit/transition screen tabs ([SCREEN_SCHEMES.md](docs/SCREEN_SCHEMES.md#gaps)).
 - Add Attachment and Linked work items to the screen catalog.
 - App field options: `projects2` scope, `defaultValue`, property indexes for JQL.
 - Classification level on work items: field, REST value, UI control, JQL,
@@ -271,8 +271,8 @@ Owning reference: [CONFLUENCE_LIVE.md](docs/CONFLUENCE_LIVE.md).
 ## 14. Local-first closure
 
 - Complete offline screen and field metadata for richer work-item edits.
-- Preserve server-refused queued commands for recovery and reconcile their
-  optimistic field values with the authoritative work item.
+- Reconcile refused commands’ optimistic field values with the authoritative
+  work item, retaining the recoverable draft and other pending edits.
 - Permission-shaped replicas and safe queued writes for service, knowledge,
   dashboards, releases, reports and administration.
 - Conflict handling, idempotent replay, outbox ordering and cross-tab ownership when a replica ID is

@@ -26,7 +26,8 @@ test('fields on only the edit screen can be changed in the issue dialog', async 
     };
     const parentKey = await createIssue('Epic', 'Parent epic');
     const issueKey = await createIssue('Task', 'Editable work');
-    for (const [name, fields] of [['Editing', ['summary', 'priority', 'labels', 'duedate', 'parent', 'resolution', 'timetracking']], ['Reading', ['summary']]] as const) {
+    const editOrder = ['labels', 'parent', 'summary', 'timetracking', 'resolution', 'duedate', 'priority'];
+    for (const [name, fields] of [['Editing', editOrder], ['Reading', ['summary']]] as const) {
       const response = await page.request.post('/rest/api/3/screens', { headers, data: { name: `${name} fields ${stamp}` } });
       expect(response.status()).toBe(201);
       const id = String((await response.json()).id);
@@ -45,6 +46,7 @@ test('fields on only the edit screen can be changed in the issue dialog', async 
     await expect(page.locator('#field-priority, #field-labels, #field-duedate, #field-parent, #field-resolution')).toHaveCount(0);
     await page.locator('#edit-issue-button').click();
     const dialog = page.getByRole('dialog', { name: 'Edit issue', exact: true });
+    await expect(dialog.locator('.edit-form-body > label')).toHaveText(['Labels', 'Parent', 'Summary', 'Original estimate', 'Remaining estimate', 'Resolution', 'Due date', 'Priority']);
     await dialog.getByLabel('Priority', { exact: true }).selectOption({ label: 'High' });
     await dialog.getByLabel('Labels', { exact: true }).fill('release, verified');
     await dialog.getByLabel('Due date', { exact: true }).fill('2026-12-01');

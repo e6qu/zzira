@@ -22,12 +22,12 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=68">
-<link rel="preload" href="/static/zzira-worker.wasm?v=48" as="fetch" crossorigin>
+<link rel="stylesheet" href="/static/css/workspace.css?v=69">
+<link rel="preload" href="/static/zzira-worker.wasm?v=50" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js?v=2.0.11" defer></script>
-<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=48" defer></script>
-<script src="/static/app.js?v=87" defer></script>
+<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=50" defer></script>
+<script src="/static/app.js?v=89" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -387,51 +387,7 @@
   <div class="modal-header"><div><span class="eyebrow">{{.Issue.Key}}</span><h2 id="edit-issue-title">Edit issue</h2></div><button type="button" class="icon-button modal-close" onclick="window.zzira.closeModal()" aria-label="Close dialog">×</button></div>
   <form method="post" action="/issues/{{.Issue.Key}}/edit" hx-post="/issues/{{.Issue.Key}}/edit" hx-target="#issue-view-holder" hx-swap="innerHTML">
     <div class="edit-form-body">
-    <label for="edit-summary">Summary</label>
-    <input id="edit-summary" name="summary" value="{{.Issue.Summary}}" required autofocus maxlength="255">
-    {{if .FieldOnEdit "description"}}<label for="edit-description">Description</label>
-    <textarea id="edit-description" name="description" rows="6"{{if .FieldRequired "description"}} required{{end}}>{{adfToText .Issue.Description}}</textarea>{{end}}
-    {{if .EditFields}}
-    {{if .FieldOnEdit "priority"}}<label for="edit-priority">Priority</label><select id="edit-priority" name="priority" {{if .FieldRequired "priority"}}required{{end}}><option value="">None</option>{{$priority := ""}}{{if .Issue.Priority}}{{$priority = .Issue.Priority.ID}}{{end}}{{range .Priorities}}<option value="{{.ID}}" {{if eq .ID $priority}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{end}}
-    {{if .FieldOnEdit "labels"}}<label for="edit-labels">Labels</label><input id="edit-labels" name="labels" value="{{join .Issue.Labels ", "}}" placeholder="Separate labels with commas" {{if .FieldRequired "labels"}}required{{end}}>{{end}}
-    {{if and .CanSchedule (.FieldOnEdit "duedate")}}<label for="edit-duedate">Due date</label><input id="edit-duedate" name="duedate" type="date" value="{{.Issue.DueDate}}" {{if .FieldRequired "duedate"}}required{{end}}>{{end}}
-    {{if .FieldOnEdit "parent"}}<label for="edit-parent">Parent</label><select id="edit-parent" name="parent"><option value="__keep_parent__">Keep current parent{{if .Issue.Parent}}: {{.Issue.Parent.Key}}{{end}}</option>{{if and (not .Issue.IssueType.Subtask) (not (.FieldRequired "parent"))}}<option value="">None</option>{{end}}{{range .ParentOptions}}<option value="{{.Key}}">{{.Name}}</option>{{end}}</select>{{end}}
-    {{if and .CanResolve (.FieldOnEdit "resolution")}}<label for="edit-resolution">Resolution</label><select id="edit-resolution" name="resolution" {{if .FieldRequired "resolution"}}required{{end}}><option value="">Unresolved</option>{{$resolution := ""}}{{if .Issue.Resolution}}{{$resolution = .Issue.Resolution.ID}}{{end}}{{range .Resolutions}}<option value="{{.ID}}" {{if eq .ID $resolution}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{end}}
-    {{if and .TimeTrackingEnabled (.FieldOnEdit "timetracking")}}<label for="edit-original-estimate">Original estimate</label><input id="edit-original-estimate" name="originalEstimate" value="{{.TimeTracking.Original}}" placeholder="Not estimated" {{if .FieldRequired "timetracking"}}aria-describedby="edit-estimates-required"{{end}}><label for="edit-remaining-estimate">Remaining estimate</label><input id="edit-remaining-estimate" name="remainingEstimate" value="{{.TimeTracking.Remaining}}" placeholder="Not estimated" {{if .FieldRequired "timetracking"}}aria-describedby="edit-estimates-required"{{end}}>{{if .FieldRequired "timetracking"}}<small id="edit-estimates-required" class="muted">Enter an original or remaining estimate.</small>{{end}}{{end}}
-    {{end}}
-    {{with .EnvironmentField}}<label for="edit-environment">Environment</label><textarea id="edit-environment" name="environment" rows="4" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="edit-environment-help"{{end}}>{{adfToText (index $.Issue.Fields "environment")}}</textarea>{{if .Description}}<small id="edit-environment-help" class="muted">{{.Description}}</small>{{end}}{{end}}
-    {{if and .CanAssign (.FieldOnEdit "assignee")}}<label for="edit-assignee">Assignee</label>
-      <select id="edit-assignee" name="assignee">
-        <option value="">Unassigned</option>
-        {{$cur := ""}}{{if .Issue.Assignee}}{{$cur = .Issue.Assignee.ID}}{{end}}
-        {{range .Assignees}}
-        <option value="{{.ID}}" {{if eq .ID $cur}}selected{{end}}>{{.DisplayName}}</option>
-        {{end}}
-      </select>
-    {{end}}{{if .CanModifyReporter}}<label for="edit-reporter">Reporter</label>
-      <select id="edit-reporter" name="reporter" {{if .ReporterRequired}}required{{end}}>
-        {{if not .ReporterRequired}}<option value="">None</option>{{end}}
-        {{$reporter := ""}}{{if .Issue.Reporter}}{{$reporter = .Issue.Reporter.ID}}{{end}}
-        {{range .Reporters}}<option value="{{.ID}}" {{if eq .ID $reporter}}selected{{end}}>{{.DisplayName}}</option>{{end}}
-      </select>
-    {{end}}{{if and .CanSetSecurity .SecurityLevels (.FieldOnEdit "security")}}
-    <label for="edit-security">Security</label>
-      <select id="edit-security" name="security">
-        <option value="">Public</option>
-        {{$curSec := .Issue.SecurityLevelID}}
-        {{range .SecurityLevels}}
-        <option value="{{.ID}}" {{if eq .ID $curSec}}selected{{end}}>{{.Name}}</option>
-        {{end}}
-      </select>
-    {{end}}
-    {{range .ChoiceFields}}
-    <label for="edit-{{.Field.ID}}">{{.Field.Name}}</label><input type="hidden" name="{{.Field.ID}}" value=""><select id="edit-{{.Field.ID}}" name="{{.Field.ID}}" multiple size="3" {{if .Field.Required}}required{{end}} {{if .Field.Description}}aria-describedby="edit-help-{{.Field.ID}}"{{end}}>{{$value := .Value}}{{range .Field.Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{if .Field.Description}}<small id="edit-help-{{.Field.ID}}" class="muted">{{.Field.Description}}</small>{{end}}
-    {{end}}
-    {{range .CustomFields}}
-    <label for="field-{{.ID}}">{{.Name}}</label>
-      {{template "custom_field_control" (customFieldControl . "field-" "")}}
-      {{if .Description}}<small id="edit-help-{{.ID}}" class="muted">{{.Description}}</small>{{end}}
-    {{end}}
+    {{range .OrderedEditFields}}{{template "edit_dialog_field" .}}{{end}}
     {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
     </div>
     <div class="modal-actions">

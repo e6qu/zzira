@@ -33,14 +33,14 @@ async function requiredAsset(path, label) {
   throw new Error(`${label} unavailable: ${lastError?.message ?? lastError}`);
 }
 
-importScripts('/static/sqlite/sqlite3.js?v=3', '/static/replica-storage.js?v=1', '/static/wasm/wasm_exec.js?go=1.27.2&v=48');
+importScripts('/static/sqlite/sqlite3.js?v=3', '/static/replica-storage.js?v=1', '/static/wasm/wasm_exec.js?go=1.27.2&v=50');
 
 async function startReplica() {
     boot('boot: sqlite3.js + wasm_exec.js imported');
     // The Go command runtime is a required part of the local-first client.
     // Start loading it alongside SQLite so an immediate offline transition
     // cannot interrupt a later, serial fetch after the page is usable.
-    const goWasm = requiredAsset('/static/zzira-worker.wasm?v=48', 'go worker wasm');
+    const goWasm = requiredAsset('/static/zzira-worker.wasm?v=50', 'go worker wasm');
     const sqlite3 = await sqlite3InitModule({
       instantiateWasm(info, receive) {
         (async () => {
