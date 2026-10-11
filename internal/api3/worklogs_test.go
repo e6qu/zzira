@@ -8,8 +8,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/e6qu/zzira/internal/commands"
+	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
 )
 
@@ -92,7 +94,7 @@ func TestWorklogOperations(t *testing.T) {
 	source, target := newIssue("Worklog source"), newIssue("Worklog target")
 	newWorklog := func(issueKey string, seconds int) string {
 		t.Helper()
-		created := call(adminID, "POST", "/rest/api/3/issue/"+issueKey+"/worklog", `{"timeSpentSeconds":`+strconv.Itoa(seconds)+`}`, 201)
+		created := call(adminID, "POST", "/rest/api/3/issue/"+issueKey+"/worklog", `{"timeSpentSeconds":`+strconv.Itoa(seconds)+`,"started":"2026-10-01T11:34:56.123+0300"}`, 201)
 		var worklog struct {
 			ID string `json:"id"`
 		}
@@ -102,6 +104,52 @@ func TestWorklogOperations(t *testing.T) {
 		return worklog.ID
 	}
 	first := newWorklog(source, 3600)
+	path := "/rest/api/3/issue/" + source + "/worklog"
+	decode := func(response *httptest.ResponseRecorder) map[string]any {
+		t.Helper()
+		var result map[string]any
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	original := decode(call(adminID, "GET", path+"/"+first, "", 200))
+	if original["started"] != "2026-10-01T08:34:56.123+0000" || original["startsAt"] != nil || original["issueId"] == nil || original["created"] != original["updated"] {
+		t.Fatalf("incorrect worklog metadata: %v", original)
+	}
+	self := original["self"].(string)
+	if self != "https://zzira.test/rest/api/3/issue/"+original["issueId"].(string)+"/worklog/"+first {
+		t.Fatal(self)
+	}
+	call(adminID, "GET", strings.TrimPrefix(self, "https://zzira.test"), "", 200)
+	for _, raw := range []string{`null`, `""`, `"2026-02-30T09:00:00Z"`, `"2026-10-01T09:00:00"`, `{}`} {
+		call(adminID, "POST", path, `{"timeSpentSeconds":60,"started":`+raw+`}`, 400)
+		call(adminID, "PUT", path+"/"+first, `{"started":`+raw+`}`, 400)
+	}
+	call(adminID, "POST", path, `{"timeSpentSeconds":60,"visibility":{"type":"group","value":"private"}}`, 400)
+	call(adminID, "PUT", path+"/"+first, `{"visibility":{"type":"role","value":"Administrators"}}`, 400)
+	// An edit by another administrator must preserve authorship and creation time.
+	exec(`UPDATE memberships SET role='admin' WHERE workspace_id=$1 AND user_id=$2`, workspaceID, outsiderID)
+	exec(`UPDATE worklogs SET updated_at='2020-01-01' WHERE workspace_id=$1 AND jira_id::text=$2`, workspaceID, first)
+	edited := decode(call(outsiderID, "PUT", path+"/"+first, `{"started":"2026-09-30T07:00:00Z"}`, 200))
+	if edited["author"].(map[string]any)["accountId"] != adminID || edited["updateAuthor"].(map[string]any)["accountId"] != outsiderID || edited["created"] != original["created"] || edited["updated"] == "2020-01-01T00:00:00.000+0000" || edited["started"] != "2026-09-30T07:00:00.000+0000" {
+		t.Fatalf("edit metadata: %v", edited)
+	}
+	snapshot, err := st.BootstrapSnapshot(ctx, workspaceID, outsiderID)
+	if err != nil || len(snapshot.Worklogs) != 1 || snapshot.Worklogs[0].UpdateAuthorID != outsiderID || snapshot.Worklogs[0].Started != "2026-09-30T07:00:00.000Z" {
+		t.Fatalf("replica snapshot metadata: %+v %v", snapshot, err)
+	}
+	var payload []byte
+	if err := st.Pool.QueryRow(ctx, `SELECT payload FROM actions WHERE workspace_id=$1 AND entity_type='worklog' ORDER BY seq DESC LIMIT 1`, workspaceID).Scan(&payload); err != nil {
+		t.Fatal(err)
+	}
+	var upsert models.WorklogUpsertPayload
+	if err := json.Unmarshal(payload, &upsert); err != nil || upsert.Worklog.UpdateAuthorID != outsiderID || upsert.Worklog.Started != "2026-09-30T07:00:00.000Z" {
+		t.Fatalf("sync action lost worklog metadata: %s (%v)", payload, err)
+	}
+
+	exec(`UPDATE memberships SET role='member' WHERE workspace_id=$1 AND user_id=$2`, workspaceID, outsiderID)
+	exec(`DELETE FROM role_bindings WHERE scope_type='project' AND scope_id=$1 AND principal_id=$2`, projectID, outsiderID)
 
 	// The single read and delete answer for a worklog on this work item only.
 	read := call(adminID, "GET", "/rest/api/3/issue/"+source+"/worklog/"+first, "", 200)
@@ -130,12 +178,37 @@ func TestWorklogOperations(t *testing.T) {
 
 	// Omitting the comment keeps the one already stored.
 	kept := call(adminID, "PUT", "/rest/api/3/issue/"+source+"/worklog/"+first, `{"timeSpentSeconds":1800}`, 200)
+	if decode(kept)["started"] != "2026-09-30T07:00:00.000+0000" {
+		t.Fatal("omitted started changed the work-start time")
+	}
 	if !strings.Contains(kept.Body.String(), `"revised"`) {
 		t.Fatal(kept.Body.String())
 	}
 
 	// The bulk fetch returns the worklogs asked for, across work items.
 	second := newWorklog(target, 900)
+	// Paging keeps the filtered total, including empty pages. Boundary dates
+	// are strict, and properties are expanded only when requested.
+	call(adminID, "POST", "/rest/api/3/issue/"+target+"/worklog/move", `{"ids":["`+second+`"],"issueIdOrKey":"`+source+`"}`, 204)
+	for _, item := range []struct {
+		query                    string
+		total, count, start, max int
+	}{
+		{"?startAt=0&maxResults=1", 2, 1, 0, 1}, {"?startAt=1&maxResults=1", 2, 1, 1, 1}, {"?startAt=2&maxResults=1", 2, 0, 2, 1}, {"?maxResults=0", 2, 0, 0, 0},
+		{"?startedAfter=" + strconv.FormatInt(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC).UnixMilli(), 10), 1, 1, 0, 5000},
+		{"?startedBefore=" + strconv.FormatInt(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC).UnixMilli(), 10), 1, 1, 0, 5000},
+		{"?startedAfter=" + strconv.FormatInt(time.Date(2026, 10, 1, 8, 34, 56, 123000000, time.UTC).UnixMilli(), 10), 0, 0, 0, 5000},
+	} {
+		page := decode(call(adminID, "GET", path+item.query, "", 200))
+		if int(page["total"].(float64)) != item.total || len(page["worklogs"].([]any)) != item.count || int(page["startAt"].(float64)) != item.start || int(page["maxResults"].(float64)) != item.max {
+			t.Fatalf("%s: %v", item.query, page)
+		}
+	}
+	for _, query := range []string{"?startAt=-1", "?maxResults=no", "?startedAfter=later", "?startedBefore=-1", "?startedAfter=9223372036854775807"} {
+		call(adminID, "GET", path+query, "", 400)
+	}
+	call(adminID, "POST", path+"/move", `{"ids":["`+second+`"],"issueIdOrKey":"`+target+`"}`, 204)
+
 	listed := call(adminID, "POST", "/rest/api/3/worklog/list", `{"ids":["`+first+`","`+second+`"]}`, 200)
 	var beans []struct {
 		ID      string `json:"id"`
@@ -201,6 +274,26 @@ func TestWorklogOperations(t *testing.T) {
 		t.Fatal(keys.Body.String())
 	}
 	call(adminID, "GET", "/rest/api/3/issue/"+target+"/worklog/"+second+"/properties/missing", "", 404)
+
+	expanded := decode(call(adminID, "GET", "/rest/api/3/issue/"+target+"/worklog?expand=properties", "", 200))
+	for _, value := range expanded["worklogs"].([]any) {
+		bean := value.(map[string]any)
+		properties, ok := bean["properties"].([]any)
+		if !ok {
+			t.Fatal("properties expansion missing")
+		}
+		if bean["id"] == second && (len(properties) != 1 || properties[0].(map[string]any)["key"] != "billing") {
+			t.Fatalf("expanded properties: %v", bean)
+		}
+	}
+	singleExpanded := decode(call(adminID, "GET", "/rest/api/3/issue/"+target+"/worklog/"+second+"?expand=properties", "", 200))
+	if len(singleExpanded["properties"].([]any)) != 1 {
+		t.Fatal(singleExpanded)
+	}
+	plain := decode(call(adminID, "GET", "/rest/api/3/issue/"+target+"/worklog/"+second, "", 200))
+	if plain["properties"] != nil {
+		t.Fatal("unrequested properties included")
+	}
 	call(adminID, "DELETE", propertyPath, "", 204)
 	call(adminID, "DELETE", propertyPath, "", 404)
 	// A property on a worklog that is not on this work item is not reachable.

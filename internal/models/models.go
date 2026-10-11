@@ -332,6 +332,7 @@ type IssueView struct {
 	Transitions       []WorkflowTransition
 	History           []ChangelogEntry
 	Attachments       []Attachment
+	WorklogDraft      WorklogDraft
 	Worklogs          []Worklog
 	Activity          []IssueActivityItem
 	Assignees         []User
@@ -362,12 +363,18 @@ type IssueView struct {
 	AppIssueContent                   []AppIssueContent
 }
 
+// WorklogDraft retains refused inputs from the issue's work logging form.
+type WorklogDraft struct {
+	TimeSpent, Started, Comment, EstimateMode, NewEstimate, Error string
+}
+
 // IssueActivityItem is one entry in the issue's chronological activity ledger.
 type IssueActivityItem struct {
 	Kind             string
 	ID               string
 	AuthorID         string
 	AuthorName       string
+	Started          string
 	Created          string
 	Body             json.RawMessage
 	TimeSpentSeconds int

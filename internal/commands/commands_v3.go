@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime"
 	"strings"
+	"time"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/store"
@@ -34,6 +35,11 @@ func (s *Service) worklogPermitted(ctx context.Context, workspaceID, actorID str
 // AddWorklogWithEstimate logs work with Work on issues and moves the remaining
 // estimate as the adjustment says.
 func (s *Service) AddWorklogWithEstimate(ctx context.Context, actorID, workspaceID, issueIDOrKey string, comment json.RawMessage, seconds int, estimate store.WorklogEstimate) (*models.Worklog, *models.Action, error) {
+	return s.AddWorklogAt(ctx, actorID, workspaceID, issueIDOrKey, comment, seconds, estimate, nil)
+}
+
+// AddWorklogAt logs work with the same permissions and estimate adjustments.
+func (s *Service) AddWorklogAt(ctx context.Context, actorID, workspaceID, issueIDOrKey string, comment json.RawMessage, seconds int, estimate store.WorklogEstimate, started *time.Time) (*models.Worklog, *models.Action, error) {
 	issue, err := s.visibleIssue(ctx, actorID, workspaceID, issueIDOrKey)
 	if err != nil {
 		return nil, nil, err
@@ -58,7 +64,7 @@ func (s *Service) AddWorklogWithEstimate(ctx context.Context, actorID, workspace
 	if !allowed {
 		return nil, nil, ErrWorklogPermission
 	}
-	worklog, action, err := s.Store.CreateWorklogWithEstimate(ctx, actorID, workspaceID, issue.ID, comment, seconds, estimate)
+	worklog, action, err := s.Store.CreateWorklogAt(ctx, actorID, workspaceID, issue.ID, comment, seconds, estimate, started)
 	if err == nil && estimate.Notify {
 		err = s.deliverIssueEvent(ctx, workspaceID, actorID, issue, action, 10, "worklog_created", "logged work on")
 	}
@@ -68,6 +74,11 @@ func (s *Service) AddWorklogWithEstimate(ctx context.Context, actorID, workspace
 // UpdateWorklog changes logged work with Edit all worklogs, or Edit own
 // worklogs for the actor's own, moving the remaining estimate as asked.
 func (s *Service) UpdateWorklog(ctx context.Context, actorID, workspaceID, worklogID string, comment json.RawMessage, seconds *int, estimate store.WorklogEstimate) (*models.Worklog, *models.Action, error) {
+	return s.UpdateWorklogAt(ctx, actorID, workspaceID, worklogID, comment, seconds, estimate, nil)
+}
+
+// UpdateWorklogAt changes the optional work-start time after authorizing the edit.
+func (s *Service) UpdateWorklogAt(ctx context.Context, actorID, workspaceID, worklogID string, comment json.RawMessage, seconds *int, estimate store.WorklogEstimate, started *time.Time) (*models.Worklog, *models.Action, error) {
 	w, err := s.Store.WorklogByID(ctx, workspaceID, worklogID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("worklog %q not found", worklogID)
@@ -93,7 +104,7 @@ func (s *Service) UpdateWorklog(ctx context.Context, actorID, workspaceID, workl
 	if err = s.requireEditable(ctx, issue); err != nil {
 		return nil, nil, err
 	}
-	worklog, action, err := s.Store.UpdateWorklogWithEstimate(ctx, actorID, workspaceID, w.ID, comment, seconds, estimate)
+	worklog, action, err := s.Store.UpdateWorklogAt(ctx, actorID, workspaceID, w.ID, comment, seconds, estimate, started)
 	if err == nil && estimate.Notify {
 		err = s.deliverIssueEvent(ctx, workspaceID, actorID, issue, action, 15, "worklog_updated", "updated work logged on")
 	}

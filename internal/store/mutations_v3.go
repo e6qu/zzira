@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -12,14 +13,19 @@ import (
 const worklogJoin = `
 SELECT w.id, w.issue_id, w.author_id, COALESCE(u.display_name,''),
        COALESCE(w.comment::text,''), w.time_spent_seconds,
-       to_char(w.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), w.jira_id
-FROM worklogs w LEFT JOIN users u ON u.id = w.author_id
+       to_char(w.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), w.jira_id,
+       to_char(w.started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+       to_char(w.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+       w.updated_by, COALESCE(editor.display_name,''), i.jira_id
+FROM worklogs w JOIN issues i ON i.id=w.issue_id AND i.workspace_id=w.workspace_id
+LEFT JOIN users u ON u.id = w.author_id
+LEFT JOIN users editor ON editor.id=w.updated_by
 `
 
 func scanWorklog(row pgx.Row) (*models.Worklog, error) {
 	w := &models.Worklog{}
 	var comment string
-	if err := row.Scan(&w.ID, &w.IssueID, &w.AuthorID, &w.AuthorName, &comment, &w.TimeSpentSeconds, &w.Created, &w.JiraID); err != nil {
+	if err := row.Scan(&w.ID, &w.IssueID, &w.AuthorID, &w.AuthorName, &comment, &w.TimeSpentSeconds, &w.Created, &w.JiraID, &w.Started, &w.Updated, &w.UpdateAuthorID, &w.UpdateAuthorName, &w.IssueJiraID); err != nil {
 		return nil, err
 	}
 	if comment != "" {
@@ -35,6 +41,11 @@ func (s *Store) CreateWorklog(ctx context.Context, actorID, workspaceID, issueID
 // CreateWorklogWithEstimate logs work and moves the remaining estimate as the
 // adjustment says.
 func (s *Store) CreateWorklogWithEstimate(ctx context.Context, actorID, workspaceID, issueID string, comment json.RawMessage, seconds int, estimate WorklogEstimate) (*models.Worklog, *models.Action, error) {
+	return s.CreateWorklogAt(ctx, actorID, workspaceID, issueID, comment, seconds, estimate, nil)
+}
+
+// CreateWorklogAt records a supplied work-start time, or the transaction time.
+func (s *Store) CreateWorklogAt(ctx context.Context, actorID, workspaceID, issueID string, comment json.RawMessage, seconds int, estimate WorklogEstimate, started *time.Time) (*models.Worklog, *models.Action, error) {
 	if err := ValidateWorklogEstimate(estimate); err != nil {
 		return nil, nil, err
 	}
@@ -49,8 +60,8 @@ func (s *Store) CreateWorklogWithEstimate(ctx context.Context, actorID, workspac
 		commentArg = comment
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO worklogs (id, issue_id, workspace_id, author_id, comment, time_spent_seconds)
-		VALUES ($1,$2,$3,$4,$5,$6)`, id, issueID, workspaceID, actorID, commentArg, seconds); err != nil {
+		INSERT INTO worklogs (id, issue_id, workspace_id, author_id, updated_by, comment, time_spent_seconds, started_at, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$4,$5,$6,COALESCE($7::timestamptz,$8::timestamptz,now()),COALESCE($8::timestamptz,now()),COALESCE($8::timestamptz,now()))`, id, issueID, workspaceID, actorID, commentArg, seconds, started, actionTimeFrom(ctx)); err != nil {
 		return nil, nil, err
 	}
 	seq, err := nextSeq(ctx, tx, workspaceID)

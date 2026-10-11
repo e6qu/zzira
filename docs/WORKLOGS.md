@@ -11,10 +11,10 @@ Part of the [Jira platform](JIRA_PLATFORM.md); see
 
 | Route | Behavior |
 |---|---|
-| `GET /rest/api/3/issue/{issueIdOrKey}/worklog` | All of the work item's worklogs |
-| `POST /rest/api/3/issue/{issueIdOrKey}/worklog` | Log work (`timeSpent` or positive `timeSpentSeconds`, optional ADF `comment`) |
+| `GET /rest/api/3/issue/{issueIdOrKey}/worklog` | Paged worklogs; optional start-time filters and property expansion |
+| `POST /rest/api/3/issue/{issueIdOrKey}/worklog` | Log work (`timeSpent` or positive `timeSpentSeconds`, optional timezone-bearing `started` and ADF `comment`) |
 | `GET /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` | One worklog; one on another work item is 404 |
-| `PUT /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` | Change time and comment; an omitted comment is kept |
+| `PUT /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` | Change time, start time and comment; omitted values are kept |
 | `DELETE /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` | Delete one |
 | `DELETE /rest/api/3/issue/{issueIdOrKey}/worklog` | Delete every worklog on the work item |
 | `POST /rest/api/3/issue/{issueIdOrKey}/worklog/move` | Move 1 to 1,000 worklogs to another work item |
@@ -30,6 +30,22 @@ Log, change and delete accept `adjustEstimate`, `newEstimate`, `reduceBy`,
 [TIME_TRACKING.md](TIME_TRACKING.md).
 
 ## Behavior
+
+- **Dates and authors.** `started` records when work happened independently of
+  `created`. Omitting it on create uses the recording time; omitting it on update
+  preserves the existing start time. Supply an ISO timestamp with a timezone,
+  such as `2026-10-01T09:00:00.000+0000`; invalid or null values are refused.
+  `updated` and `updateAuthor` record the last change, while the original author
+  and creation time remain intact. Responses include the numeric `issueId` and
+  a working `self` link scoped to that work item. Existing logs inherit their
+  creation time as their start time; their original author is the migration's
+  fallback editor because earlier editor identities were not stored.
+- **Collection reads.** `startAt` defaults to 0; `maxResults` defaults to 5,000
+  and is capped at 5,000. Non-negative values are required. `startedAfter` and
+  `startedBefore` are exclusive epoch-millisecond bounds applied before paging;
+  `total` counts the filtered collection. `expand=properties` adds each log's
+  property array, including an empty array where appropriate. Single reads also
+  accept that expansion. Property expansion is fetched in one batch.
 
 - **Feeds.** Worklogs carry `updated_at`, stamped on change and on move, so
   the updated feed reports moved worklogs. A delete leaves a tombstone
@@ -60,23 +76,25 @@ Log, change and delete accept `adjustEstimate`, `newEstimate`, `reduceBy`,
 ## UI
 
 The work item page logs work (`POST /issues/{key}/worklogs`) and deletes it
-(`POST /issues/{key}/worklogs/{id}/delete`).
+(`POST /issues/{key}/worklogs/{id}/delete`). The optional “Work started (UTC)”
+input records earlier work; leaving it blank uses the submission time. Refused
+submissions retain duration, date, description and remaining-estimate choices.
+The estimate options occupy their own fieldset so the description does not
+cover the radio controls. Activity displays the recorded start time separately from the logging time,
+including when the offline replica renders it.
 
 ## Gaps
 
 See [PLAN.md](../PLAN.md).
 
-- No `started` time: create and update ignore it and the bean reports a
-  non-Jira `startsAt` equal to `created`.
-- The bean's `updated` and `updateAuthor` repeat `created` and `author`; it
-  lacks `issueId`, and `self` omits the work item.
-- The per-item list ignores `startAt`, `maxResults`, `startedAfter`,
-  `startedBefore` and `expand=properties`.
-- No worklog `visibility` restriction to a group or role.
+- Worklog `visibility` restrictions to a group or role remain unimplemented.
+  Create and update refuse a supplied non-null restriction with a field error;
+  they never silently save a restricted note as unrestricted.
 
 ## Tests
 
-`internal/api3/worklogs_test.go`, `internal/api3/time_tracking_test.go`.
+`internal/api3/worklogs_test.go`, `internal/api3/time_tracking_test.go`,
+`internal/web/worklog_started_test.go`, `e2e/worklog_started.spec.ts`.
 
 ## See also
 

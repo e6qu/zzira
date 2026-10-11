@@ -22,12 +22,12 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=59">
-<link rel="preload" href="/static/zzira-worker.wasm?v=14" as="fetch" crossorigin>
+<link rel="stylesheet" href="/static/css/workspace.css?v=60">
+<link rel="preload" href="/static/zzira-worker.wasm?v=15" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js?v=2.0.11" defer></script>
-<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=14" defer></script>
-<script src="/static/app.js?v=50" defer></script>
+<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=15" defer></script>
+<script src="/static/app.js?v=51" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -329,18 +329,23 @@
         </form>
         {{end}}{{if and .CanLogWork .TimeTrackingEnabled}}<form class="worklog-form" method="post" action="/issues/{{.Issue.Key}}/worklogs" hx-post="/issues/{{.Issue.Key}}/worklogs" hx-target="#issue-view-holder" hx-swap="innerHTML">
           <fieldset><legend>{{if .CanComment}}Or log work{{else}}Log work{{end}}</legend><label for="worklog-time">Time spent</label>
-          <input id="worklog-time" name="timeSpent" placeholder="1h 30m" required class="worklog-seconds">
+{{with .WorklogDraft.Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+          <input id="worklog-time" name="timeSpent" value="{{.WorklogDraft.TimeSpent}}" placeholder="1h 30m" required class="worklog-seconds">
+          <label for="worklog-started">Work started (UTC) <span class="muted">optional</span></label>
+          <input id="worklog-started" type="datetime-local" step="1" name="started" value="{{.WorklogDraft.Started}}" aria-describedby="worklog-started-help">
+          <small id="worklog-started-help">Leave blank to use the time you log this work.</small>
           <fieldset class="worklog-estimate"><legend>Remaining estimate</legend>
-          <label><input type="radio" name="adjustEstimate" value="auto" checked> Reduce by the time spent</label>
-          <label><input type="radio" name="adjustEstimate" value="leave"> Leave it as it is</label>
-          <label><input type="radio" name="adjustEstimate" value="new"> Set to</label><label for="worklog-new-estimate" class="sr-only">New remaining estimate</label><input id="worklog-new-estimate" name="newEstimate" placeholder="2h"></fieldset>
-          <label for="worklog-comment">Work description <span class="muted">optional</span></label><input id="worklog-comment" name="comment" placeholder="What did you work on?" class="worklog-comment"><button type="submit" class="btn">Log time</button></fieldset>
+          <label><input type="radio" name="adjustEstimate" value="auto" {{if or (eq .WorklogDraft.EstimateMode "") (eq .WorklogDraft.EstimateMode "auto")}}checked{{end}}> Reduce by the time spent</label>
+          <label><input type="radio" name="adjustEstimate" value="leave" {{if eq .WorklogDraft.EstimateMode "leave"}}checked{{end}}> Leave it as it is</label>
+          <label><input type="radio" name="adjustEstimate" value="new" {{if eq .WorklogDraft.EstimateMode "new"}}checked{{end}}> Set to</label><label for="worklog-new-estimate" class="sr-only">New remaining estimate</label><input id="worklog-new-estimate" name="newEstimate" value="{{.WorklogDraft.NewEstimate}}" placeholder="2h"></fieldset>
+          <label for="worklog-comment">Work description <span class="muted">optional</span></label><input id="worklog-comment" name="comment" value="{{.WorklogDraft.Comment}}" placeholder="What did you work on?" class="worklog-comment"><button type="submit" class="btn">Log time</button></fieldset>
         </form>{{end}}</details>{{end}}
         <div class="activity-ledger" data-activity-ledger>
         {{range .Activity}}<article class="activity-entry activity-{{.Kind}}{{if eq .Kind "worklog"}} worklog{{end}}" data-activity-kind="{{.Kind}}" data-created="{{.Created}}" id="activity-{{.Kind}}-{{.ID}}"{{if ne .Kind "comment"}} hidden{{end}}>
           <div class="activity-marker" aria-hidden="true">{{if eq .Kind "comment"}}C{{else if eq .Kind "worklog"}}T{{else}}H{{end}}</div>
           <div class="activity-content"><header><span class="avatar" aria-hidden="true"><span>{{initials .AuthorName}}</span></span><strong>{{.AuthorName}}</strong><span class="activity-verb">{{if eq .Kind "comment"}}commented{{else if eq .Kind "worklog"}}logged <span class="lozenge">{{timeSpent .TimeSpentSeconds}}</span>{{else}}changed this work item{{end}}</span><time datetime="{{.Created}}">{{.Created}}</time>
           {{if and (eq .Kind "worklog") .CanDelete}}<form method="post" action="/issues/{{$.Issue.Key}}/worklogs/{{.ID}}/delete" hx-delete="/issues/{{$.Issue.Key}}/worklogs/{{.ID}}" hx-target="#issue-view-holder" hx-swap="innerHTML" hx-confirm="Delete this work log?"><button type="submit" class="icon-danger" aria-label="Delete work log from {{.Created}}">×</button></form>{{end}}</header>
+{{if and (eq .Kind "worklog") .Started}}<p class="muted">Work started <time datetime="{{.Started}}">{{.Started}}</time></p>{{end}}
           {{if eq .Kind "history"}}<ul class="change-list">{{range .Items}}<li><strong>{{.Field}}</strong> changed{{if .FromString}} from “{{.FromString}}”{{end}}{{if .ToString}} to “{{.ToString}}”{{end}}</li>{{end}}</ul>{{else if .Body}}<div class="comment-body">{{adfHTML .Body}}</div>{{end}}</div>
         </article>{{else}}<div class="empty-state" data-activity-empty><strong>No activity yet</strong><small>Comments, work logs, and field changes will appear here.</small></div>{{end}}
         <div class="empty-state" data-activity-filter-empty {{if .Comments}}hidden{{end}}><strong>No matching activity</strong><small>Choose another activity filter.</small></div>
