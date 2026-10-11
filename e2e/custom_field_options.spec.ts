@@ -122,7 +122,7 @@ test('site administrators give a select field options and the create form offers
 
 // A multi-select field offers its options as a multiple choice and keeps every
 // chosen option on the work item.
-test('a multi-select field keeps every chosen option', async ({ page }) => {
+test('a multi-select field saves and clears every chosen option', async ({ page }) => {
   await login(page, 'demo@zzira.dev', 'demo1234');
   const stamp = Date.now().toString(36);
   const auth = { Authorization: apiAuthHeader() };
@@ -136,7 +136,7 @@ test('a multi-select field keeps every chosen option', async ({ page }) => {
   const projectID = String((await created.json()).id);
 
   const field = await page.request.post('/rest/api/3/field', {
-    headers: auth, data: { name: `Platforms ${stamp}`, type: 'com.atlassian.jira.plugin.system.customfieldtypes:multiselect' },
+    headers: auth, data: { name: `Platforms ${stamp}`, description: 'Choose all supported platforms', type: 'com.atlassian.jira.plugin.system.customfieldtypes:multiselect' },
   });
   expect(field.status()).toBe(201);
   const fieldID = (await field.json()).id;
@@ -166,6 +166,66 @@ test('a multi-select field keeps every chosen option', async ({ page }) => {
   expect(stored.fields[fieldID].map((option: { id: string; value: string }) => [option.id, option.value])).toEqual([[ids.iOS, 'iOS'], [ids.Web, 'Web']]);
   const found = await (await page.request.get(`/rest/api/3/search/jql?fields=summary&jql=${encodeURIComponent(`${fieldID} = ${ids.Web} AND project = ${projectKey}`)}`, { headers: auth })).json();
   expect(found.issues.map((issue: { key: string }) => issue.key)).toEqual([issueKey]);
+
+  const savedPlatforms = async () => {
+    const response = await page.request.get(`/rest/api/3/issue/${issueKey}?fields=${fieldID}`, { headers: auth });
+    expect(response.status()).toBe(200);
+    const value = (await response.json()).fields[fieldID];
+    return (value ?? []).map((option: { id: string }) => option.id);
+  };
+  await page.locator('#edit-issue-button').click();
+  const edit = page.getByRole('dialog', { name: 'Edit issue', exact: true });
+  const editedPlatforms = edit.locator(`#field-${fieldID}`);
+  await expect(editedPlatforms).toBeVisible();
+  await expect(editedPlatforms).toHaveValues([ids.iOS, ids.Web]);
+  await expect(editedPlatforms).toHaveAttribute('aria-describedby', `field-help-${fieldID}`);
+  await expect(edit.locator(`#field-help-${fieldID}`)).toHaveText('Choose all supported platforms');
+  await editedPlatforms.selectOption([ids.iOS, ids.Web]);
+  await edit.getByRole('button', { name: 'Save changes' }).click();
+  await expect(edit).not.toBeVisible();
+  expect(await savedPlatforms()).toEqual([ids.iOS, ids.Web]);
+  await page.locator('#edit-issue-button').click();
+  await expect(editedPlatforms).toHaveValues([ids.iOS, ids.Web]);
+  await editedPlatforms.selectOption([]);
+  await edit.getByLabel('Summary', { exact: true }).fill('   ');
+  await edit.getByRole('button', { name: 'Save changes' }).click();
+  await expect(edit.getByRole('alert')).toContainText('summary is required');
+  await expect(editedPlatforms).toHaveValues([]);
+  expect(await savedPlatforms()).toEqual([ids.iOS, ids.Web]);
+  await edit.getByLabel('Summary', { exact: true }).fill(`Ship everywhere ${stamp}`);
+  await edit.getByRole('button', { name: 'Save changes' }).click();
+  await expect(edit).not.toBeVisible();
+  await page.reload();
+  expect(await savedPlatforms()).toEqual([]);
+
+  const more = page.locator('.more-fields');
+  if (!(await more.evaluate((element) => (element as HTMLDetailsElement).open))) {
+    await more.locator('summary').click();
+  }
+  const inline = page.locator(`#detail-field-${fieldID}`);
+  await expect(inline).toHaveAttribute('aria-describedby', `detail-field-help-${fieldID}`);
+  await expect(page.locator(`#detail-field-help-${fieldID}`)).toHaveText('Choose all supported platforms');
+  const saveInline = async () => {
+    const root = await page.locator('#issue-root').elementHandle();
+    await Promise.all([
+      page.waitForResponse((response) => response.url().endsWith(`/issues/${issueKey}/fields`) && response.request().method() === 'POST'),
+      page.getByRole('button', { name: `Save Platforms ${stamp}` }).click(),
+    ]);
+    await expect.poll(() => root!.evaluate((element) => !element.isConnected)).toBe(true);
+  };
+  await inline.selectOption([ids.Android, ids.Web]);
+  await saveInline();
+  expect(await savedPlatforms()).toEqual([ids.Android, ids.Web]);
+  const summaryOnly = await page.request.post(`/issues/${issueKey}/edit`, { form: { summary: `Ship everywhere ${stamp}` } });
+  expect(summaryOnly.status()).toBe(200);
+  expect(await savedPlatforms()).toEqual([ids.Android, ids.Web]);
+  const omitted = await page.request.post(`/issues/${issueKey}/fields`, { form: { field: `custom:${fieldID}` } });
+  expect(omitted.status()).toBe(400);
+  expect(await savedPlatforms()).toEqual([ids.Android, ids.Web]);
+  await inline.selectOption([]);
+  await saveInline();
+  await page.reload();
+  expect(await savedPlatforms()).toEqual([]);
 });
 
 // The create form offers people, groups, dates, links and a cascading select's

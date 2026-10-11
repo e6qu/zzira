@@ -75,6 +75,9 @@ The edit dialog renders native controls, project component/version pickers and
 custom fields in the assigned edit screen’s tabs and field order. Tabs without
 usable controls are omitted; one usable tab remains a plain form. Hidden fields
 and permission checks still apply; summary remains available on an empty screen.
+Custom multi-select controls save every selected option and explicitly clear when
+all options are deselected, in both the dialog and inline editors. Omitted custom
+fields remain unchanged; help text is associated with each editor’s own control.
 Arrow keys, Home and End select tabs. Switching tabs retains the draft, and
 required fields on inactive tabs are revealed when they block submission.
 Legacy offline replicas retain their existing layout until screen metadata is
