@@ -50,15 +50,16 @@ type planReleaseRow struct {
 }
 
 type planSettingsData struct {
-	Estimations []string
-	DateFields  []struct{ Value, Label string }
-	Plan        store.Plan
-	Lead        string
-	Sources     []planSourceChoice
-	IssueTypes  []models.IssueType
-	Statuses    []models.Status
-	Permissions []planPermissionRow
-	Releases    []planReleaseRow
+	Estimations                  []string
+	DateFields                   []struct{ Value, Label string }
+	StartDateValue, EndDateValue string
+	Plan                         store.Plan
+	Lead                         string
+	Sources                      []planSourceChoice
+	IssueTypes                   []models.IssueType
+	Statuses                     []models.Status
+	Permissions                  []planPermissionRow
+	Releases                     []planReleaseRow
 	// Versions are every version the plan's projects have, offered to a new
 	// cross-project release.
 	Versions []planVersionChoice
@@ -158,12 +159,20 @@ func planScheduling(r *http.Request, plan *store.Plan) error {
 		if value == "" {
 			continue
 		}
+		if number, custom := strings.CutPrefix(value, "DateCustomField:"); custom {
+			id, err := strconv.ParseInt(number, 10, 64)
+			if err != nil || id <= 0 {
+				return errors.New("choose a valid date custom field")
+			}
+			field.Type, field.DateCustomFieldID = "DateCustomField", &id
+			continue
+		}
 		known := false
 		for _, choice := range planDateFields {
 			known = known || choice.Value == value
 		}
 		if !known {
-			return errors.New("a plan reads its dates from Target start, Target end or the due date")
+			return errors.New("choose Target start, Target end, Due date or a date custom field")
 		}
 		field.Type, field.DateCustomFieldID = value, nil
 	}
@@ -255,11 +264,57 @@ func (h *Handler) PlanSettingsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "You cannot edit this plan.", http.StatusForbidden)
 		return
 	}
+	h.writePlanSettings(w, r, user, workspaceID, plan, "", http.StatusOK)
+}
+
+func planDateFieldValue(field store.PlanDateField) string {
+	if field.Type == "DateCustomField" && field.DateCustomFieldID != nil {
+		return "DateCustomField:" + strconv.FormatInt(*field.DateCustomFieldID, 10)
+	}
+	return field.Type
+}
+
+func (h *Handler) writePlanSettings(w http.ResponseWriter, r *http.Request, user *models.User, workspaceID string, plan store.Plan, message string, status int) {
 	data := planSettingsData{
-		Plan: plan, Excluded: map[int64]bool{}, Estimations: planEstimations, DateFields: planDateFields,
+		Plan: plan, Excluded: map[int64]bool{}, Estimations: planEstimations,
 		Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error"),
 	}
-	var err error
+	data.StartDateValue, data.EndDateValue = planDateFieldValue(plan.Scheduling.StartDate), planDateFieldValue(plan.Scheduling.EndDate)
+	data.DateFields = slices.Clone(planDateFields)
+	fields, err := h.Store.CustomFieldsForWorkspace(r.Context(), workspaceID)
+	if err != nil {
+		http.Error(w, "Could not load the plan's date fields.", http.StatusInternalServerError)
+		return
+	}
+	for _, field := range fields {
+		if field.Type != models.CustomFieldDate && field.Type != models.CustomFieldDatetime {
+			continue
+		}
+		id, err := strconv.ParseInt(strings.TrimPrefix(field.ID, "customfield_"), 10, 64)
+		if err != nil || id <= 0 {
+			continue
+		}
+		data.DateFields = append(data.DateFields, struct{ Value, Label string }{"DateCustomField:" + strconv.FormatInt(id, 10), field.Name + " (custom field)"})
+	}
+	if message != "" {
+		data.Error = message
+		if value := r.PostFormValue("startField"); value != "" {
+			data.StartDateValue = value
+		}
+		if value := r.PostFormValue("endField"); value != "" {
+			data.EndDateValue = value
+		}
+	}
+	// Keep a selected field visible if it was removed from the active catalog.
+	// It can be corrected without silently changing the plan's date source.
+	for _, value := range []string{data.StartDateValue, data.EndDateValue} {
+		if !strings.HasPrefix(value, "DateCustomField:") {
+			continue
+		}
+		if !slices.ContainsFunc(data.DateFields, func(choice struct{ Value, Label string }) bool { return choice.Value == value }) {
+			data.DateFields = append(data.DateFields, struct{ Value, Label string }{value, "Unavailable date custom field (" + strings.TrimPrefix(value, "DateCustomField:") + ")"})
+		}
+	}
 	if data.Sources, err = h.planSourceChoices(r, workspaceID, user.ID, plan); err != nil {
 		http.Error(w, "Could not load what a plan can read.", http.StatusInternalServerError)
 		return
@@ -324,13 +379,13 @@ func (h *Handler) PlanSettingsPage(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Permissions = append(data.Permissions, planPermissionRow{Index: index, Type: permission.Type, Holder: permission.HolderType, Name: name})
 	}
-	h.writeWorkspacePage(w, r, "page_plan_settings", user, workspaceID, data, "plans", "")
+	h.writeWorkspacePageStatus(w, r, "page_plan_settings", user, workspaceID, data, "plans", "", status)
 }
 
 // PlanSettingsSave applies one section of the settings page. Each section
 // says what it changed, or why it could not.
 func (h *Handler) PlanSettingsSave(w http.ResponseWriter, r *http.Request) {
-	_, workspaceID, plan, edit, _, _, ok := h.planContext(w, r)
+	user, workspaceID, plan, edit, _, _, ok := h.planContext(w, r)
 	if !ok || !parseForm(w, r) {
 		return
 	}
@@ -348,7 +403,7 @@ func (h *Handler) PlanSettingsSave(w http.ResponseWriter, r *http.Request) {
 		notice = "Plan details saved."
 	case "scheduling":
 		if err := planScheduling(r, &plan); err != nil {
-			planSettingsBack(w, r, plan, "error", err.Error())
+			h.writePlanSettings(w, r, user, workspaceID, plan, err.Error(), http.StatusBadRequest)
 			return
 		}
 		notice = "Scheduling saved."
@@ -440,6 +495,10 @@ func (h *Handler) PlanSettingsSave(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.Store.UpdatePlan(r.Context(), workspaceID, plan); err != nil {
 		if message := planErrorMessage(err); message != "" {
+			if r.PostFormValue("action") == "scheduling" {
+				h.writePlanSettings(w, r, user, workspaceID, plan, message, http.StatusBadRequest)
+				return
+			}
 			planSettingsBack(w, r, plan, "error", message)
 			return
 		}

@@ -51,8 +51,8 @@
 <p>What the plan counts estimates in, and where it reads each work item's dates.</p>
 <form class="project-details-form" method="post" action="/plans/{{.Data.Plan.ID}}/settings"><input type="hidden" name="action" value="scheduling">
 <label for="plan-settings-estimation">Estimate work in</label><select id="plan-settings-estimation" name="estimation">{{range .Data.Estimations}}<option value="{{.}}" {{if eq . $.Data.Plan.Scheduling.Estimation}}selected{{end}}>{{.}}</option>{{end}}</select>
-<label for="plan-settings-start">Start date field</label><select id="plan-settings-start" name="startField">{{range .Data.DateFields}}<option value="{{.Value}}" {{if eq .Value $.Data.Plan.Scheduling.StartDate.Type}}selected{{end}}>{{.Label}}</option>{{end}}</select>
-<label for="plan-settings-end">End date field</label><select id="plan-settings-end" name="endField">{{range .Data.DateFields}}<option value="{{.Value}}" {{if eq .Value $.Data.Plan.Scheduling.EndDate.Type}}selected{{end}}>{{.Label}}</option>{{end}}</select>
+<label for="plan-settings-start">Start date field</label><select id="plan-settings-start" name="startField">{{range .Data.DateFields}}<option value="{{.Value}}" {{if eq .Value $.Data.StartDateValue}}selected{{end}}>{{.Label}}</option>{{end}}</select>
+<label for="plan-settings-end">End date field</label><select id="plan-settings-end" name="endField">{{range .Data.DateFields}}<option value="{{.Value}}" {{if eq .Value $.Data.EndDateValue}}selected{{end}}>{{.Label}}</option>{{end}}</select>
 <button class="btn btn-primary" type="submit">Save scheduling</button></form></section>
 <section class="surface-card" aria-labelledby="plan-sources-heading"><h2 id="plan-sources-heading">Issue sources</h2>
 <p>The plan reads the work of everything ticked here.</p>
