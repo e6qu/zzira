@@ -175,12 +175,23 @@ func (s *Store) IssueCreateMetadata(ctx context.Context, workspaceID, userID str
 		for _, user := range assignable {
 			assigneeOptions = append(assigneeOptions, models.CreateFieldOption{ID: user.ID, Name: user.DisplayName})
 		}
+		canModifyReporter, err := s.HasProjectPermission(ctx, workspaceID, userID, project.ID, "", "MODIFY_REPORTER")
+		if err != nil {
+			return nil, err
+		}
+		reporterOptions := []models.CreateFieldOption{}
+		for _, member := range members {
+			if member.ID == userID || canModifyReporter {
+				reporterOptions = append(reporterOptions, models.CreateFieldOption{ID: member.ID, Name: member.DisplayName})
+			}
+		}
 		fields := []models.CreateFieldMeta{
 			{ID: "project", Name: "Project", Type: "project", Required: true, Section: "context", Options: projectOptions},
 			{ID: "issuetype", Name: "Issue type", Type: "issuetype", Required: true, Section: "context", Options: projectTypeOptions},
 			{ID: "summary", Name: "Summary", Type: "string", Required: true, Section: "primary"},
 			{ID: "description", Name: "Description", Type: "doc", Section: "primary"},
 			{ID: "assignee", Name: "Assignee", Type: "user", Section: "details", Options: assigneeOptions},
+			{ID: "reporter", Name: "Reporter", Type: "user", Required: true, Section: "details", Options: reporterOptions, Default: fmt.Sprintf("%q", userID)},
 			{ID: "priority", Name: "Priority", Type: "priority", Section: "details", Options: projectPriorityOptions},
 			{ID: "labels", Name: "Labels", Type: "array", Description: "Separate labels with commas. Spaces are not allowed inside a label.", Section: "details"},
 			{ID: "duedate", Name: "Due date", Type: "date", Section: "details"},

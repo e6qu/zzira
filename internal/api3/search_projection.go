@@ -41,6 +41,7 @@ func searchFieldDefinitions(customFields []*models.CustomField) []searchFieldDef
 		{ID: "versions", Key: "versions", Name: "Affects versions", Schema: map[string]any{"type": "array", "items": "version", "system": "versions"}},
 		{ID: "created", Key: "created", Name: "Created", Schema: map[string]any{"type": "datetime", "system": "created"}},
 		{ID: "updated", Key: "updated", Name: "Updated", Schema: map[string]any{"type": "datetime", "system": "updated"}},
+		{ID: "lastViewed", Key: "lastViewed", Name: "Last Viewed", Schema: map[string]any{"type": "datetime", "system": "lastViewed"}},
 		{ID: "project", Key: "project", Name: "Project", Schema: map[string]any{"type": "project", "system": "project"}},
 		{ID: "status", Key: "status", Name: "Status", Schema: map[string]any{"type": "status", "system": "status"}},
 		{ID: "issuetype", Key: "issuetype", Name: "Issue Type", Schema: map[string]any{"type": "issuetype", "system": "issuetype"}},
@@ -422,15 +423,41 @@ func hasSearchExpand(options searchOptions, name string) bool {
 
 func (h *Handler) searchIssueBeans(ctx context.Context, workspaceID, userID string, issues []*models.Issue, options searchOptions, defaultAll bool, definitions []searchFieldDefinition) ([]map[string]any, error) {
 	requested := normalizeSearchFields(options.Fields, definitions, options.FieldsByKeys)
+	all, include, exclude := requestedFieldSet(requested, defaultAll)
 	beans := make([]map[string]any, 0, len(issues))
 	editMetadata := map[string]map[string]any{}
 	fulls := make([]map[string]any, len(issues))
+	securityNames := map[string]string{}
 	visibleIssues, err := authz.IssuesWithVisibleParents(ctx, h.Store, userID, issues)
 	if err != nil {
 		return nil, err
 	}
+	viewTimes := map[string]time.Time{}
+	if (all || include["lastViewed"]) && !exclude["lastViewed"] {
+		ids := make([]string, len(visibleIssues))
+		for index, issue := range visibleIssues {
+			ids[index] = issue.ID
+		}
+		viewTimes, err = h.Store.IssueViewTimes(ctx, workspaceID, userID, ids)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for index, issue := range visibleIssues {
 		fulls[index] = h.issueBean(issue)
+		if viewed, found := viewTimes[issue.ID]; found {
+			fulls[index]["fields"].(map[string]any)["lastViewed"] = viewed.UTC().Format("2006-01-02T15:04:05.000-0700")
+		}
+		if issue.SecurityLevelID != "" && (all || include["security"]) && !exclude["security"] {
+			fields := fulls[index]["fields"].(map[string]any)
+			key := issue.ProjectID + "/" + issue.SecurityLevelID
+			name, known := securityNames[key]
+			if !known {
+				name = h.Store.SecurityLevelName(ctx, issue.ProjectID, issue.SecurityLevelID)
+				securityNames[key] = name
+			}
+			fields["security"] = map[string]any{"id": issue.SecurityLevelID, "name": name}
+		}
 	}
 	h.addTimeTracking(ctx, issues, fulls)
 	if err := h.decorateCustomFieldValues(ctx, workspaceID, fulls); err != nil {

@@ -1,5 +1,6 @@
 import { apiAuthHeader } from './auth';
 import { expect, test } from '@playwright/test';
+import axe from 'axe-core';
 
 async function login(page: import('@playwright/test').Page, email: string, password: string) {
   await page.goto('/login');
@@ -112,4 +113,86 @@ test('site and project administrators govern restricted work from scheme to visi
   await card.locator('summary').filter({ hasText: 'Delete scheme' }).click();
   await card.getByRole('button', { name: 'Delete scheme' }).click();
   await expect(page.getByRole('status')).toContainText('Issue security scheme deleted.');
+});
+
+test('an administrator maps restricted work before switching its project scheme', async ({ page, browser }) => {
+  await login(page, 'demo@zzira.dev', 'demo1234');
+  const headers = { Authorization: apiAuthHeader() };
+  const stamp = Date.now().toString(36);
+  const key = `MAP${Date.now().toString().slice(-6)}`;
+  const name = `Mapped delivery ${stamp}`;
+  const me = await (await page.request.get('/rest/api/3/myself', { headers })).json();
+  const created = await page.request.post('/rest/api/3/project', {
+    headers, data: { key, name, projectTypeKey: 'software', leadAccountId: me.accountId },
+  });
+  expect(created.status()).toBe(201);
+  const projectID = String((await created.json()).id);
+  const scheme = async (title: string, levels: string[]) => {
+    const response = await page.request.post('/rest/api/3/issuesecurityschemes', {
+      headers, data: { name: `${title} ${stamp}`, levels: levels.map(level => ({ name: level, members: [{ type: 'reporter' }] })) },
+    });
+    expect(response.status()).toBe(201);
+    const id = (await response.json()).id as string;
+    const detail = await (await page.request.get(`/rest/api/3/issuesecurityschemes/${id}`, { headers })).json();
+    return { ...detail, id: String(detail.id), levels: detail.levels.map((level: { id: string | number; name: string }) => ({ ...level, id: String(level.id) })) };
+  };
+  const old = await scheme('Original boundary', ['Release leads', 'Private notes', 'Unused level']);
+  const target = await scheme('Replacement boundary', ['Delivery leads']);
+  const association = await page.request.put('/rest/api/3/issuesecurityschemes/project', { headers, maxRedirects: 0, data: { projectId: projectID, schemeId: old.id } });
+  expect(association.status(), await association.text()).toBe(303);
+  const assigned = async () => (await (await page.request.get(`/rest/api/3/issuesecurityschemes/project?projectId=${projectID}`, { headers })).json()).values[0]?.issueSecuritySchemeId;
+  await expect.poll(assigned).toBe(old.id);
+  const issues: string[] = [];
+  for (const level of old.levels.slice(0, 2)) {
+    const issue = await page.request.post('/rest/api/3/issue', {
+      headers, data: { fields: { project: { key }, summary: `Mapped ${level.name} ${stamp}`, issuetype: { name: 'Task' }, security: { id: level.id } } },
+    });
+    expect(issue.status()).toBe(201);
+    issues.push((await issue.json()).key);
+  }
+  const colleague = await browser.newContext();
+  try {
+    const ana = await colleague.newPage();
+    await login(ana, 'ana@zzira.dev', 'ana12345');
+    for (const issue of issues) expect((await ana.request.get(`/rest/api/3/issue/${issue}`)).status()).toBe(404);
+    await page.goto('/settings/issue-security-schemes');
+    const card = page.locator(`.security-scheme-card[data-scheme-id="${target.id}"]`);
+    await card.getByLabel('Assign a project').selectOption({ label: `${name} (${key})` });
+    await card.getByRole('button', { name: 'Assign scheme' }).click();
+    await expect(page.getByRole('heading', { name: 'Map security levels', level: 1 })).toBeVisible();
+    expect(await assigned()).toBe(old.id);
+    const form = page.locator('form').filter({ has: page.getByRole('button', { name: 'Assign scheme with mappings' }) });
+    await form.getByLabel('Replace Release leads (1 work item)').selectOption(target.levels[0].id);
+    await form.getByLabel('Replace Private notes (1 work item)').selectOption('none');
+    // A missing choice is refused by the server without discarding the others.
+    await form.evaluate(element => { (element as HTMLFormElement).noValidate = true; });
+    await form.getByRole('button', { name: 'Assign scheme with mappings' }).click();
+    await expect(page.getByRole('alert')).toContainText('Choose a replacement for every security level.');
+    await expect(form.getByLabel('Replace Release leads (1 work item)')).toHaveValue(target.levels[0].id);
+    await expect(form.getByLabel('Replace Private notes (1 work item)')).toHaveValue('none');
+    expect(await assigned()).toBe(old.id);
+    for (const issue of issues) expect((await ana.request.get(`/rest/api/3/issue/${issue}`)).status()).toBe(404);
+    await form.getByLabel('Replace Unused level (0 work items)').selectOption(target.levels[0].id);
+    await page.addScriptTag({ content: axe.source });
+    expect(await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations)).toEqual([]);
+    await page.setViewportSize({ width: 320, height: 740 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const refused = await ana.request.post(`/settings/issue-security-schemes/${target.id}`, {
+      form: { action: 'assign-project', project: projectID, mapped: 'true', [`level.${old.levels[0].id}`]: 'none' },
+    });
+    expect(refused.status()).toBe(403);
+    await form.getByRole('button', { name: 'Assign scheme with mappings' }).click();
+    await expect(page.getByRole('status')).toContainText('Project assignment queued.');
+    await expect.poll(assigned).toBe(target.id);
+    const kept = await (await page.request.get(`/rest/api/3/issue/${issues[0]}?fields=security`, { headers })).json();
+    expect(String(kept.fields.security.id)).toBe(target.levels[0].id);
+    expect(kept.fields.security.name).toBe('Delivery leads');
+    expect((await ana.request.get(`/rest/api/3/issue/${issues[0]}`)).status()).toBe(404);
+    const cleared = await (await page.request.get(`/rest/api/3/issue/${issues[1]}`, { headers })).json();
+    expect(cleared.fields.security).toBeNull();
+    expect((await ana.request.get(`/rest/api/3/issue/${issues[1]}`)).status()).toBe(200);
+  } finally {
+    await colleague.close();
+  }
 });

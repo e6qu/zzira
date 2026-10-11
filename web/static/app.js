@@ -598,7 +598,7 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=20&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=23&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
@@ -656,6 +656,9 @@
     const root = scope || document;
     const modal = root.querySelector ? root.querySelector('.modal[role="dialog"]') : null;
     if (!modal || modal.dataset.ready) return;
+    // Wire field refreshes before exposing readiness: HTMX's native settle
+    // task can run after the dialog is already visible and accepting input.
+    if (window.htmx) window.htmx.process(modal);
     modal.dataset.ready = '1';
     setBackgroundInert(true);
     root.querySelectorAll('[data-modal-backdrop]').forEach((backdrop) => {

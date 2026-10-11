@@ -57,6 +57,34 @@ func TestWikiWhiteboardObjectsConnectorsAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, preset := range []struct {
+		key                 string
+		objects, connectors int
+	}{
+		{"", 0, 0}, {"flow-chart", 5, 3}, {"incident-postmortem", 7, 0}, {"annual-calendar", 13, 0},
+	} {
+		board, createErr := service.CreateWikiContent(ctx, workspaceID, adminID, models.WikiContent{Type: "whiteboard", SpaceID: space.ID, Title: "Preset " + preset.key, TemplateKey: preset.key})
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		data, readErr := st.WikiWhiteboardData(ctx, workspaceID, adminID, board.ID)
+		if readErr != nil || len(data.Objects) != preset.objects || len(data.Connectors) != preset.connectors || board.Version.Number != 1 {
+			t.Fatalf("preset %q: board=%+v data=%+v err=%v", preset.key, board, data, readErr)
+		}
+	}
+	// A dangling connector fails after inserting an object: the entire creation
+	// must roll back, including its content row and initial version.
+	_, err = st.CreateWikiContentWithCanvas(ctx, workspaceID, adminID, models.WikiContent{Type: "whiteboard", SpaceID: space.ID, Title: "Failed preset"}, models.WikiWhiteboardData{
+		Objects:    []models.WikiWhiteboardObject{{ID: "a", Type: "sticky", Title: "A", Color: "yellow", Width: 200, Height: 100}},
+		Connectors: []models.WikiWhiteboardConnector{{FromObjectID: "a", ToObjectID: "missing", Style: "solid"}},
+	})
+	if !errors.Is(err, store.ErrWikiValidation) {
+		t.Fatalf("failed preset error = %v", err)
+	}
+	var orphaned int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM wiki_content WHERE space_id::text=$1 AND title='Failed preset'`, space.ID).Scan(&orphaned); err != nil || orphaned != 0 {
+		t.Fatalf("failed preset left %d content rows: %v", orphaned, err)
+	}
 	privateBoard, err := service.CreateWikiContent(ctx, workspaceID, adminID, models.WikiContent{Type: "whiteboard", SpaceID: space.ID, Title: "Private map", Private: true})
 	if err != nil {
 		t.Fatal(err)

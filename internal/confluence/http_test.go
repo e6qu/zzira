@@ -793,6 +793,10 @@ func TestWikiAPIPrivacyAndVersionedLifecycle(t *testing.T) {
 	if err != nil || storedWhiteboard.TemplateKey != "incident-postmortem" || storedWhiteboard.Locale != "en-US" {
 		t.Fatalf("unexpected stored whiteboard template: %+v %v", storedWhiteboard, err)
 	}
+	canvas, err := st.WikiWhiteboardData(ctx, ws, member, whiteboard.ID)
+	if err != nil || len(canvas.Objects) != 7 || len(canvas.Connectors) != 0 || storedWhiteboard.Version.Number != 1 {
+		t.Fatalf("REST template canvas=%+v version=%+v err=%v", canvas, storedWhiteboard.Version, err)
+	}
 	whiteboardChildResponse := call(member, "POST", "/embeds", map[string]any{"spaceId": public, "title": "Canvas evidence", "parentId": whiteboard.ID, "embedUrl": "https://example.test/canvas-evidence"}, 200)
 	var whiteboardChild models.WikiContent
 	if err := json.Unmarshal(whiteboardChildResponse.Body.Bytes(), &whiteboardChild); err != nil || whiteboardChild.ParentType != "whiteboard" {

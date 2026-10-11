@@ -1391,6 +1391,7 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 	issue, _, err := h.Commands.CreateIssue(r.Context(), commands.CreateIssueInput{
 		OriginalEstimate: originalEstimate,
 		ActorID:          user.ID,
+		ReporterID:       values["reporter"],
 		WorkspaceID:      wsID,
 		ProjectIDOrKey:   values["project"],
 		Summary:          values["summary"],

@@ -666,6 +666,9 @@ type createIssueRequest struct {
 		Assignee *struct {
 			AccountID string `json:"accountId"`
 		} `json:"assignee"`
+		Reporter *struct {
+			AccountID string `json:"accountId"`
+		} `json:"reporter"`
 		Security *struct {
 			ID string `json:"id"`
 		} `json:"security"`
@@ -838,6 +841,14 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		jiraError(w, 400, "Invalid issue fields.")
 		return
 	}
+	reporterID := ""
+	if _, provided := rawRequest.Fields["reporter"]; provided {
+		if req.Fields.Reporter == nil || strings.TrimSpace(req.Fields.Reporter.AccountID) == "" {
+			jiraFieldError(w, http.StatusBadRequest, map[string]string{"reporter": "Reporter must identify an active account."})
+			return
+		}
+		reporterID = req.Fields.Reporter.AccountID
+	}
 	_, assigneeProvided := rawRequest.Fields["assignee"]
 	if req.Fields.Assignee != nil {
 		assigneeID = req.Fields.Assignee.AccountID
@@ -900,6 +911,7 @@ func (h *Handler) createIssue(w http.ResponseWriter, r *http.Request) {
 		}(),
 		PriorityID:                priorityID,
 		AssigneeID:                assigneeID,
+		ReporterID:                reporterID,
 		UseProjectDefaultAssignee: !assigneeProvided || assigneeID == "-1",
 		SecurityLevelID: func() string {
 			if req.Fields.Security == nil {
@@ -951,7 +963,7 @@ func unsupportedCreateFields(body []byte) map[string]string {
 	}
 	supported := map[string]struct{}{
 		"project": {}, "summary": {}, "description": {}, "issuetype": {}, "priority": {},
-		"assignee": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "components": {}, "parent": {},
+		"assignee": {}, "reporter": {}, "security": {}, "labels": {}, "fixVersions": {}, "versions": {}, "components": {}, "parent": {},
 		"timetracking": {}, "duedate": {},
 	}
 	for field := range raw.Fields {
@@ -990,7 +1002,7 @@ func createIssueFieldError(err error) map[string]string {
 		return fields
 	}
 	message := err.Error()
-	for _, field := range []string{"summary", "project", "priority", "assignee", "security", "resolution", "labels", "description", "components", "parent"} {
+	for _, field := range []string{"summary", "project", "priority", "assignee", "reporter", "security", "resolution", "labels", "description", "components", "parent"} {
 		if strings.Contains(message, field) {
 			return map[string]string{field: message}
 		}
@@ -1352,6 +1364,12 @@ func (h *Handler) getIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		jiraError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	if strings.EqualFold(q.Get("updateHistory"), "true") {
+		if err = h.Store.RecordIssueView(r.Context(), wsID, userID, issue.ID); err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+	}
 	definitions := searchFieldDefinitions(customFields)
 	beans, err := h.searchIssueBeans(r.Context(), wsID, userID, []*models.Issue{issue}, options, len(options.Fields) == 0, definitions)
 	if err != nil || len(beans) != 1 {
@@ -1359,13 +1377,6 @@ func (h *Handler) getIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 		return
 	}
 	bean := beans[0]
-	if fields, ok := bean["fields"].(map[string]any); ok && issue.SecurityLevelID != "" {
-		if _, wanted := fields["security"]; wanted || len(options.Fields) == 0 {
-			if name := h.Store.SecurityLevelName(r.Context(), issue.ProjectID, issue.SecurityLevelID); name != "" {
-				fields["security"] = map[string]any{"id": issue.SecurityLevelID, "name": name}
-			}
-		}
-	}
 	requested := normalizeSearchFields(options.Fields, definitions, options.FieldsByKeys)
 	names, schemas := searchFieldMetadata(requested, len(options.Fields) == 0, options.FieldsByKeys, definitions)
 	if hasSearchExpand(options, "names") {
@@ -1376,12 +1387,6 @@ func (h *Handler) getIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 	}
 	if _, ok := bean["expand"]; !ok {
 		bean["expand"] = "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations"
-	}
-	if strings.EqualFold(q.Get("updateHistory"), "true") {
-		if err = h.Store.RecordIssueView(r.Context(), wsID, userID, issue.ID); err != nil {
-			jiraError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
 	}
 	writeJSON(w, http.StatusOK, bean)
 }
@@ -1402,6 +1407,8 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 		"description": i.Description,
 		"labels":      i.Labels,
 		"duedate":     nil,
+		"security":    nil,
+		"lastViewed":  nil,
 		"fixVersions": []any{},
 		"versions":    []any{},
 		"created":     issueCreated(i),
@@ -1421,6 +1428,9 @@ func (h *Handler) issueBean(i *models.Issue) map[string]any {
 	}
 	if i.DueDate != "" {
 		fields["duedate"] = i.DueDate
+	}
+	if i.SecurityLevelID != "" {
+		fields["security"] = map[string]any{"id": i.SecurityLevelID}
 	}
 	if i.Parent != nil {
 		parentID := strconv.FormatInt(i.Parent.JiraID, 10)
@@ -1899,7 +1909,7 @@ func (h *Handler) issueEditFields(ctx context.Context, workspaceID, userID strin
 		}
 		project.FieldBehaviour = map[string]map[string]models.FieldBehaviour{issue.IssueType.ID: behaviour}
 		for _, source := range project.FieldsForIssueType(issue.IssueType.ID) {
-			if source.ID == "project" || source.ID == "issuetype" {
+			if source.ID == "project" || source.ID == "issuetype" || source.ID == "reporter" {
 				continue
 			}
 			field := source

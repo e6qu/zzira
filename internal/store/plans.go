@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -669,6 +670,23 @@ func scanPlanTeam(row pgx.Row) (PlanTeam, error) {
 	return team, err
 }
 
+// PlanTeamByID resolves the membership ID used by browser settings, for either
+// a directory team or a plan-only team, without truncating to the first page.
+func (s *Store) PlanTeamByID(ctx context.Context, workspaceID string, planID, teamID int64) (PlanTeam, error) {
+	plan, err := s.Plan(ctx, workspaceID, planID)
+	if err != nil {
+		return PlanTeam{}, err
+	}
+	if plan.Status != "Active" {
+		return PlanTeam{}, ErrPlanNotActive
+	}
+	team, err := scanPlanTeam(s.Pool.QueryRow(ctx, `SELECT `+planTeamColumns+` FROM plan_teams WHERE plan_id=$1 AND id=$2`, planID, teamID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return PlanTeam{}, ErrPlanNotFound
+	}
+	return team, err
+}
+
 // PlanTeam finds a plan-only team by id or an Atlassian team by its team id.
 // Jira answers 409 for any team operation on a plan that is not active.
 func (s *Store) PlanTeam(ctx context.Context, workspaceID string, planID int64, atlassianTeamID string, planOnlyID int64) (PlanTeam, error) {
@@ -707,8 +725,8 @@ func validatePlanTeamTx(ctx context.Context, tx pgx.Tx, workspaceID string, plan
 		// the planning capacity, the browser form and the REST field all mean.
 		return planInvalid("The sprint length must be a positive number of weeks.")
 	}
-	if team.Capacity != nil && *team.Capacity < 0 {
-		return planInvalid("The capacity must not be negative.")
+	if team.Capacity != nil && (math.IsNaN(*team.Capacity) || math.IsInf(*team.Capacity, 0) || *team.Capacity < 0) {
+		return planInvalid("The capacity must be a finite, non-negative number.")
 	}
 	if team.IssueSourceID != nil {
 		found, err := exists(ctx, tx, `SELECT 1 FROM plan_issue_sources WHERE plan_id=$1 AND id=$2`, planID, *team.IssueSourceID)

@@ -56,8 +56,10 @@ API surfaces that have no doc of their own. For status, see
 A whiteboard is a node in the [content tree](CONTENT_TREE.md). The v2 API
 creates, reads and deletes it and serves its ancestors, descendants,
 operations and properties (`/wiki/api/v2/whiteboards…`). `templateKey` and
-`locale` are stored and shown, but a template does not add any objects to the
-canvas.
+`locale` are stored and shown. All 53 accepted template keys create native,
+editable starter objects; process layouts also create connectors. The canvas,
+initial version and creation action commit together. Blank canvases stay empty.
+Starter labels are English; REST locale metadata does not translate them.
 
 The canvas is edited only in the browser, at
 `/wiki/spaces/{space}/whiteboards/{whiteboard}`, with plain form posts:
@@ -199,7 +201,8 @@ Tracked in [PLAN.md](../PLAN.md).
   connector anchors or routing, or arrowhead choice.
 - **Diagram layout.** No automatic diagram or graph layout (tree, flow or
   grid), no alignment or snapping, and no grouping.
-- **Whiteboard templates.** Templates add no content to the canvas.
+- **Whiteboard templates.** Native starters still need specialized layout parity
+  and translated labels; REST locale metadata alone does not localize them.
 - **Whiteboard collaboration.** No live collaboration (presence, cursors or
   merged edits), no version history, and no comments or reactions on
   whiteboards.

@@ -234,9 +234,8 @@ func (h *Handler) IssueSecuritySchemeMutation(w http.ResponseWriter, r *http.Req
 		_, err = h.Store.EnqueueRemoveIssueSecurityLevel(r.Context(), workspaceID, user.ID, schemeID, r.PostFormValue("levelId"), r.PostFormValue("replaceWith"))
 		notice = "Security level removal queued."
 	case "assign-project":
-		projectID := r.PostFormValue("project")
-		_, err = h.Store.EnqueueAssignIssueSecurityScheme(r.Context(), workspaceID, user.ID, projectID, schemeID, nil)
-		notice = "Project assignment queued."
+		h.assignIssueSecurityScheme(w, r, user, workspaceID, schemeID)
+		return
 	default:
 		err = store.ErrIssueSecurityValidation
 	}

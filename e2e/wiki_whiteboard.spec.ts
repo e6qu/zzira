@@ -41,7 +41,6 @@ async function prepareWhiteboard(page: Page) {
   const whiteboards = page.getByRole('region', { name: 'Whiteboards' });
   await whiteboards.locator('summary').filter({ hasText: 'Create whiteboard' }).click();
   await whiteboards.getByLabel('Whiteboard name').fill('Release flow');
-  await whiteboards.getByLabel('Template', { exact: true }).selectOption('flow-chart');
   await whiteboards.getByLabel('Template language', { exact: true }).selectOption('en-US');
   await whiteboards.getByRole('button', { name: 'Create whiteboard', exact: true }).click();
   await expect(page).toHaveURL(/\/wiki\/spaces\/\d+\/whiteboards\/\d+$/);
@@ -250,4 +249,38 @@ test('dragging a tall whiteboard object never creates negative coordinates', asy
   expect(Number(y)).toBeGreaterThanOrEqual(0);
   await page.reload();
   await expect(object(page)).toHaveAttribute('data-y', y);
+});
+
+test('knowledge collaborator starts from an editable persisted template', async ({ page }) => {
+  await page.goto('/login');
+  await page.fill('#login-email', 'demo@zzira.dev');
+  await page.fill('#login-password', 'demo1234');
+  await page.click('button[type=submit]');
+  await page.goto('/wiki');
+  await page.locator('.wiki-create-space > summary').click();
+  const suffix = Date.now().toString(36).toUpperCase();
+  await page.getByLabel('Space name').fill(`Template planning ${suffix}`);
+  await page.getByLabel('Space key').fill(`T${suffix}`);
+  await page.getByRole('button', { name: 'Create space', exact: true }).click();
+  const whiteboards = page.getByRole('region', { name: 'Whiteboards' });
+  await whiteboards.locator('summary').filter({ hasText: 'Create whiteboard' }).click();
+  await whiteboards.getByLabel('Whiteboard name').fill('Templated process');
+  await whiteboards.getByLabel('Template', { exact: true }).selectOption('flow-chart');
+  await whiteboards.getByLabel('Template language', { exact: true }).selectOption('en-US');
+  await whiteboards.getByRole('button', { name: 'Create whiteboard', exact: true }).click();
+  await expect(page).toHaveURL(/\/whiteboards\/\d+$/);
+  await expect(page.locator('.wiki-canvas-object')).toHaveCount(5);
+  await expect(page.locator('.wiki-connector-solid')).toHaveCount(3);
+  const start = page.locator('.wiki-whiteboard-object-list article').filter({ has: page.locator('input[name="title"][value="Start"]') });
+  await expect(start.locator('[name="body"]')).toHaveValue('What begins the process?');
+  await start.locator('[name="body"]').fill('A customer requests a change');
+  const savedPage = page.waitForEvent('framenavigated', { predicate: frame => frame === page.mainFrame() });
+  await start.getByRole('button', { name: 'Save Start', exact: true }).click();
+  await savedPage;
+  await page.waitForLoadState('domcontentloaded');
+  await page.reload();
+  await expect(page.locator('.wiki-canvas-object')).toHaveCount(5);
+  await expect(page.locator('.wiki-connector-solid')).toHaveCount(3);
+  await expect(page.locator('.wiki-whiteboard-object-list article').filter({ has: page.locator('input[name="title"][value="Start"]') }).locator('[name="body"]')).toHaveValue('A customer requests a change');
+  await checkAccessibility(page);
 });

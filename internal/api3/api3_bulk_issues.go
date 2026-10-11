@@ -663,6 +663,10 @@ func commonBulkEditableFields(metadata *models.IssueCreateMetadata, issues []*mo
 }
 
 func bulkEditableFieldType(field models.CreateFieldMeta) string {
+	// Reporter creation has no shared update command yet.
+	if field.ID == "reporter" {
+		return ""
+	}
 	switch field.Type {
 	case "user":
 		return "assignee"

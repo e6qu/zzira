@@ -44,16 +44,27 @@ The nine Jira holder types: `applicationRole`, `assignee`, `group`, `groupCustom
 
 **Copy.** The settings page copies one, named "Copy of X" (then "Copy 2 of X"), carrying its configuration and nothing else: the copy is assigned to no project and is never the site default.
 
-## Gaps
+## Reassigning a project
 
-Tracked in [PLAN.md](../PLAN.md).
+When the project already has security levels, **Assign scheme** opens a mapping
+form. It lists levels used by active and archived work and the old scheme's
+unused levels. Choose a replacement in the new scheme for every level, or
+explicitly choose **No security level** to remove that restriction. Work that
+already has no level keeps its visibility. An incomplete or invalid mapping
+keeps the valid choices for retry and leaves the project on its current scheme.
+The completed form queues the same durable association task as REST.
 
-- The browser's assign-to-project form sends no level mapping, so assigning a scheme to a project whose work items already have levels fails with the mapping error. Only the REST association can remap levels.
+Issue reads and search return a requested `security` field with its ID and name,
+or null when no level is set. Field selection and exclusions apply before the
+response is returned.
 
 ## Tests
 
 - `internal/api3/issue_security_schemes_test.go`: all 20 operations, permission refusals, validation, paging, filters, both tasks and their conflicts, cross-user visibility, actions.
-- `e2e/issue_security_schemes.spec.ts`: scheme and level creation, project assignment, project settings view, restricted creation, another user's 404 and then 200 once granted, unassignment and deletion, 320px reflow. Both pages are in the light and dark axe sweep.
+- `internal/web/issue_security_assignment_test.go`: mapping completeness,
+  preserved choices, target-level validation, active/archived work, workspace
+  isolation and administrator-only assignment.
+- `e2e/issue_security_schemes.spec.ts`: scheme and level creation, project assignment and reassignment, mapping retry, project settings view, restricted creation, another user's 404 and then 200 once granted or explicitly cleared, unassignment and deletion, 320px reflow and accessibility.
 - `migrations/132_issue_security_schemes.sql`: schema, holder rows and the visibility function.
 
 ## Relationships and replicas

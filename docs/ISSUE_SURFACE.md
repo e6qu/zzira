@@ -92,10 +92,20 @@ not exist on Cloud and are refused.
 `versionedRepresentations`), `properties` and `updateHistory`. Beyond the work item
 row it returns `creator`, `created`, `comment`, `issuelinks`, `watches`, `votes`,
 `subtasks`, `attachment` and `worklog`, loading each only when it is asked for.
+`lastViewed` is the signed-in reader's latest recorded visit, or `null` when
+unvisited. Browser visits and `updateHistory=true` record visits; ordinary REST
+reads and searches do not. Explicit projections, exclusions, search and bulk
+fetch preserve this reader scope.
 
 `POST /rest/api/3/issue/bulkfetch` returns up to 100 work items, or up to 1000 when
 the request names fields to include and asks for no expansions or properties.
 Unknown or hidden work items are left out.
+
+The browser create form exposes Reporter when its screen includes the field.
+It starts with the signed-in user and offers other members only with Modify
+reporter permission. Required and hidden field configuration applies as well. REST creation accepts
+`reporter: {"accountId": "…"}` with the same permission check. Omitted reporters
+default to the creator; empty, null and unknown accounts are refused.
 
 ## Writing work items
 

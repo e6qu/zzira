@@ -172,8 +172,16 @@ func (s *Store) PlanWork(ctx context.Context, workspaceID, userID string, plan P
 		return work, err
 	}
 	work.StartFieldName, work.EndFieldName = startName, endName
-	if work.Teams, _, err = s.PlanTeams(ctx, workspaceID, plan.ID, 0, 100); err != nil {
-		return work, err
+	for after := int64(0); ; {
+		teams, _, loadErr := s.PlanTeams(ctx, workspaceID, plan.ID, after, 100)
+		if loadErr != nil {
+			return work, loadErr
+		}
+		work.Teams = append(work.Teams, teams...)
+		if len(teams) < 100 {
+			break
+		}
+		after = teams[len(teams)-1].ID
 	}
 	resolver, err := s.JQLResolver(ctx, workspaceID)
 	if err != nil {

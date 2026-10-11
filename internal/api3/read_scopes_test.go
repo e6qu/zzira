@@ -120,6 +120,35 @@ func TestScreenTabAndOptionReadScopes(t *testing.T) {
 	call(leadID, http.MethodGet, tabsPath+"?projectKey=NOPE"+projectKey, "", http.StatusForbidden)
 	call(leadID, http.MethodPost, tabsPath+"?projectKey="+projectKey, `{"name":"Lead tab"}`, http.StatusForbidden)
 
+	// Tab fields use the same project-scoped permission as their containing tabs.
+	fieldsPath := tabsPath + "/" + firstTab + "/fields"
+	call(adminID, http.MethodPost, fieldsPath, `{"fieldId":"summary"}`, http.StatusOK)
+	if fields := call(leadID, http.MethodGet, fieldsPath+"?projectKey="+projectKey, "", http.StatusOK); !strings.Contains(fields, `"id":"summary"`) {
+		t.Fatalf("lead tab fields = %s", fields)
+	}
+	call(leadID, http.MethodGet, fieldsPath, "", http.StatusForbidden)
+	call(viewerID, http.MethodGet, fieldsPath+"?projectKey="+projectKey, "", http.StatusForbidden)
+	call(leadID, http.MethodGet, fieldsPath+"?projectKey=NOPE"+projectKey, "", http.StatusForbidden)
+	call(leadID, http.MethodGet, tabsPath+"/999999999/fields?projectKey="+projectKey, "", http.StatusNotFound)
+	call(leadID, http.MethodPost, fieldsPath+"?projectKey="+projectKey, `{"fieldId":"labels"}`, http.StatusForbidden)
+	call(leadID, http.MethodDelete, fieldsPath+"/summary?projectKey="+projectKey, "", http.StatusForbidden)
+	var defaultScreens struct {
+		Values []struct {
+			ID   int64
+			Name string
+		}
+	}
+	if err := json.Unmarshal([]byte(call(adminID, http.MethodGet, "/rest/api/3/screens", "", http.StatusOK)), &defaultScreens); err != nil {
+		t.Fatal(err)
+	}
+	for _, screen := range defaultScreens.Values {
+		if screen.Name == "Default Screen" {
+			// This project uses the scoped screen instead; project administration
+			// cannot be used to read unrelated global configuration.
+			call(leadID, http.MethodGet, fmt.Sprintf("/rest/api/3/screens/%d/tabs/%s/fields?projectKey=%s", screen.ID, firstTab, projectKey), "", http.StatusForbidden)
+		}
+	}
+
 	// Bulk tab reads filter by tab and page with startAt and maxResult.
 	page := func(query string) []map[string]any {
 		t.Helper()

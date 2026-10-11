@@ -157,6 +157,11 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if err = s.normalizeOptionFields(ctx, in.WorkspaceID, project.ID, issueType.ID, in.Fields, in.AssetSchemas); err != nil {
 		return nil, nil, err
 	}
+	if !in.customerRequest && in.ReporterID != "" {
+		if _, err := s.Store.MemberByID(ctx, in.WorkspaceID, in.ReporterID); err != nil {
+			return nil, nil, fmt.Errorf("reporter is not an active workspace member")
+		}
+	}
 	if err = s.enforceFieldConfiguration(ctx, in, project.ID, issueType.ID); err != nil {
 		return nil, nil, err
 	}
@@ -318,7 +323,7 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	}
 	issue, action, err := s.Store.CreateEstimatedIssueForReporter(ctx, in.ActorID, in.ReporterID, project.ID, in.Summary,
 		description, wf.InitialStatus(), issueType.ID, priorityID, in.AssigneeID, labels, in.Fields, in.SecurityLevelID, parentID,
-		store.NewIssueDetails{Original: in.OriginalEstimate, Remaining: in.RemainingEstimate, DueDate: dueDate})
+		store.NewIssueDetails{Original: in.OriginalEstimate, Remaining: in.RemainingEstimate, DueDate: dueDate, CustomerReporter: in.customerRequest})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -415,9 +420,12 @@ func (s *Service) enforceFieldConfiguration(ctx context.Context, in CreateIssueI
 		"summary":     strings.TrimSpace(in.Summary) != "",
 		"description": strings.TrimSpace(in.Description) != "" || len(in.DescriptionADF) > 0,
 		"assignee":    in.AssigneeID != "" && in.AssigneeID != "-1",
-		"priority":    in.PriorityID != "",
-		"parent":      strings.TrimSpace(in.ParentIDOrKey) != "",
-		"security":    in.SecurityLevelID != "",
+		// A service request derives its reporter from the customer, rather
+		// than submitting the Reporter screen field.
+		"reporter": in.ReporterID != "" && !in.customerRequest,
+		"priority": in.PriorityID != "",
+		"parent":   strings.TrimSpace(in.ParentIDOrKey) != "",
+		"security": in.SecurityLevelID != "",
 		// The browser create form posts an empty labels input, and
 		// strings.Split("", ",") yields one empty entry, so count real values.
 		"labels": hasNonEmptyValue(in.Labels),
@@ -431,7 +439,7 @@ func (s *Service) enforceFieldConfiguration(ctx context.Context, in CreateIssueI
 		if field == "summary" {
 			continue
 		}
-		if rule.IsRequired && !supplied[field] {
+		if rule.IsRequired && !supplied[field] && !(field == "reporter" && in.ActorID != "") {
 			return fmt.Errorf("%s is required by the field configuration for this work type", field)
 		}
 		if rule.IsHidden && supplied[field] {

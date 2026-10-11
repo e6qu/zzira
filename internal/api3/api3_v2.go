@@ -456,6 +456,20 @@ func (h *Handler) createFieldBean(field models.CreateFieldMeta) map[string]any {
 		bean["hasDefaultValue"] = true
 		bean["defaultValue"] = json.RawMessage(field.Default)
 	}
+	if field.ID == "reporter" {
+		values := make([]map[string]any, 0, len(field.Options))
+		var defaultID string
+		_ = json.Unmarshal([]byte(field.Default), &defaultID)
+		for _, option := range field.Options {
+			value := map[string]any{"accountId": option.ID, "displayName": option.Name, "active": true}
+			values = append(values, value)
+			if option.ID == defaultID {
+				bean["defaultValue"] = value
+			}
+		}
+		bean["allowedValues"] = values
+	}
+
 	return bean
 }
 

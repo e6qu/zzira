@@ -26,18 +26,21 @@ type planSourceOption struct {
 }
 
 type planPageData struct {
-	Plan      store.Plan
-	Edit      bool
-	Work      store.PlanWork
-	Timeline  timelineData
-	Planning  store.PlanPlanning
-	Scenarios []store.PlanScenario
-	Scenario  store.PlanScenario
-	Colors    []string
-	Teams     []planTeamOption
-	Sources   []planSourceOption
-	Blocking  map[string][]store.PlanDependency
-	BlockedBy map[string][]store.PlanDependency
+	Plan           store.Plan
+	Edit           bool
+	Work           store.PlanWork
+	Timeline       timelineData
+	Planning       store.PlanPlanning
+	Scenarios      []store.PlanScenario
+	Scenario       store.PlanScenario
+	Colors         []string
+	Teams          []planTeamOption
+	AvailableTeams []store.AtlassianTeam
+	Members        []*models.User
+	TeamDraft      planTeamDraft
+	Sources        []planSourceOption
+	Blocking       map[string][]store.PlanDependency
+	BlockedBy      map[string][]store.PlanDependency
 	// Releases are the plan's cross-project releases with the work behind
 	// each member version.
 	Releases []store.PlanReleaseView
@@ -232,6 +235,10 @@ func planErrorMessage(err error) string {
 // months with its teams, sprints and estimates, the dependencies between the
 // work, and each team's capacity.
 func (h *Handler) PlanPage(w http.ResponseWriter, r *http.Request) {
+	h.renderPlanPage(w, r, "", http.StatusOK)
+}
+
+func (h *Handler) renderPlanPage(w http.ResponseWriter, r *http.Request, message string, status int) {
 	user, workspaceID, plan, edit, scenarios, scenario, ok := h.planContext(w, r)
 	if !ok {
 		return
@@ -248,6 +255,30 @@ func (h *Handler) PlanPage(w http.ResponseWriter, r *http.Request) {
 		Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
 	for _, capacity := range planning.Capacity {
 		data.Teams = append(data.Teams, planTeamOption{ID: capacity.Team.ID, Name: capacity.Name})
+	}
+	if message != "" {
+		data.Error = message
+		data.TeamDraft = readPlanTeamDraft(r)
+	}
+	if edit {
+		teams, loadErr := h.Store.AtlassianTeams(r.Context(), workspaceID)
+		if loadErr != nil {
+			http.Error(w, "Could not load the site's teams.", http.StatusInternalServerError)
+			return
+		}
+		assigned := map[string]bool{}
+		for _, team := range planning.Work.Teams {
+			assigned[team.AtlassianTeamID] = true
+		}
+		for _, team := range teams {
+			if !assigned[team.ID] {
+				data.AvailableTeams = append(data.AvailableTeams, team)
+			}
+		}
+		if data.Members, err = h.Store.MembersByWorkspace(r.Context(), workspaceID); err != nil {
+			http.Error(w, "Could not load the site's people.", http.StatusInternalServerError)
+			return
+		}
 	}
 	if data.Releases, err = h.Store.PlanReleaseViews(r.Context(), workspaceID, user.ID, plan); err != nil {
 		http.Error(w, "Could not load the plan's cross-project releases.", http.StatusInternalServerError)
@@ -311,7 +342,7 @@ func (h *Handler) PlanPage(w http.ResponseWriter, r *http.Request) {
 		data.Timeline = newTimelineData(nil, models.ProjectTimeline{Epics: rolledTimeline(planning.Work.Items, spans)}, now, h.siteLook(r, workspaceID).DateDay)
 	}
 	data.Groups = planGroups(data.Timeline.Rows, planning.Items, data.GroupBy, data.Query)
-	h.writeWorkspacePage(w, r, "page_plan", user, workspaceID, data, "plans", "")
+	h.writeWorkspacePageStatus(w, r, "page_plan", user, workspaceID, data, "plans", "", status)
 }
 
 // PlanViewSave keeps the grouping and filter a planner is looking at under a
@@ -967,19 +998,13 @@ func (h *Handler) PlanTeamSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	teamID, _ := strconv.ParseInt(r.PostFormValue("team"), 10, 64)
-	teams, _, err := h.Store.PlanTeams(r.Context(), workspaceID, plan.ID, 0, 100)
+	team, err := h.Store.PlanTeamByID(r.Context(), workspaceID, plan.ID, teamID)
 	if err != nil {
-		http.Error(w, "Could not load the plan's teams.", http.StatusInternalServerError)
-		return
-	}
-	var team *store.PlanTeam
-	for index := range teams {
-		if teams[index].ID == teamID {
-			team = &teams[index]
+		if message := planErrorMessage(err); message != "" {
+			planBack(w, r, plan, scenario.ID, "", "error", message)
+			return
 		}
-	}
-	if team == nil {
-		planBack(w, r, plan, scenario.ID, "", "error", "Choose a team of the plan.")
+		http.Error(w, "Could not load the plan's teams.", http.StatusInternalServerError)
 		return
 	}
 	team.PlanningStyle = r.PostFormValue("planningStyle")
@@ -1003,7 +1028,7 @@ func (h *Handler) PlanTeamSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		team.SprintLength = &value
 	}
-	if _, err := h.Store.SavePlanTeam(r.Context(), workspaceID, plan.ID, *team, false); err != nil {
+	if _, err := h.Store.SavePlanTeam(r.Context(), workspaceID, plan.ID, team, false); err != nil {
 		if message := planErrorMessage(err); message != "" {
 			planBack(w, r, plan, scenario.ID, "", "error", message)
 			return

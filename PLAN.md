@@ -43,8 +43,8 @@ models, and Atlassian-hosted Forge compute. Clients that hardcode
 
 1. Fix a broken persisted journey, data loss, authorization error or failing
    CI before adding scope. Keep recovery regressions in the owning browser spec.
-2. Close usable browser journeys: plan team setup, security-scheme level
-   mapping and whiteboard templates. An enabled control must perform its action.
+2. Finish remaining configuration and authoring controls. Each enabled control
+   must perform its action and retain refused input.
 3. Finish the work item model and its dependent planning, release, dashboard
    and search behavior (sections 1–5).
 4. Close identity, automation, Assets, service, knowledge and app gaps
@@ -67,10 +67,8 @@ backlogs remain epic-level, as Jira's do.
 - Work type alternatives must share workflow, field configuration and screen
   schemes; team-managed scoping, asynchronous priority-scheme updates and a
   larger avatar catalogue remain ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#gaps)).
-- The screen catalog includes Reporter, Environment, Attachment and Linked
-  work items; `projectKey` honored on tab-field reads.
-- Issue security scheme form sends the level mapping for projects with secured
-  work.
+- Add Environment, Attachment and Linked work items to the screen catalog.
+- Reporter controls on edit and transition forms, and REST updates.
 - Custom field contexts: a global context coexists with project contexts that
   override it.
 - Custom field options: delete, replace on work items, reorder anywhere.
@@ -99,8 +97,7 @@ Owning reference: [JIRA_SOFTWARE.md](docs/JIRA_SOFTWARE.md#plans).
 
 - Auto-scheduler: schedule against releases too, so a version's date bounds
   what may go after it.
-- Plan setup in the browser: date custom fields, plan custom fields, and adding
-  or removing a team.
+- Plan setup in the browser: date custom fields and plan custom fields.
 - Restore archived and trashed plans; duplicate copies scenarios.
 - Scenario edits: parent, rank, release, status, create work items.
 - Views: saved zoom and columns.
@@ -124,8 +121,6 @@ Owning reference: [RELEASES.md](docs/RELEASES.md).
 
 ## 5. JQL and filters
 
-- `fields.lastViewed` on a work item read, which needs the reader threaded
-  through the bean.
 - Historical `versionedRepresentations`.
 - Filters: a richer subscription schedule builder than two presets and a cron
   expression.
@@ -244,7 +239,8 @@ Owning reference: [CONFLUENCE_SITE_SURFACES.md](docs/CONFLUENCE_SITE_SURFACES.md
 - Shapes library, freehand, images, frames and sections, grouping, alignment and
   snapping.
 - Connectors with anchors, routing and arrowheads; automatic graph layout.
-- Templates that add content (53 keys are accepted today and add nothing).
+- Specialized template layout parity and translated labels beyond the native
+  English starters.
 - Voting, timer, sticky-to-work-item conversion, Smart Links.
 - Comments, reactions, version history, live collaboration (see 12).
 - Image and PDF export; accessible text equivalents.
