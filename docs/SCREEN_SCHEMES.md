@@ -67,5 +67,8 @@ Tracked in [PLAN.md](../PLAN.md).
   fields. Fields outside the edit screen show saved values without edit
   controls. The page uses its own layout rather than reproducing screen tabs
   and field order.
+- The edit dialog still needs Priority, Labels, Due date, Parent, Resolution
+  and estimate controls. Their existing inline controls cannot edit a field
+  that appears only on the edit screen.
 - Workflow transition screens resolve named screens, but present their fields
   as one list rather than using the screen's tabs ([WORKFLOW_RULES.md](WORKFLOW_RULES.md#gaps)).
