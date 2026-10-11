@@ -39,4 +39,4 @@ updates:
     # A major upgrade needs a data migration for existing pgdata volumes.
     ignore:
       - dependency-name: docker/library/postgres
-        update-types: [version-update:semver-major]
+        update-types: ["version-update:semver-major"]
