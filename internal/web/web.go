@@ -1678,6 +1678,10 @@ func encodeWebCustomField(fieldType, value string) (json.RawMessage, error) {
 func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key string) {
 	user := h.currentUser(r)
 	if user == nil {
+		if h.AnonymousAccess && !authn.PresentsCredentials(r) {
+			h.serveAnonymousCollection(w, r, key)
+			return
+		}
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
