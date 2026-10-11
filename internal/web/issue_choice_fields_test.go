@@ -57,6 +57,27 @@ func TestIssueComponentAndVersionControlsPersistClearAndRespectScreens(t *testin
 	if err != nil || len(current.VersionRefs("fixVersions")) != 1 || len(current.VersionRefs("versions")) != 1 || !strings.Contains(string(current.Fields["components"]), component.ID) {
 		t.Fatalf("choices not persisted: %+v %v", current, err)
 	}
+	foreignProject, err := f.store.CreateProject(ctx, f.ownerID, models.Project{WorkspaceID: ws, Key: "OUT", Name: "Other choices", LeadAccountID: f.ownerID, AssigneeType: "PROJECT_LEAD", ProjectTypeKey: "software"}, "kanban")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignComponent, err := f.store.CreateComponent(ctx, ws, f.ownerID, store.ComponentInput{ProjectIDOrKey: foreignProject.ID, Name: "Other payments", AssigneeType: "PROJECT_DEFAULT"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignVersion, err := f.store.SaveVersion(ctx, ws, f.ownerID, foreignProject.ID, "", store.VersionUpdate{Name: &versionName})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for field, id := range map[string]string{"components": foreignComponent.ID, "fixVersions": foreignVersion.ID, "versions": foreignVersion.ID} {
+		if _, _, err := f.handler.Commands.UpdateIssue(ctx, commands.UpdateIssueInput{ActorID: f.ownerID, WorkspaceID: ws, IssueIDOrKey: issue.Key, Fields: map[string]json.RawMessage{field: issueChoiceRefs([]string{id})}}); err == nil {
+			t.Fatalf("accepted %s from another project", field)
+		}
+	}
+	unchanged, err := f.store.IssueByIDOrKey(ctx, ws, issue.Key)
+	if err != nil || unchanged.UpdatedSeq != current.UpdatedSeq {
+		t.Fatalf("refused references changed issue checkpoint: %+v %v", unchanged, err)
+	}
 	edit, err := f.handler.buildEditDialogView(ctx, ws, f.ownerID, current, map[string]bool{"RESOLVE_ISSUES": true})
 	if err != nil || len(edit.ChoiceFields) != 3 {
 		t.Fatalf("choice editor: %+v %v", edit, err)
