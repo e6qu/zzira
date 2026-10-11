@@ -253,6 +253,10 @@ type workflowSchemeImpactView struct {
 }
 
 func (h *Handler) ProjectsPage(w http.ResponseWriter, r *http.Request) {
+	if h.AnonymousAccess && !authn.PresentsCredentials(r) {
+		h.serveAnonymousCollection(w, r, "")
+		return
+	}
 	user, wsID, ok := h.pageContext(w, r)
 	if !ok {
 		return

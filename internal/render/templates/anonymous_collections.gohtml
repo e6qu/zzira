@@ -1,0 +1,16 @@
+{{define "page_anonymous_collection"}}
+<!doctype html><html lang="en"><head><title>{{.Data.Title}} · {{(site $).Title}}</title><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><script>(function(){var saved;try{saved=localStorage.getItem('zzira-theme');}catch(_){}document.documentElement.dataset.theme=saved==='light'||saved==='dark'?saved:window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';})();</script><link rel="stylesheet" href="/static/css/tokens.css?v=4"><link rel="stylesheet" href="/static/css/workspace.css?v=66"></head><body>
+<a class="skip-link" href="#main-content">Skip to content</a>
+<header class="global-header"><a class="logo" href="/projects" aria-label="Public projects"><span class="logo-mark" aria-hidden="true">Z</span> {{(site $).Title}}</a><a class="btn" href="/login">Log in</a></header>
+<main class="page anonymous-issue-page" id="main-content" tabindex="-1">
+{{if .Data.Project}}<nav class="issue-breadcrumbs" aria-label="Public work"><a href="/projects">Public projects</a><span aria-hidden="true">/</span><span aria-current="page">{{.Data.Project.Key}}</span></nav>{{end}}
+<header class="page-header"><div><h1>{{if .Data.Project}}{{.Data.Project.Name}}{{else}}Public projects{{end}}</h1><p>{{if .Data.Project}}Publicly visible work in {{.Data.Project.Key}}.{{else}}Projects that allow signed-out readers to browse.{{end}} <a href="/login">Log in</a> to access your other projects and permitted actions.</p></div></header>
+<section class="surface-card" aria-labelledby="public-collection-title"><h2 id="public-collection-title">{{if .Data.Project}}Work items{{else}}Projects{{end}}</h2>
+{{if .Data.Project}}
+{{if .Data.Issues}}<ul class="public-collection-list">{{range .Data.Issues}}<li><a href="/browse/{{.Key}}">{{.Key}} · {{.Summary}}</a> <span class="lozenge {{statusClass .Status.Category}}">{{.Status.Name}}</span></li>{{end}}</ul>{{else}}<p class="muted">No public work items on this page.</p>{{end}}
+{{else}}
+{{if .Data.Projects}}<ul class="public-collection-list">{{range .Data.Projects}}<li><a href="/issues/{{.Key}}">{{.Key}} · {{.Name}}</a></li>{{end}}</ul>{{else}}<p class="muted">No public projects on this page.</p>{{end}}
+{{end}}
+{{if or .Data.FirstURL .Data.NextURL}}<nav class="public-collection-pages" aria-label="Collection pages">{{if .Data.FirstURL}}<a class="btn" href="{{.Data.FirstURL}}">First page</a>{{end}}{{if .Data.NextURL}}<a class="btn" href="{{.Data.NextURL}}">Next page</a>{{end}}</nav>{{end}}
+</section></main></body></html>
+{{end}}

@@ -1073,7 +1073,10 @@ func (a *Applier) transition(ctx context.Context, actor string, issue *models.Is
 			return nil
 		}
 		resolution := event.Resolution
-		_, _, err := a.Commands.UpdateIssue(ctx, commands.UpdateIssueInput{
+		// The trusted demo importer restores a historical resolution even when
+		// today's edit screen omits it. All ordinary actor permissions still apply.
+		importContext := commands.WithOverrides(ctx, commands.Overrides{ScreenSecurity: true})
+		_, _, err := a.Commands.UpdateIssue(importContext, commands.UpdateIssueInput{
 			ActorID: actor, WorkspaceID: a.workspaceID, IssueIDOrKey: issue.ID, ResolutionID: &resolution,
 		})
 		return err

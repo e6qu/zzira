@@ -33,14 +33,14 @@ async function requiredAsset(path, label) {
   throw new Error(`${label} unavailable: ${lastError?.message ?? lastError}`);
 }
 
-importScripts('/static/sqlite/sqlite3.js', '/static/wasm/wasm_exec.js?go=1.27.2&v=32');
+importScripts('/static/sqlite/sqlite3.js', '/static/wasm/wasm_exec.js?go=1.27.2&v=39');
 
 async function startReplica() {
     boot('boot: sqlite3.js + wasm_exec.js imported');
     // The Go command runtime is a required part of the local-first client.
     // Start loading it alongside SQLite so an immediate offline transition
     // cannot interrupt a later, serial fetch after the page is usable.
-    const goWasm = requiredAsset('/static/zzira-worker.wasm?v=32', 'go worker wasm');
+    const goWasm = requiredAsset('/static/zzira-worker.wasm?v=39', 'go worker wasm');
     const sqlite3 = await sqlite3InitModule({
       instantiateWasm(info, receive) {
         (async () => {
@@ -64,7 +64,6 @@ async function startReplica() {
       try {
         pool = await sqlite3.installOpfsSAHPoolVfs({
           forceReinitIfPreviouslyFailed: attempt > 1,
-          clearOnInit: attempt > 1, // stale pool files from a killed session
         });
         break;
       } catch (err) {
@@ -76,6 +75,9 @@ async function startReplica() {
         await new Promise(r => setTimeout(r, 500));
       }
     }
+    // Existing replicas keep their database files. Reserve room for this
+    // replica and its rollback journal before Go installs or writes a schema.
+    await pool.reserveMinimumCapacity(pool.getFileCount() + 2);
     sqlite3.oo1.OpfsSAHDb = pool.OpfsSAHPoolDb;
     boot('boot: OPFS SAH pool installed');
     self.sqlite3 = sqlite3;

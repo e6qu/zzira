@@ -112,7 +112,7 @@ matches nothing.
   up to five `properties`.
 - Expansions: `names`, `schema`, `renderedFields`, `transitions`,
   `editmeta`, `changelog`, `operations` and `versionedRepresentations`
-  (current values under version `1`).
+  (current values under format version `1`).
 - Bodies reject unknown fields and trailing JSON; unknown expansions and
   invalid booleans are 400.
 - Numeric Jira issue IDs work wherever an ID or key is accepted; internal
@@ -218,7 +218,12 @@ failure; an access denial clears it.
 
 See [PLAN.md](../PLAN.md).
 
-- `versionedRepresentations` carry only the current value, not field history.
+- Additional field-specific formats for `versionedRepresentations`. The current
+  implementation emits each selected field as `{"1": currentValue}` and hides
+  the ordinary `fields` object when this expansion is requested. These keys
+  identify REST representation formats; use `changelog` for change history.
+  Atlassian's [Request Language format migration](https://developer.atlassian.com/cloud/jira/service-desk/deprecation-notice-representation-of-request-language-in-get-issue-response/)
+  demonstrates two formats for the same current value.
 - Value validation covers status, priority, resolution and work type (by name
   or id). A project, component, version, user or custom field option that does
   not exist still matches nothing rather than reporting it.

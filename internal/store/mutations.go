@@ -905,6 +905,23 @@ func (s *Store) CustomFieldsForProject(ctx context.Context, projectID string) ([
 	return scanCustomFields(rows)
 }
 
+// CustomFieldsForIssue resolves the work item's type as well as its project.
+// Project-only catalogs are unsuitable for issue controls with type-scoped contexts.
+func (s *Store) CustomFieldsForIssue(ctx context.Context, workspaceID, projectID, issueTypeID string) ([]*models.CustomField, error) {
+	rows, err := s.Pool.Query(ctx, customFieldSelect+`
+ JOIN projects p ON p.id=$2 AND p.workspace_id=$1
+ WHERE cf.active AND cf.trashed_at IS NULL
+ AND (cf.workspace_id IS NULL OR cf.workspace_id=$1)
+ AND (cf.app_installation_id IS NULL OR ai.status='active')
+ AND jira_custom_field_context(cf.id,$2,$3) IS NOT NULL
+ ORDER BY cf.id`, workspaceID, projectID, issueTypeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanCustomFields(rows)
+}
+
 // ---- webhooks ----
 
 // CreateWebhook registers the hook with a watermark at the workspace's

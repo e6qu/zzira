@@ -64,9 +64,10 @@ work beneath a level above Epic ([REPORTS.md](docs/REPORTS.md)). Boards and
 backlogs remain epic-level, as Jira's do.
 
 **Metadata and configuration UI.**
-- Work type alternatives must share workflow, field configuration and screen
-  schemes; team-managed scoping, asynchronous priority-scheme updates and a
+- Team-managed work type scoping, asynchronous priority-scheme updates and a
   larger avatar catalogue remain ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#gaps)).
+- Complete built-in field controls (components and versions), screen field
+  order and transition screen tabs ([SCREEN_SCHEMES.md](docs/SCREEN_SCHEMES.md#gaps)).
 - Add Attachment and Linked work items to the screen catalog.
 - App field options: `projects2` scope, `defaultValue`, property indexes for JQL.
 - Classification level on work items: field, REST value, UI control, JQL,
@@ -78,8 +79,8 @@ backlogs remain epic-level, as Jira's do.
 - Bounce handling for the project sender address (the address itself is the
   From header of the mail a project's work queues, once its domain is
   verified).
-- Anonymous browser collections and custom-field, worklog and history panels
-  beyond public work item pages ([anonymous access](docs/ANONYMOUS_ACCESS.md)).
+- Anonymous browser filters and custom-field, worklog and history panels
+  beyond public project/work item lists ([anonymous access](docs/ANONYMOUS_ACCESS.md)).
 - `atlassian-addons-project-access` role for installed apps.
 - Project templates: inline `REF` objects and team-managed projects.
 - Development triggers beyond branch created: commits, pull requests, reviews,
@@ -90,8 +91,8 @@ backlogs remain epic-level, as Jira's do.
 
 Owning reference: [JIRA_SOFTWARE.md](docs/JIRA_SOFTWARE.md#plans).
 
-- Auto-scheduler: schedule against releases too, so a version's date bounds
-  what may go after it.
+- Auto-scheduler: apply release constraints to estimated work and model flexible
+  release dates. Unestimated work already falls back to live fixed release dates.
 - Scenario edits: parent, rank, release, status, custom fields, create work items.
 - Extend custom columns beyond text, numbers, dates, URLs, selects and labels.
 - Atlassian Teams REST API.
@@ -113,7 +114,10 @@ Owning reference: [RELEASES.md](docs/RELEASES.md).
 
 ## 5. JQL and filters
 
-- Historical `versionedRepresentations`.
+- Additional documented field formats in `versionedRepresentations`; current
+  values use format version `1`. Change history belongs to the changelog.
+- Extend JQL value validation to projects, components, versions, users and custom
+  field options ([JQL.md](docs/JQL.md#gaps)).
 - Filters: a richer subscription schedule builder than two presets and a cron
   expression.
 

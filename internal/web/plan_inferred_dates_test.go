@@ -188,3 +188,116 @@ func TestPlanInferredDatesStayProjectedAndFollowScenarioAssignments(t *testing.T
 	call(http.MethodPost, "/settings", url.Values{"action": {"scheduling"}, "inferredDates": {"None"}}, 303)
 	read(plan.ScenarioID, "", "", "")
 }
+
+func TestPlanAutoScheduleUsesLiveReleasesAndProtectsActiveSprints(t *testing.T) {
+	f := newAPITokenFixture(t)
+	ctx, ws := context.Background(), f.handler.WorkspaceSlug
+	project, err := f.store.CreateProject(ctx, f.ownerID, models.Project{WorkspaceID: ws, Key: "RAS", Name: "Release scheduling", LeadAccountID: f.ownerID, AssigneeType: "PROJECT_LEAD", ProjectTypeKey: "software"}, "scrum")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		for _, q := range []string{`DELETE FROM plans WHERE workspace_id=$1`, `DELETE FROM issues WHERE workspace_id=$1`, `DELETE FROM projects WHERE workspace_id=$1`} {
+			if _, e := f.store.Pool.Exec(ctx, q, ws); e != nil {
+				t.Error(e)
+			}
+		}
+	})
+	name, start, end := "Release fallback", "2026-11-02", "2026-11-20"
+	version, err := f.store.SaveVersion(ctx, ws, f.ownerID, project.ID, "", store.VersionUpdate{Name: &name, StartDate: &start, ReleaseDate: &end})
+	if err != nil {
+		t.Fatal(err)
+	}
+	versions, _ := json.Marshal([]map[string]string{{"id": version.ID}})
+	create := func(summary string) *models.Issue {
+		t.Helper()
+		issue, _, e := f.store.CreateIssue(ctx, f.ownerID, project.ID, summary, json.RawMessage(`{"type":"doc","version":1,"content":[]}`), "st_todo", "it_story", "pr_medium", "", nil, map[string]json.RawMessage{"fixVersions": versions}, "", "")
+		if e != nil {
+			t.Fatal(e)
+		}
+		return issue
+	}
+	releaseWork, activeWork := create("Release-only work"), create("Active sprint work")
+	board, err := f.store.CreateBoard(ctx, f.ownerID, ws, store.BoardCreate{Name: "Active sprint board", Type: "scrum", ProjectID: project.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sprint, _, err := f.store.CreateSprint(ctx, f.ownerID, ws, board.ID, "In progress", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.store.Pool.Exec(ctx, `UPDATE sprints SET state='active',start_date='2026-10-05',end_date='2026-10-16' WHERE id=$1`, sprint.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.store.AddIssueToSprint(ctx, f.ownerID, ws, sprint.ID, activeWork.ID, "0"); err != nil {
+		t.Fatal(err)
+	}
+	projectNumber, _ := strconv.ParseInt(project.ID, 10, 64)
+	planID, err := f.store.CreatePlan(ctx, ws, f.ownerID, store.Plan{Name: "Release scheduling", LeadAccountID: f.ownerID, IssueSources: []store.PlanIssueSource{{Type: "Project", Value: projectNumber}}, Scheduling: store.PlanScheduling{Estimation: "StoryPoints", StartDate: store.PlanDateField{Type: "TargetStartDate"}, EndDate: store.PlanDateField{Type: "DueDate"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := f.store.Plan(ctx, ws, planID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No inferred-date setting or team is needed for the release fallback.
+	if plan.Scheduling.InferredDates != "None" && plan.Scheduling.InferredDates != "" {
+		t.Fatalf("unexpected inference %s", plan.Scheduling.InferredDates)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/plans/"+strconv.FormatInt(planID, 10)+"/auto-schedule", strings.NewReader(url.Values{"scope": {"all"}, "from": {"2026-10-01"}}.Encode()))
+	r.SetPathValue("id", strconv.FormatInt(planID, 10))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(&http.Cookie{Name: "zzira_session", Value: f.tokens[f.ownerID]})
+	w := httptest.NewRecorder()
+	f.handler.PlanAutoSchedule(w, r)
+	if w.Code != 303 {
+		t.Fatalf("scheduler refused %d: %s", w.Code, w.Body.String())
+	}
+	location, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	notice := location.Query().Get("notice")
+	if !strings.Contains(notice, "1 work items") || !strings.Contains(notice, "active sprint") {
+		t.Fatalf("missing scheduling feedback: %s", notice)
+	}
+	changes, err := f.store.PlanChanges(ctx, ws, planID, plan.ScenarioID)
+	if err != nil || len(changes) != 2 {
+		t.Fatalf("scheduler drafts %+v: %v", changes, err)
+	}
+	for _, c := range changes {
+		if c.IssueID != releaseWork.ID {
+			t.Fatal("active sprint was changed")
+		}
+		if c.Field == "startDate" && string(c.Value) != `"2026-11-02"` || c.Field == "endDate" && string(c.Value) != `"2026-11-20"` {
+			t.Fatalf("unexpected release dates %+v", c)
+		}
+	}
+	committed, err := f.store.IssueByIDOrKey(ctx, ws, releaseWork.ID)
+	if err != nil || committed.DueDate != "" {
+		t.Fatalf("draft changed committed issue %+v: %v", committed, err)
+	}
+	// A fresh scenario uses current version dates, not an issue snapshot.
+	end = "2026-11-27"
+	if _, err = f.store.SaveVersion(ctx, ws, f.ownerID, project.ID, version.ID, store.VersionUpdate{ReleaseDate: &end}); err != nil {
+		t.Fatal(err)
+	}
+	scenario, err := f.store.CreatePlanScenario(ctx, ws, f.ownerID, planID, "Live release dates", "blue", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := f.store.AutoSchedulePlan(ctx, ws, f.ownerID, plan, scenario, store.PlanScheduleRequest{All: true, From: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)}, time.Now())
+	if err != nil || result.Scheduled != 1 {
+		t.Fatalf("fresh release run %+v: %v", result, err)
+	}
+	found := false
+	for _, c := range result.Changes {
+		if c.Field == "endDate" && string(c.Value) == `"2026-11-27"` {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("stale version dates %+v", result.Changes)
+	}
+}

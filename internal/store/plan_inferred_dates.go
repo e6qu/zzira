@@ -55,15 +55,20 @@ func fillPlanDates(item *models.TimelineItem, start, end, source string) {
 }
 
 func inferPlanReleaseDates(item *models.TimelineItem, dates map[string]planReleaseDates) {
+	start, end := planReleaseSpan(item.Issue, dates)
+	fillPlanDates(item, start, end, "Release dates")
+}
+
+func planReleaseSpan(issue *models.Issue, dates map[string]planReleaseDates) (string, string) {
 	var releases []struct {
 		ID string `json:"id"`
 	}
-	if json.Unmarshal(item.Issue.Fields["fixVersions"], &releases) != nil {
-		return
+	if json.Unmarshal(issue.Fields["fixVersions"], &releases) != nil {
+		return "", ""
 	}
 	var start, end string
 	for _, release := range releases {
-		bounds := dates[item.Issue.ProjectID+"/"+release.ID]
+		bounds := dates[issue.ProjectID+"/"+release.ID]
 		if _, valid := parseTimelineDate(bounds.Start); valid && (start == "" || bounds.Start < start) {
 			start = bounds.Start
 		}
@@ -71,5 +76,5 @@ func inferPlanReleaseDates(item *models.TimelineItem, dates map[string]planRelea
 			end = bounds.End
 		}
 	}
-	fillPlanDates(item, start, end, "Release dates")
+	return start, end
 }

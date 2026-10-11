@@ -540,7 +540,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	// options for this work item, so a transition screen names the same ones
 	// rather than loading them again.
 	customByID := map[string]models.CustomFieldView{}
-	for _, field := range editView.CustomFields {
+	for _, field := range editView.ConfiguredCustomFields {
 		customByID[field.ID] = field
 	}
 	// A transition is offered only to someone who may move the work, as the
@@ -762,7 +762,15 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	if err != nil {
 		return nil, err
 	}
+	viewCustomFields := []models.CustomFieldView{}
+	for _, field := range editView.ConfiguredCustomFields {
+		if len(viewFields) == 0 || slices.Contains(viewFields, field.ID) {
+			viewCustomFields = append(viewCustomFields, field)
+		}
+	}
 	view := &models.IssueView{
+		ViewFields:           issueScreenFields(viewFields, reporterBehaviour),
+		EditFields:           editView.EditFields,
 		EnvironmentVisible:   !reporterBehaviour["environment"].IsHidden && (len(viewFields) == 0 || slices.Contains(viewFields, "environment")),
 		Issue:                *issue,
 		ProjectKey:           project.Key,
@@ -804,7 +812,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 		CanResolve:           canResolve,
 		SecurityLevels:       editView.SecurityLevels,
 		SecurityLevelName:    h.Store.SecurityLevelName(r.Context(), issue.ProjectID, issue.SecurityLevelID),
-		CustomFields:         editView.CustomFields,
+		CustomFields:         viewCustomFields,
 		Watchers:             watchers,
 		IsWatching:           isWatching,
 		Voters:               voters,
@@ -896,7 +904,7 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	if err != nil {
 		return nil, err
 	}
-	customFields, err := h.Store.CustomFieldsForProject(ctx, issue.ProjectID)
+	customFields, err := h.Store.CustomFieldsForIssue(ctx, wsID, issue.ProjectID, issue.IssueType.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -931,6 +939,7 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	if err != nil {
 		return nil, err
 	}
+	view.EditFields = issueScreenFields(reporterFields, behaviour)
 	issue.FieldRenderers = map[string]string{}
 	for field, rule := range behaviour {
 		issue.FieldRenderers[field] = rule.Renderer
@@ -960,6 +969,9 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 		return nil, err
 	}
 	for _, cf := range customFields {
+		if behaviour[cf.ID].IsHidden {
+			continue
+		}
 		value := ""
 		if raw, ok := issue.Fields[cf.ID]; ok && string(raw) != "null" {
 			var text string
@@ -1001,7 +1013,11 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 			}
 			fieldView.Display = strings.Join(display, ", ")
 		}
-		view.CustomFields = append(view.CustomFields, fieldView)
+		fieldView.ReadOnly = len(reporterFields) > 0 && !slices.Contains(reporterFields, cf.ID)
+		view.ConfiguredCustomFields = append(view.ConfiguredCustomFields, fieldView)
+		if !fieldView.ReadOnly {
+			view.CustomFields = append(view.CustomFields, fieldView)
+		}
 	}
 	return view, nil
 }
@@ -1678,6 +1694,10 @@ func encodeWebCustomField(fieldType, value string) (json.RawMessage, error) {
 func (h *Handler) ProjectIssues(w http.ResponseWriter, r *http.Request, key string) {
 	user := h.currentUser(r)
 	if user == nil {
+		if h.AnonymousAccess && !authn.PresentsCredentials(r) {
+			h.serveAnonymousCollection(w, r, key)
+			return
+		}
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -3014,4 +3034,13 @@ func (h *Handler) requireBulkChange(w http.ResponseWriter, r *http.Request) (*mo
 		return nil, "", false
 	}
 	return user, workspaceID, true
+}
+
+// issueScreenFields combines a resolved screen with work-type field rules.
+func issueScreenFields(screen []string, rules map[string]models.FieldBehaviour) map[string]bool {
+	fields := map[string]bool{}
+	for _, id := range []string{"summary", "description", "environment", "assignee", "reporter", "priority", "labels", "duedate", "parent", "resolution", "security", "components", "fixVersions", "versions", "timetracking"} {
+		fields[id] = !rules[id].IsHidden && (len(screen) == 0 || slices.Contains(screen, id))
+	}
+	return fields
 }

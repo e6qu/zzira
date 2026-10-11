@@ -142,6 +142,9 @@ func TestEditActionSetsAssigneeResolutionAndEstimates(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := fx.store.AddFieldToDefaultScreen(fx.ctx, fx.ws, fx.admin, "resolution"); err != nil {
+		t.Fatal(err)
+	}
 	base := "/gateway/api/automation/public/jira/" + fx.cloudID + "/rest/v1/rule"
 	actions := []map[string]any{
 		{"component": "ACTION", "type": "jira.issue.edit", "value": map[string]string{"field": "assignee", "value": "ACTOR"}},

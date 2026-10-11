@@ -17,13 +17,14 @@ import (
 // PlanItem is how a scenario plans one work item: its team, sprint and
 // estimate, and which of its fields the scenario changes.
 type PlanItem struct {
-	Issue      *models.Issue
-	TeamID     int64
-	TeamName   string
-	SprintID   string
-	SprintName string
-	Estimate   *float64
-	Changed    map[string]bool
+	Issue        *models.Issue
+	TeamID       int64
+	TeamName     string
+	SprintID     string
+	SprintName   string
+	Estimate     *float64
+	Changed      map[string]bool
+	activeSprint bool
 }
 
 // PlanIteration is one sprint or week of a team: its capacity and the
@@ -74,6 +75,7 @@ type PlanPlanning struct {
 	Dependencies []PlanDependency
 	Sprints      []PlanSprint
 	Changes      int
+	releaseDates map[string]planReleaseDates
 }
 
 // planEstimateUnit names what a plan estimates work in.
@@ -203,13 +205,11 @@ func (s *Store) PlanPlanning(ctx context.Context, workspaceID, userID string, pl
 		}
 	}
 
-	releaseDates := map[string]planReleaseDates{}
-	if plan.Scheduling.InferredDates == "ReleaseDates" {
-		releaseDates, err = s.planReleaseDates(ctx, workspaceID, flat)
-		if err != nil {
-			return planning, err
-		}
+	releaseDates, err := s.planReleaseDates(ctx, workspaceID, flat)
+	if err != nil {
+		return planning, err
 	}
+	planning.releaseDates = releaseDates
 	for _, item := range flat {
 		issue := item.Issue
 		planned := &PlanItem{Issue: issue, Changed: map[string]bool{}}
@@ -222,6 +222,9 @@ func (s *Store) PlanPlanning(ctx context.Context, workspaceID, userID string, pl
 			}
 		}
 		for _, sprint := range sprintsByIssue[issue.ID] {
+			if sprint.State == "active" {
+				planned.activeSprint = true
+			}
 			if sprint.State == "active" || sprint.State == "future" {
 				planned.SprintID = sprint.ID
 				remember(sprint)

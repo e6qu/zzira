@@ -50,9 +50,8 @@ func main() {
 	messageFunc = js.FuncOf(onMessage)
 	window.Call("addEventListener", "message", messageFunc)
 
-	safeInstall("sqlite init", initDB)
-	if db.IsUndefined() {
-		return // initDB already surfaced the error; a dead DB cannot serve
+	if !safeInstall("sqlite init", initDB) {
+		return // Never advertise a replica whose schema could not be installed.
 	}
 
 	post(map[string]any{"type": "ready", "renderer": build.Renderer})
@@ -364,7 +363,7 @@ func replicaID() (string, error) {
 
 // safeInstall runs fn, recovering any JS-triggered panic (a trapped wasm or
 // thrown JS exception crashes the worker unless recovered here).
-func safeInstall(what string, fn func() error) {
+func safeInstall(what string, fn func() error) (ok bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			post(map[string]any{"type": "error", "message": what + " crashed: " + fmt.Sprint(r)})
@@ -372,7 +371,9 @@ func safeInstall(what string, fn func() error) {
 	}()
 	if err := fn(); err != nil {
 		post(map[string]any{"type": "error", "message": what + " failed: " + err.Error()})
+		return false
 	}
+	return true
 }
 
 func exec(sql string, bind []any) js.Value {
