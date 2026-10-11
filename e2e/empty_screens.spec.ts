@@ -57,7 +57,10 @@ test('an empty assigned screen hides optional fields and rejects forged edits', 
     const create = page.getByRole('dialog', { name: 'Create issue', exact: true });
     await expect(create).toBeVisible();
     await expect(create.getByLabel('Project', { exact: false })).toBeVisible();
+    await create.locator('form').evaluate(form => form.setAttribute('data-test-pending-refresh', 'true'));
     await create.getByLabel('Issue type', { exact: false }).selectOption({ label: 'Task' });
+    await expect(create.locator('form')).not.toHaveAttribute('data-test-pending-refresh', 'true');
+    await expect(create).toHaveAttribute('data-ready', '1');
     await expect(create.locator('#create-priority, #create-labels, #create-assignee, #create-description')).toHaveCount(0);
     await create.getByLabel('Summary', { exact: false }).fill(`Empty create screen ${stamp}`);
     await create.getByRole('button', { name: 'Create issue', exact: true }).click();
