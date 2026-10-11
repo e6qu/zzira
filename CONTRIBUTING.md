@@ -85,6 +85,12 @@ pulls and the shared CI runners exhaust that limit. The `image-pins` workflow
 runs `scripts/image-pins.py` on every pull request, on every push to `main` and
 daily. For each pin it reads Docker Hub's tag API and the mirror's manifest:
 
+Release discovery follows every [tag pagination page](https://docs.docker.com/reference/api/hub/latest/schemas/page/)
+and reuses the results for pins in the same repository, major release family and
+variant. For large listings, it compares major-family and variant searches and
+pages through the smaller complete result set before applying version rules.
+An incomplete response or missing publication time fails the check.
+
 - **ok**: the pin is the digest Docker Hub serves for the tag, and the mirror
   serves the same digest; the digest has been published for at least 24 hours.
 - **HELD**: Docker Hub moved the tag, or published a newer release with the same
@@ -94,8 +100,8 @@ daily. For each pin it reads Docker Hub's tag API and the mirror's manifest:
   still inside the 24-hour quarantine.
 
 To bump a pin, wait until its publication is at least 24 hours old, take the
-digest Docker Hub serves for the tag and confirm the
-mirror serves the same one, for example with
+digest Docker Hub serves for the tag and confirm the mirror serves the same one,
+for example with
 `docker buildx imagetools inspect public.ecr.aws/docker/library/golang:<tag>`.
 Dependabot does not watch the Dockerfile: its anonymous lookups on
 public.ecr.aws fail with 429 and skip the cooldown. Test the check locally with:

@@ -1,6 +1,7 @@
 """Exercise image-pin discovery, release ordering and the 24-hour quarantine."""
 import datetime as dt
 import importlib.util
+import json
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -17,6 +18,80 @@ MOVED = 'sha256:' + 'b' * 64
 
 
 class ImagePinTests(unittest.TestCase):
+    def setUp(self):
+        check.hub_release_tags.cache_clear()
+        check.hub_tag_page.cache_clear()
+
+    def test_eligible_release_on_a_later_page_is_not_hidden_by_the_cooldown(self):
+        pages = [
+            {'results': [{'name': '1.27.4-bookworm', 'tag_last_pushed': YOUNG.isoformat()}], 'next': '?page=2'},
+            {'results': [{'name': '1.27.3-bookworm', 'tag_last_pushed': OLD.isoformat()}], 'next': None},
+        ]
+        with patch.object(check, 'request', side_effect=[({}, json.dumps(page).encode()) for page in pages]) as request:
+            candidates = check.newer_tags('1.27.2-bookworm', check.hub_candidates('library/golang', '1.27.2-bookworm'))
+            state, notes = check.verdict(PINNED, PINNED, OLD, PINNED, candidates, NOW)
+            self.assertEqual(state, 'DRIFT')
+            self.assertIn('1.27.3-bookworm', notes[0])
+            self.assertEqual(request.call_count, 2)
+            self.assertTrue(request.call_args.args[0].endswith('?page=2'))
+            check.hub_candidates('library/golang', '1.27.1-bookworm')
+            self.assertEqual(request.call_count, 2)
+
+    def test_large_major_listing_uses_smaller_complete_variant_listing(self):
+        pages = [
+            {'count': 4414, 'results': [], 'next': '?page=2'},
+            {'count': 2, 'results': [{'name': '1.27.4-bookworm', 'tag_last_pushed': YOUNG.isoformat()}], 'next': '?page=2'},
+            {'count': 2, 'results': [{'name': '1.27.3-bookworm', 'tag_last_pushed': OLD.isoformat()}], 'next': None},
+        ]
+        with patch.object(check, 'request', side_effect=[({}, json.dumps(page).encode()) for page in pages]) as request:
+            candidates = check.newer_tags('1.27.2-bookworm', check.hub_candidates('library/golang', '1.27.2-bookworm'))
+            self.assertEqual([name for name, _ in candidates], ['1.27.4-bookworm', '1.27.3-bookworm'])
+            self.assertEqual(request.call_count, 3)
+            self.assertTrue(request.call_args_list[1].args[0].endswith('name=-bookworm'))
+
+    def test_pagination_failures_do_not_return_partial_release_metadata(self):
+        page = {'results': [{'name': '1.27.4-bookworm', 'tag_last_pushed': YOUNG.isoformat()}], 'next': '?page=2'}
+        with patch.object(check, 'request', side_effect=[({}, json.dumps(page).encode()), OSError('unavailable')]):
+            with self.assertRaisesRegex(OSError, 'unavailable'):
+                check.hub_candidates('library/golang', '1.27.2-bookworm')
+
+    def test_larger_variant_listing_keeps_the_major_family_search(self):
+        following = 'https://hub.docker.com/v2/repositories/library/golang/tags?name=1.&page=2'
+        pages = [
+            {'count': 101, 'results': [], 'next': following},
+            {'count': 200, 'results': [], 'next': '?page=2'},
+            {'count': 101, 'results': [{'name': '1.27.3-bookworm', 'tag_last_pushed': OLD.isoformat()}], 'next': None},
+        ]
+        with patch.object(check, 'request', side_effect=[({}, json.dumps(page).encode()) for page in pages]) as request:
+            self.assertEqual(check.hub_candidates('library/golang', '1.27.2-bookworm'), [('1.27.3-bookworm', OLD)])
+            self.assertEqual(request.call_args.args[0], following)
+
+    def test_missing_publication_time_is_refused(self):
+        page = {'results': [{'name': '1.27.3-bookworm'}], 'next': None}
+        with patch.object(check, 'request', return_value=({}, json.dumps(page).encode())):
+            with self.assertRaisesRegex(ValueError, 'no publication time'):
+                check.hub_candidates('library/golang', '1.27.2-bookworm')
+
+    def test_repeated_pagination_link_is_refused(self):
+        with patch.object(check, 'request') as request:
+            request.side_effect = lambda url: ({}, json.dumps({'results': [], 'next': url}).encode())
+            with self.assertRaisesRegex(ValueError, 'repeated pagination link'):
+                check.hub_candidates('library/golang', '1.27.2-bookworm')
+            self.assertEqual(request.call_count, 1)
+
+    def test_pagination_stays_on_docker_hub_https(self):
+        for following in ['https://other.example/tags', 'http://hub.docker.com/tags']:
+            check.hub_tag_page.cache_clear()
+            with self.subTest(following=following), patch.object(check, 'request', return_value=({}, json.dumps({'results': [], 'next': following}).encode())) as request:
+                with self.assertRaisesRegex(ValueError, 'outside its HTTPS API'):
+                    check.hub_candidates('library/golang', '1.27.2-bookworm')
+                self.assertEqual(request.call_count, 1)
+
+    def test_non_version_tags_do_not_request_release_pages(self):
+        with patch.object(check, 'request') as request:
+            self.assertEqual(check.hub_candidates('library/golang', 'latest'), [])
+            request.assert_not_called()
+
     def test_pins_name_the_docker_hub_repository_they_copy(self):
         found = check.pins([
             ('Dockerfile', f'FROM public.ecr.aws/docker/library/golang:1.27.2-bookworm@{PINNED} AS build'),
