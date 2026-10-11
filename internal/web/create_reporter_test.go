@@ -55,6 +55,26 @@ func TestCreateReporterChoicesPersistenceAndPermissions(t *testing.T) {
 			t.Fatal("reporter missing from default screen")
 		}
 	}
+	outsider := store.NewID("usr")
+	if _, err := f.store.Pool.Exec(ctx, `INSERT INTO users(id,email,password_hash,display_name) VALUES($1,$2,'test','Outside reporter')`, outsider, outsider+"@example.invalid"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if _, err := f.store.Pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, outsider); err != nil {
+			t.Error(err)
+		}
+	})
+	outside := f.post(t, f.handler.CreateIssue, f.ownerID, "/issues", "", url.Values{"project": {"REP"}, "issuetype": {"it_task"}, "summary": {"Outside reporter refused"}, "reporter": {outsider}})
+	if outside.Code != http.StatusOK || !strings.Contains(outside.Body.String(), "reporter is not an active workspace member") {
+		t.Fatalf("outside Reporter accepted: %d %s", outside.Code, outside.Body.String())
+	}
+	if _, _, err := f.store.CreateIssueForReporter(ctx, f.ownerID, outsider, project.ID, "Outside reporter refused", nil, "st_todo", "it_task", "", "", nil, nil, "", ""); err == nil {
+		t.Fatal("transaction accepted an outside Reporter")
+	}
+	var outsideCount int
+	if err := f.store.Pool.QueryRow(ctx, `SELECT count(*) FROM issues WHERE workspace_id=$1 AND summary='Outside reporter refused'`, ws).Scan(&outsideCount); err != nil || outsideCount != 0 {
+		t.Fatalf("outside Reporter persisted: %d %v", outsideCount, err)
+	}
 	assertChoices(f.ownerID, 2)
 	assertChoices(f.otherID, 1)
 	submit := func(user, reporter, summary string) string {

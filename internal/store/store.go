@@ -926,6 +926,9 @@ func (s *Store) CreateIssueForReporter(ctx context.Context, actorID, reporterID,
 type NewIssueDetails struct {
 	Original, Remaining *int64
 	DueDate             string
+	// CustomerReporter is set by service requests, whose customers need not
+	// hold a workspace membership.
+	CustomerReporter bool
 }
 
 // CreateEstimatedIssueForReporter creates a work item with its time estimates.
@@ -967,11 +970,19 @@ func (s *Store) CreateEstimatedIssueForReporter(ctx context.Context, actorID, re
 	}
 	if reporter != actorID {
 		var reporterExists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND active)`, reporter).Scan(&reporterExists); err != nil {
+		query := `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND active)`
+		args := []any{reporter}
+		if !estimates.CustomerReporter {
+			query = `SELECT EXISTS(SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id
+ WHERE u.id=$1 AND m.workspace_id=$2 AND u.active
+ AND EXISTS(SELECT 1 FROM sites si JOIN directories d ON d.organization_id=si.organization_id JOIN directory_users du ON du.directory_id=d.id AND du.user_id=u.id WHERE si.workspace_id=m.workspace_id AND d.active AND du.active))`
+			args = append(args, wsID)
+		}
+		if err := tx.QueryRow(ctx, query, args...).Scan(&reporterExists); err != nil {
 			return nil, nil, err
 		}
 		if !reporterExists {
-			return nil, nil, fmt.Errorf("reporter account does not exist")
+			return nil, nil, fmt.Errorf("reporter is not an active account for this site")
 		}
 	}
 	if assigneeID != "" {

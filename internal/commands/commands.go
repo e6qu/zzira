@@ -157,6 +157,11 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	if err = s.normalizeOptionFields(ctx, in.WorkspaceID, project.ID, issueType.ID, in.Fields, in.AssetSchemas); err != nil {
 		return nil, nil, err
 	}
+	if !in.customerRequest && in.ReporterID != "" {
+		if _, err := s.Store.MemberByID(ctx, in.WorkspaceID, in.ReporterID); err != nil {
+			return nil, nil, fmt.Errorf("reporter is not an active workspace member")
+		}
+	}
 	if err = s.enforceFieldConfiguration(ctx, in, project.ID, issueType.ID); err != nil {
 		return nil, nil, err
 	}
@@ -318,7 +323,7 @@ func (s *Service) CreateIssue(ctx context.Context, in CreateIssueInput) (*models
 	}
 	issue, action, err := s.Store.CreateEstimatedIssueForReporter(ctx, in.ActorID, in.ReporterID, project.ID, in.Summary,
 		description, wf.InitialStatus(), issueType.ID, priorityID, in.AssigneeID, labels, in.Fields, in.SecurityLevelID, parentID,
-		store.NewIssueDetails{Original: in.OriginalEstimate, Remaining: in.RemainingEstimate, DueDate: dueDate})
+		store.NewIssueDetails{Original: in.OriginalEstimate, Remaining: in.RemainingEstimate, DueDate: dueDate, CustomerReporter: in.customerRequest})
 	if err != nil {
 		return nil, nil, err
 	}
