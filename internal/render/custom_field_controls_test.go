@@ -38,3 +38,22 @@ func TestEditAndInlineCustomControlsHaveClearMarkersAndScopedHelp(t *testing.T) 
 		}
 	}
 }
+
+func TestCustomControlsExposeRequirednessWithoutChangingOptionalFields(t *testing.T) {
+	for _, kind := range []string{"text", "number", "select", "multiselect", "multiuserpicker", "multigrouppicker", "multiversion"} {
+		t.Run(kind, func(t *testing.T) {
+			field := models.CustomFieldView{ID: "customfield_17001", Name: "Required field", Type: kind, Options: []models.CreateFieldOption{{ID: "one", Name: "One"}}}
+			for _, required := range []bool{false, true} {
+				field.Required = required
+				var output bytes.Buffer
+				if err := Fragment(&output, "custom_field_control", map[string]any{"Field": field, "Prefix": "field-", "HelpID": "field-help-" + field.ID}); err != nil {
+					t.Fatal(err)
+				}
+				html := output.String()
+				if strings.Contains(html, " required") != required {
+					t.Fatalf("required=%v: %s", required, html)
+				}
+			}
+		})
+	}
+}

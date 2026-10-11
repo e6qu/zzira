@@ -226,6 +226,43 @@ test('a multi-select field saves and clears every chosen option', async ({ page 
   await saveInline();
   await page.reload();
   expect(await savedPlatforms()).toEqual([]);
+
+  const configuration = await page.request.post('/rest/api/3/fieldconfiguration', { headers: auth, data: { name: `Required platforms ${stamp}` } });
+  expect(configuration.status()).toBe(201);
+  const configurationID = String((await configuration.json()).id);
+  expect((await page.request.put(`/rest/api/3/fieldconfiguration/${configurationID}/fields`, { headers: auth, data: { fieldConfigurationItems: [{ id: fieldID, isRequired: true }] } })).status()).toBe(204);
+  const configurationScheme = await page.request.post('/rest/api/3/fieldconfigurationscheme', { headers: auth, data: { name: `Required platform types ${stamp}` } });
+  expect(configurationScheme.status()).toBe(201);
+  const configurationSchemeID = String((await configurationScheme.json()).id);
+  expect((await page.request.put(`/rest/api/3/fieldconfigurationscheme/${configurationSchemeID}/mapping`, { headers: auth, data: { mappings: [{ issueTypeId: 'default', fieldConfigurationId: configurationID }] } })).status()).toBe(204);
+  expect((await page.request.put('/rest/api/3/fieldconfigurationscheme/project', { headers: auth, data: { fieldConfigurationSchemeId: configurationSchemeID, projectId: projectID } })).status()).toBe(204);
+  await page.reload();
+  await page.locator('#edit-issue-button').click();
+  await expect(editedPlatforms).toHaveAttribute('required', '');
+  await edit.getByRole('button', { name: 'Save changes' }).click();
+  await expect(edit).toBeVisible();
+  await expect(editedPlatforms).toBeFocused();
+  expect(await savedPlatforms()).toEqual([]);
+  await editedPlatforms.selectOption([ids.iOS]);
+  await edit.getByRole('button', { name: 'Save changes' }).click();
+  await expect(edit).not.toBeVisible();
+  expect(await savedPlatforms()).toEqual([ids.iOS]);
+  if (!(await more.evaluate((element) => (element as HTMLDetailsElement).open))) {
+    await more.locator('summary').click();
+  }
+  await expect(inline).toHaveAttribute('required', '');
+  await inline.selectOption([]);
+  await page.getByRole('button', { name: `Save Platforms ${stamp}` }).click();
+  await expect(inline).toBeFocused();
+  expect(await savedPlatforms()).toEqual([ids.iOS]);
+  const forgedClear = await page.request.post(`/issues/${issueKey}/fields`, { form: { field: `custom:${fieldID}`, value: '' } });
+  expect(forgedClear.status()).toBe(400);
+  expect(await savedPlatforms()).toEqual([ids.iOS]);
+  await page.reload();
+  if (!(await more.evaluate((element) => (element as HTMLDetailsElement).open))) {
+    await more.locator('summary').click();
+  }
+  await expect(inline).toHaveValues([ids.iOS]);
 });
 
 // The create form offers people, groups, dates, links and a cascading select's

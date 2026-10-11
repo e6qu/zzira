@@ -51,7 +51,7 @@
     <label for="edit-{{.Field.ID}}">{{.Field.Name}}</label><input type="hidden" name="{{.Field.ID}}" value=""><select id="edit-{{.Field.ID}}" name="{{.Field.ID}}" multiple size="3" {{if .Field.Required}}required{{end}} {{if .Field.Description}}aria-describedby="edit-help-{{.Field.ID}}"{{end}}>{{$value := .Value}}{{range .Field.Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{if .Field.Description}}<small id="edit-help-{{.Field.ID}}" class="muted">{{.Field.Description}}</small>{{end}}
     {{end}}{{end}}
     {{range .CustomFields}}{{if eq .ID $field}}
-    <label for="field-{{.ID}}">{{.Name}}</label>
+    <label for="field-{{.ID}}">{{.Name}}{{if .Required}} <span aria-hidden="true">*</span>{{end}}</label>
       {{template "custom_field_control" (customFieldControl . "field-" "")}}
       {{if .Description}}<small id="field-help-{{.ID}}" class="muted">{{.Description}}</small>{{end}}
     {{end}}{{end}}

@@ -596,6 +596,7 @@ type IssueChoiceFieldView struct {
 
 // CustomFieldView is a render-only custom field descriptor with the value.
 type CustomFieldView struct {
+	Required bool
 	// ReadOnly suppresses an inline editor when the field is absent from its edit screen.
 	ReadOnly    bool
 	Renderer    string

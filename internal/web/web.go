@@ -567,8 +567,10 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 			})
 
 			asked := []models.CustomFieldView{}
+			required := t.RequiredFields()
 			for _, id := range screenFields {
 				if field, ok := customByID[id]; ok {
+					field.Required = field.Required || required[id]
 					asked = append(asked, field)
 				}
 			}
@@ -1028,7 +1030,7 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 				value = string(raw)
 			}
 		}
-		fieldView := models.CustomFieldView{ID: cf.ID, Name: cf.Name, Type: cf.Type, Description: cf.Description, Value: value, Display: value, Options: choices[cf.ID]}
+		fieldView := models.CustomFieldView{ID: cf.ID, Name: cf.Name, Type: cf.Type, Description: cf.Description, Required: behaviour[cf.ID].IsRequired, Value: value, Display: value, Options: choices[cf.ID]}
 		if cf.Type == models.CustomFieldText {
 			fieldView.Renderer = behaviour[cf.ID].Renderer
 		}

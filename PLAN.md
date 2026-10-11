@@ -67,10 +67,6 @@ backlogs remain epic-level, as Jira's do.
 - Team-managed work type scoping, asynchronous priority-scheme updates and a
   larger avatar catalogue remain ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#gaps)).
 - Reproduce view screen field order ([SCREEN_SCHEMES.md](docs/SCREEN_SCHEMES.md#gaps)).
-- Validate transition tabs, typed fields, rich-text preservation, custom-field
-  clearing and
-  recently merged offline recovery through the full CI gates before certifying
-  these journeys. Validate the image-pin policy and live registry checks too.
 - Add Attachment and Linked work items to the screen catalog.
 - App field options: `projects2` scope, `defaultValue`, property indexes for JQL.
 - Classification level on work items: field, REST value, UI control, JQL,
@@ -286,6 +282,8 @@ Owning reference: [CONFLUENCE_LIVE.md](docs/CONFLUENCE_LIVE.md).
 
 ## 15. Certification
 
+- Validate recently merged editor, transition, offline recovery and image-pin
+  changes through the full CI gates before certifying these journeys.
 - Move every pinned operation from partial to delivered with golden
   request/response evidence.
 - An executable conformance harness that runs every operation against a server.
