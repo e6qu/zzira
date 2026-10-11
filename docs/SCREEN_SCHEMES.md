@@ -34,8 +34,8 @@ Rules:
 
 - Every screen scheme has a `default` screen and every work type screen scheme has a `default` mapping, so resolution always finds a screen.
 - Anything still referenced cannot be removed: screens used by a screen scheme, screen schemes used by a mapping, work type screen schemes assigned to a project, and the two site defaults. Trying returns a conflict.
-- `project`, `issuetype` and `summary` always stay on a form, even if the screen leaves them out. Every other field is up to the screen.
-- Consumers: `createmeta` and the create dialog use `create`; `editmeta` uses `edit`; bulk edit offers only fields on every selected work item's screen. With no governing screen, a form keeps its full field set.
+- `project`, `issuetype` and `summary` always stay on a form, even if the screen leaves them out. Subtask creation also keeps its required Parent; optional fields follow the screen.
+- Consumers: `createmeta` and the create dialog use `create`; `editmeta` uses `edit`; bulk edit offers only fields on every selected work item's screen. With no governing screen, a form keeps its full field set. An assigned screen with no fields keeps only the required create context, including a subtask parent, and summary; it does not restore optional fields. Edit and view screens retain the empty assignment, and off-screen edits are refused. Edit metadata and bulk field choices resolve edit screens independently of create screens.
 
 ## Defaults
 
@@ -51,6 +51,22 @@ Every site has a `Default Screen Scheme`, which points to the `Default Screen`. 
 
 **Copy.** The settings page copies one, named "Copy of X" (then "Copy 2 of X"), carrying its configuration and nothing else: the copy is assigned to no project and is never the site default.
 
+Components, Fix versions and Affects versions have project-scoped multiple
+pickers in the issue editor and inline details. Empty selections clear only
+the submitted field; omitted fields stay unchanged. Fix-version editing also
+requires Resolve issues. View-only fields retain their saved values without
+controls, hidden fields disappear, and version links follow the view screen.
+Both direct version values and add/remove/set operations follow edit-screen
+checks. Offline configuration metadata remains tracked in [PLAN.md](../PLAN.md#14-local-first-closure).
+
+The edit dialog also exposes configured Priority, Labels, Due date, Parent,
+Resolution and estimate fields, including fields absent from the view screen.
+Due dates require Schedule issues; Resolution requires Resolve issues. The
+parent picker defaults to keeping its current relationship. Omitted fields
+stay unchanged, invalid durations refuse the entire edit, and clearing one
+estimate retains its unsubmitted counterpart. These additional controls wait
+for server field metadata; legacy offline editors keep their existing fields.
+
 ## Gaps
 
 Tracked in [PLAN.md](../PLAN.md).
@@ -58,7 +74,6 @@ Tracked in [PLAN.md](../PLAN.md).
 - View screens govern the built-in details the issue page renders and custom
   fields. Fields outside the edit screen show saved values without edit
   controls. The page uses its own layout rather than reproducing screen tabs
-  and field order. Components and version controls remain outside the details
-  panel.
+  and field order.
 - Workflow transition screens resolve named screens, but present their fields
   as one list rather than using the screen's tabs ([WORKFLOW_RULES.md](WORKFLOW_RULES.md#gaps)).

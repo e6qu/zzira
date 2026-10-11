@@ -573,17 +573,11 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	}
 	// Resolution is offered to people who may resolve work, as Jira ties the
 	// field to the Resolve issues permission.
-	resolutions, err := h.Store.ResolutionsForWorkspace(r.Context(), wsID)
-	if err != nil {
-		return nil, err
-	}
+	resolutions := editView.Resolutions
 	resolutionValues := resolutions
 	canResolve := permissions["RESOLVE_ISSUES"]
 	// The priority field offers what the project's priority scheme holds.
-	priorities, err := h.Store.PrioritiesForProject(r.Context(), wsID, issue.ProjectID)
-	if err != nil {
-		return nil, err
-	}
+	priorities := editView.Priorities
 	watcherIDs, err := h.Store.WatchersByIssue(r.Context(), issue.ID)
 	if err != nil {
 		return nil, err
@@ -650,10 +644,7 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	}
 	// The work item's parent comes from one level above its own work type, in
 	// its own project.
-	parentOptions, err := h.Store.ParentOptions(r.Context(), wsID, issue.ProjectID, user.ID, issue.IssueType.HierarchyLevel)
-	if err != nil {
-		return nil, err
-	}
+	parentOptions := editView.ParentOptions
 	linkViews := make([]models.IssueLinkView, 0, len(links))
 	for _, link := range links {
 		otherID, relationship := link.OutwardID, link.Inward
@@ -764,14 +755,21 @@ func (h *Handler) buildIssueView(r *http.Request, user *models.User, wsID, idOrK
 	}
 	viewCustomFields := []models.CustomFieldView{}
 	for _, field := range editView.ConfiguredCustomFields {
-		if len(viewFields) == 0 || slices.Contains(viewFields, field.ID) {
+		if viewFields == nil || slices.Contains(viewFields, field.ID) {
 			viewCustomFields = append(viewCustomFields, field)
 		}
 	}
+	viewChoiceFields := []models.IssueChoiceFieldView{}
+	for _, field := range editView.ConfiguredChoiceFields {
+		if viewFields == nil || slices.Contains(viewFields, field.Field.ID) {
+			viewChoiceFields = append(viewChoiceFields, field)
+		}
+	}
 	view := &models.IssueView{
+		ChoiceFields:         viewChoiceFields,
 		ViewFields:           issueScreenFields(viewFields, reporterBehaviour),
 		EditFields:           editView.EditFields,
-		EnvironmentVisible:   !reporterBehaviour["environment"].IsHidden && (len(viewFields) == 0 || slices.Contains(viewFields, "environment")),
+		EnvironmentVisible:   !reporterBehaviour["environment"].IsHidden && (viewFields == nil || slices.Contains(viewFields, "environment")),
 		Issue:                *issue,
 		ProjectKey:           project.Key,
 		ProjectName:          project.Name,
@@ -939,15 +937,45 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	if err != nil {
 		return nil, err
 	}
+	view.FieldRules = behaviour
 	view.EditFields = issueScreenFields(reporterFields, behaviour)
+	view.CanResolve, view.CanSchedule = permissions["RESOLVE_ISSUES"], permissions["SCHEDULE_ISSUES"]
+	view.Priorities, err = h.Store.PrioritiesForProject(ctx, wsID, issue.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	view.Resolutions, err = h.Store.ResolutionsForWorkspace(ctx, wsID)
+	if err != nil {
+		return nil, err
+	}
+	view.ParentOptions, err = h.Store.ParentOptions(ctx, wsID, issue.ProjectID, reader, issue.IssueType.HierarchyLevel)
+	if err != nil {
+		return nil, err
+	}
+	configuration, err := h.Store.JiraSiteConfiguration(ctx, wsID)
+	if err != nil {
+		return nil, err
+	}
+	view.TimeTrackingEnabled = configuration.TimeTrackingEnabled
+	view.TimeTracking = models.NewTimeTrackingView(*issue, configuration.TimeTracking)
+	choiceFields, err := h.issueChoiceFields(ctx, wsID, issue, behaviour, view.EditFields, permissions)
+	if err != nil {
+		return nil, err
+	}
+	view.ConfiguredChoiceFields = choiceFields
+	for _, field := range choiceFields {
+		if !field.ReadOnly {
+			view.ChoiceFields = append(view.ChoiceFields, field)
+		}
+	}
 	issue.FieldRenderers = map[string]string{}
 	for field, rule := range behaviour {
 		issue.FieldRenderers[field] = rule.Renderer
 	}
-	if !behaviour["environment"].IsHidden && (len(reporterFields) == 0 || slices.Contains(reporterFields, "environment")) {
+	if !behaviour["environment"].IsHidden && (reporterFields == nil || slices.Contains(reporterFields, "environment")) {
 		view.EnvironmentField = &models.CreateFieldMeta{ID: "environment", Name: "Environment", Type: "doc", Required: behaviour["environment"].IsRequired, Description: behaviour["environment"].Description}
 	}
-	view.CanModifyReporter = permissions["MODIFY_REPORTER"] && !behaviour["reporter"].IsHidden && (len(reporterFields) == 0 || slices.Contains(reporterFields, "reporter"))
+	view.CanModifyReporter = permissions["MODIFY_REPORTER"] && !behaviour["reporter"].IsHidden && (reporterFields == nil || slices.Contains(reporterFields, "reporter"))
 	view.ReporterRequired = behaviour["reporter"].IsRequired
 	foundReporter := false
 	for _, member := range members {
@@ -1013,7 +1041,7 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 			}
 			fieldView.Display = strings.Join(display, ", ")
 		}
-		fieldView.ReadOnly = len(reporterFields) > 0 && !slices.Contains(reporterFields, cf.ID)
+		fieldView.ReadOnly = reporterFields != nil && !slices.Contains(reporterFields, cf.ID)
 		view.ConfiguredCustomFields = append(view.ConfiguredCustomFields, fieldView)
 		if !fieldView.ReadOnly {
 			view.CustomFields = append(view.CustomFields, fieldView)
@@ -2723,6 +2751,8 @@ func (h *Handler) UpdateIssueField(w http.ResponseWriter, r *http.Request, key s
 		if strings.TrimSpace(value) == "" {
 			in.Fields["environment"] = json.RawMessage("null")
 		}
+	case "components", "fixVersions", "versions":
+		in.Fields = map[string]json.RawMessage{field: issueChoiceRefs(r.PostForm["value"])}
 	case "priority":
 		in.PriorityID = &value
 	case "reporter":
@@ -2918,6 +2948,29 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 			in.Fields["environment"] = json.RawMessage("null")
 		}
 	}
+	if values, ok := r.PostForm["priority"]; ok && len(values) > 0 {
+		in.PriorityID = &values[0]
+	}
+	if values, ok := r.PostForm["resolution"]; ok && len(values) > 0 {
+		in.ResolutionID = &values[0]
+	}
+	if values, ok := r.PostForm["duedate"]; ok && len(values) > 0 {
+		in.DueDate = &values[0]
+	}
+	if values, ok := r.PostForm["parent"]; ok && len(values) > 0 && values[0] != "__keep_parent__" {
+		in.ParentIDOrKey = &values[0]
+	}
+	if values, ok := r.PostForm["labels"]; ok && len(values) > 0 {
+		labels := []string{}
+		if strings.TrimSpace(values[0]) != "" {
+			labels = strings.Split(values[0], ",")
+		}
+		in.Labels = &labels
+	}
+	if err := h.editDialogEstimates(r, wsID, &in); err != nil {
+		http.Error(w, err.Error(), commandErrorStatus(err))
+		return
+	}
 	if values, ok := r.PostForm["reporter"]; ok && len(values) > 0 {
 		in.ReporterID = &values[0]
 	}
@@ -2926,6 +2979,14 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 	}
 	if sec, ok := r.PostForm["security"]; ok {
 		in.SecurityLevelID = &sec[0] // "" = public
+	}
+	for _, field := range []string{"components", "fixVersions", "versions"} {
+		if values, provided := r.PostForm[field]; provided {
+			if in.Fields == nil {
+				in.Fields = map[string]json.RawMessage{}
+			}
+			in.Fields[field] = issueChoiceRefs(values)
+		}
 	}
 	customFields, cfErr := h.Store.CustomFieldsForProject(r.Context(), issue.ProjectID)
 	if cfErr != nil {
@@ -3040,7 +3101,7 @@ func (h *Handler) requireBulkChange(w http.ResponseWriter, r *http.Request) (*mo
 func issueScreenFields(screen []string, rules map[string]models.FieldBehaviour) map[string]bool {
 	fields := map[string]bool{}
 	for _, id := range []string{"summary", "description", "environment", "assignee", "reporter", "priority", "labels", "duedate", "parent", "resolution", "security", "components", "fixVersions", "versions", "timetracking"} {
-		fields[id] = !rules[id].IsHidden && (len(screen) == 0 || slices.Contains(screen, id))
+		fields[id] = !rules[id].IsHidden && (screen == nil || slices.Contains(screen, id))
 	}
 	return fields
 }

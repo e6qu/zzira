@@ -450,8 +450,8 @@ const screenFieldResolutionQuery = `
 		)
 		SELECT chosen.project_id, chosen.issue_type_id, field.field_id, tab.name
 		FROM pick_screen chosen
-		JOIN screen_tab_fields field ON field.screen_id=chosen.screen_id
-		JOIN screen_tabs tab ON tab.id=field.tab_id
+		LEFT JOIN screen_tab_fields field ON field.screen_id=chosen.screen_id
+		LEFT JOIN screen_tabs tab ON tab.id=field.tab_id
 		ORDER BY chosen.project_id, chosen.issue_type_id, tab.position, tab.id, field.position, field.field_id`
 
 func (s *Store) ResolveScreenFieldsByProject(ctx context.Context, workspaceID, operation string) (map[string]map[string][]string, error) {
@@ -463,14 +463,20 @@ func (s *Store) ResolveScreenFieldsByProject(ctx context.Context, workspaceID, o
 	defer rows.Close()
 	resolved := map[string]map[string][]string{}
 	for rows.Next() {
-		var projectID, issueTypeID, fieldID, tabName string
+		var projectID, issueTypeID string
+		var fieldID, tabName *string
 		if err = rows.Scan(&projectID, &issueTypeID, &fieldID, &tabName); err != nil {
 			return nil, err
 		}
 		if resolved[projectID] == nil {
 			resolved[projectID] = map[string][]string{}
 		}
-		resolved[projectID][issueTypeID] = append(resolved[projectID][issueTypeID], fieldID)
+		if resolved[projectID][issueTypeID] == nil {
+			resolved[projectID][issueTypeID] = []string{}
+		}
+		if fieldID != nil {
+			resolved[projectID][issueTypeID] = append(resolved[projectID][issueTypeID], *fieldID)
+		}
 	}
 	return resolved, rows.Err()
 }
@@ -486,7 +492,8 @@ func (s *Store) ResolveScreenTabsByProject(ctx context.Context, workspaceID, ope
 	defer rows.Close()
 	resolved := map[string]map[string][]models.FieldTab{}
 	for rows.Next() {
-		var projectID, issueTypeID, fieldID, tabName string
+		var projectID, issueTypeID string
+		var fieldID, tabName *string
 		if err = rows.Scan(&projectID, &issueTypeID, &fieldID, &tabName); err != nil {
 			return nil, err
 		}
@@ -494,10 +501,15 @@ func (s *Store) ResolveScreenTabsByProject(ctx context.Context, workspaceID, ope
 			resolved[projectID] = map[string][]models.FieldTab{}
 		}
 		tabs := resolved[projectID][issueTypeID]
-		if len(tabs) == 0 || tabs[len(tabs)-1].Name != tabName {
-			tabs = append(tabs, models.FieldTab{Name: tabName})
+		if tabs == nil {
+			tabs = []models.FieldTab{}
 		}
-		tabs[len(tabs)-1].Fields = append(tabs[len(tabs)-1].Fields, fieldID)
+		if fieldID != nil && tabName != nil {
+			if len(tabs) == 0 || tabs[len(tabs)-1].Name != *tabName {
+				tabs = append(tabs, models.FieldTab{Name: *tabName})
+			}
+			tabs[len(tabs)-1].Fields = append(tabs[len(tabs)-1].Fields, *fieldID)
+		}
 		resolved[projectID][issueTypeID] = tabs
 	}
 	return resolved, rows.Err()

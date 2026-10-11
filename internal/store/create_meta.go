@@ -410,3 +410,28 @@ func (s *Store) translateCreateMetadata(ctx context.Context, workspaceID, userID
 	}
 	return nil
 }
+
+// IssueEditMetadata reuses the field catalogue and permission choices of
+// creation metadata, but resolves edit screens for existing work. Empty edit
+// screens must not fall back to the create screen's fields.
+func (s *Store) IssueEditMetadata(ctx context.Context, workspaceID, userID string) (*models.IssueCreateMetadata, error) {
+	metadata, err := s.IssueCreateMetadata(ctx, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	fields, err := s.ResolveScreenFieldsByProject(ctx, workspaceID, "edit")
+	if err != nil {
+		return nil, err
+	}
+	tabs, err := s.ResolveScreenTabsByProject(ctx, workspaceID, "edit")
+	if err != nil {
+		return nil, err
+	}
+	for index := range metadata.Projects {
+		project := &metadata.Projects[index]
+		project.ForEdit = true
+		project.ScreenFields = fields[project.Project.ID]
+		project.ScreenTabs = tabs[project.Project.ID]
+	}
+	return metadata, nil
+}

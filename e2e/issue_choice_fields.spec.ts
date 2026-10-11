@@ -1,0 +1,86 @@
+import { apiAuthHeader } from './auth';
+import { expect, test } from '@playwright/test';
+import axe from 'axe-core';
+
+test.use({ actionTimeout: 15_000 });
+
+test('component and version edits persist, clear and follow separate screens', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill('demo@zzira.dev');
+  await page.getByLabel('Password').fill('demo1234');
+  await page.getByRole('button', { name: 'Log in' }).click();
+  const headers = { Authorization: apiAuthHeader() };
+  const stamp = Date.now();
+  const key = `CHO${stamp.toString().slice(-7)}`;
+  const me = await (await page.request.get('/rest/api/3/myself', { headers })).json();
+  const project = await page.request.post('/rest/api/3/project', { headers, data: { key, name: `Choice fields ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' } });
+  expect(project.status()).toBe(201);
+  const projectID = String((await project.json()).id);
+  let screenSchemeID = '', typeSchemeID = '';
+  const screens: string[] = [];
+  try {
+    const component = await page.request.post('/rest/api/3/component', { headers, data: { project: key, name: `Payments ${stamp}`, assigneeType: 'PROJECT_DEFAULT' } });
+    expect(component.status()).toBe(201);
+    const componentID = String((await component.json()).id);
+    const version = await page.request.post('/rest/api/3/version', { headers, data: { projectId: Number(projectID), name: `October ${stamp}` } });
+    expect(version.status()).toBe(201);
+    const versionID = String((await version.json()).id);
+    const created = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key }, issuetype: { name: 'Task' }, summary: 'Component and version editing' } } });
+    expect(created.status()).toBe(201);
+    const issueKey = String((await created.json()).key);
+    await page.goto(`/browse/${issueKey}`);
+    await page.locator('#edit-issue-button').click();
+    const dialog = page.getByRole('dialog', { name: 'Edit issue', exact: true });
+    await dialog.getByLabel('Components', { exact: true }).selectOption(componentID);
+    await dialog.getByLabel('Fix versions', { exact: true }).selectOption(versionID);
+    await dialog.getByLabel('Affects versions', { exact: true }).selectOption(versionID);
+    await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await page.reload();
+    await expect(page.locator('#field-components')).toHaveValues([componentID]);
+    await expect(page.locator('#field-fixVersions')).toHaveValues([versionID]);
+    await expect(page.locator('#field-versions')).toHaveValues([versionID]);
+    await page.locator('#field-components').selectOption([]);
+    await page.getByRole('button', { name: /^Save Components/ }).click();
+    await expect(page.locator('#field-components')).toHaveValues([]);
+    expect((await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=components,fixVersions,versions`, { headers })).json()).fields).toMatchObject({ components: [], fixVersions: [{ id: versionID }], versions: [{ id: versionID }] });
+    for (const [name, fields] of [['Editing', ['summary', 'components', 'fixVersions']], ['Reading', ['summary', 'components', 'versions']]] as const) {
+      const screen = await page.request.post('/rest/api/3/screens', { headers, data: { name: `${name} choices ${stamp}` } });
+      expect(screen.status()).toBe(201);
+      const id = String((await screen.json()).id);
+      screens.push(id);
+      const tabs = await (await page.request.get(`/rest/api/3/screens/${id}/tabs`, { headers })).json();
+      for (const fieldId of fields) expect((await page.request.post(`/rest/api/3/screens/${id}/tabs/${tabs[0].id}/fields`, { headers, data: { fieldId } })).status()).toBe(200);
+    }
+    const scheme = await page.request.post('/rest/api/3/screenscheme', { headers, data: { name: `Choice screens ${stamp}`, screens: { default: screens[0], edit: screens[0], view: screens[1] } } });
+    expect(scheme.status()).toBe(201);
+    screenSchemeID = String((await scheme.json()).id);
+    const types = await page.request.post('/rest/api/3/issuetypescreenscheme', { headers, data: { name: `Choice types ${stamp}`, issueTypeMappings: [{ issueTypeId: 'default', screenSchemeId: screenSchemeID }] } });
+    expect(types.status()).toBe(201);
+    typeSchemeID = String((await types.json()).id);
+    expect((await page.request.put('/rest/api/3/issuetypescreenscheme/project', { headers, data: { issueTypeScreenSchemeId: typeSchemeID, projectId: projectID } })).status()).toBe(204);
+    await page.reload();
+    await expect(page.locator('#field-fixVersions, #field-versions')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: `Fix version: October ${stamp}`, exact: true })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: `Affects version: October ${stamp}`, exact: true })).toBeVisible();
+    await page.locator('#edit-issue-button').click();
+    await expect(dialog.locator('#edit-versions')).toHaveCount(0);
+    await dialog.getByLabel('Fix versions', { exact: true }).selectOption([]);
+    await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    const fields = (await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=fixVersions,versions`, { headers })).json()).fields;
+    expect(fields.fixVersions).toEqual([]);
+    expect(fields.versions).toMatchObject([{ id: versionID }]);
+    expect((await page.request.put(`/rest/api/3/issue/${issueKey}`, { headers, data: { update: { versions: [{ set: [] }] } } })).status()).toBe(400);
+    await page.locator('[data-theme-toggle]').click();
+    await page.setViewportSize({ width: 320, height: 740 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.addScriptTag({ content: axe.source });
+    expect(await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations)).toEqual([]);
+  } finally {
+    await page.request.delete(`/rest/api/3/project/${projectID}`, { headers, timeout: 10_000 });
+    if (typeSchemeID) await page.request.delete(`/rest/api/3/issuetypescreenscheme/${typeSchemeID}`, { headers, timeout: 10_000 });
+    if (screenSchemeID) await page.request.delete(`/rest/api/3/screenscheme/${screenSchemeID}`, { headers, timeout: 10_000 });
+    for (const id of screens) await page.request.delete(`/rest/api/3/screens/${id}`, { headers, timeout: 10_000 });
+  }
+});

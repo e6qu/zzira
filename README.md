@@ -8,7 +8,15 @@ browser journeys, with compatibility still assessed as partial; see the
 The architecture follows Linear's
 [delta sync](https://linear.app/now/rebuilding-delta-sync-read-path): one command
 layer writes an immutable action log, and browsers keep permission-shaped local
-replicas of work items.
+replicas of work items. Offline forms close only after the local command and
+its display update commit; a refused local save keeps the draft for retry. Each session replica has its own OPFS pool so tabs can
+work independently. Existing shared-pool replicas migrate as complete SQLite
+copies, including queued commands; the original files remain available for
+recovery. A failed pool initialization releases handles without deleting data.
+The vendored SQLite initialization cleanup and handle-acquisition settlement
+are patched for that guarantee;
+retain it when updating `web/static/sqlite/sqlite3.js`. Its SQLite version and
+WASM binary are unchanged.
 
 - **Jira** — projects, work types on a configurable hierarchy, fields, screens,
   workflows, permissions, JQL, bulk operations.
@@ -31,6 +39,9 @@ docker compose exec zzira /zzira-server -mode=seed
 Open <http://localhost:8080> and sign in as `demo@zzira.dev` / `demo1234`.
 For source setup, credential locations and persistent files, use the
 [getting-started guide](docs/GETTING_STARTED.md).
+
+Change light or dark mode with the header's theme button. On narrow screens,
+open your account menu to find the same control. The choice stays in your browser.
 
 Add the populated Northwind company with
 `docker compose exec zzira /zzira-server -mode=demo`. Its projects, teams,

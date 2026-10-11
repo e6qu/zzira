@@ -25,7 +25,7 @@ Screen names are unique per site, and tab names are unique per screen, both igno
 
 ## Rules
 
-- A screen always has at least one tab.
+- A screen always has at least one tab. It may have no fields: assigned empty screens hide optional controls; they do not mean the screen is unassigned. Create retains project, work type, summary and the mandatory parent for a subtask.
 - A field appears at most once per screen, so moving it between tabs is an update.
 - Removing a tab or field renumbers the rest, so positions stay dense.
 - The default screen cannot be deleted, and neither can a screen that a screen scheme uses.
@@ -65,6 +65,11 @@ Every site has a `Default Screen` with one `Field Tab`. It starts with the stand
 Tab-field reads accept the same `projectKey` scope as tab reads: project
 administrators can read fields on screens their project uses. Field mutations
 remain restricted to site administrators.
+
+Subtask creation always shows its required Parent beside Summary, including
+when the create screen is empty or omits Parent. Field configuration cannot
+hide that required context. Existing-work edit metadata still follows the edit
+screen and field visibility.
 
 ## Tabs on forms
 

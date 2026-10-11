@@ -95,20 +95,21 @@ func (s *Store) JQLResolver(ctx context.Context, workspaceID string) (jql.FieldR
 // as the search columns read them -- and its numeric id, which Jira also
 // accepts.
 const jqlKnownValuesQuery = `
-SELECT 'status', lower(s.name) FROM statuses s WHERE s.workspace_id IS NULL OR s.workspace_id=$1
-UNION ALL SELECT 'status', s.jira_id::text FROM statuses s WHERE s.workspace_id IS NULL OR s.workspace_id=$1
-UNION ALL SELECT 'priority', lower(COALESCE(o.name,p.name)) FROM priorities p
-  LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$1 AND o.entity_type='priority' AND o.entity_id=p.id
-  WHERE p.workspace_id IS NULL OR p.workspace_id=$1
-UNION ALL SELECT 'priority', p.jira_id::text FROM priorities p WHERE p.workspace_id IS NULL OR p.workspace_id=$1
-UNION ALL SELECT 'resolution', lower(COALESCE(o.name,r.name)) FROM resolutions r
-  LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$1 AND o.entity_type='resolution' AND o.entity_id=r.id
-  WHERE r.workspace_id IS NULL OR r.workspace_id=$1
-UNION ALL SELECT 'resolution', r.jira_id::text FROM resolutions r WHERE r.workspace_id IS NULL OR r.workspace_id=$1
-UNION ALL SELECT 'issuetype', lower(COALESCE(o.name,t.name)) FROM issue_types t
-  LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$1 AND o.entity_type='issuetype' AND o.entity_id=t.id
-  WHERE t.workspace_id IS NULL OR t.workspace_id=$1
-UNION ALL SELECT 'issuetype', t.jira_id::text FROM issue_types t WHERE t.workspace_id IS NULL OR t.workspace_id=$1`
+WITH catalogue AS (
+  SELECT 'status' AS field, lower(s.name) AS name, s.jira_id
+  FROM statuses s WHERE s.workspace_id IS NULL OR s.workspace_id=$1
+  UNION ALL SELECT 'priority', lower(COALESCE(o.name,p.name)), p.jira_id FROM priorities p
+    LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$1 AND o.entity_type='priority' AND o.entity_id=p.id
+    WHERE (p.workspace_id IS NULL OR p.workspace_id=$1) AND NOT COALESCE(o.deleted,FALSE)
+  UNION ALL SELECT 'resolution', lower(COALESCE(o.name,r.name)), r.jira_id FROM resolutions r
+    LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$1 AND o.entity_type='resolution' AND o.entity_id=r.id
+    WHERE (r.workspace_id IS NULL OR r.workspace_id=$1) AND NOT COALESCE(o.deleted,FALSE)
+  UNION ALL SELECT 'issuetype', lower(COALESCE(o.name,t.name)), t.jira_id FROM issue_types t
+    LEFT JOIN issue_metadata_overrides o ON o.workspace_id=$1 AND o.entity_type='issuetype' AND o.entity_id=t.id
+    WHERE (t.workspace_id IS NULL OR t.workspace_id=$1) AND NOT COALESCE(o.deleted,FALSE)
+)
+SELECT field, name FROM catalogue
+UNION ALL SELECT field, jira_id::text FROM catalogue`
 
 // jqlKnownValues reads the catalogue a search checks its values against.
 func (s *Store) jqlKnownValues(ctx context.Context, workspaceID string) (map[string]map[string]bool, error) {
@@ -117,7 +118,11 @@ func (s *Store) jqlKnownValues(ctx context.Context, workspaceID string) (map[str
 		return nil, err
 	}
 	defer rows.Close()
-	values := map[string]map[string]bool{}
+	// An empty catalogue is still governed. Leaving its key absent would
+	// disable value validation when the last live value is removed.
+	values := map[string]map[string]bool{
+		"status": {}, "priority": {}, "resolution": {"unresolved": true}, "issuetype": {},
+	}
 	for rows.Next() {
 		var field, value string
 		if err := rows.Scan(&field, &value); err != nil {
@@ -131,10 +136,7 @@ func (s *Store) jqlKnownValues(ctx context.Context, workspaceID string) (map[str
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	// "Unresolved" is how Jira writes "no resolution", and the compiler reads
-	// it as the absence of one rather than as a resolution by that name.
-	if values["resolution"] != nil {
-		values["resolution"]["unresolved"] = true
-	}
-	return values, rows.Err()
+	// "Unresolved" remains valid even when no resolution values exist: it
+	// means the absence of a resolution, rather than a catalogue entry.
+	return values, nil
 }

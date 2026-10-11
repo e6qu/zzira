@@ -66,8 +66,7 @@ backlogs remain epic-level, as Jira's do.
 **Metadata and configuration UI.**
 - Team-managed work type scoping, asynchronous priority-scheme updates and a
   larger avatar catalogue remain ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#gaps)).
-- Complete built-in field controls (components and versions), screen field
-  order and transition screen tabs ([SCREEN_SCHEMES.md](docs/SCREEN_SCHEMES.md#gaps)).
+- Reproduce screen field order and transition screen tabs ([SCREEN_SCHEMES.md](docs/SCREEN_SCHEMES.md#gaps)).
 - Add Attachment and Linked work items to the screen catalog.
 - App field options: `projects2` scope, `defaultValue`, property indexes for JQL.
 - Classification level on work items: field, REST value, UI control, JQL,
@@ -230,8 +229,8 @@ Owning reference: [SERVICE_MANAGEMENT.md](docs/SERVICE_MANAGEMENT.md#assets-api)
 
 Owning reference: [CONFLUENCE_SITE_SURFACES.md](docs/CONFLUENCE_SITE_SURFACES.md#whiteboards).
 
-- Direct manipulation beyond dragging: resize, pan, zoom, multi-select, keyboard
-  editing.
+- Direct manipulation beyond dragging and keyboard movement: resize, pan,
+  zoom, multi-select and text editing on the canvas.
 - Shapes library, freehand, images, frames and sections, grouping, alignment and
   snapping.
 - Connectors with anchors, routing and arrowheads; automatic graph layout.
@@ -273,7 +272,8 @@ Owning reference: [CONFLUENCE_LIVE.md](docs/CONFLUENCE_LIVE.md).
 
 - Permission-shaped replicas and safe queued writes for service, knowledge,
   dashboards, releases, reports and administration.
-- Conflict handling, outbox ordering, cross-tab ownership, reconnect, compaction,
+- Conflict handling, idempotent replay, outbox ordering and cross-tab ownership when a replica ID is
+  duplicated, reconnect, compaction,
   quota, account and site switching, schema upgrades, full resnapshot,
   revocation purge — tested for each replica.
 

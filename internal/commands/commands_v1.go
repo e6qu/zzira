@@ -143,6 +143,9 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 			screenFieldsProvided = append(screenFieldsProvided, field)
 		}
 	}
+	for field := range in.VersionOperations {
+		screenFieldsProvided = append(screenFieldsProvided, field)
+	}
 	for field, provided := range map[string]bool{
 		"description": in.Description != nil, "priority": in.PriorityID != nil, "assignee": in.AssigneeID != nil, "labels": in.Labels != nil, "duedate": in.DueDate != nil, "resolution": in.ResolutionID != nil, "security": in.SecurityLevelID != nil, "parent": in.ParentIDOrKey != nil, "timetracking": in.OriginalEstimate != nil || in.RemainingEstimate != nil,
 	} {
@@ -156,14 +159,14 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		if err != nil {
 			return nil, nil, err
 		}
-		if environmentProvided && len(fields) > 0 && !slices.Contains(fields, "environment") {
+		if environmentProvided && fields != nil && !slices.Contains(fields, "environment") {
 			return nil, nil, fmt.Errorf("environment is not available on this work item's edit screen")
 		}
-		if in.ReporterID != nil && len(fields) > 0 && !slices.Contains(fields, "reporter") {
+		if in.ReporterID != nil && fields != nil && !slices.Contains(fields, "reporter") {
 			return nil, nil, fmt.Errorf("reporter is not available on this work item's edit screen")
 		}
 		for _, field := range screenFieldsProvided {
-			if len(fields) > 0 && !slices.Contains(fields, field) {
+			if fields != nil && !slices.Contains(fields, field) {
 				return nil, nil, fmt.Errorf("%s is not available on this work item's edit screen", field)
 			}
 		}

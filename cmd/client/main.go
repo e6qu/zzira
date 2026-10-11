@@ -908,6 +908,36 @@ func enqueue(method, path, body string) {
 	exec(`INSERT INTO outbox (method, path, body) VALUES ($1,$2,$3)`, []any{method, path, body})
 }
 
+// Acknowledge only after both the command and its local result commit. A
+// refresh after acknowledgement must retain the queued edit and its display.
+func enqueueMessage(msg js.Value) (saved bool) {
+	requestID := ""
+	if id := msg.Get("requestId"); id.Type() == js.TypeString {
+		requestID = id.String()
+	}
+	defer func() {
+		if failure := recover(); failure != nil {
+			post(map[string]any{"type": "queue-error", "requestId": requestID, "message": "The change could not be saved offline."})
+		}
+	}()
+	exec(`BEGIN`, nil)
+	committed := false
+	defer func() {
+		if !committed {
+			exec(`ROLLBACK`, nil)
+		}
+	}()
+	enqueue(msg.Get("method").String(), msg.Get("path").String(), msg.Get("body").String())
+	if currentView != "" {
+		applyOptimistic(msg.Get("kind").String(), msg.Get("body").String())
+	}
+	size := outboxSize()
+	exec(`COMMIT`, nil)
+	committed = true
+	post(map[string]any{"type": "queued", "requestId": requestID, "size": size})
+	return true
+}
+
 func outboxSize() int64 {
 	rows := selectObjects(`SELECT COUNT(*) AS n FROM outbox`, nil)
 	if len(rows) == 0 {
@@ -1021,12 +1051,9 @@ func onMessage(_ js.Value, args []js.Value) any {
 			post(map[string]any{"type": "info", "message": "edit-dialog: issue not in replica"})
 		}
 	case "enqueue":
-		enqueue(msg.Get("method").String(), msg.Get("path").String(), msg.Get("body").String())
-		if currentView != "" {
-			applyOptimistic(msg.Get("kind").String(), msg.Get("body").String())
+		if enqueueMessage(msg) && currentView != "" {
 			pushCurrentView()
 		}
-		post(map[string]any{"type": "queued", "size": outboxSize()})
 	}
 	return nil
 }

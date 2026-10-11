@@ -37,7 +37,18 @@
     });
   }
 
+  function positionThemeToggle() {
+    const header = document.querySelector('.global-header');
+    const button = header?.querySelector('[data-theme-toggle]');
+    const menu = header?.querySelector('.user-menu .user-popover');
+    if (!button || !menu) return;
+    const destination = window.matchMedia('(max-width:680px)').matches ? menu : header;
+    if (button.parentElement !== destination) destination.append(button);
+  }
+  window.matchMedia('(max-width:680px)').addEventListener('change', positionThemeToggle);
+
   function initThemeToggle() {
+    positionThemeToggle();
     const theme = savedTheme() || document.documentElement.dataset.theme;
     applyTheme(theme);
     document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
@@ -598,13 +609,14 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=48&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=56&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
   let mutationAwaitingSync = false;
   let mutationMinSeq = 0;
   const pendingWorkerMessages = [];
+  const pendingOfflineForms = new Map();
 
   // A page can be used before the SQLite/WASM worker finishes booting. Keep
   // commands until it advertises readiness instead of dropping the first
@@ -753,8 +765,15 @@
         refreshNotificationBadge();
         break;
       case 'queued':
+        finishOfflineForm(msg.requestId);
         announce('offline \u2014 queued (' + msg.size + ')', 4000);
         setSyncRail('offline', 'Queued offline', msg.size + ' pending');
+        break;
+      case 'queue-error':
+        finishOfflineForm(msg.requestId, msg.message || 'The change could not be saved offline. Try again.');
+        announce(msg.message || 'The change could not be saved offline.', 5000);
+        setSyncRail('offline', 'Save needs attention', 'Your change was not queued');
+        pushView();
         break;
       case 'offline':
         announce('offline \u2014 showing local copy', 4000);
@@ -769,10 +788,10 @@
         location.replace('/signed-out');
         break;
       case 'html':
-        // Skip the worker's redundant initial render: the server already
-        // SSR-rendered this view. Offline reloads have an empty root (cached
-        // shell) and MUST apply.
-        if (!sawSync && document.querySelector('.issue-view#issue-root')) break;
+        // Keep the online server view until the first sync. An offline
+        // cached page can contain an older server root: the local replica
+        // must replace it so queued edits remain visible after a reload.
+        if (!sawSync && !offlineMode && navigator.onLine && document.querySelector('.issue-view#issue-root')) break;
         if (msg.issueId && msg.issueId === currentIssueId()) {
           if (!offlineMode && navigator.onLine) {
             const key = currentIssueKey();
@@ -802,6 +821,12 @@
         setModalHTML(msg.html);
         break;
       case 'error':
+        if (/^worker(:| rejection:)/.test(msg.message || '')) {
+          workerReady = false;
+          for (const requestId of pendingOfflineForms.keys()) {
+            finishOfflineForm(requestId, 'Offline saving stopped. Your draft is still here; copy it before reloading.');
+          }
+        }
         mutationAwaitingSync = false;
         mutationMinSeq = 0;
         pendingRootHtml = null;
@@ -1101,9 +1126,51 @@
     const path = form.getAttribute('data-outbox-path') || form.getAttribute('hx-post') || form.getAttribute('hx-delete');
     const kind = outboxKind(path || '');
     if (!kind) return false;
+    if (form.hasAttribute('data-offline-pending')) return false;
+    if (!form.reportValidity()) return false;
+    if (!workerReady) {
+      offlineFormError(form, 'Offline saving is not ready yet. Wait a moment, then try again.');
+      return false;
+    }
+    form.querySelector('[data-offline-save-error]')?.remove();
     const body = new URLSearchParams(new FormData(form)).toString();
-    postWorker({ type: 'enqueue', method: 'POST', path, body, kind });
+    const requestId = crypto.randomUUID();
+    const controls = Array.from(form.querySelectorAll('input, select, textarea, button')).filter(control => !control.disabled);
+    controls.forEach(control => { control.disabled = true; });
+    form.setAttribute('data-offline-pending', requestId);
+    form.setAttribute('aria-busy', 'true');
+    pendingOfflineForms.set(requestId, { form, controls });
+    postWorker({ type: 'enqueue', requestId, method: 'POST', path, body, kind });
     return true;
+  }
+
+  function offlineFormError(form, message) {
+    let error = form.querySelector('[data-offline-save-error]');
+    if (!error) {
+      error = document.createElement('p');
+      error.className = 'error';
+      error.setAttribute('data-offline-save-error', '');
+      error.setAttribute('role', 'alert');
+      form.append(error);
+    }
+    error.textContent = message;
+  }
+
+  function finishOfflineForm(requestId, error) {
+    const pending = pendingOfflineForms.get(requestId);
+    if (!pending) return;
+    pendingOfflineForms.delete(requestId);
+    const { form, controls } = pending;
+    controls.forEach(control => { control.disabled = false; });
+    form.removeAttribute('data-offline-pending');
+    form.removeAttribute('aria-busy');
+    if (!form.isConnected) return;
+    if (error) {
+      offlineFormError(form, error);
+    } else if (form.closest('[role="dialog"]')) {
+      window.zzira.closeModal();
+      pushView();
+    }
   }
 
   // Catch native submits as well as HTMX requests. This is important during
@@ -1112,10 +1179,11 @@
   document.addEventListener('submit', (evt) => {
     const form = evt.target;
     if (!(form instanceof HTMLFormElement) || (!offlineMode && navigator.onLine)) return;
-    if (!queueOfflineForm(form)) return;
+    const path = form.getAttribute('data-outbox-path') || form.getAttribute('hx-post') || form.getAttribute('hx-delete');
+    if (!outboxKind(path || '')) return;
     evt.preventDefault();
     evt.stopPropagation();
-    if (form.closest('[role="dialog"]')) window.zzira.closeModal();
+    queueOfflineForm(form);
   }, true);
 
   document.body.addEventListener('htmx:beforeRequest', (evt) => {
@@ -1128,10 +1196,11 @@
       mutationMinSeq = Number.MAX_SAFE_INTEGER;
       return; // online: let htmx do its thing
     }
-    if (!queueOfflineForm(elt)) return; // reads fail naturally offline
+    const path = elt.getAttribute('data-outbox-path') || elt.getAttribute('hx-post') || elt.getAttribute('hx-delete');
+    if (!outboxKind(path || '')) return; // reads fail naturally offline
     evt.preventDefault();
     evt.stopPropagation();
-    if (elt.closest('[role="dialog"]')) window.zzira.closeModal();
+    queueOfflineForm(elt);
   }, true);
 
   window.addEventListener('online', () => {
@@ -1163,6 +1232,10 @@
       if (root) root.style.display = 'block';
     },
     closeModal() {
+      if (document.querySelector('#modal-root form[data-offline-pending]')) {
+        announce('Saving your change offline…', 2000);
+        return;
+      }
       if (editRequest) { editRequest.abort(); editRequest = null; }
       const root = document.getElementById('modal-root');
       if (root) { root.style.display = 'none'; root.innerHTML = ''; }

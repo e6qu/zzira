@@ -22,12 +22,12 @@
   }());
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css?v=4">
-<link rel="stylesheet" href="/static/css/workspace.css?v=66">
-<link rel="preload" href="/static/zzira-worker.wasm?v=39" as="fetch" crossorigin>
+<link rel="stylesheet" href="/static/css/workspace.css?v=68">
+<link rel="preload" href="/static/zzira-worker.wasm?v=46" as="fetch" crossorigin>
 <link rel="preload" href="/static/sqlite/sqlite3.wasm" as="fetch" crossorigin>
 <script src="/static/htmx/htmx.min.js?v=2.0.11" defer></script>
-<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=39" defer></script>
-<script src="/static/app.js?v=75" defer></script>
+<script src="/static/wasm/wasm_exec.js?go=1.27.2&amp;v=46" defer></script>
+<script src="/static/app.js?v=85" defer></script>
 {{end}}
 
 {{define "avatar"}}
@@ -167,11 +167,12 @@
       <label for="create-summary">Summary <span aria-hidden="true">*</span></label>
       <input id="create-summary" name="summary" value="{{.Values.summary}}" required autofocus maxlength="255" autocomplete="off" placeholder="What needs to be done?" aria-describedby="create-summary-help">
       <small id="create-summary-help">Use a short outcome the team can scan in a backlog.</small>
-      <label for="create-description">Description</label>
-      <textarea id="create-description" name="description" rows="6" maxlength="1048576" placeholder="Add context, acceptance criteria, or links…">{{.Values.description}}</textarea>
+      {{if .SelectedIssueTypeSubtask}}{{range .Selected.Fields}}{{if eq .ID "parent"}}{{template "create_detail_field" (detailField . $.Values $.SelectedIssueTypeSubtask)}}{{end}}{{end}}{{end}}
+      {{range .Selected.Fields}}{{if eq .ID "description"}}<label for="create-description">{{.Name}}{{if .Required}} <span aria-hidden="true">*</span>{{end}}</label>
+      <textarea id="create-description" name="description" rows="6" maxlength="1048576" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="create-description-help"{{end}} placeholder="Add context, acceptance criteria, or links…">{{$.Values.description}}</textarea>{{if .Description}}<small id="create-description-help">{{.Description}}</small>{{end}}{{end}}{{end}}
     </div>
 
-    <details class="create-more" {{if .Error}}open{{end}}>
+    {{$hasDetails := false}}{{range .Selected.Fields}}{{if eq .Section "details"}}{{$hasDetails = true}}{{end}}{{end}}{{if $hasDetails}}<details class="create-more" {{if .Error}}open{{end}}>
       <summary><span>More fields</span><small>Assignment, priority, labels, security, and project fields</small></summary>
       {{if .DetailTabs}}<div class="create-field-tabs">
         <div class="tablist" role="tablist" aria-label="Field tabs">{{range $index, $tab := .DetailTabs}}<button type="button" role="tab" id="create-tab-{{$index}}" aria-controls="create-tabpanel-{{$index}}" aria-selected="{{if eq $index 0}}true{{else}}false{{end}}" tabindex="{{if eq $index 0}}0{{else}}-1{{end}}" data-field-tab>{{$tab.Name}}</button>{{end}}</div>
@@ -179,7 +180,7 @@
       </div>{{else}}<div class="create-details-grid">
       {{range .Selected.Fields}}{{if eq .Section "details"}}{{template "create_detail_field" (detailField . $.Values $.SelectedIssueTypeSubtask)}}{{end}}{{end}}
       </div>{{end}}
-    </details>
+    </details>{{end}}
     {{if .Error}}<p class="error create-error" role="alert" aria-atomic="true">{{.Error}}</p>{{end}}
     </div>
     <div class="modal-actions create-actions">
@@ -202,7 +203,7 @@
   <nav class="issue-breadcrumbs" aria-label="Breadcrumb">
     <a href="/projects">Projects</a><span aria-hidden="true">/</span><a href="/projects/{{.ProjectKey}}">{{.ProjectName}}</a><span aria-hidden="true">/</span><span aria-current="page">{{.Issue.Key}}</span>
   </nav>
-{{if or (.Issue.VersionRefs "fixVersions") (.Issue.VersionRefs "versions")}}<div class="issue-version-links">{{range .Issue.VersionRefs "fixVersions"}}<a href="/projects/{{$.ProjectKey}}/releases/{{.ID}}">Fix version: {{.Name}}</a> {{end}}{{range .Issue.VersionRefs "versions"}}<a href="/projects/{{$.ProjectKey}}/releases/{{.ID}}">Affects version: {{.Name}}</a> {{end}}</div>
+{{if or (and (.FieldOnView "fixVersions") (.Issue.VersionRefs "fixVersions")) (and (.FieldOnView "versions") (.Issue.VersionRefs "versions"))}}<div class="issue-version-links">{{if .FieldOnView "fixVersions"}}{{range .Issue.VersionRefs "fixVersions"}}<a href="/projects/{{$.ProjectKey}}/releases/{{.ID}}">Fix version: {{.Name}}</a> {{end}}{{end}}{{if .FieldOnView "versions"}}{{range .Issue.VersionRefs "versions"}}<a href="/projects/{{$.ProjectKey}}/releases/{{.ID}}">Affects version: {{.Name}}</a> {{end}}{{end}}</div>
 {{end}}  <header class="issue-header">
     <div class="issue-heading">
       <span class="issue-type-glyph" aria-hidden="true">✓</span>
@@ -368,6 +369,7 @@
 {{if .FieldOnView "labels"}}        <dt>{{if and (and .CanEdit .Editable) (.FieldOnEdit "labels")}}<label for="field-labels">Labels</label>{{else}}Labels{{end}}</dt><dd>{{if and (and .CanEdit .Editable) (.FieldOnEdit "labels")}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="labels"><input id="field-labels" name="value" value="{{join .Issue.Labels ", "}}" placeholder="None" aria-describedby="labels-help"><small id="labels-help" class="sr-only">Comma-separated labels; spaces are not allowed within a label.</small><button class="field-save" type="submit">Save labels</button></form>{{else}}{{if .Issue.Labels}}{{join .Issue.Labels ", "}}{{else}}None{{end}}{{end}}</dd>{{end}}
 {{if .FieldOnView "duedate"}}        <dt>{{if and (and .CanSchedule .Editable) (.FieldOnEdit "duedate")}}<label for="field-duedate">Due date</label>{{else}}Due date{{end}}</dt><dd>{{if and (and .CanSchedule .Editable) (.FieldOnEdit "duedate")}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="duedate"><input id="field-duedate" name="value" type="date" value="{{.Issue.DueDate}}"><button class="field-save" type="submit">Save due date</button></form>{{else}}{{if .Issue.DueDate}}{{.Issue.DueDate}}{{else}}None{{end}}{{end}}</dd>{{end}}
 {{if .FieldOnView "security"}}{{if .SecurityLevels}}        <dt>{{if and .CanSetSecurity (.FieldOnEdit "security")}}<label for="field-security">Security</label>{{else}}Security{{end}}</dt><dd>{{if and .CanSetSecurity (.FieldOnEdit "security")}}<form class="inline-field" method="post" action="/issues/{{.Issue.Key}}/fields" hx-post="/issues/{{.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="security"><select id="field-security" name="value"><option value="">Public</option>{{$security := .Issue.SecurityLevelID}}{{range .SecurityLevels}}<option value="{{.ID}}" {{if eq .ID $security}}selected{{end}}>{{.Name}}</option>{{end}}</select><button class="field-save" type="submit">Save security</button></form>{{else}}{{if .SecurityLevelName}}{{.SecurityLevelName}}{{else}}Public{{end}}{{end}}</dd>{{end}}{{end}}
+{{range .ChoiceFields}}<dt>{{if and $.CanEdit (not .ReadOnly)}}<label for="field-{{.Field.ID}}">{{.Field.Name}}</label>{{else}}{{.Field.Name}}{{end}}</dt><dd>{{if and $.CanEdit (not .ReadOnly)}}<form class="inline-field" method="post" action="/issues/{{$.Issue.Key}}/fields" hx-post="/issues/{{$.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="{{.Field.ID}}"><input type="hidden" name="value" value=""><select id="field-{{.Field.ID}}" name="value" multiple size="3" {{if .Field.Required}}required{{end}}>{{$value := .Value}}{{range .Field.Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select><button class="field-save" type="submit">Save {{.Field.Name}}</button></form>{{else}}{{if .Display}}{{.Display}}{{else}}None{{end}}{{end}}</dd>{{end}}
       </dl>
 {{if .CustomFields}}      <details class="more-fields" data-issue-section="fields"><summary>More fields <span>{{len .CustomFields}}</span></summary><dl>{{range .CustomFields}}{{if and $.CanEdit (not .ReadOnly)}}<dt><label for="detail-field-{{.ID}}">{{.Name}}</label></dt><dd><form class="inline-field" method="post" action="/issues/{{$.Issue.Key}}/fields" hx-post="/issues/{{$.Issue.Key}}/fields" hx-target="#issue-view-holder" hx-swap="innerHTML"><input type="hidden" name="field" value="custom:{{.ID}}">{{if and .Renderer .Display}}<div class="description-text">{{fieldHTML .Display .Renderer}}</div>{{end}}{{template "custom_field_control" (customFieldControl . "detail-field-" "value")}}<button class="field-save" type="submit">Save {{.Name}}</button></form></dd>{{else}}<dt>{{.Name}}</dt><dd>{{if .Display}}{{fieldHTML .Display .Renderer}}{{else if .Value}}{{.Value}}{{else}}None{{end}}</dd>{{end}}{{end}}</dl></details>{{end}}
 {{- range .AppContexts}}      <details class="issue-context-panel" data-issue-context-key="{{$.CurrentUserID}}:{{.ID}}"><summary>{{if .IconURL}}<img src="{{.IconURL}}" alt="" referrerpolicy="no-referrer">{{end}}<span class="issue-context-copy"><strong>{{.Title}}</strong>{{if .ContextLabel}}<small>{{.ContextLabel}}</small>{{end}}</span>{{if eq .ContextStatusType "badge"}}<span class="issue-context-status-badge" aria-label="{{.ContextStatusAccessibleLabel}}"><span aria-hidden="true">{{.ContextStatusLabel}}</span></span>{{else if eq .ContextStatusType "lozenge"}}<span class="lozenge issue-context-status-lozenge {{.ContextStatusClass}}">{{.ContextStatusLabel}}</span>{{else if eq .ContextStatusType "icon"}}<img class="issue-context-status-icon" src="{{.ContextStatusIconURL}}" alt="" referrerpolicy="no-referrer">{{end}}</summary>{{if .RemoteURL}}<iframe class="app-context-frame" src="/app-modules/{{.ID}}/frame?issueKey={{$.Issue.Key}}&amp;issueId={{$.Issue.ID}}&amp;projectKey={{$.ProjectKey}}&amp;projectId={{$.Issue.ProjectID}}" title="{{.Title}}" sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"></iframe>{{else}}<p>{{.Body}}</p>{{end}}</details>{{end}}
@@ -388,7 +390,15 @@
     <label for="edit-summary">Summary</label>
     <input id="edit-summary" name="summary" value="{{.Issue.Summary}}" required autofocus maxlength="255">
     {{if .FieldOnEdit "description"}}<label for="edit-description">Description</label>
-    <textarea id="edit-description" name="description" rows="6">{{adfToText .Issue.Description}}</textarea>{{end}}
+    <textarea id="edit-description" name="description" rows="6"{{if .FieldRequired "description"}} required{{end}}>{{adfToText .Issue.Description}}</textarea>{{end}}
+    {{if .EditFields}}
+    {{if .FieldOnEdit "priority"}}<label for="edit-priority">Priority</label><select id="edit-priority" name="priority" {{if .FieldRequired "priority"}}required{{end}}><option value="">None</option>{{$priority := ""}}{{if .Issue.Priority}}{{$priority = .Issue.Priority.ID}}{{end}}{{range .Priorities}}<option value="{{.ID}}" {{if eq .ID $priority}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{end}}
+    {{if .FieldOnEdit "labels"}}<label for="edit-labels">Labels</label><input id="edit-labels" name="labels" value="{{join .Issue.Labels ", "}}" placeholder="Separate labels with commas" {{if .FieldRequired "labels"}}required{{end}}>{{end}}
+    {{if and .CanSchedule (.FieldOnEdit "duedate")}}<label for="edit-duedate">Due date</label><input id="edit-duedate" name="duedate" type="date" value="{{.Issue.DueDate}}" {{if .FieldRequired "duedate"}}required{{end}}>{{end}}
+    {{if .FieldOnEdit "parent"}}<label for="edit-parent">Parent</label><select id="edit-parent" name="parent"><option value="__keep_parent__">Keep current parent{{if .Issue.Parent}}: {{.Issue.Parent.Key}}{{end}}</option>{{if and (not .Issue.IssueType.Subtask) (not (.FieldRequired "parent"))}}<option value="">None</option>{{end}}{{range .ParentOptions}}<option value="{{.Key}}">{{.Name}}</option>{{end}}</select>{{end}}
+    {{if and .CanResolve (.FieldOnEdit "resolution")}}<label for="edit-resolution">Resolution</label><select id="edit-resolution" name="resolution" {{if .FieldRequired "resolution"}}required{{end}}><option value="">Unresolved</option>{{$resolution := ""}}{{if .Issue.Resolution}}{{$resolution = .Issue.Resolution.ID}}{{end}}{{range .Resolutions}}<option value="{{.ID}}" {{if eq .ID $resolution}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{end}}
+    {{if and .TimeTrackingEnabled (.FieldOnEdit "timetracking")}}<label for="edit-original-estimate">Original estimate</label><input id="edit-original-estimate" name="originalEstimate" value="{{.TimeTracking.Original}}" placeholder="Not estimated" {{if .FieldRequired "timetracking"}}aria-describedby="edit-estimates-required"{{end}}><label for="edit-remaining-estimate">Remaining estimate</label><input id="edit-remaining-estimate" name="remainingEstimate" value="{{.TimeTracking.Remaining}}" placeholder="Not estimated" {{if .FieldRequired "timetracking"}}aria-describedby="edit-estimates-required"{{end}}>{{if .FieldRequired "timetracking"}}<small id="edit-estimates-required" class="muted">Enter an original or remaining estimate.</small>{{end}}{{end}}
+    {{end}}
     {{with .EnvironmentField}}<label for="edit-environment">Environment</label><textarea id="edit-environment" name="environment" rows="4" {{if .Required}}required{{end}} {{if .Description}}aria-describedby="edit-environment-help"{{end}}>{{adfToText (index $.Issue.Fields "environment")}}</textarea>{{if .Description}}<small id="edit-environment-help" class="muted">{{.Description}}</small>{{end}}{{end}}
     {{if and .CanAssign (.FieldOnEdit "assignee")}}<label for="edit-assignee">Assignee</label>
       <select id="edit-assignee" name="assignee">
@@ -413,6 +423,9 @@
         <option value="{{.ID}}" {{if eq .ID $curSec}}selected{{end}}>{{.Name}}</option>
         {{end}}
       </select>
+    {{end}}
+    {{range .ChoiceFields}}
+    <label for="edit-{{.Field.ID}}">{{.Field.Name}}</label><input type="hidden" name="{{.Field.ID}}" value=""><select id="edit-{{.Field.ID}}" name="{{.Field.ID}}" multiple size="3" {{if .Field.Required}}required{{end}} {{if .Field.Description}}aria-describedby="edit-help-{{.Field.ID}}"{{end}}>{{$value := .Value}}{{range .Field.Options}}<option value="{{.ID}}" {{if selectedVersion $value .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select>{{if .Field.Description}}<small id="edit-help-{{.Field.ID}}" class="muted">{{.Field.Description}}</small>{{end}}
     {{end}}
     {{range .CustomFields}}
     <label for="field-{{.ID}}">{{.Name}}</label>

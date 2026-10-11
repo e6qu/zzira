@@ -304,6 +304,7 @@ type SyncResponse struct {
 // ---- View models (render-only) ----
 
 type IssueView struct {
+	ChoiceFields       []IssueChoiceFieldView
 	ViewFields         map[string]bool
 	EditFields         map[string]bool
 	EnvironmentVisible bool
@@ -418,21 +419,39 @@ type WorkflowTransition struct {
 // EditDialogView drives the edit-issue dialog; rendered by both server and
 // wasm worker (offline editing). Members/levels/fields may be empty offline.
 type EditDialogView struct {
-	EditFields        map[string]bool
-	EnvironmentField  *CreateFieldMeta
-	CanAssign         bool
-	CanModifyReporter bool
-	ReporterRequired  bool
-	Reporters         []User
-	CanSetSecurity    bool
-	Issue             Issue
-	Assignees         []User
-	Members           []User
-	SecurityLevels    []WorkflowTransition // reuse shape: ID+Name pairs
-	CustomFields      []CustomFieldView
+	FieldRules             map[string]FieldBehaviour
+	CanResolve             bool
+	CanSchedule            bool
+	Priorities             []Priority
+	Resolutions            []Resolution
+	ParentOptions          []CreateFieldOption
+	TimeTrackingEnabled    bool
+	TimeTracking           TimeTrackingView
+	ChoiceFields           []IssueChoiceFieldView
+	ConfiguredChoiceFields []IssueChoiceFieldView
+	EditFields             map[string]bool
+	EnvironmentField       *CreateFieldMeta
+	CanAssign              bool
+	CanModifyReporter      bool
+	ReporterRequired       bool
+	Reporters              []User
+	CanSetSecurity         bool
+	Issue                  Issue
+	Assignees              []User
+	Members                []User
+	SecurityLevels         []WorkflowTransition // reuse shape: ID+Name pairs
+	CustomFields           []CustomFieldView
 	// ConfiguredCustomFields also supplies view and transition screens independently of editing.
 	ConfiguredCustomFields []CustomFieldView
 	Error                  string
+}
+
+// IssueChoiceFieldView describes a project-scoped component or version picker.
+type IssueChoiceFieldView struct {
+	Field    CreateFieldMeta
+	Value    string
+	Display  string
+	ReadOnly bool
 }
 
 // CustomFieldView is a render-only custom field descriptor with the value.
@@ -498,12 +517,14 @@ type CreateProjectMeta struct {
 	Project    Project           `json:"project"`
 	IssueTypes []IssueType       `json:"issueTypes"`
 	Fields     []CreateFieldMeta `json:"fields"`
+	// ForEdit keeps creation-only requirements out of existing-work metadata.
+	ForEdit bool `json:"-"`
 	// ScreenTabs groups the same fields by the tabs of that screen, so a form
 	// can show a screen's tabs as tabs. Keyed by work type id.
 	ScreenTabs map[string][]FieldTab `json:"-"`
 	// ScreenFields holds the ordered field IDs the project's screen scheme
-	// exposes per work type, keyed by issue type ID. An absent or empty entry
-	// means no screen governs that form and every project field applies.
+	// exposes per work type, keyed by issue type ID. A nil entry means no
+	// screen governs the form. An empty non-nil entry hides optional fields.
 	ScreenFields map[string][]string `json:"-"`
 	// FieldBehaviour holds the project's field configuration rules per work
 	// type. A field without a rule is optional and visible.
@@ -586,10 +607,11 @@ func (m CreateProjectMeta) DetailTabsForIssueType(issueTypeID string, fields []C
 // FieldsForIssueType narrows and orders the project's fields to what the work
 // type's form screen shows. Context fields and summary always survive: the
 // command path cannot create work without a project, a work type, and a
-// summary, so a screen may not hide them.
+// summary, so a screen may not hide them. Subtask creation also retains its
+// mandatory parent, while edit metadata follows the assigned edit screen.
 func (m CreateProjectMeta) FieldsForIssueType(issueTypeID string) []CreateFieldMeta {
 	screen := m.ScreenFields[issueTypeID]
-	if len(screen) == 0 {
+	if screen == nil {
 		return m.applyFieldBehaviour(issueTypeID, m.applyCustomFieldContexts(issueTypeID, m.Fields))
 	}
 	rank := make(map[string]int, len(screen))
@@ -606,6 +628,11 @@ func (m CreateProjectMeta) FieldsForIssueType(issueTypeID string) []CreateFieldM
 		if field.ID == "summary" {
 			summary = field
 			_, summaryOnScreen = rank[field.ID]
+		}
+		if field.ID == "parent" && m.requiresCreateParent(issueTypeID) {
+			if _, shown := rank[field.ID]; !shown {
+				context = append(context, field)
+			}
 		}
 		if _, shown := rank[field.ID]; shown {
 			selected = append(selected, field)
@@ -653,13 +680,11 @@ func (m CreateProjectMeta) applyCustomFieldContexts(issueTypeID string, fields [
 // and summary are exempt, because work cannot be created without them.
 func (m CreateProjectMeta) applyFieldBehaviour(issueTypeID string, fields []CreateFieldMeta) []CreateFieldMeta {
 	rules := m.FieldBehaviour[issueTypeID]
-	if len(rules) == 0 {
-		return fields
-	}
 	out := make([]CreateFieldMeta, 0, len(fields))
 	for _, field := range fields {
 		rule, governed := rules[field.ID]
-		exempt := field.Section == "context" || field.ID == "summary"
+		requiredParent := field.ID == "parent" && m.requiresCreateParent(issueTypeID)
+		exempt := field.Section == "context" || field.ID == "summary" || requiredParent
 		if governed && rule.IsHidden && !exempt {
 			continue
 		}
@@ -671,9 +696,25 @@ func (m CreateProjectMeta) applyFieldBehaviour(issueTypeID string, fields []Crea
 				field.Description = rule.Description
 			}
 		}
+		if requiredParent {
+			field.Required = true
+			field.Section = "primary"
+		}
 		out = append(out, field)
 	}
 	return out
+}
+
+func (m CreateProjectMeta) requiresCreateParent(issueTypeID string) bool {
+	if m.ForEdit {
+		return false
+	}
+	for _, issueType := range m.IssueTypes {
+		if issueType.ID == issueTypeID {
+			return issueType.Subtask
+		}
+	}
+	return false
 }
 
 // FieldRules exposes the project's field configuration for one work type so the
@@ -692,3 +733,6 @@ func (v IssueView) FieldOnEdit(field string) bool { return v.EditFields == nil |
 func (v EditDialogView) FieldOnEdit(field string) bool {
 	return v.EditFields == nil || v.EditFields[field]
 }
+
+// FieldRequired describes the configured edit form; legacy replicas have no rules.
+func (v EditDialogView) FieldRequired(field string) bool { return v.FieldRules[field].IsRequired }
