@@ -1992,9 +1992,7 @@ func (h *Handler) issueEditFields(ctx context.Context, workspaceID, userID strin
 		if project.Project.ID != issue.ProjectID {
 			continue
 		}
-		if len(editFields) > 0 {
-			project.ScreenFields = map[string][]string{issue.IssueType.ID: editFields}
-		}
+		project.ScreenFields = map[string][]string{issue.IssueType.ID: editFields}
 		behaviour, behaviourErr := h.Store.ResolveFieldBehaviour(ctx, workspaceID, issue.ProjectID, issue.IssueType.ID)
 		if behaviourErr != nil {
 			return nil, behaviourErr

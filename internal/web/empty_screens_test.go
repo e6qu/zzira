@@ -122,6 +122,31 @@ func TestEmptyAssignedScreensKeepOnlyRequiredContextAndRefuseEdits(t *testing.T)
 			t.Fatalf("empty view screen rendered %s", selector)
 		}
 	}
+	// Different operations remain independent: a populated create screen must
+	// not supply fields to an empty edit screen or its bulk metadata.
+	createScreen, err := f.store.CreateScreen(ctx, ws, f.ownerID, "Labels on creation", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	createTabs, err := f.store.ScreenTabs(ctx, ws, createScreen.ID)
+	if err != nil || len(createTabs) != 1 {
+		t.Fatalf("create tabs: %+v %v", createTabs, err)
+	}
+	if _, err := f.store.AddScreenTabField(ctx, ws, f.ownerID, createScreen.ID, createTabs[0].ID, "labels"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.UpdateScreenScheme(ctx, ws, f.ownerID, schemes.ID, nil, nil, map[string]string{"default": screen.ID, "create": createScreen.ID}); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err = f.store.IssueEditMetadata(ctx, ws, f.ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range metadata.Projects {
+		if entry.Project.ID == project.ID && len(entry.FieldsForIssueType(issue.IssueType.ID)) != 3 {
+			t.Fatal("bulk edit metadata used the populated create screen")
+		}
+	}
 	// A missing assignment remains distinct from an intentionally empty one.
 	if _, err := f.store.Pool.Exec(ctx, `DELETE FROM project_issue_type_screen_schemes WHERE project_id=$1`, project.ID); err != nil {
 		t.Fatal(err)

@@ -518,10 +518,10 @@ func (h *Handler) bulkEditableFields(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-// bulkEditFields uses creation metadata for existing field families and the
+// bulkEditFields uses edit screens for existing field families and the
 // shared edit contract for Reporter, whose create default is irrelevant here.
 func (h *Handler) bulkEditFields(ctx context.Context, workspaceID, actorID string, issues []*models.Issue) ([]bulkEditableField, error) {
-	metadata, err := h.Store.IssueCreateMetadata(ctx, workspaceID, actorID)
+	metadata, err := h.Store.IssueEditMetadata(ctx, workspaceID, actorID)
 	if err != nil {
 		return nil, err
 	}

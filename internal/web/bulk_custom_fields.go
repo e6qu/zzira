@@ -112,7 +112,7 @@ func (field bulkCustomField) Chooses() bool { return bulkCustomFieldChooses(fiel
 // bulkCustomFields are the custom fields shared by every work type of one
 // project, ordered by name so the panel reads the same way twice.
 func (h *Handler) bulkCustomFields(ctx context.Context, workspaceID, userID, projectID string) ([]bulkCustomField, error) {
-	metadata, err := h.Store.IssueCreateMetadata(ctx, workspaceID, userID)
+	metadata, err := h.Store.IssueEditMetadata(ctx, workspaceID, userID)
 	if err != nil {
 		return nil, err
 	}

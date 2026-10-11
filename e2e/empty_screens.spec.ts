@@ -13,7 +13,7 @@ test('an empty assigned screen hides optional fields and rejects forged edits', 
   const project = await page.request.post('/rest/api/3/project', { headers, data: { key, name: `Empty screens ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' } });
   expect(project.status()).toBe(201);
   const projectID = String((await project.json()).id);
-  let screenID = '', schemeID = '', typeSchemeID = '';
+  let screenID = '', populatedScreenID = '', schemeID = '', typeSchemeID = '';
   try {
     const issue = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key }, issuetype: { name: 'Task' }, summary: 'Work behind an empty screen', labels: ['retained'] } } });
     expect(issue.status()).toBe(201);
@@ -28,6 +28,16 @@ test('an empty assigned screen hides optional fields and rejects forged edits', 
     expect(types.status()).toBe(201);
     typeSchemeID = String((await types.json()).id);
     expect((await page.request.put('/rest/api/3/issuetypescreenscheme/project', { headers, data: { issueTypeScreenSchemeId: typeSchemeID, projectId: projectID } })).status()).toBe(204);
+    const populated = await page.request.post('/rest/api/3/screens', { headers, data: { name: `Populated create ${stamp}` } });
+    expect(populated.status()).toBe(201);
+    populatedScreenID = String((await populated.json()).id);
+    const tabs = await (await page.request.get(`/rest/api/3/screens/${populatedScreenID}/tabs`, { headers })).json();
+    expect((await page.request.post(`/rest/api/3/screens/${populatedScreenID}/tabs/${tabs[0].id}/fields`, { headers, data: { fieldId: 'labels' } })).status()).toBe(200);
+    expect((await page.request.put(`/rest/api/3/screenscheme/${schemeID}`, { headers, data: { screens: { default: screenID, create: populatedScreenID } } })).status()).toBe(204);
+    const editMeta = await page.request.get(`/rest/api/3/issue/${issueKey}/editmeta`, { headers });
+    expect(editMeta.status()).toBe(200);
+    expect(Object.keys((await editMeta.json()).fields)).toEqual(['summary']);
+    expect((await page.request.put(`/rest/api/3/screenscheme/${schemeID}`, { headers, data: { screens: { default: screenID, create: screenID } } })).status()).toBe(204);
     await page.goto(`/browse/${issueKey}`);
     await expect(page.locator('#field-priority, #field-labels, #field-reporter, #field-components')).toHaveCount(0);
     await page.locator('#edit-issue-button').click();
@@ -54,6 +64,7 @@ test('an empty assigned screen hides optional fields and rejects forged edits', 
     await page.request.delete(`/rest/api/3/project/${projectID}`, { headers, timeout: 10_000 });
     if (typeSchemeID) await page.request.delete(`/rest/api/3/issuetypescreenscheme/${typeSchemeID}`, { headers, timeout: 10_000 });
     if (schemeID) await page.request.delete(`/rest/api/3/screenscheme/${schemeID}`, { headers, timeout: 10_000 });
+    if (populatedScreenID) await page.request.delete(`/rest/api/3/screens/${populatedScreenID}`, { headers, timeout: 10_000 });
     if (screenID) await page.request.delete(`/rest/api/3/screens/${screenID}`, { headers, timeout: 10_000 });
   }
 });

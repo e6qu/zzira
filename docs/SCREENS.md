@@ -25,7 +25,7 @@ Screen names are unique per site, and tab names are unique per screen, both igno
 
 ## Rules
 
-- A screen always has at least one tab.
+- A screen always has at least one tab. It may have no fields: assigned empty screens hide optional controls; they do not mean the screen is unassigned. Create retains project, work type and summary.
 - A field appears at most once per screen, so moving it between tabs is an update.
 - Removing a tab or field renumbers the rest, so positions stay dense.
 - The default screen cannot be deleted, and neither can a screen that a screen scheme uses.
