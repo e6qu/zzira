@@ -37,13 +37,14 @@ A site's levels run Subtask (`-1`), Base (`0`), Epic (`1`) and any named levels 
 | `POST` | `/rest/api/3/issuetype` | `type` `standard` (level 0) or `subtask` (level −1); duplicate name is 409 |
 | `GET` | `/rest/api/3/issuetype/project?projectId=&level=` | types the project's scheme offers |
 | `GET` / `PUT` / `DELETE` | `/rest/api/3/issuetype/{id}` | |
-| `GET` | `/rest/api/3/issuetype/{id}/alternatives` | the site's other types of the same kind |
+| `GET` | `/rest/api/3/issuetype/{id}/alternatives` | same-kind replacements compatible with every affected project's workflow, field configuration and screen scheme |
 | `POST` | `/rest/api/3/issuetype/{id}/avatar2` | JPEG, GIF or PNG; needs `X-Atlassian-Token: no-check` |
 | `GET` | `/rest/api/3/issuetype/{id}/properties` | property keys |
 | `GET` / `PUT` / `DELETE` | `/rest/api/3/issuetype/{id}/properties/{key}` | `PUT` is 201 new, 200 replaced; value is non-empty JSON, at most 32768 characters |
 
 - A new type joins the site's default work type scheme.
-- Deleting a type in use needs `alternativeIssueTypeId`. Missing: 404. Same type: 409. Other kind (standard vs subtask): 400. Work items move to the alternative. The type is removed from every work type scheme, work type screen scheme, field configuration scheme, custom field context and workflow scheme mapping.
+- Deleting a type in use needs `alternativeIssueTypeId`. Missing: 404. Same type: 409. Other kind (standard vs subtask) or incompatible replacement: 400. Work items move to the alternative. The type is removed from every work type scheme, work type screen scheme, field configuration scheme, custom field context and workflow scheme mapping.
+- Replacement choices apply each affected project's effective mappings, including default fallbacks. A type must be offered by every affected project; matching one project is insufficient. The admin picker and alternatives REST read share this check, and deletion rechecks it within its transaction. The [Atlassian issue-type contract](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-types/) describes the compatibility requirement.
 - Avatars: the system catalogue has five work type icons (`internal/store/universal_avatars.go`), plus the site's uploads.
 
 ## Priorities
@@ -186,7 +187,7 @@ settings change.
 
 Tracked in [PLAN.md](../PLAN.md).
 
-- `alternatives` does not narrow to types that share the same workflow, field configuration and screen schemes.
+- Work type deletion still needs issue action/sync records for the migrated work items.
 - Team-managed scoping (`scope`, `entityId`) is not modelled; every type is company-managed.
 - A priority scheme update applies its mappings before answering, so the 202 has no `task`.
 - The system avatar catalogue has five work type icons; Jira's is larger.

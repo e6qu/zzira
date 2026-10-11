@@ -206,13 +206,19 @@ func (s *Store) UpdateIssueType(ctx context.Context, workspaceID, idOrName strin
 	return updated, tx.Commit(ctx)
 }
 
-// AlternativeIssueTypes lists what an issue type's issues could move to when it
-// is deleted: the site's other issue types of the same kind, since an issue
-// cannot become a subtask, or stop being one, by losing its type.
+// AlternativeIssueTypes lists compatible replacements of the same kind.
 func (s *Store) AlternativeIssueTypes(ctx context.Context, workspaceID, idOrName string) ([]models.IssueType, error) {
 	current, err := s.IssueTypeInWorkspace(ctx, workspaceID, idOrName)
 	if err != nil {
 		return nil, err
+	}
+	choices, err := s.AlternativeIssueTypeIDs(ctx, workspaceID, []string{current.ID})
+	if err != nil {
+		return nil, err
+	}
+	allowed := map[string]bool{}
+	for _, id := range choices[current.ID] {
+		allowed[id] = true
 	}
 	all, err := s.IssueTypesForWorkspace(ctx, workspaceID)
 	if err != nil {
@@ -220,7 +226,7 @@ func (s *Store) AlternativeIssueTypes(ctx context.Context, workspaceID, idOrName
 	}
 	out := []models.IssueType{}
 	for _, t := range all {
-		if t.ID != current.ID && t.Subtask == current.Subtask {
+		if allowed[t.ID] {
 			out = append(out, t)
 		}
 	}
@@ -258,6 +264,22 @@ func (s *Store) DeleteIssueType(ctx context.Context, workspaceID, idOrName, alte
 		}
 	} else if inUse > 0 {
 		return fmt.Errorf("%w: the issue type is in use, so an alternative issue type is required", ErrIssueMetadataNotFound)
+	}
+	if target.ID != "" {
+		choices, err := alternativeIssueTypeIDs(ctx, tx, workspaceID, []string{current.ID})
+		if err != nil {
+			return err
+		}
+		allowed := false
+		for _, id := range choices[current.ID] {
+			if id == target.ID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("%w: the replacement must be offered by every project using this type and share its workflow, field configuration and screen scheme", ErrIssueMetadataValidation)
+		}
 	}
 	if inUse > 0 {
 		if _, err = tx.Exec(ctx, `UPDATE issues SET issuetype_id=$3, updated_at=now() WHERE workspace_id=$1 AND issuetype_id=$2`, workspaceID, current.ID, target.ID); err != nil {

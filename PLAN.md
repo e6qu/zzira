@@ -64,8 +64,7 @@ work beneath a level above Epic ([REPORTS.md](docs/REPORTS.md)). Boards and
 backlogs remain epic-level, as Jira's do.
 
 **Metadata and configuration UI.**
-- Work type alternatives must share workflow, field configuration and screen
-  schemes; team-managed scoping, asynchronous priority-scheme updates and a
+- Team-managed work type scoping, asynchronous priority-scheme updates and a
   larger avatar catalogue remain ([ISSUE_METADATA.md](docs/ISSUE_METADATA.md#gaps)).
 - Complete built-in field controls (components and versions), screen field
   order and transition screen tabs ([SCREEN_SCHEMES.md](docs/SCREEN_SCHEMES.md#gaps)).
@@ -75,6 +74,7 @@ backlogs remain epic-level, as Jira's do.
   project default, organization default; org admins only.
 
 **Platform odds and ends.**
+- Record work type deletion migrations in issue actions and sync.
 - Worklog visibility restrictions to a group or project role (requests for
   unsupported restrictions are currently refused).
 - Bounce handling for the project sender address (the address itself is the

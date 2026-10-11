@@ -14,10 +14,11 @@ import (
 // with their hierarchy level, and the work type schemes that decide which
 // projects offer them.
 type workTypesPageData struct {
-	WorkTypes []models.IssueType
-	Levels    []store.HierarchyLevel
-	Schemes   []store.IssueTypeScheme
-	Projects  []*models.Project
+	Alternatives map[string][]models.IssueType
+	WorkTypes    []models.IssueType
+	Levels       []store.HierarchyLevel
+	Schemes      []store.IssueTypeScheme
+	Projects     []*models.Project
 	// Translations is what each work type is called in the site's other
 	// languages, by work type id.
 	Translations map[string]metadataTranslationCard
@@ -61,6 +62,23 @@ func (h *Handler) WorkTypesPage(w http.ResponseWriter, r *http.Request) {
 	if data.WorkTypes, err = h.Store.IssueTypesForWorkspace(r.Context(), workspaceID); err != nil {
 		http.Error(w, "Could not load work types.", http.StatusInternalServerError)
 		return
+	}
+	ids := make([]string, 0, len(data.WorkTypes))
+	byID := map[string]models.IssueType{}
+	for _, kind := range data.WorkTypes {
+		ids = append(ids, kind.ID)
+		byID[kind.ID] = kind
+	}
+	choices, err := h.Store.AlternativeIssueTypeIDs(r.Context(), workspaceID, ids)
+	if err != nil {
+		http.Error(w, "Could not load compatible replacement work types.", http.StatusInternalServerError)
+		return
+	}
+	data.Alternatives = map[string][]models.IssueType{}
+	for source, targets := range choices {
+		for _, target := range targets {
+			data.Alternatives[source] = append(data.Alternatives[source], byID[target])
+		}
 	}
 	if data.Levels, err = h.Store.HierarchyLevels(r.Context(), workspaceID); err != nil {
 		http.Error(w, "Could not load the work type hierarchy.", http.StatusInternalServerError)
