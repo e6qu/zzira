@@ -22,6 +22,7 @@ import (
 	"syscall/js"
 	"time"
 
+	"github.com/e6qu/zzira/internal/adf"
 	"github.com/e6qu/zzira/internal/build"
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/e6qu/zzira/internal/render"
@@ -1089,13 +1090,19 @@ func applyOptimistic(kind, body string) {
 		if s := vals.Get("summary"); s != "" {
 			exec(`UPDATE issues SET summary=$2 WHERE id=$1`, []any{currentView, s})
 		}
-		if d := vals.Get("description"); d != "" {
-			doc, err := json.Marshal(adfFor(d))
-			if err != nil {
-				post(map[string]any{"type": "error", "message": "encode offline description: " + err.Error()})
-				return
+		if vals.Has("description") {
+			description := vals.Get("description")
+			existing := selectObjects(`SELECT description FROM issues WHERE id=$1`, []any{currentView})
+			// Plain-text forms also submit unchanged rich documents. Preserve
+			// their structure just as the server edit command does.
+			if len(existing) == 0 || adf.PlainText(json.RawMessage(str(existing[0], "description"))) != description {
+				doc, err := json.Marshal(adfFor(description))
+				if err != nil {
+					post(map[string]any{"type": "error", "message": "encode offline description: " + err.Error()})
+					return
+				}
+				exec(`UPDATE issues SET description=$2 WHERE id=$1`, []any{currentView, string(doc)})
 			}
-			exec(`UPDATE issues SET description=$2 WHERE id=$1`, []any{currentView, string(doc)})
 		}
 	}
 }

@@ -9,7 +9,10 @@ The architecture follows Linear's
 [delta sync](https://linear.app/now/rebuilding-delta-sync-read-path): one command
 layer writes an immutable action log, and browsers keep permission-shaped local
 replicas of work items. Offline forms close only after the local command and
-its display update commit; a refused local save keeps the draft for retry. Each session replica has its own OPFS pool so tabs can
+its display update commit; a refused local save keeps the draft for retry.
+Description clears survive local reloads and replay on reconnect; unchanged rich
+descriptions retain their formatting.
+Each session replica has its own OPFS pool so tabs can
 work independently. Existing shared-pool replicas migrate as complete SQLite
 copies, including queued commands; the original files remain available for
 recovery. A failed pool initialization releases handles without deleting data.
