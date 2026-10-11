@@ -432,6 +432,7 @@ type EditDialogView struct {
 	ConfiguredChoiceFields []IssueChoiceFieldView
 	EditFields             map[string]bool
 	EditFieldOrder         []string
+	EditScreenTabs         []FieldTab
 	EnvironmentField       *CreateFieldMeta
 	CanAssign              bool
 	CanModifyReporter      bool
@@ -453,6 +454,83 @@ type EditDialogView struct {
 type EditDialogField struct {
 	ID   string
 	View *EditDialogView
+}
+
+type EditDialogTab struct {
+	Name   string
+	Fields []EditDialogField
+}
+
+func (v EditDialogView) rendersEditField(id string) bool {
+	switch id {
+	case "summary":
+		return true
+	case "description":
+		return v.FieldOnEdit(id)
+	case "environment":
+		return v.EnvironmentField != nil
+	case "assignee":
+		return v.CanAssign && v.FieldOnEdit(id)
+	case "reporter":
+		return v.CanModifyReporter
+	case "security":
+		return v.CanSetSecurity && len(v.SecurityLevels) > 0 && v.FieldOnEdit(id)
+	case "priority", "labels", "parent":
+		return len(v.EditFields) > 0 && v.FieldOnEdit(id)
+	case "duedate":
+		return len(v.EditFields) > 0 && v.CanSchedule && v.FieldOnEdit(id)
+	case "resolution":
+		return len(v.EditFields) > 0 && v.CanResolve && v.FieldOnEdit(id)
+	case "timetracking":
+		return len(v.EditFields) > 0 && v.TimeTrackingEnabled && v.FieldOnEdit(id)
+	}
+	for _, field := range v.ChoiceFields {
+		if field.Field.ID == id {
+			return true
+		}
+	}
+	for _, field := range v.CustomFields {
+		if field.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// EditingTabs omits empty or inaccessible tabs. A single usable tab keeps the
+// ordinary ordered form, and a required summary absent from the screen stays
+// in its first usable tab.
+func (v EditDialogView) EditingTabs() []EditDialogTab {
+	if len(v.EditScreenTabs) < 2 {
+		return nil
+	}
+	byID := make(map[string]EditDialogField)
+	for _, field := range v.OrderedEditFields() {
+		if v.rendersEditField(field.ID) {
+			byID[field.ID] = field
+		}
+	}
+	tabs := []EditDialogTab{}
+	used := make(map[string]bool)
+	for _, tab := range v.EditScreenTabs {
+		view := EditDialogTab{Name: tab.Name}
+		for _, id := range tab.Fields {
+			if field, shown := byID[id]; shown && !used[id] {
+				view.Fields = append(view.Fields, field)
+				used[id] = true
+			}
+		}
+		if len(view.Fields) > 0 {
+			tabs = append(tabs, view)
+		}
+	}
+	if len(tabs) < 2 {
+		return nil
+	}
+	if !used["summary"] {
+		tabs[0].Fields = append([]EditDialogField{byID["summary"]}, tabs[0].Fields...)
+	}
+	return tabs
 }
 
 func (v EditDialogView) OrderedEditFields() []EditDialogField {

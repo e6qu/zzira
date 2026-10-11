@@ -538,7 +538,7 @@
     }
   });
 
-  // A create form whose screen has more than one tab shows them as tabs: one
+  // A form whose screen has more than one tab shows them as tabs: one
   // panel at a time, with the arrow keys moving between them as ARIA asks.
   function selectFieldTab(list, index) {
     const tabs = Array.from(list.querySelectorAll('[data-field-tab]'));
@@ -586,13 +586,15 @@
     if (event.defaultPrevented) return;
     const target = event.target;
     const tab = target instanceof Element ? target.closest('[data-field-tab]') : null;
-    if (!tab || (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft')) return;
+    if (!tab || !['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
     const list = tab.closest('[role="tablist"]');
     if (!list) return;
     const tabs = Array.from(list.querySelectorAll('[data-field-tab]'));
     const step = event.key === 'ArrowRight' ? 1 : -1;
     event.preventDefault();
-    selectFieldTab(list, (tabs.indexOf(tab) + step + tabs.length) % tabs.length);
+    const index = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 :
+      (tabs.indexOf(tab) + step + tabs.length) % tabs.length;
+    selectFieldTab(list, index);
   });
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -631,7 +633,7 @@
     return id;
   }
   const worker = replicaView && typeof Worker === 'function'
-    ? new Worker('/static/worker.js?v=61&replica=' + encodeURIComponent(replicaID()))
+    ? new Worker('/static/worker.js?v=62&replica=' + encodeURIComponent(replicaID()))
     : null;
   const banner = () => document.getElementById('sync-banner');
   let workerReady = false;
@@ -714,7 +716,9 @@
       if (event.shiftKey && (document.activeElement === first || outsideOrder)) { event.preventDefault(); last.focus(); }
       if (!event.shiftKey && (document.activeElement === last || outsideOrder)) { event.preventDefault(); first.focus(); }
     });
-    const autofocus = modal.querySelector('[autofocus]') || modalFocusable(modal)[0] || modal;
+    const focusable = modalFocusable(modal);
+    const autofocus = focusable.find(element => element.hasAttribute('autofocus')) ||
+      focusable.find(element => element.matches('input, select, textarea')) || focusable[0] || modal;
     autofocus.focus();
   }
 

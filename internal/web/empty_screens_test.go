@@ -47,6 +47,10 @@ func TestEmptyAssignedScreensKeepOnlyRequiredContextAndRefuseEdits(t *testing.T)
 		t.Fatal(err)
 	}
 	for _, operation := range []string{"create", "edit", "view"} {
+		layout, layoutTabs, err := f.store.ResolveScreenLayout(ctx, ws, project.ID, issue.IssueType.ID, operation)
+		if err != nil || layout == nil || len(layout) != 0 || len(layoutTabs) != 1 || len(layoutTabs[0].Fields) != 0 {
+			t.Fatalf("%s layout lost its empty assigned screen: %v %+v %v", operation, layout, layoutTabs, err)
+		}
 		fields, err := f.store.ResolveScreenFields(ctx, ws, project.ID, issue.IssueType.ID, operation)
 		if err != nil || fields == nil || len(fields) != 0 {
 			t.Fatalf("single %s screen lost empty assignment: %v %v", operation, fields, err)
@@ -181,6 +185,10 @@ func TestEmptyAssignedScreensKeepOnlyRequiredContextAndRefuseEdits(t *testing.T)
 	fields, err := f.store.ResolveScreenFields(ctx, ws, project.ID, issue.IssueType.ID, "edit")
 	if err != nil || fields != nil {
 		t.Fatalf("ungoverned form is not nil: %v %v", fields, err)
+	}
+	layout, layoutTabs, err := f.store.ResolveScreenLayout(ctx, ws, project.ID, issue.IssueType.ID, "edit")
+	if err != nil || layout != nil || layoutTabs != nil {
+		t.Fatalf("ungoverned layout is not nil: %v %+v %v", layout, layoutTabs, err)
 	}
 	edit, err = f.handler.buildEditDialogView(ctx, ws, f.ownerID, issue, map[string]bool{"MODIFY_REPORTER": true})
 	if err != nil || !edit.EditFields["labels"] || !edit.CanModifyReporter {

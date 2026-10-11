@@ -929,7 +929,7 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	if issue.Assignee != nil && !currentIncluded {
 		view.Assignees = append(view.Assignees, *issue.Assignee)
 	}
-	reporterFields, err := h.Store.ResolveScreenFields(ctx, wsID, issue.ProjectID, issue.IssueType.ID, "edit")
+	reporterFields, editTabs, err := h.Store.ResolveScreenLayout(ctx, wsID, issue.ProjectID, issue.IssueType.ID, "edit")
 	if err != nil {
 		return nil, err
 	}
@@ -940,6 +940,7 @@ func (h *Handler) buildEditDialogView(ctx context.Context, wsID, reader string, 
 	view.FieldRules = behaviour
 	view.EditFields = issueScreenFields(reporterFields, behaviour)
 	view.EditFieldOrder = reporterFields
+	view.EditScreenTabs = editTabs
 	view.CanResolve, view.CanSchedule = permissions["RESOLVE_ISSUES"], permissions["SCHEDULE_ISSUES"]
 	view.Priorities, err = h.Store.PrioritiesForProject(ctx, wsID, issue.ProjectID)
 	if err != nil {

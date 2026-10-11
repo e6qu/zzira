@@ -4,6 +4,99 @@ import axe from 'axe-core';
 
 test.use({ actionTimeout: 15_000 });
 
+test('edit screen tabs retain drafts and reveal hidden required controls', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill('demo@zzira.dev');
+  await page.getByLabel('Password').fill('demo1234');
+  await page.getByRole('button', { name: 'Log in' }).click();
+  const headers = { Authorization: apiAuthHeader() };
+  const stamp = Date.now();
+  const key = `TAB${stamp.toString().slice(-7)}`;
+  const me = await (await page.request.get('/rest/api/3/myself', { headers })).json();
+  const project = await page.request.post('/rest/api/3/project', { headers, data: { key, name: `Tabbed editing ${stamp}`, projectTypeKey: 'software', leadAccountId: me.accountId, assigneeType: 'PROJECT_LEAD' } });
+  expect(project.status()).toBe(201);
+  const projectID = String((await project.json()).id);
+  let screenID = '', schemeID = '', typesID = '';
+  try {
+    const created = await page.request.post('/rest/api/3/issue', { headers, data: { fields: { project: { key }, issuetype: { name: 'Task' }, summary: 'Original tabbed work' } } });
+    expect(created.status()).toBe(201);
+    const issueKey = String((await created.json()).key);
+    const screen = await page.request.post('/rest/api/3/screens', { headers, data: { name: `Tabbed screen ${stamp}` } });
+    expect(screen.status()).toBe(201);
+    screenID = String((await screen.json()).id);
+    const first = (await (await page.request.get(`/rest/api/3/screens/${screenID}/tabs`, { headers })).json())[0];
+    expect((await page.request.put(`/rest/api/3/screens/${screenID}/tabs/${first.id}`, { headers, data: { name: 'Details' } })).status()).toBe(200);
+    expect((await page.request.post(`/rest/api/3/screens/${screenID}/tabs/${first.id}/fields`, { headers, data: { fieldId: 'labels' } })).status()).toBe(200);
+    const textTab = await page.request.post(`/rest/api/3/screens/${screenID}/tabs`, { headers, data: { name: 'Text' } });
+    expect(textTab.status()).toBe(200);
+    const textID = String((await textTab.json()).id);
+    for (const fieldId of ['summary', 'description']) expect((await page.request.post(`/rest/api/3/screens/${screenID}/tabs/${textID}/fields`, { headers, data: { fieldId } })).status()).toBe(200);
+    expect((await page.request.post(`/rest/api/3/screens/${screenID}/tabs`, { headers, data: { name: 'Unused' } })).status()).toBe(200);
+    const scheme = await page.request.post('/rest/api/3/screenscheme', { headers, data: { name: `Tabbed scheme ${stamp}`, screens: { default: screenID } } });
+    expect(scheme.status()).toBe(201);
+    schemeID = String((await scheme.json()).id);
+    const types = await page.request.post('/rest/api/3/issuetypescreenscheme', { headers, data: { name: `Tabbed types ${stamp}`, issueTypeMappings: [{ issueTypeId: 'default', screenSchemeId: schemeID }] } });
+    expect(types.status()).toBe(201);
+    typesID = String((await types.json()).id);
+    expect((await page.request.put('/rest/api/3/issuetypescreenscheme/project', { headers, data: { projectId: projectID, issueTypeScreenSchemeId: typesID } })).status()).toBe(204);
+    await page.goto(`/browse/${issueKey}`);
+    await page.locator('#edit-issue-button').click();
+    const dialog = page.getByRole('dialog', { name: 'Edit issue', exact: true });
+    const details = dialog.getByRole('tab', { name: 'Details', exact: true });
+    const text = dialog.getByRole('tab', { name: 'Text', exact: true });
+    await expect(dialog.getByRole('tab')).toHaveCount(2);
+    await expect(dialog.locator('#edit-labels')).toBeFocused();
+    await expect(dialog.locator('#edit-summary')).not.toBeVisible();
+    await dialog.locator('#edit-labels').fill('retained');
+    await details.focus();
+    await page.keyboard.press('End');
+    await expect(text).toBeFocused();
+    await expect(dialog.locator('#edit-summary')).toBeVisible();
+    await page.keyboard.press('Home');
+    await expect(details).toBeFocused();
+    await page.keyboard.press('ArrowLeft');
+    await expect(text).toBeFocused();
+    await dialog.locator('#edit-summary').fill('');
+    await dialog.locator('#edit-description').fill('Retained tab description');
+    await details.click();
+    await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await expect(dialog.locator('#edit-summary')).toBeFocused();
+    await expect(text).toHaveAttribute('aria-selected', 'true');
+    await expect(dialog.locator('#edit-labels')).toHaveValue('retained');
+    await dialog.locator('#edit-summary').fill('   ');
+    await details.click();
+    const refusal = page.waitForResponse(response => response.url().endsWith(`/issues/${issueKey}/edit`) && response.request().method() === 'POST');
+    await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
+    expect((await refusal).status()).toBe(400);
+    await expect(dialog.getByRole('alert')).toContainText('summary is required');
+    await expect(dialog.locator('#edit-description')).toHaveValue('Retained tab description');
+    await text.click();
+    await dialog.locator('#edit-summary').fill('Saved tabbed work');
+    await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await page.reload();
+    const saved = (await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=summary,description,labels`, { headers })).json()).fields;
+    expect(saved.summary).toBe('Saved tabbed work');
+    expect(saved.labels).toEqual(['retained']);
+    expect(JSON.stringify(saved.description)).toContain('Retained tab description');
+    await page.locator('[data-theme-toggle]').click();
+    await page.setViewportSize({ width: 320, height: 740 });
+    await page.locator('#edit-issue-button').click();
+    await expect(dialog.locator('#edit-labels')).toBeFocused();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.addScriptTag({ content: axe.source });
+    for (const tab of [details, text]) {
+      await tab.click();
+      expect(await page.evaluate(async () => (await (window as any).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] } })).violations)).toEqual([]);
+    }
+  } finally {
+    await page.request.delete(`/rest/api/3/project/${projectID}`, { headers, timeout: 10_000 });
+    if (typesID) await page.request.delete(`/rest/api/3/issuetypescreenscheme/${typesID}`, { headers, timeout: 10_000 });
+    if (schemeID) await page.request.delete(`/rest/api/3/screenscheme/${schemeID}`, { headers, timeout: 10_000 });
+    if (screenID) await page.request.delete(`/rest/api/3/screens/${screenID}`, { headers, timeout: 10_000 });
+  }
+});
+
 test('fields on only the edit screen can be changed in the issue dialog', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel('Email').fill('demo@zzira.dev');

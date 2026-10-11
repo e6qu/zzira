@@ -72,8 +72,11 @@ estimate retains its unsubmitted counterpart. These additional controls wait
 for server field metadata; legacy offline editors keep their existing fields.
 
 The edit dialog renders native controls, project component/version pickers and
-custom fields in the assigned edit screen’s field order. Hidden fields and
-permission checks still apply; summary remains available on an empty screen.
+custom fields in the assigned edit screen’s tabs and field order. Tabs without
+usable controls are omitted; one usable tab remains a plain form. Hidden fields
+and permission checks still apply; summary remains available on an empty screen.
+Arrow keys, Home and End select tabs. Switching tabs retains the draft, and
+required fields on inactive tabs are revealed when they block submission.
 Legacy offline replicas retain their existing layout until screen metadata is
 replicated.
 
@@ -91,4 +94,3 @@ Tracked in [PLAN.md](../PLAN.md).
   and field order.
 - Workflow transition screens resolve named screens, but present their fields
   as one list rather than using the screen's tabs ([WORKFLOW_RULES.md](WORKFLOW_RULES.md#gaps)).
-- Edit dialogs flatten screen tabs into the configured field order.

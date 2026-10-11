@@ -376,7 +376,7 @@ func (s *Store) ResolveScreenFields(ctx context.Context, workspaceID, projectID,
 	return resolveScreenFieldsTx(ctx, tx, workspaceID, projectID, issueTypeID, operation)
 }
 
-func resolveScreenFieldsTx(ctx context.Context, tx pgx.Tx, workspaceID, projectID, issueTypeID, operation string) ([]string, error) {
+func resolveScreenIDTx(ctx context.Context, tx pgx.Tx, workspaceID, projectID, issueTypeID, operation string) (string, error) {
 	var screenID string
 	err := tx.QueryRow(ctx, `
 		WITH assigned AS (
@@ -394,10 +394,18 @@ func resolveScreenFieldsTx(ctx context.Context, tx pgx.Tx, workspaceID, projectI
 		ORDER BY (item.operation = $4) DESC LIMIT 1`,
 		workspaceID, projectID, issueTypeID, operation, DefaultIssueTypeMapping).Scan(&screenID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+		return "", nil
 	}
+	return screenID, err
+}
+
+func resolveScreenFieldsTx(ctx context.Context, tx pgx.Tx, workspaceID, projectID, issueTypeID, operation string) ([]string, error) {
+	screenID, err := resolveScreenIDTx(ctx, tx, workspaceID, projectID, issueTypeID, operation)
 	if err != nil {
 		return nil, err
+	}
+	if screenID == "" {
+		return nil, nil
 	}
 	rows, err := tx.Query(ctx, `SELECT f.field_id FROM screen_tab_fields f
 		JOIN screen_tabs t ON t.id=f.tab_id
@@ -415,6 +423,46 @@ func resolveScreenFieldsTx(ctx context.Context, tx pgx.Tx, workspaceID, projectI
 		fields = append(fields, id)
 	}
 	return fields, rows.Err()
+}
+
+// ResolveScreenLayout reads a single form's ordered fields and tabs from the
+// same snapshot. Nil fields mean no assigned screen; an empty slice means an
+// intentionally empty screen.
+func (s *Store) ResolveScreenLayout(ctx context.Context, workspaceID, projectID, issueTypeID, operation string) ([]string, []models.FieldTab, error) {
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	screenID, err := resolveScreenIDTx(ctx, tx, workspaceID, projectID, issueTypeID, operation)
+	if err != nil || screenID == "" {
+		return nil, nil, err
+	}
+	rows, err := tx.Query(ctx, `SELECT t.id::text, t.name, f.field_id
+		FROM screen_tabs t LEFT JOIN screen_tab_fields f ON f.tab_id=t.id AND f.screen_id=t.screen_id
+		WHERE t.screen_id=$1 ORDER BY t.position, t.id, f.position, f.field_id`, screenID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	fields, tabs := []string{}, []models.FieldTab{}
+	lastTab := ""
+	for rows.Next() {
+		var tabID, name string
+		var field *string
+		if err := rows.Scan(&tabID, &name, &field); err != nil {
+			return nil, nil, err
+		}
+		if tabID != lastTab {
+			tabs = append(tabs, models.FieldTab{Name: name})
+			lastTab = tabID
+		}
+		if field != nil {
+			fields = append(fields, *field)
+			tabs[len(tabs)-1].Fields = append(tabs[len(tabs)-1].Fields, *field)
+		}
+	}
+	return fields, tabs, rows.Err()
 }
 
 // ResolveScreenFieldsByProject answers ResolveScreenFields for every project and
