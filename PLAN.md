@@ -272,7 +272,8 @@ Owning reference: [CONFLUENCE_LIVE.md](docs/CONFLUENCE_LIVE.md).
 
 - Permission-shaped replicas and safe queued writes for service, knowledge,
   dashboards, releases, reports and administration.
-- Conflict handling, outbox ordering, cross-tab ownership, reconnect, compaction,
+- Conflict handling, outbox ordering, cross-tab ownership when a replica ID is
+  duplicated, reconnect, compaction,
   quota, account and site switching, schema upgrades, full resnapshot,
   revocation purge — tested for each replica.
 

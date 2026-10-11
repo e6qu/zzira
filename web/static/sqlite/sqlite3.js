@@ -14088,7 +14088,13 @@ globalThis.sqlite3ApiBootstrap.initializers.push(function(sqlite3){
         thePool.log("VFS initialized.");
         return poolUtil;
       }).catch(async (e)=>{
-        await thePool.removeVfs().catch(()=>{});
+        // ZZIRA patch: initialization failure must preserve existing replicas
+        // and outboxes. Release handles and VFS memory without deleting OPFS.
+        try{
+          thePool.pauseVfs();
+          capi.sqlite3_vfs_unregister(thePool.getVfs().pointer);
+          thePool.getVfs().dispose();
+        }catch(_){}
         throw e;
       });
     }).catch((err)=>{
