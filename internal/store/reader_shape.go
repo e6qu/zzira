@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/e6qu/zzira/internal/models"
+	"github.com/jackc/pgx/v5"
 )
 
 // commentVisibilityPredicate asks the same group/role question as CommentVisibleTo
@@ -156,11 +157,21 @@ func (s *Store) shapeReplicaActions(ctx context.Context, workspaceID, readerID s
 			current, err := s.CommentByRef(ctx, workspaceID, action.EntityID)
 			visible := false
 			if err == nil {
+				// The work item a comment belongs to can stop being readable
+				// without the comment itself changing: its project is trashed
+				// or archived, so IssueByIDOrKey has nothing to return. That
+				// is the same answer as a comment that is gone -- the reader
+				// cannot see it -- and not a fault of this request's. Failing
+				// here failed every replica's sync page forever, because the
+				// action stays in the log and the next read reaches it again.
 				issue, issueErr := s.IssueByIDOrKey(ctx, workspaceID, current.IssueID)
-				if issueErr != nil {
+				switch {
+				case errors.Is(issueErr, pgx.ErrNoRows):
+				case issueErr != nil:
 					return nil, issueErr
+				default:
+					visible, err = s.CommentVisibleTo(ctx, workspaceID, issue.ProjectID, readerID, current)
 				}
-				visible, err = s.CommentVisibleTo(ctx, workspaceID, issue.ProjectID, readerID, current)
 			}
 			if err != nil && !errors.Is(err, ErrCommentNotFound) {
 				return nil, err
