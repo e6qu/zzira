@@ -194,7 +194,9 @@ func TestScreenContract(t *testing.T) {
 		t.Fatalf("tabs=%+v err=%v body=%s", defaultTabList, err, defaultTabs.Body.String())
 	}
 	defaultTab := fmt.Sprint(defaultTabList[0].ID)
-	call(adminID, http.MethodPost, "/rest/api/3/screens/addToDefault/components", "", http.StatusConflict)
+	// Atlassian answers this operation with 404 for a field it cannot find and
+	// for one the default screen already holds.
+	call(adminID, http.MethodPost, "/rest/api/3/screens/addToDefault/components", "", http.StatusNotFound)
 	call(adminID, http.MethodDelete, "/rest/api/3/screens/"+defaultScreenID+"/tabs/"+defaultTab+"/fields/components", "", http.StatusNoContent)
 	call(adminID, http.MethodPost, "/rest/api/3/screens/addToDefault/components", "", http.StatusOK)
 	defaultFields := call(adminID, http.MethodGet, "/rest/api/3/field/components/screens", "", http.StatusOK)

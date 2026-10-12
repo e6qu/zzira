@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -380,11 +381,25 @@ func safeInstall(what string, fn func() error) (ok bool) {
 	return true
 }
 
+// bindNamed binds by parameter name rather than by position. SQLite treats
+// $1 as a NAME, not an index: a statement's parameters are numbered by first
+// appearance, so an array bind hands `SET summary=$2 WHERE id=$1` its values
+// the wrong way round and the statement updates nothing without failing.
+// Naming each value leaves every statement correct whatever order it writes
+// its parameters in.
+func bindNamed(bind []any) map[string]any {
+	named := make(map[string]any, len(bind))
+	for i, value := range bind {
+		named["$"+strconv.Itoa(i+1)] = value
+	}
+	return named
+}
+
 func exec(sql string, bind []any) js.Value {
 	if bind == nil {
 		return db.Call("exec", sql)
 	}
-	return db.Call("exec", map[string]any{"sql": sql, "bind": bind})
+	return db.Call("exec", map[string]any{"sql": sql, "bind": bindNamed(bind)})
 }
 
 func selectObjects(sql string, bind []any) []map[string]js.Value {
@@ -392,7 +407,7 @@ func selectObjects(sql string, bind []any) []map[string]js.Value {
 	if bind == nil {
 		res = db.Call("selectObjects", sql)
 	} else {
-		res = db.Call("selectObjects", sql, js.ValueOf(bind))
+		res = db.Call("selectObjects", sql, js.ValueOf(bindNamed(bind)))
 	}
 	out := make([]map[string]js.Value, 0, res.Length())
 	for i := 0; i < res.Length(); i++ {
@@ -1036,7 +1051,19 @@ func onMessage(_ js.Value, args []js.Value) any {
 	}
 	switch msg.Get("type").String() {
 	case "export-outbox":
-		post(map[string]any{"type": "outbox-export", "commands": selectObjects(`SELECT id, method, path, body, content_type, refused_status FROM outbox ORDER BY id`, nil)})
+		// Query rows carry js.Value fields, which js.ValueOf refuses: posting
+		// them straight panicked the worker and the download never arrived.
+		// Hand the page plain values instead.
+		rows := selectObjects(`SELECT id, method, path, body, content_type, refused_status FROM outbox ORDER BY id`, nil)
+		commands := make([]any, 0, len(rows))
+		for _, row := range rows {
+			commands = append(commands, map[string]any{
+				"id": int64Of(row, "id"), "method": str(row, "method"), "path": str(row, "path"),
+				"body": str(row, "body"), "content_type": str(row, "content_type"),
+				"refused_status": int64Of(row, "refused_status"),
+			})
+		}
+		post(map[string]any{"type": "outbox-export", "commands": commands})
 	case "retry-outbox":
 		// Never retry a different command than the refused head of the queue.
 		exec(`UPDATE outbox SET refused_status=0 WHERE id=(SELECT id FROM outbox ORDER BY id LIMIT 1)`, nil)

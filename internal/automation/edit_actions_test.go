@@ -2,6 +2,7 @@ package automation
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -23,7 +24,9 @@ func TestEditDescriptionAndLogWorkActions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := fx.store.AddFieldToDefaultScreen(fx.ctx, fx.ws, fx.admin, "environment"); err != nil {
+	// Environment ships on the default screen, as Jira's does; adding it again
+	// is refused, and this fixture only needs it to be there.
+	if err := fx.store.AddFieldToDefaultScreen(fx.ctx, fx.ws, fx.admin, "environment"); err != nil && !errors.Is(err, store.ErrScreenConflict) {
 		t.Fatal(err)
 	}
 

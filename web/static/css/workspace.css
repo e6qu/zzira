@@ -933,3 +933,6 @@ label[for="wiki-subtype"] { display: flex; align-items: center; gap: 8px; }
   .transition-screen[open]{width:100%}
   .transition-screen>form{position:static;width:100%;margin-top:6px}
 }
+/* The required marker sits beside its label rather than inside it, so a
+   field's accessible name stays the field's name. */
+.required-marker{margin-left:4px;color:var(--ds-danger);font-weight:700}

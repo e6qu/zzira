@@ -1,6 +1,14 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, Page } from '@playwright/test';
 import axe from 'axe-core';
 import { apiAuthHeader, seedPassword } from './auth';
+
+// A browser form post carries its origin, and the server refuses a
+// cookie-bearing write without one. Stand in for the browser so a refusal
+// here means what the test is asking about, not a blocked cross-origin write.
+function sameOrigin(page: Page): Record<string, string> {
+  return { Origin: new URL(page.url()).origin };
+}
+
 
 test('readers, commenters and editors get independent controls and private activity', async ({ page, request }) => {
   const auth = { Authorization: apiAuthHeader() };
@@ -43,7 +51,7 @@ test('readers, commenters and editors get independent controls and private activ
   await expect(page.locator('.activity-ledger')).not.toContainText(privateComment);
   await page.getByRole('button', { name: /^Watch / }).click();
   await expect(page.getByRole('button', { name: /^Watching / })).toHaveAttribute('aria-pressed', 'true');
-  expect((await page.request.post(`/issues/${issueKey}/comments`, { form: { body: 'Unauthorized comment' } })).status()).toBe(403);
+  expect((await page.request.post(`/issues/${issueKey}/comments`, { form: { body: 'Unauthorized comment' }, headers: sameOrigin(page) })).status()).toBe(403);
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => (await (window as any).axe.run(document, {
     runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] },

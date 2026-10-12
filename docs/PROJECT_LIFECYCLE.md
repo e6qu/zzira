@@ -31,6 +31,11 @@ reports archive and trash dates, the actor and the 60-day retention date.
   Archive actions remove its project, work item, board, sprint and sprint
   membership records from local replicas.
 - **Restore** republishes the project and its planning state to replicas.
+- A comment on a work item of an archived or trashed project reaches replicas
+  as a delete, so they drop it while the project is away. The comment's action
+  stays in the log, and a replica reads it on every later sync page, so the
+  sync page answers rather than failing on it (`shapeReplicaActions`,
+  `internal/store/reader_shape.go`).
 - **Trash.** Trashed projects are deleted automatically 60 days after
   `trashed_at`, by an hourly runner that resumes after restarts; competing
   replicas are tolerated.
@@ -70,7 +75,8 @@ See [PLAN.md](../PLAN.md).
 
 ## Tests
 
-`internal/api3/project_lifecycle_test.go`, `e2e/projects.spec.ts`.
+`internal/api3/project_lifecycle_test.go`,
+`internal/store/sync_trashed_project_test.go`, `e2e/projects.spec.ts`.
 
 ## See also
 

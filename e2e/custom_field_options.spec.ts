@@ -1,6 +1,14 @@
 import { scopeFixtureField } from './field_contexts';
 import { apiAuthHeader } from './auth';
-import { expect, test } from '@playwright/test';
+import { expect, test, Page } from '@playwright/test';
+
+// A browser form post carries its origin, and the server refuses a
+// cookie-bearing write without one. Stand in for the browser so a refusal
+// here means what the test is asking about, not a blocked cross-origin write.
+function sameOrigin(page: Page): Record<string, string> {
+  return { Origin: new URL(page.url()).origin };
+}
+
 
 async function login(page: import('@playwright/test').Page, email: string, password: string) {
   await page.goto('/login');
@@ -216,10 +224,10 @@ test('a multi-select field saves and clears every chosen option', async ({ page 
   await inline.selectOption([ids.Android, ids.Web]);
   await saveInline();
   expect(await savedPlatforms()).toEqual([ids.Android, ids.Web]);
-  const summaryOnly = await page.request.post(`/issues/${issueKey}/edit`, { form: { summary: `Ship everywhere ${stamp}` } });
+  const summaryOnly = await page.request.post(`/issues/${issueKey}/edit`, { form: { summary: `Ship everywhere ${stamp}` }, headers: sameOrigin(page) });
   expect(summaryOnly.status()).toBe(200);
   expect(await savedPlatforms()).toEqual([ids.Android, ids.Web]);
-  const omitted = await page.request.post(`/issues/${issueKey}/fields`, { form: { field: `custom:${fieldID}` } });
+  const omitted = await page.request.post(`/issues/${issueKey}/fields`, { form: { field: `custom:${fieldID}` }, headers: sameOrigin(page) });
   expect(omitted.status()).toBe(400);
   expect(await savedPlatforms()).toEqual([ids.Android, ids.Web]);
   await inline.selectOption([]);
@@ -255,7 +263,7 @@ test('a multi-select field saves and clears every chosen option', async ({ page 
   await page.getByRole('button', { name: `Save Platforms ${stamp}` }).click();
   await expect(inline).toBeFocused();
   expect(await savedPlatforms()).toEqual([ids.iOS]);
-  const forgedClear = await page.request.post(`/issues/${issueKey}/fields`, { form: { field: `custom:${fieldID}`, value: '' } });
+  const forgedClear = await page.request.post(`/issues/${issueKey}/fields`, { form: { field: `custom:${fieldID}`, value: '' }, headers: sameOrigin(page) });
   expect(forgedClear.status()).toBe(400);
   expect(await savedPlatforms()).toEqual([ids.iOS]);
   await page.reload();

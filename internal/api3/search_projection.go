@@ -203,14 +203,11 @@ func projectSearchIssue(bean map[string]any, requested []string, defaultAll bool
 			fields[field] = value
 		}
 	}
-	out := map[string]any{"id": bean["id"]}
-	if defaultAll || all || include["key"] || len(fields) > 0 {
-		out["key"], out["self"] = bean["key"], bean["self"]
-	}
-	if defaultAll || all || len(fields) > 0 {
-		out["fields"] = fields
-	}
-	return out
+	// Jira answers any selection beyond a bare `fields=id` with the whole
+	// envelope: id, self, key and a fields object, empty when the work item
+	// holds nothing the selection asked for. Omitting them made a client that
+	// read fields[x] after clearing x fail on a 200.
+	return map[string]any{"id": bean["id"], "key": bean["key"], "self": bean["self"], "fields": fields}
 }
 
 func searchFieldMetadata(requested []string, defaultAll, fieldsByKeys bool, definitions []searchFieldDefinition) (map[string]string, map[string]any) {

@@ -11,7 +11,7 @@ All operations need *Administer Jira*, except the tab read noted below.
 | `GET/POST /rest/api/3/screens` | Pages screens, or creates a screen with its first tab. Filters: `id`, `queryString`, `scope` (every screen is `GLOBAL`). `orderBy`: name or id. |
 | `PUT/DELETE /rest/api/3/screens/{screenId}` | Changes name and description, or deletes a screen with its tabs and fields. |
 | `GET /rest/api/3/screens/{screenId}/availableFields` | Fields from the catalog that are not yet on the screen. |
-| `POST /rest/api/3/screens/addToDefault/{fieldId}` | Adds a field to the first tab of the default screen. |
+| `POST /rest/api/3/screens/addToDefault/{fieldId}` | Adds a field to the first tab of the default screen. 404 when the field is unknown or the screen already holds it, as Atlassian's does. |
 | `GET /rest/api/3/field/{fieldId}/screens` | Pages the screens that show a field; `expand=tab` adds the tab. |
 | `GET /rest/api/3/screens/tabs` | Tabs for the given `screenId`s (all screens if none), narrowed by `tabId`, paged with `startAt` and `maxResult` (100 at most). |
 | `GET/POST /rest/api/3/screens/{screenId}/tabs` | Tabs in display order, or appends one. With `projectKey`, a project administrator may read a screen that the project's work type screen scheme uses. |
@@ -52,7 +52,9 @@ Environment is a system ADF field. Its create, edit and view controls follow the
 
 ## Default screen
 
-Every site has a `Default Screen` with one `Field Tab`. It starts with the standard create fields, including Reporter. A new custom field is added to it by trigger.
+Every site has a `Default Screen` with one `Field Tab`. It starts with the standard create fields, including Reporter and Environment, as Jira's Default Screen does: a work item created through the default screen scheme may set any of them, and the create command refuses a field its screen does not offer. A new custom field is added to it by trigger.
+
+A required field is marked beside its label, not inside it, so the control's accessible name stays the field's name rather than `Environment *`.
 
 ## UI
 

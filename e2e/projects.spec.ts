@@ -57,6 +57,12 @@ test('create a project, use its board, and update settings through UI and API', 
   const featureIssue = await page.request.post('/rest/api/3/issue', { headers: { Authorization: apiAuthHeader() }, data: { fields: { project: { key }, summary: 'Feature toggle check', issuetype: { name: 'Task' } } } });
   expect(featureIssue.status()).toBe(201);
   const featureIssueKey = (await featureIssue.json()).key as string;
+  // A comment on the project's work keeps its action in the log after the
+  // project leaves, which is what the replica sync has to survive below.
+  expect((await page.request.post(`/rest/api/3/issue/${featureIssueKey}/comment`, {
+    headers: { Authorization: apiAuthHeader() },
+    data: { body: { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Comment that outlives the project' }] }] } },
+  })).status()).toBe(201);
   await page.goto(`/browse/${featureIssueKey}`);
   await expect(page.locator('.issue-delivery')).toBeVisible();
   await expect(page.locator('.issue-development')).toHaveCount(0);
@@ -137,12 +143,23 @@ test('create a project, use its board, and update settings through UI and API', 
   await expect(page.getByRole('status')).toContainText('Template removed.');
   await expect(page.locator('#project-templates')).toContainText('No project templates yet');
 
+  // A replica still syncs across a project's lifecycle: the comment above
+  // outlives the project, and its action is read on every later page.
+  const syncs = async (where: string) => {
+    const response = await page.request.get('/sync?since=0&limit=100', {
+      headers: { Authorization: apiAuthHeader(), 'X-Zzira-Replica': 'browser' },
+    });
+    expect(response.status(), `sync after ${where}`).toBe(200);
+  };
+  await syncs('creation');
+
   await page.goto(`/projects/${key}/settings`);
   await page.getByRole('button', { name: 'Archive project', exact: true }).click();
   await expect(page).toHaveURL(/\/projects\?status=archived&notice=/);
   await expect(page.getByRole('status')).toContainText('Project archived.');
   await expect(page.locator('.project-card').filter({ hasText: key })).toContainText('ARCHIVED');
   expect((await page.request.get(`/rest/api/3/project/${key}`)).status()).toBe(404);
+  await syncs('archiving');
   await page.locator('.project-card').filter({ hasText: key }).getByRole('button', { name: 'Restore project' }).click();
   await expect(page.getByRole('status')).toContainText('Project restored.');
   expect((await page.request.get(`/rest/api/3/project/${key}`)).status()).toBe(200);
@@ -153,6 +170,7 @@ test('create a project, use its board, and update settings through UI and API', 
   await expect(page).toHaveURL(/\/projects\?status=trash&notice=/);
   const trashedCard = page.locator('.project-card').filter({ hasText: key });
   await expect(trashedCard).toContainText('Scheduled for deletion after');
+  await syncs('moving to trash');
   await trashedCard.getByRole('button', { name: 'Restore project' }).click();
   await expect(page.getByRole('status')).toContainText('Project restored.');
 
@@ -163,6 +181,7 @@ test('create a project, use its board, and update settings through UI and API', 
   await deleteCard.getByText('Delete permanently', { exact: true }).click();
   await deleteCard.getByRole('button', { name: 'Confirm permanent deletion' }).click();
   await expect(page.getByRole('status')).toContainText('Project permanently deleted.');
+  await syncs('permanent deletion');
   await expect(page.locator('.project-card').filter({ hasText: key })).toHaveCount(0);
   expect((await page.request.get(`/rest/api/3/project/${key}`)).status()).toBe(404);
 });
