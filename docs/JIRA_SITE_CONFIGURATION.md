@@ -10,7 +10,7 @@ Jira-wide settings for a site: the announcement banner, optional work item featu
 | GET | `/rest/api/3/application-properties` | Administer Jira | All properties, one `key`, or those whose whole key matches the `keyFilter` regex. `permissionLevel` `ADMIN` or `SYSADMIN` lists every editable property; `SYSADMIN_ONLY` lists none. |
 | GET | `/rest/api/3/application-properties/advanced-settings` | Administer Jira | Advanced editable properties |
 | PUT | `/rest/api/3/application-properties/{id}` | Administer Jira | Updated property |
-| GET | `/rest/api/3/configuration` | Jira access | Global feature flags and, when enabled, time tracking settings |
+| GET | `/rest/api/3/configuration` | Jira access | Global feature flags and, when enabled, time tracking settings. It publishes the features Jira names there; parallel sprints are the site's own switch, set on `/admin` and read by the boards |
 | GET/PUT | `/rest/api/3/configuration/timetracking` | Administer Jira | Selected provider (204 when time tracking is off) / 204 |
 | GET | `/rest/api/3/configuration/timetracking/list` | Administer Jira | Jira's provider and those active apps declare |
 | GET/PUT | `/rest/api/3/configuration/timetracking/options` | Administer Jira | Current / updated options |

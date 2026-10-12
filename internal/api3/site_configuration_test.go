@@ -85,8 +85,16 @@ func TestJiraSiteConfigurationContractJourney(t *testing.T) {
 	}
 
 	configuration := call(memberID, http.MethodGet, "/rest/api/3/configuration", "", "", http.StatusOK).(map[string]any)
-	if configuration["parallelSprintsEnabled"] != false {
-		t.Fatalf("parallel sprints default = %v, want false as Jira leaves it", configuration["parallelSprintsEnabled"])
+	// Parallel sprints are off by default, as Jira leaves them. The switch is
+	// the site's own, not one of the features this answer publishes, so it is
+	// read from the configuration rather than from the answer.
+	if _, published := configuration["parallelSprintsEnabled"]; published {
+		t.Fatalf("the published configuration carries parallelSprintsEnabled: %#v", configuration)
+	}
+	if site, err := st.JiraSiteConfiguration(ctx, workspaceID); err != nil {
+		t.Fatal(err)
+	} else if site.ParallelSprintsEnabled {
+		t.Fatal("parallel sprints default to on, and Jira leaves them off")
 	}
 	if configuration["attachmentsEnabled"] != true || configuration["timeTrackingEnabled"] != true {
 		t.Fatalf("default configuration = %#v", configuration)

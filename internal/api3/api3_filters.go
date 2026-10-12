@@ -357,6 +357,9 @@ func (h *Handler) filterCollection(w http.ResponseWriter, r *http.Request, colle
 	writeJSON(w, http.StatusOK, beans)
 }
 
+// filterSearchExpansions is what a searched filter reports it can expand.
+const filterSearchExpansions = "description,owner,jql,searchUrl,viewUrl,favourite,favouritedCount,sharePermissions,editPermissions,isWritable,approximateLastUsed,subscriptions"
+
 func (h *Handler) searchFilters(w http.ResponseWriter, r *http.Request) {
 	workspaceID, userID, authErr := h.authWorkspace(r)
 	if authErr != nil {
@@ -423,7 +426,12 @@ func (h *Handler) searchFilters(w http.ResponseWriter, r *http.Request) {
 	end := min(total, start+limit)
 	values := make([]map[string]any, 0, end-start)
 	for _, filter := range filters[start:end] {
-		values = append(values, h.filterBeanFor(r, workspaceID, filter))
+		bean := h.filterBeanFor(r, workspaceID, filter)
+		// The search offers no sharedUsers expansion, and names instead what
+		// it can expand.
+		delete(bean, "sharedUsers")
+		bean["expand"] = filterSearchExpansions
+		values = append(values, bean)
 	}
 	self := h.BaseURL + r.URL.Path
 	if r.URL.RawQuery != "" {
