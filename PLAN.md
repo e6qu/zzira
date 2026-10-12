@@ -314,6 +314,13 @@ Remaining:
   expansions and partial persistence per operation remain the work of
   section 16.
 
+Measured so far: every one of the 1207 pinned operations is routed (599 reads,
+608 writes, none answering "not implemented"); the paged collections checked
+honour `maxResults`, echo `startAt`, report `total` and `isLast`, and advance
+their rows; and a create followed by a read returns every field it was given
+for components, versions, filters, dashboards, project categories and link
+types. Dashboard create requires `editPermissions`, as the contract says.
+
 Two sweeps are done; neither is worth repeating as-is. Diffing live responses
 against the pinned schemas found the status `iconUrl` and the project's
 `simplified`/`style` pair, and four false alarms: `versionedRepresentations`
