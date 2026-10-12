@@ -79,13 +79,19 @@ func parseWorklogPage(w http.ResponseWriter, r *http.Request) (store.WorklogPage
 	return result, true
 }
 
-func (h *Handler) expandedWorklogs(r *http.Request, worklogs []*models.Worklog) ([]map[string]any, error) {
-	expandProperties := false
+// worklogPropertiesExpanded reports whether a request asked for the worklog
+// properties, which every worklog operation that offers them answers to.
+func worklogPropertiesExpanded(r *http.Request) bool {
 	for _, expansion := range strings.Split(r.URL.Query().Get("expand"), ",") {
 		if strings.TrimSpace(expansion) == "properties" {
-			expandProperties = true
+			return true
 		}
 	}
+	return false
+}
+
+func (h *Handler) expandedWorklogs(r *http.Request, worklogs []*models.Worklog) ([]map[string]any, error) {
+	expandProperties := worklogPropertiesExpanded(r)
 	properties := map[string][]store.WorklogPropertyValue{}
 	if expandProperties {
 		ids := make([]string, 0, len(worklogs))

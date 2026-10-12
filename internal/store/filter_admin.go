@@ -266,11 +266,8 @@ func (s *Store) Filters(ctx context.Context, workspaceID, userID string, search 
 		if len(search.IDs) > 0 && !search.IDs[filter.ID] {
 			continue
 		}
-		if search.Name != "" {
-			name, query := strings.ToLower(filter.Name), strings.ToLower(search.Name)
-			if search.Substring && !strings.Contains(name, query) || !search.Substring && name != query {
-				continue
-			}
+		if search.Name != "" && !filterNameMatches(filter.Name, search.Name, search.Substring) {
+			continue
 		}
 		if (search.GroupID != "" || search.GroupName != "") && !filterHasGroup(filter, search.GroupID, search.GroupName) {
 			continue
@@ -316,6 +313,24 @@ func (s *Store) GroupsForWorkspace(ctx context.Context, workspaceID string) ([]*
 		groups = append(groups, group)
 	}
 	return groups, rows.Err()
+}
+
+// filterNameMatches reports whether a filter's name answers a search for it.
+// The name search is a case-insensitive partial match either way: with
+// isSubstringMatch the query is one run of text the name must contain, and
+// without it the name is searched as text, so the query's words match in any
+// order.
+func filterNameMatches(filterName, query string, substring bool) bool {
+	name, wanted := strings.ToLower(filterName), strings.ToLower(query)
+	if substring {
+		return strings.Contains(name, wanted)
+	}
+	for _, word := range strings.Fields(wanted) {
+		if !strings.Contains(name, word) {
+			return false
+		}
+	}
+	return true
 }
 
 func filterHasGroup(filter *models.Filter, id, name string) bool {
