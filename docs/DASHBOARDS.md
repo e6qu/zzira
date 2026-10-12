@@ -184,6 +184,10 @@ Rotating boards offer **Pause rotation**; boards that only refresh offer
 
 ## Gaps
 
+- `/settings/shared-items` lists every shared dashboard for a site
+  administrator, who may hand one to another person or delete it; the owner's
+  own transfer is unchanged. Administration reaches dashboards the
+  administrator was not shared, as `extendAdminPermissions` does over REST.
 - Dashboards are not stored in the offline replica, so dashboard pages need a connection.
 - Forge dashboard gadgets and Jira's system gadget modules are not supported.
 

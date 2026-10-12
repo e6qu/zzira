@@ -35,6 +35,7 @@ Every page under **Jira settings** is described by the doc for the surface it co
 | `/settings/notification-schemes` | [Notification schemes](NOTIFICATION_SCHEMES.md) |
 | `/settings/issue-linking` | [Link types](ISSUE_SURFACE.md#links-and-link-types), which decide the relationships work items may have |
 | `/settings/look-and-feel` | [Site branding and date formats](JIRA_SITE_CONFIGURATION.md#behavior) |
+| `/settings/shared-items` | [Shared filters](FILTERS.md#ui) and [dashboards](DASHBOARDS.md) across the site |
 | `/settings/automation` | [Automation](AUTOMATION.md) |
 
 Site administration outside Jira settings is in [ADMIN.md](ADMIN.md); the site switches are in [JIRA_SITE_CONFIGURATION.md](JIRA_SITE_CONFIGURATION.md).

@@ -87,7 +87,7 @@ func TestFiltersAreWorkspaceScopedOwnedAndPerUserFavourites(t *testing.T) {
 	if _, err := st.UpdateFilter(ctx, workspaceID, otherUserID, filterID, "Hijacked", `project = ZZ`, ""); !errors.Is(err, ErrFilterPermission) {
 		t.Fatalf("non-owner update err=%v, want permission denial", err)
 	}
-	if err := st.DeleteFilter(ctx, workspaceID, otherUserID, filterID); !errors.Is(err, pgx.ErrNoRows) {
+	if err := st.DeleteFilter(ctx, workspaceID, otherUserID, filterID, false); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("non-owner delete err=%v, want not found", err)
 	}
 }

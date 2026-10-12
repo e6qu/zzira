@@ -518,14 +518,23 @@ func (s *Store) UpdateFilter(ctx context.Context, workspaceID, userID, id, name,
 	return s.UpdateManagedFilter(ctx, workspaceID, userID, id, FilterDetails{Name: name, JQL: query, Description: description})
 }
 
-func (s *Store) DeleteFilter(ctx context.Context, workspaceID, userID, id string) error {
+// DeleteFilter removes a filter its owner is finished with. An administrator
+// may remove any of them, which is how a site clears a shared filter whose
+// owner has gone; everyone else is refused another person's.
+func (s *Store) DeleteFilter(ctx context.Context, workspaceID, userID, id string, actorAdmin bool) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var name string
-	if err = tx.QueryRow(ctx, `SELECT name FROM filters WHERE id=$1 AND workspace_id=$2 AND owner_id=$3 FOR UPDATE`, id, workspaceID, userID).Scan(&name); err != nil {
+	query := `SELECT name FROM filters WHERE id=$1 AND workspace_id=$2 AND owner_id=$3 FOR UPDATE`
+	args := []any{id, workspaceID, userID}
+	if actorAdmin {
+		query = `SELECT name FROM filters WHERE id=$1 AND workspace_id=$2 AND owner_id IS NOT NULL FOR UPDATE`
+		args = []any{id, workspaceID}
+	}
+	if err = tx.QueryRow(ctx, query, args...).Scan(&name); err != nil {
 		return err
 	}
 	if err = filterAudit(ctx, tx, workspaceID, userID, "filter.deleted", id, name); err != nil {

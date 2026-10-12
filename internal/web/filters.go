@@ -295,7 +295,12 @@ func (h *Handler) UpdateSavedFilter(w http.ResponseWriter, r *http.Request, id s
 		}
 		notice = "Filter owner changed."
 	case "delete":
-		err = h.Store.DeleteFilter(r.Context(), workspaceID, user.ID, id)
+		admin, adminErr := h.Store.IsAdmin(r.Context(), workspaceID, user.ID)
+		if adminErr != nil {
+			err = adminErr
+		} else {
+			err = h.Store.DeleteFilter(r.Context(), workspaceID, user.ID, id, admin)
+		}
 		notice = "Filter deleted."
 	default:
 		err = store.ErrFilterValidation
