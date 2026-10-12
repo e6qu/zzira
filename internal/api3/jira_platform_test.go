@@ -295,7 +295,9 @@ func TestJiraPlatformContract(t *testing.T) {
 	if count := object(send(nil, admin, http.MethodGet, "/rest/api/3/license/approximateLicenseCount/product/jira-software", "", http.StatusOK)); count["key"] != "jira-software" {
 		t.Fatal(count)
 	}
-	send(nil, admin, http.MethodGet, "/rest/api/3/license/approximateLicenseCount/product/jira-bogus", "", http.StatusBadRequest)
+	// The application key is one of an enumerated set in the path, so a
+	// value outside it addresses no resource at all.
+	send(nil, admin, http.MethodGet, "/rest/api/3/license/approximateLicenseCount/product/jira-bogus", "", http.StatusNotFound)
 
 	// Audit records come from the site's audit log.
 	exec(`INSERT INTO organization_audit_events(organization_id,actor_id,action,target_type,target_id,detail)

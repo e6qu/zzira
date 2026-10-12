@@ -306,13 +306,34 @@ the 149 Confluence writes answer "not implemented"; `POST /wiki/rest/api/content
 does, and is meant to -- Atlassian's contract no longer carries the v1 content
 writes, only `/wiki/api/v2/pages`.
 
+Error statuses are done. Jira does not report every missing resource as 404:
+each operation publishes the statuses it can answer, and where 404 is absent
+while 400 is present, a resource it cannot find leaves the request invalid and
+400 is the answer. Deleting is the clearest case -- `DELETE /dashboard/{id}`
+and the permission scheme grant writes report 400 for ids whose reads report
+404 -- and no priority scheme operation publishes 404 at all. A paginated
+listing that publishes only success for the id it is given answers an empty
+page instead, which `/field/{fieldId}/screens` already did and
+`/field/{fieldId}/contexts` and `/field/{fieldId}/context/issuetypemapping` now
+do. A path parameter outside its enumerated set addresses no resource, so the
+application key answers 404 like the system avatar types. Fourteen operations
+were corrected and
+[error_status_test.go](internal/api3/error_status_test.go) pins each one
+against the statuses the pinned specification publishes for it, so an
+expectation cannot drift from the contract. Error bodies themselves are
+faithful: the specification's own examples carry `errorMessages` alone and
+`ErrorCollection` requires no property, so omitting an empty `errors` is
+right. Two operations keep 404 deliberately, publishing neither 400 nor 404:
+reading an issue security scheme, where every other operation on the same id
+publishes 404.
+
 Remaining:
 - Jira's two remaining settings surfaces are features, not pages: languages
   needs the interface translated, and issue collectors need a public
   embeddable widget. Neither is a form over data this product already keeps.
 - Per-operation behavior is the frontier the probes above do not reach:
-  expansion combinations, error body shapes, concurrency, and whether a write
-  persists every field it accepted beyond the resources sampled.
+  expansion combinations, concurrency, and whether a write persists every
+  field it accepted beyond the resources sampled.
 
 Checked and found already present, so that nothing re-opens them: the
 organization admin journeys are on `/admin` and work in the browser -- a

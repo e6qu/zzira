@@ -258,7 +258,10 @@ func (h *Handler) fieldSchemeFieldParameters(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if len(fields) == 0 {
-		jiraError(w, http.StatusNotFound, "The field is not associated with this field association scheme.")
+		// This operation publishes no 404, alone among the field association
+		// scheme operations: a scheme or field it cannot find leaves the
+		// request invalid, which Jira reports as 400.
+		jiraError(w, http.StatusBadRequest, "The field is not associated with this field association scheme.")
 		return
 	}
 	ids := h.issueTypeIDsFor(r, workspaceID)

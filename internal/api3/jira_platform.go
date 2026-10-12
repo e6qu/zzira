@@ -917,7 +917,11 @@ func (h *Handler) approximateLicenseCount(w http.ResponseWriter, r *http.Request
 	switch applicationKey {
 	case "jira-core", "jira-product-discovery", "jira-software", "jira-servicedesk":
 	default:
-		jiraError(w, http.StatusBadRequest, "The application key "+applicationKey+" is not valid.")
+		// The application key is one of an enumerated set in the path. A value
+		// outside it addresses no resource, which is the 404 the platform
+		// answers for any path parameter it cannot read, as the system avatar
+		// types do.
+		jiraError(w, http.StatusNotFound, "The application key "+applicationKey+" is not valid.")
 		return
 	}
 	products, err := h.Store.SiteProductKeys(r.Context(), workspaceID)

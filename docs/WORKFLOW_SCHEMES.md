@@ -11,7 +11,7 @@ All paths are under `/rest/api/3/workflowscheme`.
 | (root) | `GET` (paged, `startAt`, `maxResults`), `POST` |
 | `/{id}` | `GET`, `PUT`, `DELETE` |
 | `/{id}/default`, `/{id}/workflow`, `/{id}/issuetype/{issueType}` | `GET`, `PUT`, `DELETE` |
-| `/{id}/createdraft` | `POST` |
+| `/{id}/createdraft` | `POST`, 400 for a scheme it cannot find, which it publishes no 404 for |
 | `/{id}/draft`, `/{id}/draft/default`, `/{id}/draft/workflow`, `/{id}/draft/issuetype/{issueType}` | `GET`, `PUT`, `DELETE` |
 | `/{id}/draft/publish` | `POST` |
 | `/{id}/projectUsages` | `GET` |

@@ -18,7 +18,7 @@ Field administration: listing, creating, searching, renaming, trashing and delet
 | `DELETE /rest/api/3/field/{id}` | Deletes a trashed field. |
 | `GET /rest/api/3/projects/fields` | Pages which fields apply to which project and work type, and whether they are required. Filters: `projectId`, `workTypeId`, `fieldId`. |
 
-Everything except `GET /field` and `GET /projects/fields` needs *Administer Jira*. An unknown field is 404.
+Everything except `GET /field` and `GET /projects/fields` needs *Administer Jira*. An unknown field is 404, except on the operations that publish no 404: the project associations answer 400, and `/field/{fieldId}/screens` and `/field/{fieldId}/contexts` answer an empty page.
 
 ## Environment
 

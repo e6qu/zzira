@@ -16,7 +16,7 @@ All operations need *Administer Jira*.
 | `POST /rest/api/3/field/{fieldId}/context/{contextId}/issuetype/remove` | Removes work types. |
 | `GET/PUT /rest/api/3/field/{fieldId}/context/defaultValue` | Reads or sets each context's default value. |
 | `GET /rest/api/3/field/{fieldId}/context/defaultValues` | Same read under Jira's second path. |
-| `GET /rest/api/3/field/{fieldId}/context/issuetypemapping` | Pages the work types each context covers. |
+| `GET /rest/api/3/field/{fieldId}/context/issuetypemapping` | Pages the work types each context covers. Publishes only success for the field it is given, so a field without contexts is an empty page. |
 | `GET /rest/api/3/field/{fieldId}/context/projectmapping` | Pages the projects each context covers. |
 | `POST /rest/api/3/field/{fieldId}/context/mapping` | Returns the governing context for project and work type pairs. |
 | `GET /rest/api/3/field/{fieldId}/contexts` | Pages the field's contexts with scope ([ISSUE_FIELDS.md](ISSUE_FIELDS.md)). |

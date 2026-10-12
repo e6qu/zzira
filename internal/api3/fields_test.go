@@ -155,7 +155,9 @@ func TestFieldOperations(t *testing.T) {
 	if associations["total"].(float64) != 1 {
 		t.Fatalf("field project associations: %v", associations)
 	}
-	call(adminID, "GET", "/rest/api/3/field/customfield_404404/association/project", "", 404)
+	// The associations publish no 404, so a field that does not exist is a
+	// request the contract reports as invalid.
+	call(adminID, "GET", "/rest/api/3/field/customfield_404404/association/project", "", 400)
 
 	// The project field read resolves through the same context rules.
 	projectFields := page(adminID, "/rest/api/3/projects/fields?fieldId="+field.ID, 200)

@@ -10,8 +10,8 @@ Schemes and project assignment (11 operations):
 | --- | --- |
 | `GET/POST /rest/api/3/permissionscheme` | Lists or creates schemes; grants can be expanded. |
 | `GET/PUT/DELETE /rest/api/3/permissionscheme/{schemeId}` | Reads, replaces, or deletes a scheme that is neither the default nor assigned. |
-| `GET/POST /rest/api/3/permissionscheme/{schemeId}/permission` | Lists or adds grants. |
-| `GET/DELETE /rest/api/3/permissionscheme/{schemeId}/permission/{permissionId}` | Reads or removes a grant. |
+| `GET/POST /rest/api/3/permissionscheme/{schemeId}/permission` | Lists or adds grants. Adding publishes no 404: an unknown scheme answers 400. |
+| `GET/DELETE /rest/api/3/permissionscheme/{schemeId}/permission/{permissionId}` | Reads or removes a grant. Reading answers 404 for a grant that does not exist; removing publishes no 404 and answers 400. |
 | `GET/PUT /rest/api/3/project/{projectKeyOrId}/permissionscheme` | Reads or assigns a project's scheme. Assigning needs Administer Jira. |
 
 Discovery and checks (5 operations):

@@ -34,6 +34,18 @@ func issueMetadataError(w http.ResponseWriter, err error) {
 	}
 }
 
+// prioritySchemeError reports a priority scheme failure the way the priority
+// scheme operations publish it. Not one of them answers 404: Jira documents a
+// scheme it cannot find as a request that isn't valid, so a missing scheme is
+// a 400 here even though the rest of the issue metadata reports 404.
+func prioritySchemeError(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrIssueMetadataNotFound) {
+		jiraError(w, http.StatusBadRequest, "The priority scheme does not exist.")
+		return
+	}
+	issueMetadataError(w, err)
+}
+
 // trimErrorPrefix drops the sentinel's own words, leaving the sentence that
 // explains the problem.
 func trimErrorPrefix(err error) string {
@@ -1199,13 +1211,13 @@ func (h *Handler) prioritySchemeRoute(w http.ResponseWriter, r *http.Request, re
 		}
 		updated, err := h.Store.UpdatePriorityScheme(r.Context(), workspaceID, parts[0], in)
 		if err != nil {
-			issueMetadataError(w, err)
+			prioritySchemeError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusAccepted, map[string]any{"priorityScheme": h.prioritySchemeBean(r, workspaceID, updated)})
 	case len(parts) == 1 && r.Method == http.MethodDelete:
 		if err := h.Store.DeletePriorityScheme(r.Context(), workspaceID, parts[0]); err != nil {
-			issueMetadataError(w, err)
+			prioritySchemeError(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -1428,7 +1440,7 @@ func (h *Handler) prioritiesInScheme(w http.ResponseWriter, r *http.Request, wor
 	}
 	sc, err := h.Store.PrioritySchemeByID(r.Context(), workspaceID, schemeID)
 	if err != nil {
-		issueMetadataError(w, err)
+		prioritySchemeError(w, err)
 		return
 	}
 	values := []map[string]any{}
@@ -1448,7 +1460,7 @@ func (h *Handler) projectsInPriorityScheme(w http.ResponseWriter, r *http.Reques
 	}
 	sc, err := h.Store.PrioritySchemeByID(r.Context(), workspaceID, schemeID)
 	if err != nil {
-		issueMetadataError(w, err)
+		prioritySchemeError(w, err)
 		return
 	}
 	projectIDs, err := h.Store.ProjectsUsingPriorityScheme(r.Context(), workspaceID, sc)
@@ -1488,7 +1500,7 @@ func (h *Handler) availablePrioritiesForScheme(w http.ResponseWriter, r *http.Re
 	}
 	sc, err := h.Store.PrioritySchemeByID(r.Context(), workspaceID, schemeID)
 	if err != nil {
-		issueMetadataError(w, err)
+		prioritySchemeError(w, err)
 		return
 	}
 	priorities, err := h.Store.PrioritiesForWorkspace(r.Context(), workspaceID)

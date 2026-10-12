@@ -91,6 +91,12 @@ func (h *Handler) listAppFieldOptions(w http.ResponseWriter, r *http.Request, fi
 	}
 	options, err := h.Store.AppFieldOptions(r.Context(), workspaceID, fieldKey)
 	if err != nil {
+		// Listing publishes no 404: Jira documents its 400 as the answer when
+		// "the field is not found or does not support options".
+		if errors.Is(err, pgx.ErrNoRows) {
+			jiraError(w, http.StatusBadRequest, "The field is not found or does not support options.")
+			return
+		}
 		appFieldOptionError(w, err)
 		return
 	}
