@@ -786,7 +786,9 @@ func (h *Handler) UnlinkIdentityProvider(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *Handler) WorkflowsPage(w http.ResponseWriter, r *http.Request) {
-	user, wsID, ok := h.pageContext(w, r)
+	// Site administrators and project administrators read this directory; a
+	// plain member is refused rather than shown the site's configuration.
+	user, wsID, ok := h.requireConfigurationReader(w, r)
 	if !ok {
 		return
 	}
@@ -821,7 +823,9 @@ func (h *Handler) WorkflowsPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) StatusesPage(w http.ResponseWriter, r *http.Request) {
-	user, workspaceID, ok := h.pageContext(w, r)
+	// Site administrators and project administrators read this directory; a
+	// plain member is refused rather than shown the site's configuration.
+	user, workspaceID, ok := h.requireConfigurationReader(w, r)
 	if !ok {
 		return
 	}
@@ -856,7 +860,9 @@ func (h *Handler) StatusesPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) WorkflowSchemesPage(w http.ResponseWriter, r *http.Request) {
-	user, workspaceID, ok := h.pageContext(w, r)
+	// Site administrators and project administrators read this directory; a
+	// plain member is refused rather than shown the site's configuration.
+	user, workspaceID, ok := h.requireConfigurationReader(w, r)
 	if !ok {
 		return
 	}
@@ -888,7 +894,9 @@ func (h *Handler) WorkflowSchemesPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) WorkflowSchemePage(w http.ResponseWriter, r *http.Request, schemeID string) {
-	user, workspaceID, ok := h.pageContext(w, r)
+	// Site administrators and project administrators read this directory; a
+	// plain member is refused rather than shown the site's configuration.
+	user, workspaceID, ok := h.requireConfigurationReader(w, r)
 	if !ok {
 		return
 	}
@@ -1184,6 +1192,8 @@ func (h *Handler) DeleteStatus(w http.ResponseWriter, r *http.Request, statusID 
 }
 
 func (h *Handler) WorkflowPage(w http.ResponseWriter, r *http.Request, id string) {
+	// A person who does not administer the site still reads the workflow their
+	// project follows; the authoring endpoints behind this page refuse her.
 	user, wsID, ok := h.pageContext(w, r)
 	if !ok {
 		return
