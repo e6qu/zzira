@@ -1313,12 +1313,18 @@ func (h *Handler) putIssue(w http.ResponseWriter, r *http.Request, idOrKey strin
 	}
 	if _, _, err := h.Commands.UpdateIssue(ctx, commands.UpdateIssueInput{
 		ActorID: userID, WorkspaceID: wsID, IssueIDOrKey: idOrKey, SuppressNotifications: suppressNotifications,
-		Summary: up.Summary, Description: up.Description,
+		// The edit was built from the work item read above, so a change that
+		// landed in between refuses it rather than overwriting.
+		ExpectedUpdatedSeq: &current.UpdatedSeq,
+		Summary:            up.Summary, Description: up.Description,
 		PriorityID: up.PriorityID, AssigneeID: up.AssigneeID, ReporterID: up.ReporterID,
 		ParentIDOrKey:   parentIDOrKey,
 		SecurityLevelID: securityID, ResolutionID: resolutionID, Labels: req.Fields.Labels, DueDate: dueDate, Fields: fields, VersionOperations: req.Update,
 		OriginalEstimate: originalEstimate, RemainingEstimate: remainingEstimate,
 	}); err != nil {
+		if issueWriteConflict(w, err) {
+			return
+		}
 		if fields, ok := permissionFieldError(err); ok {
 			jiraFieldError(w, http.StatusBadRequest, fields)
 			return

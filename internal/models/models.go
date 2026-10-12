@@ -3,9 +3,12 @@
 package models
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"slices"
 	"sort"
+	"strconv"
 )
 
 const (
@@ -256,10 +259,32 @@ type Issue struct {
 	AggregateRemainingEstimateSeconds *int64 `json:"aggregateRemainingEstimateSeconds,omitempty"`
 	AggregateTimeSpentSeconds         int64  `json:"aggregateTimeSpentSeconds,omitempty"`
 
+	// UpdatedSeq advances on every write to the work item, which is what
+	// tells a write composed from an earlier read that the work item has
+	// moved. VersionMarker publishes it without publishing the count.
 	UpdatedSeq int64  `json:"-"`
 	UpdatedAt  string `json:"updated"`
 	// FieldRenderers belongs to the read view and is never stored in snapshots.
 	FieldRenderers map[string]string `json:"-"`
+}
+
+// VersionMarker names the work item as it stands, for a form that will be
+// submitted later to say which version it was composed from. It stands in for
+// the write sequence rather than publishing it, because the sequence counts
+// every write the whole site has made. The updated timestamp cannot do this
+// job: it is published to the second, so two writes a moment apart read the
+// same.
+func (i Issue) VersionMarker() string {
+	// A form rendered where the write sequence is unknown -- the browser
+	// replica, which syncs the work item but builds its dialog without the
+	// sequence -- cannot say which version it was composed from, and claims
+	// none. Its edits apply to the work item as it stands, which is what
+	// offline editing has always meant here.
+	if i.UpdatedSeq == 0 {
+		return ""
+	}
+	sum := sha256.Sum256([]byte("work-item-version\x00" + i.ID + "\x00" + strconv.FormatInt(i.UpdatedSeq, 10)))
+	return hex.EncodeToString(sum[:8])
 }
 
 // Action is one immutable ordered record of a change.

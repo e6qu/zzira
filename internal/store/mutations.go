@@ -82,6 +82,12 @@ func appendAction(ctx context.Context, tx pgx.Tx, a *models.Action) error {
 	return err
 }
 
+// ErrIssueConcurrentUpdate refuses a write computed from a work item that
+// somebody else changed in the meantime. Jira publishes the same refusal on
+// editing and transitioning a work item, where the update it was given no
+// longer applies to the work item as it now stands.
+var ErrIssueConcurrentUpdate = errors.New("the work item was updated by somebody else")
+
 // ---- Issue update / delete (V1) ----
 
 type IssueUpdate struct {
@@ -157,8 +163,11 @@ func (s *Store) UpdateIssue(ctx context.Context, actorID, workspaceID, issueID s
 	if err != nil {
 		return nil, nil, err
 	}
+	// The update was computed from the work item as the caller read it. If it
+	// has moved since, applying the update would overwrite the change nobody
+	// involved has seen, so the write is refused instead.
 	if up.ExpectedUpdatedSeq != nil && current.UpdatedSeq != *up.ExpectedUpdatedSeq {
-		return nil, nil, fmt.Errorf("issue changed while applying transition")
+		return nil, nil, ErrIssueConcurrentUpdate
 	}
 	for _, agent := range up.TriggeredAgents {
 		var active bool

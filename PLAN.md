@@ -383,13 +383,24 @@ sub-tasks are on. Finding this needed a context scoped to a project: a global
 context already exists for a new field, so the one-global-context conflict
 answers first and reads as if the sub-task rule were working.
 
-One conflict remains unreachable. `PUT /rest/api/3/issue/{issueIdOrKey}` and
+Concurrent work item writes are refused rather than silently won.
+`PUT /rest/api/3/issue/{issueIdOrKey}` and
 `POST /rest/api/3/issue/{issueIdOrKey}/transitions` publish 409 for an update
-that conflicts with another, and nothing in the work item write path detects a
-lost update: two concurrent edits both succeed and the last one wins. Matching
-Jira means optimistic concurrency in the command layer, which is a design
-decision rather than a repair, because Jira's own 409 there is a race a client
-must tolerate and cannot provoke.
+that conflicts with another, and nothing in the write path detected a lost
+update: two concurrent edits both succeeded and the last one won. The store
+already held the precondition the transitions used -- an expected
+`updated_seq` compared under the row lock -- so the edit path carries it too,
+from the work item the request read, and the refusal is a sentinel both
+operations report as 409 through one mapping.
+
+The case that actually happens is two people in the edit dialog minutes
+apart, each about to write every field back. The dialog carries the work item
+as it was opened, a stale save is refused with the same conflict, and
+[concurrent_edit.spec.ts](e2e/concurrent_edit.spec.ts) walks it: their change
+stands, the refused save writes nothing, and reopening the work item lets the
+edit through. Writes this product makes for itself -- automation, bulk
+operations, migrations -- name no expectation and apply to the work item as it
+stands, so none of them became conflict-prone.
 
 Response shapes are swept. A schema that sets `additionalProperties` to false
 makes a validating client reject an answer carrying anything else, so every
@@ -414,10 +425,8 @@ Remaining:
 - Jira's two remaining settings surfaces are features, not pages: languages
   needs the interface translated, and issue collectors need a public
   embeddable widget. Neither is a form over data this product already keeps.
-- Work item optimistic concurrency above.
 - Whether a write persists every field it accepted, beyond the resources
-  already sampled. This bullet went missing in an earlier merge; the sweeps
-  above never covered it.
+  already sampled.
 
 Checked and found already present, so that nothing re-opens them: the
 organization admin journeys are on `/admin` and work in the browser -- a

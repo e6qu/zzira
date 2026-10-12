@@ -143,6 +143,21 @@ empty value rather than the actor default.
 - `POST /rest/api/3/issue/bulk` creates up to 50 work items, each exactly as a single
   create would; failures are reported with `failedElementNumber`, and the answer
   is 201 when any work item was created, 400 when none was.
+- **Concurrent edits.** An edit is computed from the work item as the caller
+  read it, so `PUT /rest/api/3/issue/{issueIdOrKey}` and
+  `POST /rest/api/3/issue/{issueIdOrKey}/transitions` refuse a write whose work
+  item changed in between, with 409, rather than overwriting a change nobody
+  involved has seen. The browser's edit dialog carries the work item as it was
+  opened and is refused the same way, which is the case that actually happens:
+  two people editing, minutes apart, each about to write every field back. An
+  inline control that posts no such marker edits the work item as it stands,
+  and the writes this product makes for itself -- automation, bulk operations,
+  migrations -- are applied to the work item as it stands too, since they
+  compose their change at the moment they make it. So does an edit composed in
+  the browser replica: it builds its dialog from the replica without the write
+  sequence, so it claims no version, and a queued offline edit still applies
+  when it drains rather than being refused for a change it could not have
+  seen.
 - `PUT /rest/api/3/issue/{issueIdOrKey}` stores `properties` and answers 200 with
   the work item when `returnIssue=true`. A work item whose workflow status sets
   `jira.issue.editable` (or the deprecated `issueEditable`) to `false` refuses

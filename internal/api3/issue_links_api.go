@@ -248,7 +248,22 @@ func (h *Handler) issueLinkRoute(w http.ResponseWriter, r *http.Request, ref str
 }
 
 // issueCommandError maps a failed issue command to Jira's answer.
+// issueWriteConflict reports a write refused because the work item moved under
+// it, which is the conflict editing and transitioning a work item both
+// publish. It answers whether it reported, so a caller can carry on mapping
+// its own errors.
+func issueWriteConflict(w http.ResponseWriter, err error) bool {
+	if !errors.Is(err, store.ErrIssueConcurrentUpdate) {
+		return false
+	}
+	jiraError(w, http.StatusConflict, "The work item could not be updated because somebody else updated it.")
+	return true
+}
+
 func issueCommandError(w http.ResponseWriter, err error) {
+	if issueWriteConflict(w, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, commands.ErrIssueArchived):
 		jiraError(w, http.StatusBadRequest, "The issue is archived and can't be changed.")

@@ -23,16 +23,22 @@ import (
 // UpdateIssue applies a partial update. nil pointers = unchanged.
 type UpdateIssueInput struct {
 	VersionOperations map[string][]map[string]json.RawMessage
-	ActorID           string
-	WorkspaceID       string
-	IssueIDOrKey      string
-	Summary           *string
-	Description       json.RawMessage // ADF; nil = unchanged
-	PriorityID        *string
-	ReporterID        *string
-	AssigneeID        *string
-	ParentIDOrKey     *string
-	StatusID          *string // transitions only
+	// ExpectedUpdatedSeq is the work item as the caller saw it. Set it to
+	// refuse the write when somebody else has changed the work item since,
+	// which is how a client that read the work item before asking for an edit
+	// learns its edit no longer applies. Left nil, the write is applied to
+	// the work item as it now stands.
+	ExpectedUpdatedSeq *int64
+	ActorID            string
+	WorkspaceID        string
+	IssueIDOrKey       string
+	Summary            *string
+	Description        json.RawMessage // ADF; nil = unchanged
+	PriorityID         *string
+	ReporterID         *string
+	AssigneeID         *string
+	ParentIDOrKey      *string
+	StatusID           *string // transitions only
 
 	SecurityLevelID *string                    // "" = public, nil = unchanged
 	Labels          *[]string                  // empty = clear, nil = unchanged
@@ -324,6 +330,7 @@ func (s *Service) UpdateIssue(ctx context.Context, in UpdateIssueInput) (*models
 		return nil, nil, err
 	}
 	previous, previousDescription := *issue, issue.Description
+	update.ExpectedUpdatedSeq = in.ExpectedUpdatedSeq
 	issue, action, err := s.Store.UpdateIssue(ctx, in.ActorID, in.WorkspaceID, issue.ID, update)
 	if err != nil {
 		return nil, nil, err
