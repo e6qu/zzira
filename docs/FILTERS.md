@@ -66,6 +66,12 @@ All 19 Jira Cloud filter and filter-sharing operations under
 - Site administrators see private filters and can reassign ownership when an
   owner leaves. The administration page lists every filter subscription on
   the site and can delete any of them.
+- `/settings/shared-items` is the shared filters and dashboards of the whole
+  site: who owns each one, who it reaches and how many people favourited it,
+  with the two things an administrator needs when an owner leaves -- hand it
+  on, or delete it. Private items are not listed. Deleting a filter is the
+  owner's or an administrator's, which is what Atlassian documents for
+  `DELETE /rest/api/3/filter/{id}`.
 - The issue navigator saves the current query as a filter
   (`POST /issues/{projectKey}/filters`).
 

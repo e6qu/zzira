@@ -21,7 +21,8 @@ type DashboardDetails struct {
 	SharePermissions []models.DashboardShare `json:"sharePermissions"`
 	EditPermissions  []models.DashboardShare `json:"editPermissions"`
 	// NewOwnerID transfers ownership when set, which Jira's bulk edit does.
-	// Only the current owner may hand a dashboard on.
+	// The current owner may hand a dashboard on, and so may an administrator
+	// acting through WithDashboardAdministration.
 	NewOwnerID string `json:"-"`
 }
 
@@ -61,6 +62,27 @@ func (s *Store) Dashboard(ctx context.Context, ws, user, id string) (*models.Das
 }
 func (s *Store) Dashboards(ctx context.Context, ws, user string) ([]*models.Dashboard, error) {
 	rows, err := s.Pool.Query(ctx, dashboardSelect+` ORDER BY lower(d.name),d.id`, ws, user)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*models.Dashboard{}
+	for rows.Next() {
+		d, err := scanDashboard(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// AdministeredDashboards is every dashboard on the site, whoever owns it and
+// whoever it was shared with, for the shared items an administrator manages.
+// The viewer still decides the favourite flag, as the ordinary listing does.
+func (s *Store) AdministeredDashboards(ctx context.Context, ws, viewer string) ([]*models.Dashboard, error) {
+	unshared := strings.Replace(dashboardSelect, " AND "+dashboardAccess, "", 1)
+	rows, err := s.Pool.Query(ctx, unshared+` ORDER BY lower(d.name),d.id`, ws, viewer)
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +254,11 @@ func (s *Store) SaveDashboard(ctx context.Context, ws, user, id string, in Dashb
 			if err = tx.QueryRow(ctx, `SELECT owner_id FROM dashboards WHERE id=$1`, id).Scan(&owner); err != nil {
 				return nil, err
 			}
-			if owner != user {
+			administering, _ := ctx.Value(dashboardAdministrationKey{}).(bool)
+			if owner != user && !administering {
+				// An administrator hands a shared dashboard on from the shared
+				// items page, which is what Jira's administration does; anyone
+				// else may only hand on their own.
 				return nil, fmt.Errorf("%w: only the owner can hand a dashboard on", ErrDashboardPermission)
 			}
 			var active bool

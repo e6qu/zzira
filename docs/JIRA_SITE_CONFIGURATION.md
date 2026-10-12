@@ -49,12 +49,15 @@ See [TIME_TRACKING.md](TIME_TRACKING.md).
 - The navigation colours style the header.
 - The hero button colour styles primary buttons in the light theme only when white labels keep at least 4.5:1 contrast. Jira's default `#3b7fc4` does not, so ZZIRA's buttons stay.
 - The complete and day date formats control how automation runs, trash deadlines and rendered search dates display.
-- `/settings/look-and-feel` edits all of the above, and restores the defaults.
-  A colour must be one the pages can measure as well as draw -- hex or
-  `rgb()` -- so the contrast check above has something to work from, and a date
-  pattern must be one they can read; either way the refusal says which field
-  and why, and what was already saved stays. Site administration, so a member
-  is refused the page.
+- Two surfaces set these properties, as Jira's two do. `/admin`'s advanced
+  settings list holds one form per property, named and validated as the
+  property itself is. `/settings/look-and-feel` is the curated page: the same
+  properties under the labels a person recognises, with the help beside each
+  one, a restore-defaults action, and validation before anything is stored --
+  a colour must be one the pages can measure as well as draw (hex or `rgb()`),
+  so the contrast check above has something to work from, and a date pattern
+  must be one they can read. Either refusal says which field and why, and what
+  was already saved stays. Site administration, so a member is refused both.
 
 ## Tests
 

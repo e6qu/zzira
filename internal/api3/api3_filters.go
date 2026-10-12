@@ -300,7 +300,13 @@ func (h *Handler) deleteFilter(w http.ResponseWriter, r *http.Request, id string
 		writeJerr(w, authErr)
 		return
 	}
-	if err := h.Store.DeleteFilter(r.Context(), workspaceID, userID, id); err != nil {
+	// Jira lets an administrator delete any filter, and its owner their own.
+	admin, adminErr := h.Store.IsAdmin(r.Context(), workspaceID, userID)
+	if adminErr != nil {
+		jiraError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if err := h.Store.DeleteFilter(r.Context(), workspaceID, userID, id, admin); err != nil {
 		jiraError(w, http.StatusBadRequest, "Filter does not exist or you do not have permission to delete it.")
 		return
 	}

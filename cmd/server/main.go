@@ -598,6 +598,8 @@ func main() {
 	mux.HandleFunc("POST /settings/work-types", webHandler.WorkTypesMutation)
 	mux.HandleFunc("GET /settings/priorities", webHandler.PrioritiesPage)
 	mux.HandleFunc("POST /settings/priorities", webHandler.PrioritiesMutation)
+	mux.HandleFunc("GET /settings/shared-items", webHandler.SharedItemsPage)
+	mux.HandleFunc("POST /settings/shared-items", webHandler.SharedItemsMutation)
 	mux.HandleFunc("GET /settings/look-and-feel", webHandler.LookAndFeelPage)
 	mux.HandleFunc("POST /settings/look-and-feel", webHandler.LookAndFeelMutation)
 	mux.HandleFunc("GET /settings/issue-linking", webHandler.IssueLinkingPage)

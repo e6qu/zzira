@@ -194,7 +194,12 @@ func TestFilterAdministrationContractJourney(t *testing.T) {
 	}
 
 	call(ownerID, http.MethodPut, "/rest/api/3/filter/"+filterID+"/owner", map[string]any{"accountId": memberID}, http.StatusNoContent)
-	call(ownerID, http.MethodDelete, "/rest/api/3/filter/"+filterID, nil, http.StatusBadRequest)
+	// A filter is deleted by the person who owns it or by an administrator,
+	// which is what Atlassian documents for this operation. ownerID
+	// administers this site, so handing the filter on does not take the
+	// deletion away from them; a member who owns nothing here is refused.
+	foreign := object(call(memberID, http.MethodPost, "/rest/api/3/filter", map[string]any{"name": "member's own", "jql": "project = ZZ"}, http.StatusOK))["id"].(string)
+	call(ownerID, http.MethodDelete, "/rest/api/3/filter/"+foreign, nil, http.StatusNoContent)
 	call(memberID, http.MethodDelete, "/rest/api/3/filter/"+filterID, nil, http.StatusNoContent)
 
 	scope := object(call(ownerID, http.MethodPut, "/rest/api/3/filter/defaultShareScope", map[string]any{"scope": "GLOBAL"}, http.StatusOK))
