@@ -307,17 +307,22 @@ does, and is meant to -- Atlassian's contract no longer carries the v1 content
 writes, only `/wiki/api/v2/pages`.
 
 Remaining:
-- Pages Jira has that this product does not: languages, and issue collectors.
-  Link types, look and feel and shared items landed at
-  `/settings/issue-linking`, `/settings/look-and-feel` and
-  `/settings/shared-items`; the rest of Jira's issue and system settings are
-  on `/admin` or their own `/settings` page.
-- Organization admin writes (domains, policies, directories, event actions)
-  need a bearer organization API key, so a user token cannot exercise them;
-  they are covered by `internal/admin` tests and want a browser journey.
-- The probe covered one operation per resource. Response shape, paging,
-  expansions and partial persistence per operation remain the work of
-  section 16.
+- Jira's two remaining settings surfaces are features, not pages: languages
+  needs the interface translated, and issue collectors need a public
+  embeddable widget. Neither is a form over data this product already keeps.
+- Per-operation behavior is the frontier the probes above do not reach:
+  expansion combinations, error body shapes, concurrency, and whether a write
+  persists every field it accepted beyond the resources sampled.
+
+Checked and found already present, so that nothing re-opens them: the
+organization admin journeys are on `/admin` and work in the browser -- a
+domain is added and a policy created there, each landing in the database --
+even though their REST counterparts need a bearer organization API key.
+`/admin` also carries the advanced settings list, one form per application
+property, beside the curated `/settings/look-and-feel` page, which is the pair
+Jira has. Link types, look and feel and shared items landed at
+`/settings/issue-linking`, `/settings/look-and-feel` and
+`/settings/shared-items`.
 
 Measured so far: every one of the 1207 pinned operations is routed (599 reads,
 608 writes, none answering "not implemented"); the paged collections checked
