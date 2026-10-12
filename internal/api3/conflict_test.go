@@ -211,6 +211,75 @@ func TestConflictsAnswerTheirDocumentedConditions(t *testing.T) {
 	// An app field's option that a work item holds answers the same conflict,
 	// which app_field_options_test.go sets up with an app installed.
 
+	// A site with sub-tasks turned off refuses a configuration that names a
+	// sub-task work type, the same way it refuses creating one.
+	siteConfiguration, configurationErr := st.JiraSiteConfiguration(ctx, workspaceID)
+	if configurationErr != nil {
+		t.Fatal(configurationErr)
+	}
+	withoutSubtasks := *siteConfiguration
+	withoutSubtasks.SubTasksEnabled = false
+	if err := st.UpdateGlobalJiraConfiguration(ctx, workspaceID, adminID, withoutSubtasks); err != nil {
+		t.Fatal(err)
+	}
+	status, listedTypes := send(http.MethodGet, "/rest/api/3/issuetype", "")
+	if status != http.StatusOK {
+		t.Fatalf("read the work types: %d: %s", status, listedTypes)
+	}
+	var allTypes []map[string]any
+	if err := json.Unmarshal([]byte(listedTypes), &allTypes); err != nil {
+		t.Fatal(err)
+	}
+	subtaskID := ""
+	for _, candidate := range allTypes {
+		if subtask, _ := candidate["subtask"].(bool); subtask {
+			subtaskID = wireID(candidate["id"])
+			break
+		}
+	}
+	if subtaskID == "" {
+		t.Fatal("the site offers no sub-task work type")
+	}
+	guardScreen := object(http.MethodPost, "/rest/api/3/screens", `{"name":"Conflict guard screen"}`, http.StatusCreated)
+	guardScheme := object(http.MethodPost, "/rest/api/3/screenscheme",
+		`{"name":"Conflict guard screen scheme","screens":{"default":"`+wireID(guardScreen["id"])+`"}}`, http.StatusCreated)
+	guardSchemeID := wireID(guardScheme["id"])
+	field := object(http.MethodPost, "/rest/api/3/field", `{"name":"Conflict guard field","type":"text"}`, http.StatusCreated)
+	fieldID, _ := field["id"].(string)
+	contexts := object(http.MethodGet, "/rest/api/3/field/"+fieldID+"/context", "", http.StatusOK)
+	contextID := wireID(contexts["values"].([]any)[0].(map[string]any)["id"])
+	mapped := object(http.MethodPost, "/rest/api/3/issuetypescreenscheme",
+		`{"name":"Conflict guard work type screens","issueTypeMappings":[{"issueTypeId":"default","screenSchemeId":"`+guardSchemeID+`"}]}`, http.StatusCreated)
+	// A context scoped to a project, so the one-global-context rule cannot
+	// answer in place of the sub-task rule.
+	for _, c := range []struct{ method, template, path, body, what string }{
+		{http.MethodPost, "/rest/api/3/field/{fieldId}/context", "/rest/api/3/field/" + fieldID + "/context",
+			`{"name":"Conflict guard context","issueTypeIds":["` + subtaskID + `"],"projectIds":["` + projectID + `"]}`,
+			"creating a field context for a sub-task work type"},
+		{http.MethodPut, "/rest/api/3/field/{fieldId}/context/{contextId}/issuetype", "/rest/api/3/field/" + fieldID + "/context/" + contextID + "/issuetype",
+			`{"issueTypeIds":["` + subtaskID + `"]}`,
+			"adding a sub-task work type to a field context"},
+		{http.MethodPost, "/rest/api/3/issuetypescreenscheme", "/rest/api/3/issuetypescreenscheme",
+			`{"name":"Conflict guard refused","issueTypeMappings":[{"issueTypeId":"default","screenSchemeId":"` + guardSchemeID + `"},{"issueTypeId":"` + subtaskID + `","screenSchemeId":"` + guardSchemeID + `"}]}`,
+			"creating a work type screen scheme that maps a sub-task work type"},
+		{http.MethodPut, "/rest/api/3/issuetypescreenscheme/{issueTypeScreenSchemeId}/mapping", "/rest/api/3/issuetypescreenscheme/" + wireID(mapped["id"]) + "/mapping",
+			`{"issueTypeMappings":[{"issueTypeId":"` + subtaskID + `","screenSchemeId":"` + guardSchemeID + `"}]}`,
+			"mapping a sub-task work type onto a work type screen scheme"},
+	} {
+		disabled := documentsConflict(t, c.method, c.template)
+		if status, answer := send(c.method, c.path, c.body); status != http.StatusConflict {
+			t.Errorf("%s answered %d, want 409 (%s): %s", c.what, status, disabled, answer)
+		}
+	}
+	// With sub-tasks on again, the same configuration goes through.
+	if err := st.UpdateGlobalJiraConfiguration(ctx, workspaceID, adminID, *siteConfiguration); err != nil {
+		t.Fatal(err)
+	}
+	if status, answer := send(http.MethodPut, "/rest/api/3/field/"+fieldID+"/context/"+contextID+"/issuetype",
+		`{"issueTypeIds":["`+subtaskID+`"]}`); status != http.StatusNoContent {
+		t.Errorf("adding a sub-task work type with sub-tasks enabled answered %d: %s", status, answer)
+	}
+
 	// A deletion that Jira runs in the background refuses a second one while
 	// the first is still queued. This product finishes that work before it
 	// answers, so the condition is built here the way a real collision would

@@ -371,28 +371,37 @@ is real and is queried per request, so the test builds the collision the way a
 real one would leave it, with a task of the same kind still enqueued against
 the same item, and the deletion answers 409.
 
-The third kind is not reachable at all yet, and both gaps are worth recording
-rather than papering over:
-- Four conflicts turn on sub-tasks being disabled in the site's settings
-  (`POST /field/{fieldId}/context`, `PUT /field/{fieldId}/context/{contextId}/issuetype`,
-  `POST /issuetypescreenscheme`, `PUT /issuetypescreenscheme/{id}/mapping`).
-  This product has no switch that turns sub-tasks off, so the condition cannot
-  arise. Adding it is a site setting plus the create paths that honour it.
-- `PUT /rest/api/3/issue/{issueIdOrKey}` and
-  `POST /rest/api/3/issue/{issueIdOrKey}/transitions` publish 409 for an
-  update that conflicts with another. Nothing in the work item write path
-  detects a lost update; two concurrent edits both succeed and the last one
-  wins. Matching Jira means optimistic concurrency in the command layer,
-  which is a design decision rather than a repair, because Jira's own 409
-  there is a race a client must tolerate and cannot provoke.
+The third kind turns on sub-tasks being disabled for the site, and all four of
+those operations were wrong. The site has had a sub-tasks switch all along, on
+`/admin` and in `GET /configuration`, and work item creation honours it -- but
+`POST /field/{fieldId}/context`,
+`PUT /field/{fieldId}/context/{contextId}/issuetype`,
+`POST /issuetypescreenscheme` and `PUT /issuetypescreenscheme/{id}/mapping`
+all accepted a sub-task work type on a site with sub-tasks off. They answer
+409 now, from one store reader the four share, and go through unchanged when
+sub-tasks are on. Finding this needed a context scoped to a project: a global
+context already exists for a new field, so the one-global-context conflict
+answers first and reads as if the sub-task rule were working.
+
+One conflict remains unreachable. `PUT /rest/api/3/issue/{issueIdOrKey}` and
+`POST /rest/api/3/issue/{issueIdOrKey}/transitions` publish 409 for an update
+that conflicts with another, and nothing in the work item write path detects a
+lost update: two concurrent edits both succeed and the last one wins. Matching
+Jira means optimistic concurrency in the command layer, which is a design
+decision rather than a repair, because Jira's own 409 there is a race a client
+must tolerate and cannot provoke.
 
 Remaining:
 - Jira's two remaining settings surfaces are features, not pages: languages
   needs the interface translated, and issue collectors need a public
   embeddable widget. Neither is a form over data this product already keeps.
-- The sub-tasks switch and work item optimistic concurrency above.
-- Whether a write persists every field it accepted, beyond the resources
-  already sampled.
+- Work item optimistic concurrency above.
+- Response shapes on create and on the paged searches: six answers carry a
+  property their schema refuses or name it wrongly, found by comparing live
+  answers against the pinned schemas and their examples. Measured, not yet
+  fixed: `POST /screenscheme`, `POST /config/fieldschemes`,
+  `GET /configuration`, `GET /field/search`, `GET /filter/search` and
+  `GET /issuetypescreenscheme/project`.
 
 Checked and found already present, so that nothing re-opens them: the
 organization admin journeys are on `/admin` and work in the browser -- a

@@ -232,6 +232,12 @@ func (s *Store) CreateCustomFieldContext(ctx context.Context, workspaceID, actor
 	if len(description) > 255 {
 		return nil, fmt.Errorf("%w: description accepts at most 255 characters", ErrFieldContextValidation)
 	}
+	if refused, err := s.DisabledSubtaskWorkTypes(ctx, workspaceID, issueTypeIDs); err != nil {
+		return nil, err
+	} else if len(refused) > 0 {
+		return nil, fmt.Errorf("%w: sub-tasks are disabled for this site, so %s cannot be named",
+			ErrFieldContextConflict, strings.Join(refused, ", "))
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -412,6 +418,14 @@ func (s *Store) changeCustomFieldContextScope(ctx context.Context, workspaceID, 
 	}
 	if !allowGlobalProjects && found.AllProjects && len(projectIDs) > 0 {
 		return fmt.Errorf("%w: projects cannot be assigned to a global context", ErrFieldContextValidation)
+	}
+	if !remove {
+		if refused, refusedErr := s.DisabledSubtaskWorkTypes(ctx, workspaceID, issueTypeIDs); refusedErr != nil {
+			return refusedErr
+		} else if len(refused) > 0 {
+			return fmt.Errorf("%w: sub-tasks are disabled for this site, so %s cannot be named",
+				ErrFieldContextConflict, strings.Join(refused, ", "))
+		}
 	}
 	if remove {
 		for _, projectID := range projectIDs {
