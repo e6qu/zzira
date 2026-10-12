@@ -33,6 +33,7 @@ Every page under **Jira settings** is described by the doc for the surface it co
 | `/settings/statuses`, `/settings/workflows`, `/settings/workflow-schemes` | [Workflow rules](WORKFLOW_RULES.md#ui), [workflow schemes](WORKFLOW_SCHEMES.md#ui). Site administrators and project administrators read these directories; everyone else is refused |
 | `/settings/permission-schemes`, `/settings/issue-security-schemes`, `/settings/project-roles` | [Permission schemes](PERMISSION_SCHEMES.md), [issue security schemes](ISSUE_SECURITY_SCHEMES.md), [project roles](PROJECT_ROLES.md) |
 | `/settings/notification-schemes` | [Notification schemes](NOTIFICATION_SCHEMES.md) |
+| `/settings/issue-linking` | [Link types](ISSUE_SURFACE.md#links-and-link-types), which decide the relationships work items may have |
 | `/settings/automation` | [Automation](AUTOMATION.md) |
 
 Site administration outside Jira settings is in [ADMIN.md](ADMIN.md); the site switches are in [JIRA_SITE_CONFIGURATION.md](JIRA_SITE_CONFIGURATION.md).

@@ -307,6 +307,10 @@ does, and is meant to -- Atlassian's contract no longer carries the v1 content
 writes, only `/wiki/api/v2/pages`.
 
 Remaining:
+- Pages Jira has that this product does not: look and feel, languages, shared
+  filters and dashboards, and issue collectors. Link type administration landed
+  at `/settings/issue-linking`; the rest of Jira's issue and system settings
+  are on `/admin` or their own `/settings` page.
 - Organization admin writes (domains, policies, directories, event actions)
   need a bearer organization API key, so a user token cannot exercise them;
   they are covered by `internal/admin` tests and want a browser journey.
