@@ -419,3 +419,62 @@ func (h *Handler) redirectMetadata(w http.ResponseWriter, r *http.Request, path,
 	}
 	redirectLocal(w, r, path+"?error="+url.QueryEscape(message))
 }
+
+// issueLinkingPageData is the issue linking settings page: the site's link
+// types, which decide the relationships work items may have.
+type issueLinkingPageData struct {
+	LinkTypes []*models.LinkType
+	Notice    string
+	Error     string
+}
+
+// IssueLinkingPage lists the site's work item link types.
+func (h *Handler) IssueLinkingPage(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	data := issueLinkingPageData{Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
+	var err error
+	if data.LinkTypes, err = h.Store.LinkTypes(r.Context(), workspaceID); err != nil {
+		http.Error(w, "Could not load link types.", http.StatusInternalServerError)
+		return
+	}
+	h.writeWorkspacePage(w, r, "page_issue_linking", user, workspaceID, data, "issue-linking", "")
+}
+
+// IssueLinkingMutation creates, renames and deletes link types.
+func (h *Handler) IssueLinkingMutation(w http.ResponseWriter, r *http.Request) {
+	user, workspaceID, ok := h.requireAdminPage(w, r)
+	if !ok {
+		return
+	}
+	if !parseForm(w, r) {
+		return
+	}
+	notice, err := "", error(nil)
+	value := func(name string) string { return strings.TrimSpace(r.PostFormValue(name)) }
+	switch r.PostFormValue("action") {
+	case "create":
+		var created *models.LinkType
+		created, err = h.Store.CreateLinkType(r.Context(), workspaceID, value("name"), value("inward"), value("outward"))
+		if err == nil {
+			notice = created.Name + " created."
+		}
+	case "update":
+		name, inward, outward := value("name"), value("inward"), value("outward")
+		if _, err = h.Store.UpdateLinkType(r.Context(), workspaceID, value("linkType"), &name, &inward, &outward); err == nil {
+			notice = name + " saved."
+		}
+	case "delete":
+		// Deleting a link type removes the links that use it, which is what
+		// Jira's own deletion does.
+		if err = h.Store.DeleteLinkType(r.Context(), user.ID, workspaceID, value("linkType")); err == nil {
+			notice = "Link type deleted; the work items it linked are no longer related."
+		}
+	default:
+		http.Error(w, "Unknown link type action.", http.StatusBadRequest)
+		return
+	}
+	h.redirectMetadata(w, r, "/settings/issue-linking", notice, err)
+}

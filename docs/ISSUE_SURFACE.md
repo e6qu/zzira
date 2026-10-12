@@ -42,6 +42,12 @@ Name, inward and outward descriptions are required; a name already in use, or a
 caller without permission, is 404 as Jira documents. A non-numeric id is 400.
 Deleting a link type deletes every link of that type.
 
+**UI.** `/settings/issue-linking` lists the site's link types with both
+directions, and creates, renames and deletes them; deleting one says that the
+work items it linked are no longer related. Site administration, so a member is
+refused the page. Whether linking is on at all is a Jira configuration setting
+on `/admin`.
+
 A link reads from the inward work item: with Blocks, `inwardIssue` "blocks"
 `outwardIssue`. The inward work item's `issuelinks` field lists the other work item as
 `outwardIssue`; the outward work item lists it as `inwardIssue`. Creating a link
