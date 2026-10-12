@@ -355,13 +355,31 @@ func (h *Handler) worklogFeedRoute(w http.ResponseWriter, r *http.Request, path 
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
+		properties := map[string][]store.WorklogPropertyValue{}
+		if worklogPropertiesExpanded(r) {
+			ids := make([]string, 0, len(changes))
+			for _, change := range changes {
+				ids = append(ids, change.ID)
+			}
+			if properties, err = h.Store.WorklogPropertiesByJiraIDs(r.Context(), workspaceID, ids); err != nil {
+				jiraError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+		}
 		values := make([]map[string]any, 0, len(changes))
 		latest := since
 		for _, change := range changes {
-			values = append(values, map[string]any{
+			value := map[string]any{
 				"worklogId": wireNumericID(change.ID), "updatedTime": change.UpdatedTime.UnixMilli(),
-				"properties": []any{},
-			})
+			}
+			if worklogPropertiesExpanded(r) {
+				held := properties[change.ID]
+				if held == nil {
+					held = []store.WorklogPropertyValue{}
+				}
+				value["properties"] = held
+			}
+			values = append(values, value)
 			if change.UpdatedTime.After(latest) {
 				latest = change.UpdatedTime
 			}
@@ -395,9 +413,10 @@ func (h *Handler) worklogFeedRoute(w http.ResponseWriter, r *http.Request, path 
 			jiraError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		beans := make([]map[string]any, 0, len(worklogs))
-		for _, wl := range worklogs {
-			beans = append(beans, h.worklogBean(wl))
+		beans, err := h.expandedWorklogs(r, worklogs)
+		if err != nil {
+			jiraError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
 		writeJSON(w, http.StatusOK, beans)
 	default:

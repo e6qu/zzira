@@ -18,9 +18,9 @@ Part of the [Jira platform](JIRA_PLATFORM.md); see
 | `DELETE /rest/api/3/issue/{issueIdOrKey}/worklog/{id}` | Delete one |
 | `DELETE /rest/api/3/issue/{issueIdOrKey}/worklog` | Delete every worklog on the work item |
 | `POST /rest/api/3/issue/{issueIdOrKey}/worklog/move` | Move 1 to 1,000 worklogs to another work item |
-| `GET /rest/api/3/worklog/updated` | Worklogs changed after `since` (ms), up to 1,000 per page |
-| `GET /rest/api/3/worklog/deleted` | Worklogs deleted after `since` (ms), up to 1,000 per page |
-| `POST /rest/api/3/worklog/list` | Up to 1,000 worklogs by ID, across work items |
+| `GET /rest/api/3/worklog/updated` | Worklogs changed after `since` (ms), up to 1,000 per page; property expansion |
+| `GET /rest/api/3/worklog/deleted` | Worklogs deleted after `since` (ms), up to 1,000 per page; property expansion |
+| `POST /rest/api/3/worklog/list` | Up to 1,000 worklogs by ID, across work items; property expansion |
 | `GET /rest/api/3/issue/{k}/worklog/{id}/properties` | Property keys |
 | `GET/PUT/DELETE /rest/api/3/issue/{k}/worklog/{id}/properties/{propertyKey}` | One property; `PUT` answers 201 for a new key, 200 for a replacement |
 | `POST /rest/internal/api/latest/worklog/bulk` | Which of 1 to 1,000 `{issueId, worklogId}` pairs exist (see [JIRA_PLATFORM.md](JIRA_PLATFORM.md)) |
@@ -44,8 +44,10 @@ Log, change and delete accept `adjustEstimate`, `newEstimate`, `reduceBy`,
   and is capped at 5,000. Non-negative values are required. `startedAfter` and
   `startedBefore` are exclusive epoch-millisecond bounds applied before paging;
   `total` counts the filtered collection. `expand=properties` adds each log's
-  property array, including an empty array where appropriate. Single reads also
-  accept that expansion. Property expansion is fetched in one batch.
+  property array, including an empty array where appropriate. Single reads, the
+  bulk read by id and the change feeds accept the same expansion, and none of
+  them carries the properties unasked. Property expansion is fetched in one
+  batch.
 
 - **Feeds.** Worklogs carry `updated_at`, stamped on change and on move, so
   the updated feed reports moved worklogs. A delete leaves a tombstone

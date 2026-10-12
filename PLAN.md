@@ -327,12 +327,39 @@ right. Two operations keep 404 deliberately, publishing neither 400 nor 404:
 reading an issue security scheme, where every other operation on the same id
 publishes 404.
 
+Expansions are done. 64 operations publish an `expand` value; 61 of them
+answer at all (two are Forge-only and one needs a bounded query), and every
+value they publish was called against a site carrying the demo company, with
+and without the expansion. 170 values were probed and 152 changed the
+response. Each of the 15 that did not was then explained rather than guessed
+at: three are faithful, because the contract says `GET /project/{id}` carries
+the description, work types and lead in every response; twelve were artefacts
+of a site with nothing to expand, retired by creating the data -- a permission
+scheme holding user and group grants, a version with a driver, a filter shared
+with everyone and subscribed to -- since an expansion that fills a list cannot
+be told from one that is ignored until the list has rows.
+
+Three defects came out of it. The bulk read by worklog id ignored
+`expand=properties` outright; the change feeds carried an empty `properties`
+on every row whether or not it was asked for, and never filled it; and a
+published filter subscription carried this product's schedule rather than the
+subscriber the contract publishes, on a schema that refuses any other
+property.
+
+The sweep also caught a search defect on the way to the filters it expands:
+`filterName` is documented as a case-insensitive partial match, and this
+product required the whole name exactly. It now matches the query's words in
+any order, and `isSubstringMatch=true` asks for one contiguous run, which is
+the distinction the two parameters describe.
+[expansion_test.go](internal/api3/expansion_test.go) pins the worklog
+expansions, the collapsed-then-filled filter lists, the subscription shape
+against the properties the contract publishes for it, and the name search.
+
 Remaining:
 - Jira's two remaining settings surfaces are features, not pages: languages
   needs the interface translated, and issue collectors need a public
   embeddable widget. Neither is a form over data this product already keeps.
-- Per-operation behavior is the frontier the probes above do not reach:
-  expansion combinations, concurrency, and whether a write persists every
+- Per-operation behavior: concurrency, and whether a write persists every
   field it accepted beyond the resources sampled.
 
 Checked and found already present, so that nothing re-opens them: the

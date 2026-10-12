@@ -110,6 +110,18 @@ func (h *Handler) filterBeanFor(r *http.Request, workspaceID string, filter *mod
 	}
 	subscriptions["items"], subscriptions["start-index"], subscriptions["end-index"] = sliceRange(items, start, end)
 	subscriptions["max-results"] = 1000
+	if expanded {
+		for _, item := range subscriptions["items"].([]map[string]any) {
+			subscriber, ok := item["user"].(map[string]any)
+			if !ok {
+				continue
+			}
+			accountID, _ := subscriber["accountId"].(string)
+			if user, err := h.Store.UserByID(r.Context(), accountID); err == nil {
+				item["user"] = h.userBeanFor(r.Context(), user)
+			}
+		}
+	}
 	sharedUsers := map[string]any{"size": 0, "items": []map[string]any{}, "max-results": 1000, "start-index": 0, "end-index": 0}
 	if start, end, expanded = expandedListRange(expand, "sharedUsers"); expanded {
 		users, err := h.Store.FilterSharedUsers(r.Context(), workspaceID, filter.ID)
@@ -170,23 +182,27 @@ func (h *Handler) filterBean(filter *models.Filter) map[string]any {
 	}
 	filterID := strconv.FormatInt(filter.JiraID, 10)
 	self := h.BaseURL + "/rest/api/3/filter/" + filterID
+	// A published subscription names one subscriber, a user or a group, and
+	// nothing else. One schedule here can email several people, so it is
+	// reported as the subscriptions it stands for; the schedule itself
+	// belongs to the browser, which reads it from the model.
 	subscriptions := make([]map[string]any, 0, len(filter.Subscriptions))
 	for _, subscription := range filter.Subscriptions {
-		item := map[string]any{
-			"id": subscription.ID, "cronExpression": subscription.CronExpression,
-			"enabled": subscription.Enabled, "nextRunAt": subscription.NextRunAt,
-			"recipients": subscription.Recipients,
+		if subscription.GroupName != "" || subscription.GroupID != "" {
+			group := map[string]any{"name": subscription.GroupName}
+			if subscription.GroupID != "" {
+				group["groupId"] = subscription.GroupID
+				group["self"] = h.BaseURL + "/rest/api/3/group?groupId=" + subscription.GroupID
+			}
+			subscriptions = append(subscriptions, map[string]any{"id": subscription.ID, "group": group})
+			continue
 		}
-		if subscription.LastRunAt != "" {
-			item["lastRunAt"] = subscription.LastRunAt
+		for _, recipient := range subscription.Recipients {
+			subscriptions = append(subscriptions, map[string]any{
+				"id":   subscription.ID,
+				"user": map[string]any{"accountId": recipient, "accountType": "atlassian", "active": true},
+			})
 		}
-		if subscription.LastResultCount != nil {
-			item["lastResultCount"] = *subscription.LastResultCount
-		}
-		if subscription.LastError != "" {
-			item["lastError"] = subscription.LastError
-		}
-		subscriptions = append(subscriptions, item)
 	}
 	bean := map[string]any{
 		"id": filterID, "name": filter.Name, "self": self,

@@ -118,14 +118,21 @@ func TestFilterAdministrationContractJourney(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Subscriptions are counted on every read and listed only when expanded.
+	// A published subscription names one subscriber, so this schedule's two
+	// recipients are the two subscriptions it stands for.
 	unexpanded := object(object(call(ownerID, http.MethodGet, "/rest/api/3/filter/"+filterID, nil, http.StatusOK))["subscriptions"])
-	if unexpanded["size"] != float64(1) || len(unexpanded["items"].([]any)) != 0 {
+	if unexpanded["size"] != float64(2) || len(unexpanded["items"].([]any)) != 0 {
 		t.Fatalf("unexpanded filter subscriptions = %#v", unexpanded)
 	}
 	withSubscription := object(call(ownerID, http.MethodGet, "/rest/api/3/filter/"+filterID+"?expand=subscriptions,sharedUsers", nil, http.StatusOK))
 	subscriptions := object(withSubscription["subscriptions"])
-	if subscriptions["size"] != float64(1) || len(subscriptions["items"].([]any)) != 1 {
+	if subscriptions["size"] != float64(2) || len(subscriptions["items"].([]any)) != 2 {
 		t.Fatalf("filter subscriptions = %#v", subscriptions)
+	}
+	for _, item := range subscriptions["items"].([]any) {
+		if _, named := object(item)["user"]; !named {
+			t.Fatalf("a subscription does not name its subscriber: %#v", item)
+		}
 	}
 	if shared := object(withSubscription["sharedUsers"]); shared["size"] != float64(0) {
 		t.Fatalf("a private filter is shared with %#v", shared)

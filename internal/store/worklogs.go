@@ -292,6 +292,32 @@ type WorklogPropertyValue struct {
 	Value json.RawMessage `json:"value"`
 }
 
+// WorklogPropertiesByJiraIDs reads properties for previously authorized logs
+// named by the ids clients know, which is how the change feeds identify them.
+func (s *Store) WorklogPropertiesByJiraIDs(ctx context.Context, workspaceID string, jiraIDs []string) (map[string][]WorklogPropertyValue, error) {
+	out := map[string][]WorklogPropertyValue{}
+	if len(jiraIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT w.jira_id::text,p.key,p.value
+		FROM worklog_properties p JOIN worklogs w ON w.id = p.worklog_id
+		WHERE w.workspace_id=$1 AND w.jira_id::text = ANY($2::text[])
+		ORDER BY w.jira_id,p.key`, workspaceID, jiraIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var property WorklogPropertyValue
+		if err := rows.Scan(&id, &property.Key, &property.Value); err != nil {
+			return nil, err
+		}
+		out[id] = append(out[id], property)
+	}
+	return out, rows.Err()
+}
+
 // WorklogPropertiesByIDs reads properties only for previously authorized logs.
 func (s *Store) WorklogPropertiesByIDs(ctx context.Context, ids []string) (map[string][]WorklogPropertyValue, error) {
 	out := map[string][]WorklogPropertyValue{}

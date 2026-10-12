@@ -23,7 +23,14 @@ All 19 Jira Cloud filter and filter-sharing operations under
 - `GET/PUT /filter/defaultShareScope`: per user; `GLOBAL` is normalized to
   `AUTHENTICATED`.
 - `expand=subscriptions` and `expand=sharedUsers` fill those lists, with
-  Jira's `[start:end]` ranges; unexpanded they are empty.
+  Jira's `[start:end]` ranges; unexpanded they are empty but still counted.
+  A published subscription names one subscriber, a user or a group, and
+  nothing else, so a schedule that emails several people is reported as the
+  subscriptions it stands for; its schedule belongs to the browser.
+- `GET /filter/search` matches `filterName` case-insensitively and partially:
+  by default the query's words are searched as text and match in any order,
+  and with `isSubstringMatch=true` the query is one run of text the name must
+  contain.
 
 ## Behavior
 
