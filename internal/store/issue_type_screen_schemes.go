@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/e6qu/zzira/internal/models"
 	"github.com/jackc/pgx/v5"
@@ -137,12 +138,30 @@ func requireDefaultMappingTx(ctx context.Context, tx pgx.Tx, schemeID string) er
 	return nil
 }
 
+// mappingWorkTypeIDs names the work types a set of mappings configures,
+// leaving out the default mapping, which names no work type.
+func mappingWorkTypeIDs(mappings []models.IssueTypeScreenSchemeItem) []string {
+	ids := make([]string, 0, len(mappings))
+	for _, mapping := range mappings {
+		if mapping.IssueTypeID != "" && mapping.IssueTypeID != "default" {
+			ids = append(ids, mapping.IssueTypeID)
+		}
+	}
+	return ids
+}
+
 func (s *Store) CreateIssueTypeScreenScheme(ctx context.Context, workspaceID, actorID, name, description string, mappings []models.IssueTypeScreenSchemeItem) (*models.IssueTypeScreenScheme, error) {
 	if err := validateScreenName(name, "work type screen scheme"); err != nil {
 		return nil, err
 	}
 	if len(description) > 255 {
 		return nil, fmt.Errorf("%w: description accepts at most 255 characters", ErrScreenValidation)
+	}
+	if refused, refusedErr := s.DisabledSubtaskWorkTypes(ctx, workspaceID, mappingWorkTypeIDs(mappings)); refusedErr != nil {
+		return nil, refusedErr
+	} else if len(refused) > 0 {
+		return nil, fmt.Errorf("%w: sub-tasks are disabled for this site, so %s cannot be named",
+			ErrScreenConflict, strings.Join(refused, ", "))
 	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -215,6 +234,12 @@ func (s *Store) UpdateIssueTypeScreenScheme(ctx context.Context, workspaceID, ac
 }
 
 func (s *Store) AppendIssueTypeScreenSchemeMappings(ctx context.Context, workspaceID, actorID, schemeID string, mappings []models.IssueTypeScreenSchemeItem) error {
+	if refused, refusedErr := s.DisabledSubtaskWorkTypes(ctx, workspaceID, mappingWorkTypeIDs(mappings)); refusedErr != nil {
+		return refusedErr
+	} else if len(refused) > 0 {
+		return fmt.Errorf("%w: sub-tasks are disabled for this site, so %s cannot be named",
+			ErrScreenConflict, strings.Join(refused, ", "))
+	}
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err

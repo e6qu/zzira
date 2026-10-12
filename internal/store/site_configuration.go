@@ -154,3 +154,37 @@ func (s *Store) UpdateNavigatorColumns(ctx context.Context, workspaceID, actorID
 		return err
 	})
 }
+
+// DisabledSubtaskWorkTypes names the sub-task work types among ids when the
+// site has sub-tasks turned off, and nothing when they are on. Jira refuses a
+// configuration that names a sub-task type on a site where sub-tasks are
+// disabled, the same way it refuses creating one, so each caller reports the
+// names it gets back as its own conflict.
+func (s *Store) DisabledSubtaskWorkTypes(ctx context.Context, workspaceID string, ids []string) ([]string, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	configuration, err := s.JiraSiteConfiguration(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if configuration.SubTasksEnabled {
+		return nil, nil
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT name FROM issue_types
+		WHERE subtask AND id = ANY($1::text[])
+		  AND (workspace_id IS NULL OR workspace_id=$2) ORDER BY name`, ids, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	names := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
