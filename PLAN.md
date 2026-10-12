@@ -49,8 +49,9 @@ models, and Atlassian-hosted Forge compute. Clients that hardcode
    and search behavior (sections 1–5).
 4. Close identity, automation, Assets, service, knowledge and app gaps
    (sections 6–13), one complete command/API/browser slice at a time.
-5. Extend local-first guarantees (section 14) and certify the complete contract
-   and release matrix (section 15).
+5. Extend local-first guarantees (section 14), close the CRUD, admin UI and
+   RBAC gaps (section 15), then certify the complete contract and release
+   matrix (section 16).
 
 The sections below retain the compatibility scope. Closing a browser defect or
 removing a stale claim does not certify an API operation. For each PR, name the
@@ -280,7 +281,40 @@ Owning reference: [CONFLUENCE_LIVE.md](docs/CONFLUENCE_LIVE.md).
   quota, account and site switching, schema upgrades, full resnapshot,
   revocation purge — tested for each replica.
 
-## 15. Certification
+## 15. CRUD, admin UI and RBAC completeness
+
+Every resource Jira, Confluence, Service Management and the admin site create,
+change and delete must be reachable through both the API and the browser, with
+the same permission checks on each. This section tracks what a probe of the
+running server found; extend it rather than restate it.
+
+Verified (site admin, full create/update/delete): projects, fields, screens,
+screen schemes, priorities, work types, permission schemes, notification
+schemes, issue security schemes, field configurations, workflows
+(`POST /rest/api/3/workflows/create`, `DELETE /rest/api/3/workflow/{id}`) and
+workflow schemes; Confluence spaces and v2 pages; Service Management
+organizations, customers and request types. A plain member is refused on each,
+in the browser and over REST. The workflow, status and workflow scheme
+directories admit site administrators and project administrators, who read the
+configuration their own projects follow, and refuse everyone else.
+
+Probe method: resolve every write operation in
+[cloud-operations.json](api/conformance/cloud-operations.json) against a running
+server as a site admin and as a plain member, then check the browser's admin
+pages for the same resources. All 608 write operations are routed, and none of
+the 149 Confluence writes answer "not implemented"; `POST /wiki/rest/api/content`
+does, and is meant to -- Atlassian's contract no longer carries the v1 content
+writes, only `/wiki/api/v2/pages`.
+
+Remaining:
+- Organization admin writes (domains, policies, directories, event actions)
+  need a bearer organization API key, so a user token cannot exercise them;
+  they are covered by `internal/admin` tests and want a browser journey.
+- The probe covered one operation per resource. Response shape, paging,
+  expansions and partial persistence per operation remain the work of
+  section 16.
+
+## 16. Certification
 
 - Validate recently merged editor, transition, offline recovery and image-pin
   changes through the full CI gates before certifying these journeys.

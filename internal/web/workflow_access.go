@@ -65,3 +65,24 @@ func (h *Handler) administeredProjects(r *http.Request, workspaceID, userID stri
 	projects, err := h.Store.ProjectsWithPermissions(r.Context(), workspaceID, userID, []string{"ADMINISTER_PROJECTS"})
 	return projects, false, err
 }
+
+// requireConfigurationReader admits the people Jira lets read the workflow,
+// status and workflow scheme directories: a site administrator, and anyone who
+// administers a project, whose own configuration those pages describe. A plain
+// member is refused rather than shown the site's configuration read-only.
+func (h *Handler) requireConfigurationReader(w http.ResponseWriter, r *http.Request) (*models.User, string, bool) {
+	user, workspaceID, ok := h.pageContext(w, r)
+	if !ok {
+		return nil, "", false
+	}
+	administered, admin, err := h.administeredProjects(r, workspaceID, user.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return nil, "", false
+	}
+	if !admin && len(administered) == 0 {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return nil, "", false
+	}
+	return user, workspaceID, true
+}

@@ -495,6 +495,12 @@ test('a transition screen asks for a custom field by name', async ({ page, brows
     const readable = await member.goto(workflowURL);
     expect(readable?.status()).toBe(200);
     await expect(member.getByRole('heading', { name: 'Add transition' })).toHaveCount(0);
+    // The directories themselves are administration, as Jira's are: a member
+    // who knows their addresses is refused rather than shown the site's
+    // configuration read-only.
+    for (const directory of ['/settings/workflows', '/settings/statuses', '/settings/workflow-schemes']) {
+      expect((await member.goto(directory))?.status(), directory).toBe(403);
+    }
     const refused = await member.request.post(`${workflowURL}/transitions`, {
       form: { name: 'Sneaky', from: 'st_todo', to: 'st_done', screen_field: 'customfield_20000' },
     });
