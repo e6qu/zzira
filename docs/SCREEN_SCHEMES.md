@@ -8,7 +8,7 @@ All operations need *Administer Jira*.
 
 | Method and path | Behavior |
 |---|---|
-| `GET/POST /rest/api/3/screenscheme` | Pages screen schemes with their operation mappings, or creates one. Filters: `id`, `queryString`. `orderBy`: name or id. `expand` lists the work type screen schemes that use each one. |
+| `GET/POST /rest/api/3/screenscheme` | Pages screen schemes with their operation mappings, or creates one. Creating answers the new scheme's id alone. Filters: `id`, `queryString`. `orderBy`: name or id. `expand` lists the work type screen schemes that use each one. |
 | `PUT/DELETE /rest/api/3/screenscheme/{screenSchemeId}` | Changes name, description or operation mappings, or deletes an unused, non-default scheme. |
 | `GET/POST /rest/api/3/issuetypescreenscheme` | Pages work type screen schemes, or creates one with its mappings. Filters: `id`, `queryString`. `orderBy`: name or id. `expand` lists the projects that use each one. |
 | `PUT/DELETE /rest/api/3/issuetypescreenscheme/{id}` | Changes name and description, or deletes an unassigned, non-default scheme. |
@@ -16,7 +16,7 @@ All operations need *Administer Jira*.
 | `PUT /rest/api/3/issuetypescreenscheme/{id}/mapping` | Adds or repoints work type mappings. |
 | `PUT /rest/api/3/issuetypescreenscheme/{id}/mapping/default` | Repoints the fallback mapping. |
 | `POST /rest/api/3/issuetypescreenscheme/{id}/mapping/remove` | Removes work type mappings. |
-| `GET/PUT /rest/api/3/issuetypescreenscheme/project` | Pages project assignments, or assigns a project. |
+| `GET/PUT /rest/api/3/issuetypescreenscheme/project` | Pages project assignments, one row per scheme carrying the scheme and every project it governs, or assigns a project. |
 | `GET /rest/api/3/issuetypescreenscheme/{id}/project` | Pages the projects using a scheme; filter `query`. |
 
 Names are unique per site, ignoring case. Every change is written to the action log.

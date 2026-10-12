@@ -8,7 +8,7 @@ Field administration: listing, creating, searching, renaming, trashing and delet
 |---|---|
 | `GET /rest/api/3/field` | System fields plus the site's custom fields. The system field set is the one JQL resolves, `components` included, so it also drives `expand=names,schema`. |
 | `POST /rest/api/3/field` | Creates a custom field. |
-| `GET /rest/api/3/field/search` | Pages custom fields. Filters: `query`, `type`, `id`, `projectIds`. `orderBy`: `name`, `description`, `contextsCount`, `screensCount`, `lastUsed` (prefix `-` for descending). `expand`: `key`, `stableId`, `lastUsed`. |
+| `GET /rest/api/3/field/search` | Pages custom fields, reporting what each is used for rather than the clause names and searcher flags a read of the field carries. Filters: `query`, `type`, `id`, `projectIds`. `orderBy`: `name`, `description`, `contextsCount`, `screensCount`, `lastUsed` (prefix `-` for descending). `expand`: `key`, `stableId`, `lastUsed`. |
 | `GET /rest/api/3/field/search/trashed` | Pages trashed fields. |
 | `PUT /rest/api/3/field/{fieldId}` | Changes `name`, `description` or `searcherKey`. An empty rename is 400. |
 | `GET /rest/api/3/field/{fieldId}/association/project` | Pages the projects the field's contexts reach. |

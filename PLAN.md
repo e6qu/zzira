@@ -391,17 +391,33 @@ Jira means optimistic concurrency in the command layer, which is a design
 decision rather than a repair, because Jira's own 409 there is a race a client
 must tolerate and cannot provoke.
 
+Response shapes are swept. A schema that sets `additionalProperties` to false
+makes a validating client reject an answer carrying anything else, so every
+answer whose schema refuses extras was compared against the properties that
+operation publishes. Six were wrong and are fixed: creating a screen scheme
+answered the whole scheme where the operation publishes its id; creating a
+field association scheme added the field count and default flag that belong
+to reading one; `GET /configuration` advertised the site's own parallel
+sprints switch among Jira's features; the field search carried the clause
+names and searcher flags that belong to a read of the field; the filter
+search carried a `sharedUsers` list it does not offer and omitted the
+documented `expand`; and the work type screen scheme assignments answered one
+project per row instead of each scheme with the projects it governs.
+
+Two more answers look identical to those and are correct: `GET
+/fieldconfiguration` and `POST /field` carry more than their linked schema
+lists, but the specification's own examples show those properties, so the
+schema reference is narrower than the published payload. Examples settle what
+schemas alone cannot, and trusting the schema would have broken both.
+
 Remaining:
 - Jira's two remaining settings surfaces are features, not pages: languages
   needs the interface translated, and issue collectors need a public
   embeddable widget. Neither is a form over data this product already keeps.
 - Work item optimistic concurrency above.
-- Response shapes on create and on the paged searches: six answers carry a
-  property their schema refuses or name it wrongly, found by comparing live
-  answers against the pinned schemas and their examples. Measured, not yet
-  fixed: `POST /screenscheme`, `POST /config/fieldschemes`,
-  `GET /configuration`, `GET /field/search`, `GET /filter/search` and
-  `GET /issuetypescreenscheme/project`.
+- Whether a write persists every field it accepted, beyond the resources
+  already sampled. This bullet went missing in an earlier merge; the sweeps
+  above never covered it.
 
 Checked and found already present, so that nothing re-opens them: the
 organization admin journeys are on `/admin` and work in the browser -- a
@@ -426,9 +442,10 @@ against the pinned schemas found the status `iconUrl` and the project's
 suppresses `fields` by contract, `lead` and `projectCategory` are absent only
 on a project that has neither, and `Resolution` carries no `iconUrl`. Grepping
 the source for documented property names found nothing further -- it cannot see
-a key a bean builds, such as the version `userReleaseDate`. What remains is
-per-operation: paging, expansion combinations and whether a write persists
-every field it accepted.
+a key a bean builds, such as the version `userReleaseDate`. Paging, expansions
+and the shapes an answer carries have since been swept per operation, above;
+what remains of that frontier is whether a write persists every field it
+accepted.
 
 ## 16. Certification
 

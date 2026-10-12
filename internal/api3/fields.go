@@ -139,6 +139,11 @@ func (h *Handler) searchFieldBean(field *models.CustomField, usage store.FieldUs
 	if field.SearcherKey != "" {
 		bean["searcherKey"] = field.SearcherKey
 	}
+	// The search publishes what a field is used for, not the clause names and
+	// searcher flags a read of the field itself carries.
+	for _, elsewhere := range []string{"clauseNames", "custom", "navigable", "orderable", "searchable", "self"} {
+		delete(bean, elsewhere)
+	}
 	return bean
 }
 

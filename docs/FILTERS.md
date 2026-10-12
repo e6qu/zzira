@@ -27,6 +27,8 @@ All 19 Jira Cloud filter and filter-sharing operations under
   A published subscription names one subscriber, a user or a group, and
   nothing else, so a schedule that emails several people is reported as the
   subscriptions it stands for; its schedule belongs to the browser.
+- A searched filter names what it can expand and carries no `sharedUsers`,
+  which that search does not offer.
 - `GET /filter/search` matches `filterName` case-insensitively and partially:
   by default the query's words are searched as text and match in any order,
   and with `isSubstringMatch=true` the query is one run of text the name must

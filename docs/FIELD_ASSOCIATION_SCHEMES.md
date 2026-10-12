@@ -30,7 +30,7 @@ All operations need *Administer Jira*.
 | `GET/PUT /rest/api/3/config/fieldschemes/projects` | Reads or sets the scheme a project uses. |
 | `PUT/DELETE /rest/api/3/field/association` | Associates or removes fields for every work type on the given projects. Only `PROJECT_ID` association contexts are accepted. |
 
-An unknown scheme is 404. Reading one field's parameters is the exception, publishing no 404: an unknown scheme or an unassociated field leaves that request invalid, so it answers 400. Results for an unknown field are reported per item.
+Creating a scheme answers its name, description, id and links; the field count and the default flag belong to reading one. An unknown scheme is 404. Reading one field's parameters is the exception, publishing no 404: an unknown scheme or an unassociated field leaves that request invalid, so it answers 400. Results for an unknown field are reported per item.
 
 ## Behavior
 

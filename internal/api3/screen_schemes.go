@@ -143,7 +143,9 @@ func (h *Handler) screenSchemeCollection(w http.ResponseWriter, r *http.Request)
 			screenError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusCreated, h.screenSchemeBean(scheme))
+		// Creating publishes the new scheme's id alone, where reading it
+		// publishes the scheme.
+		writeJSON(w, http.StatusCreated, map[string]any{"id": wireNumericID(scheme.ID)})
 	default:
 		jiraError(w, http.StatusMethodNotAllowed, "Method not allowed")
 	}
@@ -360,14 +362,37 @@ func (h *Handler) issueTypeScreenSchemeProjects(w http.ResponseWriter, r *http.R
 			return
 		}
 		projects := stringQuerySet(securityQueryValues(r, "projectId"))
-		values := []map[string]any{}
+		// One row per scheme, carrying the scheme and every project it
+		// governs, which is the shape this operation publishes.
+		schemesByID, schemeErr := h.Store.IssueTypeScreenSchemes(r.Context(), workspaceID, nil)
+		if schemeErr != nil {
+			screenError(w, schemeErr)
+			return
+		}
+		named := map[string]models.IssueTypeScreenScheme{}
+		for _, scheme := range schemesByID {
+			named[scheme.ID] = *scheme
+		}
+		order := []string{}
+		governed := map[string][]any{}
 		for _, assignment := range assignments {
 			if len(projects) > 0 && !projects[assignment.ProjectID] {
 				continue
 			}
+			if _, seen := governed[assignment.SchemeID]; !seen {
+				order = append(order, assignment.SchemeID)
+			}
+			governed[assignment.SchemeID] = append(governed[assignment.SchemeID], wireNumericID(assignment.ProjectID))
+		}
+		values := []map[string]any{}
+		for _, schemeID := range order {
+			scheme := map[string]any{"id": wireNumericID(schemeID)}
+			if found, ok := named[schemeID]; ok {
+				scheme["name"] = found.Name
+				scheme["description"] = found.Description
+			}
 			values = append(values, map[string]any{
-				"issueTypeScreenSchemeId": wireNumericID(assignment.SchemeID),
-				"projectId":               wireNumericID(assignment.ProjectID),
+				"issueTypeScreenScheme": scheme, "projectIds": governed[schemeID],
 			})
 		}
 		page := pageSlice(values, startAt, maxResults)

@@ -136,7 +136,12 @@ func (h *Handler) createFieldScheme(w http.ResponseWriter, r *http.Request) {
 		fieldConfigError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.fieldSchemeBean(created))
+	// Creating publishes the scheme's name, description, id and links; the
+	// counts belong to reading one.
+	answer := h.fieldSchemeBean(created)
+	delete(answer, "fieldsCount")
+	delete(answer, "isDefault")
+	writeJSON(w, http.StatusOK, answer)
 }
 
 func (h *Handler) fieldSchemeResource(w http.ResponseWriter, r *http.Request, schemeID string) {
