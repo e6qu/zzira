@@ -355,12 +355,44 @@ the distinction the two parameters describe.
 expansions, the collapsed-then-filled filter lists, the subscription shape
 against the properties the contract publishes for it, and the name search.
 
+Conflicts are checked. 47 operations publish a 409, and they describe three
+kinds of collision. The conflicts a caller can provoke on purpose all answer
+correctly, each one built and checked in
+[conflict_test.go](internal/api3/conflict_test.go): a work type, work type
+scheme, project category or project role name already taken; a work type
+renamed onto a taken name; a work type replaced with itself; a field
+association scheme a project follows; and a project role somebody holds, which
+goes once a replacement is named. No defect came out of this group.
+
+The second kind is a background task still running, which this product cannot
+reach the way Jira does because it finishes that work before it answers --
+`DELETE /field/{id}` already reports a task it has completed. The guard itself
+is real and is queried per request, so the test builds the collision the way a
+real one would leave it, with a task of the same kind still enqueued against
+the same item, and the deletion answers 409.
+
+The third kind is not reachable at all yet, and both gaps are worth recording
+rather than papering over:
+- Four conflicts turn on sub-tasks being disabled in the site's settings
+  (`POST /field/{fieldId}/context`, `PUT /field/{fieldId}/context/{contextId}/issuetype`,
+  `POST /issuetypescreenscheme`, `PUT /issuetypescreenscheme/{id}/mapping`).
+  This product has no switch that turns sub-tasks off, so the condition cannot
+  arise. Adding it is a site setting plus the create paths that honour it.
+- `PUT /rest/api/3/issue/{issueIdOrKey}` and
+  `POST /rest/api/3/issue/{issueIdOrKey}/transitions` publish 409 for an
+  update that conflicts with another. Nothing in the work item write path
+  detects a lost update; two concurrent edits both succeed and the last one
+  wins. Matching Jira means optimistic concurrency in the command layer,
+  which is a design decision rather than a repair, because Jira's own 409
+  there is a race a client must tolerate and cannot provoke.
+
 Remaining:
 - Jira's two remaining settings surfaces are features, not pages: languages
   needs the interface translated, and issue collectors need a public
   embeddable widget. Neither is a form over data this product already keeps.
-- Per-operation behavior: concurrency, and whether a write persists every
-  field it accepted beyond the resources sampled.
+- The sub-tasks switch and work item optimistic concurrency above.
+- Whether a write persists every field it accepted, beyond the resources
+  already sampled.
 
 Checked and found already present, so that nothing re-opens them: the
 organization admin journeys are on `/admin` and work in the browser -- a
