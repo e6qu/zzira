@@ -85,3 +85,19 @@
 <details class="metadata-delete"><summary class="quiet-action">Delete {{.Name}}</summary><form class="project-details-form" method="post" action="/settings/issue-linking"><input type="hidden" name="action" value="delete"><input type="hidden" name="linkType" value="{{.ID}}"><p>The work items linked this way stop being related. Their other links are left alone.</p><button class="btn btn-danger" type="submit">Delete link type</button></form></details></article>{{else}}<p class="empty-state"><strong>No link types</strong><small>Work items cannot be related until one exists.</small></p>{{end}}</div>
 </main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
 {{end}}
+
+{{define "page_look_and_feel"}}
+<!doctype html><html lang="en"><head><title>Look and feel · {{(site $).Title}}</title>{{template "head" .}}</head>
+<body class="page-look-and-feel"><a class="skip-link" href="#main-content">Skip to content</a>{{template "header" .}}
+<div class="app-shell">{{template "workspace_nav" .}}<main class="page page-fluid" id="main-content" tabindex="-1">
+<nav class="issue-breadcrumbs" aria-label="Breadcrumb"><a href="/admin">Administration</a><span aria-hidden="true">/</span><span aria-current="page">Look and feel</span></nav>
+<header class="page-header"><div><span class="eyebrow">Jira settings</span><h1>Look and feel</h1><p>What this site is called, the images and colours it shows, and how it writes dates. An empty field keeps the built-in value.</p></div></header>
+{{if .Data.Notice}}<p class="form-success" role="status">{{.Data.Notice}}</p>{{end}}{{if .Data.Error}}<p class="form-error" role="alert">{{.Data.Error}}</p>{{end}}
+<section class="surface-card" aria-labelledby="look-and-feel-heading"><div><h2 id="look-and-feel-heading">Branding and dates</h2><p>A colour may be a name, <code>#rgb</code>, <code>#rrggbb</code> or <code>rgb()</code>. A date format is a Java pattern.</p></div>
+<form class="project-details-form" method="post" action="/settings/look-and-feel"><input type="hidden" name="action" value="save">
+{{range .Data.Fields}}<label for="lf-{{.Key}}">{{.Label}}</label><input id="lf-{{.Key}}" name="{{.Key}}" value="{{.Value}}" maxlength="255" {{if .Placeholder}}placeholder="{{.Placeholder}}"{{end}} aria-describedby="lf-help-{{.Key}}"><small id="lf-help-{{.Key}}" class="muted">{{.Help}}</small>{{end}}
+<label><input type="checkbox" name="jira.lf.logo.show.application.title" value="true" {{if .Data.ShowTitle}}checked{{end}}> Show the site title beside the logo</label>
+<button class="btn btn-primary" type="submit">Save look and feel</button></form>
+<form method="post" action="/settings/look-and-feel"><input type="hidden" name="action" value="reset"><button class="btn btn-subtle" type="submit">Restore the defaults</button></form></section>
+</main></div><div id="modal-root"></div><div id="sync-banner" class="sync-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div></body></html>
+{{end}}
