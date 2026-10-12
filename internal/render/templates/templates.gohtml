@@ -402,6 +402,9 @@
 <div class="modal edit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-issue-title" tabindex="-1">
   <div class="modal-header"><div><span class="eyebrow">{{.Issue.Key}}</span><h2 id="edit-issue-title">Edit issue</h2></div><button type="button" class="icon-button modal-close" onclick="window.zzira.closeModal()" aria-label="Close dialog">×</button></div>
   <form method="post" action="/issues/{{.Issue.Key}}/edit" hx-post="/issues/{{.Issue.Key}}/edit" hx-target="#issue-view-holder" hx-swap="innerHTML">
+    <!-- The work item as this dialog was opened. Saving over somebody else's
+         change is refused rather than silently overwriting it. -->
+    <input type="hidden" name="version" value="{{.Issue.VersionMarker}}">
     <div class="edit-form-body">
     {{with .EditingTabs}}<div class="edit-field-tabs">
       <div class="tablist" role="tablist" aria-label="Edit field tabs">{{range $index, $tab := .}}<button type="button" role="tab" id="edit-tab-{{$index}}" aria-controls="edit-tabpanel-{{$index}}" aria-selected="{{if eq $index 0}}true{{else}}false{{end}}" tabindex="{{if eq $index 0}}0{{else}}-1{{end}}" data-field-tab>{{$tab.Name}}</button>{{end}}</div>

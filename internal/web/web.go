@@ -3007,6 +3007,15 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 		http.NotFound(w, r)
 		return
 	}
+	// The dialog carries the work item as it was opened. Somebody else's
+	// change landing in between means this edit was composed against a work
+	// item that no longer exists in that form, so it is refused rather than
+	// overwriting what the editor never saw. A form without the field, which
+	// is how the inline controls post, edits the work item as it stands.
+	if opened := r.PostFormValue("version"); opened != "" && opened != issue.VersionMarker() {
+		http.Error(w, "This work item was updated by somebody else. Reopen it to see the change, then edit again.", http.StatusConflict)
+		return
+	}
 	summary := strings.TrimSpace(r.PostFormValue("summary"))
 	var description json.RawMessage
 	if values, provided := r.PostForm["description"]; provided && len(values) > 0 {
@@ -3018,6 +3027,9 @@ func (h *Handler) EditIssue(w http.ResponseWriter, r *http.Request, key string) 
 	in := commands.UpdateIssueInput{
 		ActorID: user.ID, WorkspaceID: wsID, IssueIDOrKey: key,
 		Summary: &summary, Description: description,
+		// The edit is composed from the work item read above, so a change
+		// landing between that read and the write refuses it too.
+		ExpectedUpdatedSeq: &issue.UpdatedSeq,
 	}
 	if values, ok := r.PostForm["environment"]; ok && len(values) > 0 {
 		value := strings.ReplaceAll(values[0], "\r\n", "\n")
@@ -3149,6 +3161,9 @@ func cleanupMultipart(r *http.Request) {
 func commandErrorStatus(err error) int {
 	if errors.Is(err, commands.ErrPermission) {
 		return http.StatusForbidden
+	}
+	if errors.Is(err, store.ErrIssueConcurrentUpdate) {
+		return http.StatusConflict
 	}
 	return http.StatusBadRequest
 }
