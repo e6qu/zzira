@@ -22,9 +22,11 @@ func parseWorkflowSearchPage(r *http.Request) (int, int, error) {
 	}
 	if value := r.URL.Query().Get("maxResults"); value != "" {
 		maxResults, err = strconv.Atoi(value)
-		if err != nil || maxResults < 1 || maxResults > 200 {
+		if err != nil || maxResults < 1 {
 			return 0, 0, errWorkflowSearchValidation
 		}
+		// A larger page than this search serves is answered with its largest.
+		maxResults = min(maxResults, 200)
 	}
 	return startAt, maxResults, nil
 }

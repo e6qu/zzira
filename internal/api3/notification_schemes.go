@@ -143,6 +143,10 @@ func (h *Handler) notificationSchemeBean(x *holderExpander, eventDefinitions map
 	return bean
 }
 
+// maxPageSize is the greatest page a paginated collection serves, which a
+// request for more is answered with.
+const maxPageSize = 100
+
 func notificationPage(r *http.Request) (int, int, error) {
 	startAt, maxResults := 0, 50
 	var err error
@@ -154,9 +158,15 @@ func notificationPage(r *http.Request) (int, int, error) {
 	}
 	if raw := r.URL.Query().Get("maxResults"); raw != "" {
 		maxResults, err = strconv.Atoi(raw)
-		if err != nil || maxResults < 1 || maxResults > 100 {
+		if err != nil || maxResults < 1 {
 			return 0, 0, store.ErrNotificationSchemeValidation
 		}
+		// A page larger than the greatest a collection serves is answered
+		// with that greatest page, not refused: the contract documents no
+		// failure for asking too much, and says of the page size that "if a
+		// value greater than 100 is provided, the maxResults parameter will
+		// default to 100".
+		maxResults = min(maxResults, maxPageSize)
 	}
 	return startAt, maxResults, nil
 }

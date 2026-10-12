@@ -348,10 +348,12 @@ func (h *Handler) searchStatusesEndpoint(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	max, err := strconv.Atoi(defaultString(r.URL.Query().Get("maxResults"), "200"))
-	if err != nil || max < 1 || max > 1000 {
-		jiraError(w, http.StatusBadRequest, "maxResults must be between 1 and 1000.")
+	if err != nil || max < 1 {
+		jiraError(w, http.StatusBadRequest, "maxResults must be one or greater.")
 		return
 	}
+	// A larger page than this collection serves is answered with its largest.
+	max = min(max, 1000)
 	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("searchString")))
 	category := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("statusCategory")))
 	var statuses []models.Status
@@ -421,9 +423,10 @@ func defaultString(value, fallback string) string {
 
 func statusUsagePage(r *http.Request, values []string) ([]map[string]any, string, error) {
 	max, err := strconv.Atoi(defaultString(r.URL.Query().Get("maxResults"), "50"))
-	if err != nil || max < 1 || max > 1000 {
-		return nil, "", errors.New("maxResults must be between 1 and 1000")
+	if err != nil || max < 1 {
+		return nil, "", errors.New("maxResults must be one or greater")
 	}
+	max = min(max, 1000)
 	start := 0
 	if token := r.URL.Query().Get("nextPageToken"); token != "" {
 		raw, decodeErr := base64.RawURLEncoding.DecodeString(token)

@@ -169,8 +169,15 @@ func TestMetadataPageValidationAndBounds(t *testing.T) {
 	if issueErr != nil || start != 7 || limit != 2 {
 		t.Fatalf("metadataPage = (%d,%d,%v)", start, limit, issueErr)
 	}
-	if _, _, issueErr = metadataPage(httptest.NewRequest("GET", "/?maxResults=101", nil)); issueErr == nil {
-		t.Fatal("metadataPage accepted maxResults above 100")
+	// A page larger than the greatest a collection serves is answered with
+	// that greatest page rather than refused, which is what the contract
+	// describes: "if a value greater than 100 is provided, the maxResults
+	// parameter will default to 100".
+	if _, limit, issueErr = metadataPage(httptest.NewRequest("GET", "/?maxResults=101", nil)); issueErr != nil || limit != maxPageSize {
+		t.Fatalf("metadataPage for an oversized page = (%d,%v)", limit, issueErr)
+	}
+	if _, _, issueErr = metadataPage(httptest.NewRequest("GET", "/?maxResults=-1", nil)); issueErr == nil {
+		t.Fatal("metadataPage accepted a negative page")
 	}
 }
 
@@ -179,7 +186,6 @@ func TestQuerySearchPageRejectsInvalidExplicitValues(t *testing.T) {
 		"/rest/api/3/search?startAt=-1",
 		"/rest/api/3/search?startAt=invalid",
 		"/rest/api/3/search?maxResults=-1",
-		"/rest/api/3/search?maxResults=101",
 		"/rest/api/3/search?maxResults=invalid",
 	}
 	for _, target := range tests {
@@ -188,6 +194,15 @@ func TestQuerySearchPageRejectsInvalidExplicitValues(t *testing.T) {
 				t.Fatal("expected explicit invalid pagination value to be rejected")
 			}
 		})
+	}
+}
+
+// A search asked for more rows than it serves answers with the most it
+// serves, which the contract documents in place of a refusal.
+func TestQuerySearchPageAnswersTheGreatestPageItServes(t *testing.T) {
+	_, maxResults, err := querySearchPage(httptest.NewRequest("GET", "/rest/api/3/search?maxResults=101", nil))
+	if err != nil || maxResults != maximumSearchPageSize {
+		t.Fatalf("an oversized search page = (%d, %v)", maxResults, err)
 	}
 }
 
