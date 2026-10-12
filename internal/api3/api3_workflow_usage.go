@@ -15,9 +15,12 @@ func workflowUsagePage(r *http.Request, ids []string) (map[string]any, error) {
 	var err error
 	if value := r.URL.Query().Get("maxResults"); value != "" {
 		maxResults, err = strconv.Atoi(value)
-		if err != nil || maxResults < 1 || maxResults > 200 {
+		if err != nil || maxResults < 1 {
 			return nil, store.ErrAdminValidation
 		}
+		// A larger page than this collection serves is answered with its
+		// largest, rather than refused.
+		maxResults = min(maxResults, 200)
 	}
 	start := 0
 	if token := r.URL.Query().Get("nextPageToken"); token != "" {

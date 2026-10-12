@@ -30,6 +30,13 @@ same evidence by family.
 
 ## Compatibility promise
 
+**Paging.** A collection that pages with `startAt` and `maxResults` answers a
+request for more rows than it serves with the largest page it serves, and
+reports that size in `maxResults`; the contract documents no failure for
+asking too much, and where it says anything it says the page size "will
+default to 100". A page nobody could serve -- a negative one, or one that is
+not a number -- is refused with 400.
+
 The target is for a client of the site-scoped Jira, Jira Software, Jira Service
 Management or Confluence APIs to work by changing its base URL: same paths, methods,
 authentication, bodies, status codes, headers, paging, expansions, ids,

@@ -550,8 +550,13 @@ func metadataPage(r *http.Request) (int, int, *jerr) {
 	for name, target := range map[string]*int{"startAt": &start, "maxResults": &limit} {
 		if raw := r.URL.Query().Get(name); raw != "" {
 			value, err := strconv.Atoi(raw)
-			if err != nil || value < 0 || (name == "maxResults" && value > 100) {
-				return 0, 0, &jerr{http.StatusBadRequest, name + " must be between 0 and 100.", nil}
+			if err != nil || value < 0 {
+				return 0, 0, &jerr{http.StatusBadRequest, name + " must be zero or greater.", nil}
+			}
+			if name == "maxResults" {
+				// Asking for a larger page than the collection serves is
+				// answered with the largest it serves.
+				value = min(value, maxPageSize)
 			}
 			*target = value
 		}
@@ -647,15 +652,22 @@ func (h *Handler) compileJQLValidated(ctx context.Context, workspaceID, raw, cur
 const defaultSearchPageSize = 50
 const maximumSearchPageSize = 100
 
+// validateSearchPage refuses a page nobody could serve. A page larger than
+// the greatest the search serves is not one of those: it is answered with the
+// greatest, which is what the contract describes.
 func validateSearchPage(startAt, maxResults int) *jerr {
 	if startAt < 0 {
 		return &jerr{http.StatusBadRequest, "startAt must be a non-negative integer.", nil}
 	}
-	if maxResults < 0 || maxResults > maximumSearchPageSize {
-		return &jerr{http.StatusBadRequest, "maxResults must be between 0 and 100.", nil}
+	if maxResults < 0 {
+		return &jerr{http.StatusBadRequest, "maxResults must be zero or greater.", nil}
 	}
 	return nil
 }
+
+// searchPageSize is the page a search serves for a request, which is at most
+// the greatest it serves.
+func searchPageSize(maxResults int) int { return min(maxResults, maximumSearchPageSize) }
 
 func querySearchPage(r *http.Request) (int, int, *jerr) {
 	startAt := 0
@@ -670,13 +682,14 @@ func querySearchPage(r *http.Request) (int, int, *jerr) {
 	if raw := r.URL.Query().Get("maxResults"); raw != "" {
 		value, err := strconv.Atoi(raw)
 		if err != nil {
-			return 0, 0, &jerr{http.StatusBadRequest, "maxResults must be between 0 and 100.", nil}
+			return 0, 0, &jerr{http.StatusBadRequest, "maxResults must be zero or greater.", nil}
 		}
 		maxResults = value
 	}
 	if err := validateSearchPage(startAt, maxResults); err != nil {
 		return 0, 0, err
 	}
+	maxResults = searchPageSize(maxResults)
 	return startAt, maxResults, nil
 }
 
@@ -690,6 +703,7 @@ func (h *Handler) runSearch(w http.ResponseWriter, r *http.Request, jqlText stri
 		writeJerr(w, e)
 		return
 	}
+	maxResults = searchPageSize(maxResults)
 	if e := validateSearchOptions(&options); e != nil {
 		writeJerr(w, e)
 		return

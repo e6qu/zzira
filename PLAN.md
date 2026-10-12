@@ -421,6 +421,26 @@ lists, but the specification's own examples show those properties, so the
 schema reference is narrower than the published payload. Examples settle what
 schemas alone cannot, and trusting the schema would have broken both.
 
+Write persistence is swept, and found a paging defect instead. Every field a
+create or an update accepts came back on 15 resources plus comments,
+worklogs, remote links, the banner, the time tracking options, screens,
+screen schemes, both work type schemes, field configurations, the project and
+a person's own preferences -- nothing was dropped. Two apparent misses were
+not: `Comment.jsdPublic` is `readOnly` in the contract, which says to use the
+Service Management API to raise an internal comment, and a version's `driver`
+comes back only when expanded.
+
+What the sweep found instead is that 28 paged collections refused a page
+larger than they serve, with 400. The contract documents no failure for
+asking too much, and `GET /project/search` says outright that "if a value
+greater than 100 is provided, the maxResults parameter will default to 100".
+They all cap now and report the size they served, which is what a handful of
+collections already did; a negative or unparseable page size is still
+refused. [page_size_test.go](internal/api3/page_size_test.go) reads the paged
+collections out of the pinned specification and asks each for ten thousand
+rows, so a collection added later is swept without anybody remembering to
+add it.
+
 Remaining:
 - Jira's two remaining settings surfaces are features, not pages: languages
   needs the interface translated, and issue collectors need a public

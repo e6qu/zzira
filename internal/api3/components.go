@@ -120,10 +120,13 @@ func (h *Handler) writeComponentPage(w http.ResponseWriter, r *http.Request, com
 	}
 	if raw := r.URL.Query().Get("maxResults"); raw != "" {
 		limit, err = strconv.Atoi(raw)
-		if err != nil || limit < 1 || limit > 100 {
-			jiraError(w, http.StatusBadRequest, "maxResults must be between 1 and 100.")
+		if err != nil || limit < 1 {
+			jiraError(w, http.StatusBadRequest, "maxResults must be one or greater.")
 			return
 		}
+		// A larger page than this collection serves is answered with its
+		// largest.
+		limit = min(limit, maxPageSize)
 	}
 	total := len(components)
 	if start > total {
