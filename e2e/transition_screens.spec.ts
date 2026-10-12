@@ -231,7 +231,8 @@ test('a transition collects the fields of the screen it names, and follows that 
   expect(saved.description).toEqual(rich);
   expect(saved.environment).toEqual(rich);
   expect(saved[fieldIDs.number]).toBe(12.5);
-  expect(saved[fieldIDs.multiselect]).toEqual(optionIDs);
+  // Jira answers a multi-select with its option objects, as /customFieldOption does.
+  expect((saved[fieldIDs.multiselect] ?? []).map((option: { id: string }) => option.id)).toEqual(optionIDs);
 
   await requireEnvironment(false);
   // Deselecting all options is a clear; omitted fields were covered at the web edge.

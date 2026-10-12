@@ -24,7 +24,9 @@ async function accessible(page: Page) {
 // count. Production on every pipeline is only the default.
 test('a project chooses which environments and pipelines its DORA metrics count', async ({ page, browser }) => {
   const auth = { Authorization: apiAuthHeader(), 'Content-Type': 'application/json' };
-  expect((await page.request.post('/rest/api/3/screens/addToDefault/resolution', { headers: auth })).status()).toBe(200);
+  // Resolution only has to be on the default screen; another spec on this
+  // site may have put it there first, which Jira answers with 404.
+  expect([200, 404]).toContain((await page.request.post('/rest/api/3/screens/addToDefault/resolution', { headers: auth })).status());
   const stamp = Date.now();
   const key = `DM${stamp.toString(36).toUpperCase().slice(-8)}`;
   const me = await (await page.request.get('/rest/api/3/myself', { headers: auth })).json();

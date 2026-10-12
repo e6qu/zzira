@@ -70,10 +70,16 @@ for (const surface of ['issue comment', 'wiki rich', 'wiki source']) {
 
 for (const surface of ['wiki rich', 'wiki source']) {
   test(`${surface} keeps an inserted mention immediately before any sync timer runs`, async ({ page }) => {
-    await page.clock.install();
+    // An installed clock keeps ticking, so any instant read while the page
+    // loads is already in the past by the time pauseAt runs, and pauseAt
+    // refuses to move backwards. Install at a fixed instant and pause a short
+    // way past it: the editor's 250ms save debounce has nothing queued yet,
+    // so no sync runs before the mention below is inserted.
+    const installed = new Date('2026-06-01T10:00:00.000Z');
+    await page.clock.install({ time: installed });
     const editor = await open(page, surface, true);
     await expect(page.locator('[data-wiki-live-sync]')).toContainText('kept on this device');
-    await page.clock.pauseAt(new Date());
+    await page.clock.pauseAt(new Date(installed.getTime() + 1_500));
     await editor.fill('Check @Ana');
     const picker = page.getByRole('listbox', { name: 'People to mention', exact: true });
     await expect(picker.getByRole('option', { name: 'Ana Soursop', exact: true })).toBeVisible();

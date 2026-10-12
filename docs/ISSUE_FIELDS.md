@@ -22,7 +22,7 @@ Everything except `GET /field` and `GET /projects/fields` needs *Administer Jira
 
 ## Environment
 
-Environment is a system rich-text field, stored as an ADF document or cleared with `null`. Add it to the project's create, edit or view screen through screen administration. Create and edit commands enforce those screen assignments; field configurations control required/hidden behavior and text/wiki rendering.
+Environment is a system rich-text field, stored as an ADF document or cleared with `null`. It ships on the site's default screen, as Jira's does, so a project that has not customized its screens accepts it; add or remove it elsewhere through screen administration. Create and edit commands enforce those screen assignments; field configurations control required/hidden behavior and text/wiki rendering.
 
 `fields.environment` is accepted on issue create and update. Update also accepts one `update.environment` `set` operation; mixing both forms, list operations and non-ADF values is refused atomically. Work item reads, search projections, `renderedFields`, expressions (`issue.environment.plainText`), workflow field updates/copies and automation edit actions use the persisted value. Changes carry system-field changelog entries in the same action transaction.
 

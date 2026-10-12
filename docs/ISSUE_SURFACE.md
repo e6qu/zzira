@@ -92,7 +92,10 @@ not exist on Cloud and are refused.
 `versionedRepresentations`), `properties` and `updateHistory`. Beyond the work item
 row it returns `creator`, `created`, `comment`, `issuelinks`, `watches`, `votes`,
 `subtasks`, `attachment` and `worklog`, loading each only when it is asked for.
-`lastViewed` is the signed-in reader's latest recorded visit, or `null` when
+A selection that matches nothing the work item holds still answers with the
+whole envelope -- `id`, `key`, `self` and an empty `fields` -- so a client can
+read `fields[x]` after clearing `x`. Only a bare `fields=id` answers with the id
+alone. `lastViewed` is the signed-in reader's latest recorded visit, or `null` when
 unvisited. Browser visits and `updateHistory=true` record visits; ordinary REST
 reads and searches do not. Explicit projections, exclusions, search and bulk
 fetch preserve this reader scope.

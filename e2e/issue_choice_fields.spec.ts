@@ -41,7 +41,12 @@ test('component and version edits persist, clear and follow separate screens', a
     await expect(page.locator('#field-fixVersions')).toHaveValues([versionID]);
     await expect(page.locator('#field-versions')).toHaveValues([versionID]);
     await page.locator('#field-components').selectOption([]);
-    await page.getByRole('button', { name: /^Save Components/ }).click();
+    // The select is already empty before the save lands, so waiting on the
+    // control alone would read the server before it has the clear.
+    await Promise.all([
+      page.waitForResponse((response) => response.url().endsWith(`/issues/${issueKey}/fields`) && response.request().method() === 'POST'),
+      page.getByRole('button', { name: /^Save Components/ }).click(),
+    ]);
     await expect(page.locator('#field-components')).toHaveValues([]);
     expect((await (await page.request.get(`/rest/api/3/issue/${issueKey}?fields=components,fixVersions,versions`, { headers })).json()).fields).toMatchObject({ components: [], fixVersions: [{ id: versionID }], versions: [{ id: versionID }] });
     for (const [name, fields] of [['Editing', ['summary', 'components', 'fixVersions']], ['Reading', ['summary', 'components', 'versions']]] as const) {

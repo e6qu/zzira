@@ -183,6 +183,13 @@ func (h *Handler) addFieldToDefaultScreen(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := h.Store.AddFieldToDefaultScreen(r.Context(), workspaceID, actorID, fieldID); err != nil {
+		// Atlassian answers this operation with 404 both for a field it cannot
+		// find and for one the default screen already holds; the general screen
+		// mapping would answer 409 for the second.
+		if errors.Is(err, store.ErrScreenConflict) {
+			jiraError(w, http.StatusNotFound, "The field is not found or is already present.")
+			return
+		}
 		screenError(w, err)
 		return
 	}

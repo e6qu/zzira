@@ -1,6 +1,14 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, Page } from '@playwright/test';
 import { apiAuthHeader } from './auth';
 import axe from 'axe-core';
+
+// A browser form post carries its origin, and the server refuses a
+// cookie-bearing write without one. Stand in for the browser so a refusal
+// here means what the test is asking about, not a blocked cross-origin write.
+function sameOrigin(page: Page): Record<string, string> {
+  return { Origin: new URL(page.url()).origin };
+}
+
 
 test('a contributor creates, recovers and edits Environment through an assigned screen', async ({ page }) => {
   await page.goto('/login');
@@ -70,7 +78,9 @@ test('a contributor creates, recovers and edits Environment through an assigned 
     await expect(page.locator('.issue-environment .description-text')).toHaveText('Production Linux');
     await page.locator('#edit-issue-button').click();
     const edit = page.getByRole('dialog', { name: 'Edit issue' });
+    await edit.getByRole('tab', { name: 'Runtime', exact: true }).click();
     await edit.getByLabel('Environment', { exact: true }).fill('Staging Linux');
+    await edit.getByRole('tab', { name: 'Field Tab', exact: true }).click();
     await edit.getByLabel('Summary', { exact: true }).fill('   ');
     await edit.getByRole('button', { name: 'Save changes' }).click();
     await expect(edit.getByRole('alert')).toContainText('summary is required');
@@ -101,16 +111,17 @@ test('a contributor creates, recovers and edits Environment through an assigned 
     expect(preserved.fields.description).toEqual(rich);
     expect(preserved.fields.environment).toEqual(rich);
     const posted = 'Staging Linux\r\nSecond paragraph';
-    const inlineSave = await page.request.post(`/issues/${issueKey}/fields`, { form: { field: 'environment', value: posted } });
+    const inlineSave = await page.request.post(`/issues/${issueKey}/fields`, { form: { field: 'environment', value: posted }, headers: sameOrigin(page) });
     expect(inlineSave.status()).toBe(200);
     expect(await environment()).toEqual(rich);
-    const missing = await page.request.post(`/issues/${issueKey}/fields`, { form: { field: 'environment' } });
+    const missing = await page.request.post(`/issues/${issueKey}/fields`, { form: { field: 'environment' }, headers: sameOrigin(page) });
     expect(missing.status()).toBe(400);
     expect(await environment()).toEqual(rich);
     const search = await page.request.get(`/rest/api/3/search?jql=${encodeURIComponent(`project = ${key} AND environment ~ "Staging"`)}&fields=environment`, { headers });
     expect(search.status()).toBe(200);
     expect((await search.json()).issues.map((issue: any) => issue.key)).toEqual([issueKey]);
     await page.locator('#edit-issue-button').click();
+    await edit.getByRole('tab', { name: 'Runtime', exact: true }).click();
     await edit.getByLabel('Environment', { exact: true }).fill('');
     await edit.getByRole('button', { name: 'Save changes' }).click();
     await expect(edit).toHaveCount(0);
