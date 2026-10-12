@@ -49,8 +49,15 @@ See [TIME_TRACKING.md](TIME_TRACKING.md).
 - The navigation colours style the header.
 - The hero button colour styles primary buttons in the light theme only when white labels keep at least 4.5:1 contrast. Jira's default `#3b7fc4` does not, so ZZIRA's buttons stay.
 - The complete and day date formats control how automation runs, trash deadlines and rendered search dates display.
+- `/settings/look-and-feel` edits all of the above, and restores the defaults.
+  A colour must be one the pages can measure as well as draw -- hex or
+  `rgb()` -- so the contrast check above has something to work from, and a date
+  pattern must be one they can read; either way the refusal says which field
+  and why, and what was already saved stays. Site administration, so a member
+  is refused the page.
 
 ## Tests
 
 - `internal/api3/site_configuration_test.go`: authorization, defaults, persistence, status codes, filtering, form encoding, validation, disabled time tracking, audit events and actions.
+- `e2e/look_and_feel.spec.ts`: sets the title, navigation and button colours and date format, reads the title back off a page, is refused a bogus colour, an unreadable date pattern and a pale button colour while keeping what was saved, restores the defaults, and is refused as a member.
 - `e2e/admin.spec.ts`: publishes and dismisses a banner, changes time tracking and columns, updates the application title, reads each back through REST, and checks accessibility and 320px reflow.
