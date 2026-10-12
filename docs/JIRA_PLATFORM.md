@@ -30,7 +30,7 @@ Every page under **Jira settings** is described by the doc for the surface it co
 | `/settings/custom-fields` | [Custom field contexts](CUSTOM_FIELD_CONTEXTS.md#ui) and [options](CUSTOM_FIELD_OPTIONS.md#ui); the fields themselves are administered over REST ([ISSUE_FIELDS.md](ISSUE_FIELDS.md#ui)) |
 | `/settings/field-configurations` | [Field configurations](FIELD_CONFIGURATIONS.md#ui), which is also where [field association schemes](FIELD_ASSOCIATION_SCHEMES.md#ui) are edited |
 | `/settings/screens`, `/settings/screen-schemes` | [Screens](SCREENS.md#ui), [screen schemes](SCREEN_SCHEMES.md#ui) |
-| `/settings/statuses`, `/settings/workflows`, `/settings/workflow-schemes` | [Workflow rules](WORKFLOW_RULES.md#ui), [workflow schemes](WORKFLOW_SCHEMES.md#ui) |
+| `/settings/statuses`, `/settings/workflows`, `/settings/workflow-schemes` | [Workflow rules](WORKFLOW_RULES.md#ui), [workflow schemes](WORKFLOW_SCHEMES.md#ui). Site administrators and project administrators read these directories; everyone else is refused |
 | `/settings/permission-schemes`, `/settings/issue-security-schemes`, `/settings/project-roles` | [Permission schemes](PERMISSION_SCHEMES.md), [issue security schemes](ISSUE_SECURITY_SCHEMES.md), [project roles](PROJECT_ROLES.md) |
 | `/settings/notification-schemes` | [Notification schemes](NOTIFICATION_SCHEMES.md) |
 | `/settings/automation` | [Automation](AUTOMATION.md) |

@@ -583,8 +583,22 @@ func (h *Handler) statusBean(s models.Status) map[string]any {
 		"id":             statusWireID(s),
 		"name":           s.Name,
 		"description":    s.Description,
+		"iconUrl":        h.statusIconURL(s),
 		"statusCategory": statusCategoryBean(s.Category),
 	}
+}
+
+// statusIconURL is the icon a client shows beside a status. Jira answers every
+// status with one; ours follows the status category, which is what the colour
+// beside a status means.
+func (h *Handler) statusIconURL(s models.Status) string {
+	category := s.Category
+	switch category {
+	case "new", "indeterminate", "done":
+	default:
+		category = "generic"
+	}
+	return h.BaseURL + "/images/icons/statuses/" + category + ".svg"
 }
 
 func writeJerr(w http.ResponseWriter, e *jerr) {

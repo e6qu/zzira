@@ -314,6 +314,23 @@ Remaining:
   expansions and partial persistence per operation remain the work of
   section 16.
 
+Measured so far: every one of the 1207 pinned operations is routed (599 reads,
+608 writes, none answering "not implemented"); the paged collections checked
+honour `maxResults`, echo `startAt`, report `total` and `isLast`, and advance
+their rows; and a create followed by a read returns every field it was given
+for components, versions, filters, dashboards, project categories and link
+types. Dashboard create requires `editPermissions`, as the contract says.
+
+Two sweeps are done; neither is worth repeating as-is. Diffing live responses
+against the pinned schemas found the status `iconUrl` and the project's
+`simplified`/`style` pair, and four false alarms: `versionedRepresentations`
+suppresses `fields` by contract, `lead` and `projectCategory` are absent only
+on a project that has neither, and `Resolution` carries no `iconUrl`. Grepping
+the source for documented property names found nothing further -- it cannot see
+a key a bean builds, such as the version `userReleaseDate`. What remains is
+per-operation: paging, expansion combinations and whether a write persists
+every field it accepted.
+
 ## 16. Certification
 
 - Validate recently merged editor, transition, offline recovery and image-pin

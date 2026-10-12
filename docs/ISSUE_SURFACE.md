@@ -92,6 +92,11 @@ not exist on Cloud and are refused.
 `versionedRepresentations`), `properties` and `updateHistory`. Beyond the work item
 row it returns `creator`, `created`, `comment`, `issuelinks`, `watches`, `votes`,
 `subtasks`, `attachment` and `worklog`, loading each only when it is asked for.
+A status carries the `iconUrl` of its category, served from
+`/images/icons/statuses/{new,indeterminate,done}.svg`, and a project reports
+itself as Jira reports a company-managed one: `style` `classic` and
+`simplified` false.
+
 A selection that matches nothing the work item holds still answers with the
 whole envelope -- `id`, `key`, `self` and an empty `fields` -- so a client can
 read `fields[x]` after clearing `x`. Only a bare `fields=id` answers with the id
