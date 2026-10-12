@@ -32,8 +32,11 @@ func (h *Handler) projectBean(p *models.Project) map[string]any {
 		"assigneeType":   p.AssigneeType,
 		"self":           h.BaseURL + "/rest/api/3/project/" + p.Key,
 		"projectTypeKey": p.ProjectTypeKey,
-		"simplified":     true,
-		"style":          "classic",
+		// Every project here is company-managed, which Jira reports as a
+		// classic style that is not simplified. The agile board bean already
+		// said so; this one claimed the opposite pair.
+		"simplified": false,
+		"style":      "classic",
 		"avatarUrls": map[string]string{
 			"48x48": h.BaseURL + "/static/img/avatar-default.svg",
 		},

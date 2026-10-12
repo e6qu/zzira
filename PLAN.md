@@ -314,6 +314,16 @@ Remaining:
   expansions and partial persistence per operation remain the work of
   section 16.
 
+Two sweeps are done; neither is worth repeating as-is. Diffing live responses
+against the pinned schemas found the status `iconUrl` and the project's
+`simplified`/`style` pair, and four false alarms: `versionedRepresentations`
+suppresses `fields` by contract, `lead` and `projectCategory` are absent only
+on a project that has neither, and `Resolution` carries no `iconUrl`. Grepping
+the source for documented property names found nothing further -- it cannot see
+a key a bean builds, such as the version `userReleaseDate`. What remains is
+per-operation: paging, expansion combinations and whether a write persists
+every field it accepted.
+
 ## 16. Certification
 
 - Validate recently merged editor, transition, offline recovery and image-pin

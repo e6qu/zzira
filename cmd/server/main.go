@@ -985,6 +985,23 @@ func main() {
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 		http.ServeFile(w, r, filepath.Join(static, "img", "priorities", icon))
 	})
+	// Jira names status icons by /images/icons/statuses/<name>.png; a status
+	// carries the icon of its category, and the generic icon answers anything
+	// else, so a client that stored an older URL still resolves one.
+	mux.HandleFunc("GET /images/icons/statuses/{file}", func(w http.ResponseWriter, r *http.Request) {
+		icon := "generic.svg"
+		switch strings.TrimSuffix(strings.TrimSuffix(r.PathValue("file"), ".png"), ".svg") {
+		case "new":
+			icon = "new.svg"
+		case "indeterminate":
+			icon = "indeterminate.svg"
+		case "done":
+			icon = "done.svg"
+		}
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		http.ServeFile(w, r, filepath.Join(static, "img", "statuses", icon))
+	})
 	mux.HandleFunc("GET /secure/archived-issues-export/{file}", api.ArchivedIssuesExportFile)
 	mux.HandleFunc("GET /atlassian-connect/all.js", func(w http.ResponseWriter, r *http.Request) {
 		// Connect apps load the JavaScript API from the product they run in.
