@@ -9,7 +9,7 @@ This page covers the Jira Cloud platform REST v3 dashboard operations: dashboard
 | `GET /rest/api/3/dashboard` | Pages the dashboards the caller can see. `filter` is `my` or `favourite`. |
 | `POST /rest/api/3/dashboard` | Creates a private or shared dashboard. |
 | `GET /rest/api/3/dashboard/search` | Searches by `dashboardName`, `accountId`/`owner`, `groupname`, `groupId` and `projectId`, with Jira's `orderBy` and paging. Accepts every documented expansion. `status` other than `active` is 400, because dashboards are never archived here. |
-| `GET/PUT/DELETE /rest/api/3/dashboard/{id}` | Reads a dashboard. Only the owner can update its details and sharing, or delete it. |
+| `GET/PUT/DELETE /rest/api/3/dashboard/{id}` | Reads a dashboard. Only the owner can update its details and sharing, or delete it. Reading and updating answer 404 for a dashboard that does not exist; deleting publishes no 404 and answers 400. |
 | `POST /rest/api/3/dashboard/{id}/copy` | Copies every gadget and property into a new private dashboard owned by the caller. |
 | `PUT /rest/api/3/dashboard/bulk/edit` | Applies `changePermission`, `changeOwner` or `delete` to up to 1,000 dashboards. |
 | `GET /rest/api/3/dashboard/gadgets` | Lists the built-in gadget catalog. Filters: `moduleKey`, `uri`, `gadgetId`. |

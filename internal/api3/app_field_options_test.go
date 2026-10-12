@@ -246,7 +246,9 @@ func TestAppFieldOptions(t *testing.T) {
 	call(adminID, "DELETE", base+"/"+highID, "", 204)
 	call(adminID, "GET", base+"/"+highID, "", 404)
 
-	// The surface answers only for a select list an app provides.
-	call(adminID, "GET", "/rest/api/3/field/nosuchapp__nothing/option", "", 404)
+	// The surface answers only for a select list an app provides. Listing
+	// publishes no 404: the contract documents its 400 as the answer when
+	// "the field is not found or does not support options".
+	call(adminID, "GET", "/rest/api/3/field/nosuchapp__nothing/option", "", 400)
 	call(memberID, "POST", base, `{"value":"Sneaky"}`, 403)
 }

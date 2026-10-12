@@ -67,6 +67,13 @@ func (h *Handler) workflowSchemeSubresourceRoute(w http.ResponseWriter, r *http.
 		}
 		scheme, err := h.Store.CreateWorkflowSchemeDraft(r.Context(), workspaceID, userID, schemeID)
 		if err != nil {
+			// Creating a draft publishes no 404, alone among the scheme
+			// operations: Jira reports a parent scheme it cannot find as a
+			// request that isn't valid.
+			if errors.Is(err, store.ErrAdminNotFound) {
+				jiraError(w, http.StatusBadRequest, "The workflow scheme does not exist.")
+				return true
+			}
 			workflowSchemeAPIError(w, err)
 			return true
 		}

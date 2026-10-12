@@ -279,6 +279,12 @@ func (h *Handler) fieldProjectAssociations(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if _, err := h.Store.CustomFieldByID(r.Context(), workspaceID, fieldID); err != nil {
+		// This operation publishes no 404: a field it cannot find makes the
+		// request invalid, which Jira reports as 400.
+		if errors.Is(err, pgx.ErrNoRows) {
+			jiraError(w, http.StatusBadRequest, "The field does not exist.")
+			return
+		}
 		fieldError(w, err)
 		return
 	}
@@ -353,6 +359,12 @@ func (h *Handler) fieldContextsForField(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	contexts, err := h.Store.CustomFieldContexts(r.Context(), workspaceID, fieldID, nil)
+	// Like `/field/{fieldId}/screens`, this listing publishes only success for
+	// the field it is given: a field with no contexts, including one that does
+	// not exist, is an empty page rather than a refusal.
+	if errors.Is(err, store.ErrFieldContextNotFound) {
+		contexts, err = nil, nil
+	}
 	if err != nil {
 		fieldContextError(w, err)
 		return

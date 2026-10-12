@@ -21,7 +21,7 @@ The app that provides the field needs no Jira permission. Anyone else must be a 
 | `GET /rest/api/3/field/{fieldKey}/option/suggestions/edit` | Pages options the user may select. |
 | `DELETE /rest/api/3/field/{fieldKey}/option/{optionId}/issue` | Deselects the option on work items, optionally setting `replaceWith` and optionally limited by `jql`. Answers `303` with a task. |
 
-Unknown fields and options are 404.
+Unknown fields and options are 404, except when listing a field's options, which publishes no 404 and answers 400 for a field that is missing or supports no options.
 
 ## Behavior
 

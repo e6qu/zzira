@@ -131,7 +131,7 @@ Levels are defined in site administration; see [CLASSIFICATION_LEVELS.md](CLASSI
 | Operation | Behavior |
 | --- | --- |
 | `GET /rest/api/3/instance/license` | The site's Jira applications (`jira-software`, `jira-servicedesk`) with plan `PAID`. |
-| `GET /rest/api/3/license/approximateLicenseCount`, `.../product/{applicationKey}` | Site administrators. Active non-app users of the site or of a licensed application; unlicensed applications count 0; unknown keys are 400. |
+| `GET /rest/api/3/license/approximateLicenseCount`, `.../product/{applicationKey}` | Site administrators. Active non-app users of the site or of a licensed application; unlicensed applications count 0. The key is one of an enumerated set in the path, so a value outside it addresses no resource and answers 404. |
 | `GET /rest/api/3/auditing/record` | Site administrators. The audit log, newest first, with `filter`, `from`/`to` (epoch ms or ISO date), `offset` and `limit` (max 1,000). Records carry `summary`, `category`, `objectItem`, `authorKey`, `remoteAddress`, `created`. |
 
 ## Site and project reads

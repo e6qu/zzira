@@ -114,6 +114,9 @@ Rules:
 | `POST` | `/rest/api/3/priorityscheme/mappings` | priorities a change would strand |
 | `GET` | `/rest/api/3/priorityscheme/priorities/available` | |
 | `PUT` / `DELETE` | `/rest/api/3/priorityscheme/{id}` | `PUT` answers 202 |
+
+No priority scheme operation publishes 404, so a scheme none of them can find leaves the request invalid and answers 400.
+
 | `GET` | `/rest/api/3/priorityscheme/{id}/priorities` | includes `sequence` |
 | `GET` | `/rest/api/3/priorityscheme/{id}/projects` | |
 

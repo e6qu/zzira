@@ -176,7 +176,9 @@ func TestFieldAssociationSchemes(t *testing.T) {
 	if base["isRequired"] != true || base["description"] != "Who signs off" {
 		t.Fatalf("field parameters: %v", parameters)
 	}
-	call(adminID, "GET", "/rest/api/3/config/fieldschemes/"+schemeID+"/fields/customfield_404404/parameters", "", 404)
+	// Reading parameters publishes no 404, alone among the scheme
+	// operations, so a field it cannot find leaves the request invalid.
+	call(adminID, "GET", "/rest/api/3/config/fieldschemes/"+schemeID+"/fields/customfield_404404/parameters", "", 400)
 
 	// Assigning the scheme to the project is what makes it govern the forms.
 	assigned := decode(call(adminID, "PUT", "/rest/api/3/config/fieldschemes/projects",

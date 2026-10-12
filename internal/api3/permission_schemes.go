@@ -48,6 +48,18 @@ func permissionSchemeError(w http.ResponseWriter, err error) {
 	}
 }
 
+// permissionGrantWriteError reports a create or delete of a grant the way
+// those two operations publish it. Neither documents 404: Jira reports a
+// scheme or grant it cannot find as a request that isn't valid, where reading
+// the same ids answers 404.
+func permissionGrantWriteError(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrPermissionSchemeNotFound) {
+		jiraError(w, http.StatusBadRequest, "The permission scheme or grant does not exist.")
+		return
+	}
+	permissionSchemeError(w, err)
+}
+
 func parsePermissionSchemeID(raw string) (int64, error) {
 	id, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || id <= 0 {
@@ -273,7 +285,7 @@ func (h *Handler) permissionGrantRoute(w http.ResponseWriter, r *http.Request, s
 			}
 			grant, err := h.Store.CreatePermissionGrant(r.Context(), workspaceID, actorID, schemeID, permissionGrantInput(request))
 			if err != nil {
-				permissionSchemeError(w, err)
+				permissionGrantWriteError(w, err)
 				return
 			}
 			writeJSON(w, http.StatusCreated, h.permissionGrantBean(h.newHolderExpander(r, workspaceID), schemeID, grant))
@@ -312,7 +324,7 @@ func (h *Handler) permissionGrantRoute(w http.ResponseWriter, r *http.Request, s
 			return
 		}
 		if deleteErr := h.Store.DeletePermissionGrant(r.Context(), workspaceID, actorID, schemeID, grantID); deleteErr != nil {
-			permissionSchemeError(w, deleteErr)
+			permissionGrantWriteError(w, deleteErr)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

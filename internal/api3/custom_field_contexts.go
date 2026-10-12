@@ -349,6 +349,11 @@ func (h *Handler) fieldContextIssueTypeMapping(w http.ResponseWriter, r *http.Re
 		return
 	}
 	contexts, err := h.Store.CustomFieldContexts(r.Context(), workspaceID, fieldID, securityQueryValues(r, "contextId"))
+	// This mapping publishes only success for the field it is given, so a
+	// field without contexts is an empty page rather than a refusal.
+	if errors.Is(err, store.ErrFieldContextNotFound) {
+		contexts, err = nil, nil
+	}
 	if err != nil {
 		fieldContextError(w, err)
 		return

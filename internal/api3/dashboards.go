@@ -158,6 +158,13 @@ func (h *Handler) dashboardRoute(w http.ResponseWriter, r *http.Request, p []str
 				return
 			}
 			if err := h.Store.DeleteDashboard(r.Context(), ws, user, p[0]); err != nil {
+				// Deleting publishes no 404: Jira reports a dashboard it
+				// cannot find as a request that isn't valid, where reading
+				// and updating the same id answer 404.
+				if errors.Is(err, pgx.ErrNoRows) {
+					jiraError(w, 400, "The dashboard does not exist.")
+					return
+				}
 				dashboardError(w, err)
 				return
 			}
