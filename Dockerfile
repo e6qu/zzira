@@ -2,7 +2,7 @@
 # The Go image comes from the Amazon ECR Public copy of Docker's official
 # images, pinned to the same index digest Docker Hub serves: Docker Hub limits
 # anonymous pulls per address, and the shared CI runners exhaust it.
-FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS build
+FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/golang:1.27.4-bookworm@sha256:ce59b41415e2524ae99926fe1f37ce48ba8c194dcbd2a56a65436cdcefa2bd34 AS build
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev
